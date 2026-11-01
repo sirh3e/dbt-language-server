@@ -7,7 +7,7 @@ LSP for dbt
 - **Code Completion**
 - **Hover Information**
 - **Go to Definition**
-- **[Go to Schema](analysis/README.md)**
+- **[Go to Schema](docs/go-to-schema.md)**
 - **Function Documentation**
 
 | Resource | Go to Definition | Hover | Completion |
@@ -20,9 +20,9 @@ LSP for dbt
 | Functions |   | x | x |
 
 ### Function Documentation
-This is the only part of the LSP that is dialect specific. The rest is parsed 
-using the file system and a very forgiving parser that is primarily focused on 
-dbt specific syntax instead of attempting to be a full SQL parser.
+This is the only part of the LSP that is dialect specific. The rest is parsed
+from the file system using minijinja (Jinja layer) and sqlparser (SQL layer),
+focused on dbt specific syntax rather than full SQL analysis.
 
 Supported Dialects:
 - Snowflake
@@ -39,6 +39,17 @@ Enabled via a cli argument.
 -f, --fusion=[path]
 ```
 If path to the dbt fusion executable is not provided, `dbt` will be used and will look for it in `$PATH`.
+
+## Building from source
+
+The server is a Rust workspace:
+
+```
+cargo build --release -p dbt-language-server
+```
+
+The binary lands at `target/release/dbt-language-server`. See `AGENTS.md` for
+development commands and `specs/rust-port/` for the implementation specs.
 
 ## Installation
 

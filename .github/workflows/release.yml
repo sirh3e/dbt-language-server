@@ -11,22 +11,30 @@ permissions:
 jobs:
   create-release:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history for changelog generation
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          go-version-file: 'go.mod'
-      
+          targets: x86_64-unknown-linux-gnu, x86_64-apple-darwin, aarch64-apple-darwin
+
+      - name: Setup Zig (C/C++ toolchain + cross linker, specs/rust-port/07 §5)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild --locked
+
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-      
+
       - name: Generate changelog
         id: changelog
         run: |
@@ -40,35 +48,35 @@ jobs:
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-      
-      - name: Make script executable
-        run: chmod +x ./build-all-platforms.sh
-      
-      - name: Run build script
-        run: VERSION=${{ steps.version.outputs.VERSION }} ./build-all-platforms.sh
-      
+
+      - name: Build release binaries (cargo-zigbuild, 07 §5 matrix)
+        run: |
+          mkdir -p dist
+          # target triple -> legacy asset suffix the install script expects
+          build() {
+            local target="$1" suffix="$2"
+            cargo zigbuild --release --target "$target" -p dbt-language-server
+            cp "target/${target%%.*}/release/dbt-language-server" "dist/dbt-language-server-$suffix"
+          }
+          build x86_64-unknown-linux-gnu.2.17 linux-amd64
+          build x86_64-apple-darwin darwin-amd64
+          build aarch64-apple-darwin darwin-arm64
+
       - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.version.outputs.VERSION }}
-          release_name: ${{ steps.version.outputs.VERSION }}
-          body: |
-            ${{ steps.changelog.outputs.CHANGELOG }}
-          draft: false
-          prerelease: false
-      
-      - name: Upload Release Assets
         run: |
-          # Upload all files from the build directory
-          # Adjust the path and file pattern to match your script's output
+          gh release create ${{ steps.version.outputs.VERSION }} \
+            --title "${{ steps.version.outputs.VERSION }}" \
+            --notes "${{ steps.changelog.outputs.CHANGELOG }}"
+
+      - name: Upload Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
           for asset in ./dist/*; do
             if [ -f "$asset" ]; then
               echo "Uploading $asset"
               gh release upload ${{ steps.version.outputs.VERSION }} "$asset" --clobber
             fi
           done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,7 +1,9 @@
 # Rust Port — Overview & Architecture
 
 Implementation specification for porting `dbt-language-server` (Go) to Rust.
-Source of truth for all behavior: the Go code at commit `724b0f2`. Every spec file
+Source of truth for all behavior: the Go code at commit `724b0f2` (the Go tree
+was removed from the working copy once the port shipped; it remains available
+at that commit in git history). Every spec file
 in this directory describes the behavior to reproduce, plus explicitly marked
 **[QUIRK]** (faithful-but-odd behavior you may keep or fix) and **[DEVIATION]**
 (recommended changes for the Rust version) notes.
