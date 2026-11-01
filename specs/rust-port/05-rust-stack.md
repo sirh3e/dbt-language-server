@@ -17,6 +17,13 @@ Decisions set by the project owner:
 
 ## 1. Cargo manifest
 
+> **Workspace note (09 §1 — binding):** the project is a Cargo workspace of
+> multiple crates, not the single package this block was first written as.
+> Read the `[dependencies]` below as the `[workspace.dependencies]` set
+> (versions declared once; members use `{ workspace = true }` for their
+> subset), and the `[features]` as living on their owning crates, forwarded by
+> the binary (09 §1 rules).
+
 ```toml
 [package]
 name = "dbt-language-server"
@@ -63,8 +70,9 @@ pretty_assertions = "1"
 for `yaml-rust2` if its marker API fits better; the requirement is per-node
 line/column, 03 §3.1.)
 
-Required dev tools, not dependencies: the Zig toolchain (07 §5) and
-`cargo-typify` for regenerating the dbt schema types (08 §2.2).
+Required dev tools, not dependencies: the Zig toolchain (07 §5), `cargo-typify`
+for regenerating the dbt schema types (08 §2.2), mold on Linux and sccache
+(09 §3–§4).
 
 ## 2. Error handling
 
@@ -387,7 +395,8 @@ copied verbatim.
 
 ## 8. File layout delta vs. 00
 
-Changes to the tree in 00 §"Proposed crate layout":
+Changes to the tree in 00 §"Proposed module layout" (paths are logical; each
+lives inside its owning workspace crate per 09 §1):
 
 ```
 src/error.rs                      # §2 (new; + Error::Jinja variant per 06 §2.4)

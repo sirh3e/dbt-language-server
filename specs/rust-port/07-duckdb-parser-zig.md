@@ -140,8 +140,10 @@ driver — no system `cc`, no MSVC, no cross-compiler zoo:
 - **Pinning:** one Zig version for the whole project (e.g. a `ZIG_VERSION` in CI
   and a line in the README; zig is downloaded, not assumed installed). Compiler
   upgrades are explicit commits.
-- `sccache`/zig's own caching keeps the DuckDB amalgamation from dominating CI;
-  the `duckdb-parser` feature keeps it out of the dev inner loop entirely.
+- `sccache`/zig's own caching keeps the DuckDB amalgamation from dominating CI
+  (sccache setup in 09 §4); the `duckdb-parser` feature and the dedicated
+  `dbt-ls-duckdb` workspace crate (09 §1) keep it out of the dev inner loop
+  entirely.
 
 ## 6. Cross-file deltas
 
