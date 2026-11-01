@@ -250,6 +250,29 @@ fn full_session() {
         yml["result"]
     );
 
+    // 6a3. engine: member access through a FROM alias resolves YAML columns
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({
+            "textDocument": {"uri": "file:///tmp/engine.sql", "languageId": "sql", "version": 1,
+                              "text": "select c. from {{ ref('customers') }} c"}
+        }),
+    );
+    let member = lsp.request(
+        "textDocument/completion",
+        serde_json::json!({
+            "textDocument": {"uri": "file:///tmp/engine.sql"},
+            "position": {"line": 0, "character": 9}
+        }),
+    );
+    assert!(
+        member["result"].as_array().is_some_and(|items| items
+            .iter()
+            .any(|i| i["label"] == "customer_id" && i["detail"] == "Column of customers")),
+        "alias member access over the wire: {}",
+        member["result"]
+    );
+
     // 6b. references on the open model (graph-backed)
     let refs = lsp.request(
         "textDocument/references",

@@ -43,6 +43,15 @@ names what already exists in the codebase.
       sqlparser AST, CTE-transitive resolution incl. `select *` chains;
       declines on Jinja control blocks (07 §3.2 confidence rule).
 
+- [x] **Completion engine** (grammar-aware): the cursor position is
+      classified from the token stream — member access (`alias.` → columns
+      of the resolved relation via a token-based FROM/JOIN scope index),
+      relation position after FROM/JOIN (CTEs plain, models/sources as
+      `{{ ref(...) }}` snippets), column positions (SELECT/WHERE/ON/…),
+      keyword continuations (`group `→`by`, `left `→`join`), with tiered
+      ranking (context-exact < locals < columns < relations < functions <
+      keywords). Fixes the inherited quirk where any earlier `{{ }}` on the
+      line triggered macro completion.
 - [x] **Write-assist completion** in plain SQL: local CTEs, identifiers
       already in the buffer (table aliases, columns in use), documented
       columns of every `ref`/`source` relation in the file (from the
