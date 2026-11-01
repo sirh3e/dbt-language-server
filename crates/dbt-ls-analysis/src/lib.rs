@@ -2,6 +2,7 @@
 
 pub mod context;
 pub mod features;
+pub mod fs_scan;
 pub mod graph;
 pub mod util;
 pub mod yaml_features;
@@ -60,14 +61,13 @@ impl Documents {
         let Some(doc) = self.docs.get(uri) else {
             return;
         };
-        let mut text = doc.text.to_string();
-        for change in changes {
+        let text = changes.iter().fold(doc.text.to_string(), |text, change| {
             if change.range.is_zero() {
-                text = change.text.to_string();
+                change.text.to_string()
             } else {
-                text = util::apply_incremental_change(&text, change.range, &change.text);
+                util::apply_incremental_change(&text, change.range, &change.text)
             }
-        }
+        });
         let previous = self.docs.remove(uri).map(|d| d.parsed);
         let parsed = self.parse_or_last_good(previous, &text, dialect);
         self.docs.insert(

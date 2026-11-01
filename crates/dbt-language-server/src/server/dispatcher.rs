@@ -201,6 +201,24 @@ impl Dispatcher {
             .change(&params.text_document.uri, &params.content_changes, &dialect);
     }
 
+    /// Composition point for every position-shaped request: parse → snapshot
+    /// → pure feature function → serialize (functional core / imperative
+    /// shell, 05 §3). Bad params on a request answer InvalidParams.
+    fn respond_position<R: serde::Serialize>(
+        &mut self,
+        content: &[u8],
+        method: &str,
+        feature: impl FnOnce(&DbtContext, Option<&dbt_ls_analysis::Document>, &str, Position) -> R,
+    ) {
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            self.invalid_params(content, method);
+            return;
+        };
+        let ctx = self.snapshot();
+        let result = feature(&ctx, self.documents.get(&uri), &uri, pos);
+        self.send(&ResultResponse::new(id, result));
+    }
+
     fn position_request<'a>(content: &'a [u8]) -> Option<(i64, String, Position)> {
         let req = serde_json::from_slice::<Envelope<PositionParams<'a>>>(content).ok()?;
         let params = req.params?;
@@ -212,31 +230,28 @@ impl Dispatcher {
     }
 
     fn hover(&mut self, content: &[u8]) {
-        let Some((id, uri, pos)) = Self::position_request(content) else {
-            return;
-        };
-        let ctx = self.snapshot();
-        let contents = self
-            .documents
-            .get(&uri)
-            .map(|doc| features::hover(&ctx, doc, pos))
-            .unwrap_or_default(); // Q8: unknown doc → empty hover
-        self.send(&ResultResponse::new(id, HoverResult { contents }));
+        self.respond_position(content, "textDocument/hover", |ctx, doc, _, pos| {
+            HoverResult {
+                // Q8: unknown doc → empty hover
+                contents: doc
+                    .map(|d| features::hover(ctx, d, pos))
+                    .unwrap_or_default(),
+            }
+        });
     }
 
     fn definition(&mut self, content: &[u8]) {
-        let Some((id, uri, pos)) = Self::position_request(content) else {
-            return;
-        };
-        let ctx = self.snapshot();
-        let location = match self.documents.get(&uri) {
-            Some(doc) => features::definition(&ctx, doc, &uri, pos),
-            None => dbt_ls_lsp::Location {
-                uri: uri.clone(),
-                range: dbt_ls_lsp::Range::zero_width(pos),
+        self.respond_position(
+            content,
+            "textDocument/definition",
+            |ctx, doc, uri, pos| match doc {
+                Some(doc) => features::definition(ctx, doc, uri, pos),
+                None => dbt_ls_lsp::Location {
+                    uri: uri.to_string(),
+                    range: dbt_ls_lsp::Range::zero_width(pos),
+                },
             },
-        };
-        self.send(&ResultResponse::new(id, location));
+        );
     }
 
     fn completion(&mut self, content: &[u8]) {
@@ -313,52 +328,31 @@ impl Dispatcher {
     }
 
     fn references(&mut self, content: &[u8]) {
-        let Some((id, uri, pos)) = Self::position_request(content) else {
-            self.invalid_params(content, "textDocument/references");
-            return;
-        };
-        let ctx = self.snapshot();
-        let locations = features::references(&ctx, self.documents.get(&uri), &uri, pos);
-        self.send(&ResultResponse::new(id, locations));
+        self.respond_position(content, "textDocument/references", features::references);
     }
 
     fn document_symbol(&mut self, content: &[u8]) {
-        let Some((id, uri, _)) = Self::position_request(content) else {
-            self.invalid_params(content, "textDocument/documentSymbol");
-            return;
-        };
-        let symbols = self
-            .documents
-            .get(&uri)
-            .map(|doc| features::document_symbols(doc, &uri))
-            .unwrap_or_default();
-        self.send(&ResultResponse::new(id, symbols));
+        self.respond_position(content, "textDocument/documentSymbol", |_, doc, uri, _| {
+            doc.map(|d| features::document_symbols(d, uri))
+                .unwrap_or_default()
+        });
     }
 
     fn document_highlight(&mut self, content: &[u8]) {
-        let Some((id, uri, pos)) = Self::position_request(content) else {
-            self.invalid_params(content, "textDocument/documentHighlight");
-            return;
-        };
-        let highlights = self
-            .documents
-            .get(&uri)
-            .map(|doc| features::document_highlights(doc, pos))
-            .unwrap_or_default();
-        self.send(&ResultResponse::new(id, highlights));
+        self.respond_position(
+            content,
+            "textDocument/documentHighlight",
+            |_, doc, _, pos| {
+                doc.map(|d| features::document_highlights(d, pos))
+                    .unwrap_or_default()
+            },
+        );
     }
 
     fn folding_range(&mut self, content: &[u8]) {
-        let Some((id, uri, _)) = Self::position_request(content) else {
-            self.invalid_params(content, "textDocument/foldingRange");
-            return;
-        };
-        let ranges = self
-            .documents
-            .get(&uri)
-            .map(features::folding_ranges)
-            .unwrap_or_default();
-        self.send(&ResultResponse::new(id, ranges));
+        self.respond_position(content, "textDocument/foldingRange", |_, doc, _, _| {
+            doc.map(features::folding_ranges).unwrap_or_default()
+        });
     }
 
     fn selection_range(&mut self, content: &[u8]) {
@@ -380,29 +374,20 @@ impl Dispatcher {
     }
 
     fn semantic_tokens(&mut self, content: &[u8]) {
-        let Some((id, uri, _)) = Self::position_request(content) else {
-            self.invalid_params(content, "textDocument/semanticTokens/full");
-            return;
-        };
-        let tokens = self
-            .documents
-            .get(&uri)
-            .map(features::semantic_tokens)
-            .unwrap_or(dbt_ls_lsp::SemanticTokens { data: Vec::new() });
-        self.send(&ResultResponse::new(id, tokens));
+        self.respond_position(
+            content,
+            "textDocument/semanticTokens/full",
+            |_, doc, _, _| {
+                doc.map(features::semantic_tokens)
+                    .unwrap_or(dbt_ls_lsp::SemanticTokens { data: Vec::new() })
+            },
+        );
     }
 
     fn signature_help(&mut self, content: &[u8]) {
-        let Some((id, uri, pos)) = Self::position_request(content) else {
-            self.invalid_params(content, "textDocument/signatureHelp");
-            return;
-        };
-        let ctx = self.snapshot();
-        let help = self
-            .documents
-            .get(&uri)
-            .and_then(|doc| features::signature_help(&ctx, doc, pos));
-        self.send(&ResultResponse::new(id, help));
+        self.respond_position(content, "textDocument/signatureHelp", |ctx, doc, _, pos| {
+            doc.and_then(|d| features::signature_help(ctx, d, pos))
+        });
     }
 
     fn workspace_symbol(&mut self, content: &[u8]) {

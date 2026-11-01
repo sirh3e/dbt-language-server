@@ -13,6 +13,7 @@ use dbt_ls_parser::jinja_scan;
 use dbt_ls_schemas::project::{apply_defaults, parse_dbt_project, ProjectFile};
 use dbt_ls_schemas::properties::parse_properties;
 
+use crate::fs_scan::{read_sources, SourceFile};
 use crate::graph::ProjectGraph;
 use crate::util;
 
@@ -264,133 +265,146 @@ fn parse_yaml_models(
     project: &ProjectFile,
     docs_map: &HashMap<String, String>,
 ) -> (HashMap<String, SchemaModel>, HashMap<String, SourceDetails>) {
-    let mut models = HashMap::new();
-    let mut sources = HashMap::new();
+    let files = read_sources(root, &project.model_paths, ".yml");
+    models_sources_from_yaml(&files, docs_map)
+}
+
+/// Pure over the collected files: parse each properties YAML, expand
+/// `{{ doc(...) }}` references, and fold into the two maps (later files win
+/// per name, like Go's walk order).
+fn models_sources_from_yaml(
+    files: &[SourceFile],
+    docs_map: &HashMap<String, String>,
+) -> (HashMap<String, SchemaModel>, HashMap<String, SourceDetails>) {
     let expand = |description: &str| {
         jinja_scan::replace_doc_refs(description, |name| docs_map.get(name).cloned())
     };
 
-    for path in &project.model_paths {
-        let dir = root.join(path);
-        if std::fs::read_dir(&dir).is_err() {
-            continue;
-        }
-        for file in util::walk_filepath(&dir, ".yml") {
-            let Ok(text) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            let parsed = match parse_properties(&text, &file) {
-                Ok(p) => p,
-                Err(err) => {
-                    tracing::debug!(?file, %err, "skipping properties file");
-                    continue;
+    files
+        .iter()
+        .filter_map(|f| {
+            dbt_ls_error::ok_or_log(parse_properties(&f.text, &f.path), "properties file")
+                .map(|parsed| (f, parsed))
+        })
+        .fold(
+            (HashMap::new(), HashMap::new()),
+            |(mut models, mut sources), (f, parsed)| {
+                for model in parsed.models {
+                    models.insert(
+                        model.name.clone(),
+                        SchemaModel {
+                            description: expand(&model.description),
+                            alias: model.alias,
+                            schema_uri: f.path.clone(),
+                            name_pos: model.name_pos,
+                        },
+                    );
                 }
-            };
-            for model in parsed.models {
-                models.insert(
-                    model.name.clone(),
-                    SchemaModel {
-                        description: expand(&model.description),
-                        alias: model.alias,
-                        schema_uri: file.clone(),
-                        name_pos: model.name_pos,
-                    },
-                );
-            }
-            for source in parsed.sources {
-                let tables = source
-                    .tables
-                    .into_iter()
-                    .map(|t| {
-                        (
-                            t.name.clone(),
-                            SourceTableDetails {
-                                name: t.name,
-                                description: expand(&t.description),
-                                uri: file.clone(),
-                                range: Range::zero_width(t.name_pos),
-                            },
-                        )
-                    })
-                    .collect();
-                sources.insert(
-                    source.name.clone(),
-                    SourceDetails {
-                        name: source.name,
-                        description: expand(&source.description),
-                        uri: file.clone(),
-                        range: Range::zero_width(source.name_pos),
-                        tables,
-                    },
-                );
-            }
-        }
-    }
+                for source in parsed.sources {
+                    sources.insert(
+                        source.name.clone(),
+                        source_details(source, &f.path, &expand),
+                    );
+                }
+                (models, sources)
+            },
+        )
+}
 
-    (models, sources)
+fn source_details(
+    source: dbt_ls_schemas::properties::SourceEntry,
+    path: &Path,
+    expand: &impl Fn(&str) -> String,
+) -> SourceDetails {
+    let tables = source
+        .tables
+        .into_iter()
+        .map(|t| {
+            (
+                t.name.clone(),
+                SourceTableDetails {
+                    name: t.name,
+                    description: expand(&t.description),
+                    uri: path.to_path_buf(),
+                    range: Range::zero_width(t.name_pos),
+                },
+            )
+        })
+        .collect();
+    SourceDetails {
+        name: source.name,
+        description: expand(&source.description),
+        uri: path.to_path_buf(),
+        range: Range::zero_width(source.name_pos),
+        tables,
+    }
 }
 
 /// `{% docs %}` blocks from the docs paths (03 §6.4; Q4 fixed: paths are
 /// joined to the project root).
 fn build_docs_map(root: &Path, project: &ProjectFile) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for path in &project.docs_paths {
-        let dir = root.join(path);
-        if std::fs::read_dir(&dir).is_err() {
-            continue;
-        }
-        for file in util::walk_filepath(&dir, ".md") {
-            let Ok(text) = std::fs::read_to_string(&file) else {
-                continue;
-            };
-            for block in jinja_scan::extract_docs_blocks(&text) {
-                map.insert(block.name, block.content);
-            }
-        }
-    }
-    map
+    docs_map_from_sources(&read_sources(root, &project.docs_paths, ".md"))
+}
+
+/// Pure: `{% docs %}` blocks across files, last block per name wins.
+fn docs_map_from_sources(files: &[SourceFile]) -> HashMap<String, String> {
+    files
+        .iter()
+        .flat_map(|f| jinja_scan::extract_docs_blocks(&f.text))
+        .map(|block| (block.name, block.content))
+        .collect()
 }
 
 /// Macros across own project + packages (03 §5 / 06 §2.2).
 fn build_macro_details(
     process_list: &[ProjectDetails],
 ) -> HashMap<String, HashMap<String, MacroDetails>> {
-    let mut map: HashMap<String, HashMap<String, MacroDetails>> = HashMap::new();
-    for p in process_list {
-        for path in &p.file.macro_paths {
-            let dir = p.root.join(path);
-            if std::fs::read_dir(&dir).is_err() {
-                continue;
-            }
-            for file in util::walk_filepath(&dir, ".sql") {
-                let Ok(text) = std::fs::read_to_string(&file) else {
-                    continue;
-                };
-                for raw in jinja_scan::extract_macros(&text) {
-                    map.entry(p.file.name.clone()).or_default().insert(
-                        raw.name.clone(),
-                        MacroDetails {
-                            name: raw.name,
-                            project_name: p.file.name.clone(),
-                            description: raw.signature,
-                            uri: file.clone(),
-                            range: Range {
-                                start: Position {
-                                    line: raw.start.0,
-                                    character: raw.start.1,
-                                },
-                                end: Position {
-                                    line: raw.end.0,
-                                    character: raw.end.1,
-                                },
-                            },
+    process_list
+        .iter()
+        .map(|p| {
+            let files = read_sources(&p.root, &p.file.macro_paths, ".sql");
+            (
+                p.file.name.clone(),
+                macros_from_sources(&p.file.name, &files),
+            )
+        })
+        .fold(HashMap::new(), |mut map, (project, macros)| {
+            map.entry(project).or_default().extend(macros);
+            map
+        })
+}
+
+/// Pure: macro definitions across one project's macro files (06 §2.2).
+fn macros_from_sources(project_name: &str, files: &[SourceFile]) -> HashMap<String, MacroDetails> {
+    files
+        .iter()
+        .flat_map(|f| {
+            jinja_scan::extract_macros(&f.text)
+                .into_iter()
+                .map(move |raw| (f.path.clone(), raw))
+        })
+        .map(|(path, raw)| {
+            (
+                raw.name.clone(),
+                MacroDetails {
+                    name: raw.name,
+                    project_name: project_name.to_string(),
+                    description: raw.signature,
+                    uri: path,
+                    range: Range {
+                        start: Position {
+                            line: raw.start.0,
+                            character: raw.start.1,
                         },
-                    );
-                }
-            }
-        }
-    }
-    map
+                        end: Position {
+                            line: raw.end.0,
+                            character: raw.end.1,
+                        },
+                    },
+                },
+            )
+        })
+        .collect()
 }
 
 /// Project variables (03 §4).
