@@ -1,0 +1,4 @@
+Vendored from https://github.com/dbt-labs/dbt-jsonschema
+commit: 6a401244651d3b5e0fd2f7cfcfb120187118edb4
+files: schemas/latest/{dbt_project,dbt_yml_files,packages,selectors}-latest.json
+Regenerate Rust types: see specs/rust-port/08-schemas-zero-copy.md §2.2

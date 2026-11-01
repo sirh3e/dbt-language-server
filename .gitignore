@@ -1,6 +1,13 @@
 log.txt
-dbt-language-server
+/dbt-language-server
 .DS_Store
 benchmarks/
 dist/
 logs/
+
+# Rust
+/target
+/crates/**/target
+
+# IDE
+/.idea
