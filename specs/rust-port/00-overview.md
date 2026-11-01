@@ -135,9 +135,10 @@ shapes* identical where the Go server is non-standard (documented in 01), or acc
 the standard-compliant improvements deliberately. For a first 1:1 port, hand-rolled
 is simpler to verify against the Go binary.
 
-This layout is amended by 05 §8: adds `src/error.rs`, `src/analysis/graph.rs`,
-`src/analysis/parser/jinja_scan.rs`, `src/observability.rs`, and replaces the flat
-main-loop code with a `src/server/` module (reader/dispatcher/writer/refresh tasks).
+This layout is amended by 05 §8 (which wins where they differ): error type,
+observability, graph, dbt_schema + vendored schemas, the parser module split,
+and a `src/server/` module (reader/dispatcher/writer/refresh tasks) replacing
+the flat main-loop code; 06 §4 adds the phase-2 tree-sitter paths.
 
 ## State & concurrency model
 
@@ -160,10 +161,14 @@ background `--version` validation.
 2. **`lsp` types** — serde structs; snapshot-test JSON output against the spec examples in 01.
 3. **`util`** — project root (asc+desc search), env_var regex, dialect from profiles.yml,
    file walking, `get_line_and_column`. Port the Go tests (`util/*_test.go`).
-4. **`parser`** — token.rs, lexer.rs, parser.rs. Port `lexer_test.go` and `parser_test.go` fully;
-   these define the exact token streams expected.
+4. **`parser`** — the 05 §4 minijinja+sqlparser pipeline behind the `DocumentParser`
+   seam (06 §3.5), plus the refinement pass and `TokenIndex`. Port `lexer_test.go`
+   and `parser_test.go` as *behavior* tests: expected refined kinds + positions
+   (02 banner), not raw token-stream dumps.
 5. **`docs`** — extract the two Go map literals to JSON (one-off script), load lazily.
-6. **`analysis`** — YAML (annotated), model/macro/var/source maps, then the four features.
+6. **`analysis`** — YAML via typify-generated types + saphyr position side-table
+   (08 §2), model/macro/var/source maps (macros/docs via minijinja, 06 §2), then
+   the four features.
    Port `state_test.go`, `state_schema_test.go`, `state_incremental_test.go`,
    `parse_*_test.go`, `get_completion_items_test.go` against the shared `testdata/`.
 7. **`fusion`** — log parsing (pure functions first: `parse_fusion_log_msg`,

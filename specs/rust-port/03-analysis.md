@@ -21,6 +21,8 @@ struct Document {
     tokens: TokenIndex,                 // 02 §3.4
     def_tokens: HashMap<String, Token>, // CTE name → definition token
 }
+// Implementation shape: `ParsedDocument` with `text: Arc<str>` and span tokens
+// (08 §1.1); this struct states what a document must hold, not the Rust types.
 
 struct DbtContext {
     project_root: String,               // dir containing dbt_project.yml ("" if not found)

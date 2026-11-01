@@ -65,8 +65,11 @@ lookup_ident(ident: &str, dialect: Dialect) -> TokenType
    "source"→SOURCE, "config"→CONFIG`.
 3. Hit → that type; miss → `IDENT`.
 
-In Rust: two `phf`/static maps + a 4-entry dbt match; don't mutate maps per call
-(Go rebuilds/overlays a map on every lookup — pure waste, fix silently).
+Superseded mechanism (05 §4): keyword classification comes from sqlparser's
+`Token::Word { keyword }` per dialect, not ported tables. The tables above remain
+reference-only; the dbt overlay (`ref`/`var`/`source`/`config`) survives as part
+of the refinement pass. (Go also rebuilds/overlays a map on every lookup — pure
+waste; irrelevant once sqlparser classifies.)
 
 ## 2. Lexer
 

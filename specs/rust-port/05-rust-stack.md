@@ -86,6 +86,8 @@ pub enum Error {
     Frame { reason: String },
     #[error("yaml error in {path}: {message}")]
     Yaml { path: PathBuf, message: String },
+    #[error("jinja error in {path}: {message}")]
+    Jinja { path: PathBuf, message: String },   // scan-side tokenize failures, 06 §2.4
     #[error("sql tokenizer: {0}")]
     SqlTokenizer(#[from] sqlparser::tokenizer::TokenizerError),
     #[error("unknown document: {uri}")]

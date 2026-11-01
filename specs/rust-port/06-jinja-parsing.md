@@ -15,7 +15,7 @@ file wins. Two decisions are covered:
 
 | Side | Input | Parser | Why |
 |---|---|---|---|
-| **Project scan** (context refresh, 03 §1.2) | files on disk: macro `.sql`, docs `.md`, model `.sql` for the graph | `minijinja` machinery (this file §2) | files are usually well-formed; we want real Jinja structure (signatures, args, block bodies), not regex approximations |
+| **Project scan** (context refresh, 03 §1.2) | files on disk: macro `.sql`, docs `.md` (this file §2); model `.sql` for graph edges goes through the 05 §4 pipeline | `minijinja` machinery | files are usually well-formed; we want real Jinja structure (signatures, args, block bodies), not regex approximations |
 | **Live documents** (open editor buffers) | mid-edit, routinely malformed text | phase 1: `minijinja` tokenize + `sqlparser` pipeline (05 §4) — no hand-rolled lexer; phase 2: tree-sitter (this file §3) | both layers come from the provided crates; must stay fast on every keystroke |
 
 Live-buffer error rule: minijinja's lexer errors on malformed input instead of
@@ -191,7 +191,8 @@ pub trait DocumentParser {
     fn parse_incremental(&mut self, prev: ParsedDocument, text: &str,
                          changes: &[ContentChange], dialect: &Dialect) -> ParsedDocument;
 }
-// ParsedDocument = { token_index: TokenIndex, def_tokens: HashMap<String, Token> }
+// ParsedDocument is defined in 08 §1.1: { text: Arc<str>, tokens: TokenIndex,
+//                                         def_tokens: HashMap<Box<str>, Token> }
 ```
 
 Phase 1 implementation: `JinjaSqlParser` (the 05 §4 minijinja+sqlparser pipeline;

@@ -48,10 +48,11 @@ buffered reader loop:
 - A malformed `Content-Length` value aborts the read loop (scanner error → Go exits the loop
   and the process ends). An EOF on stdin also ends the loop → process exits 0.
 
-Suggested Rust shape:
+Illustrative shape (the binding implementation is the async reader task over
+`tokio::io::stdin` with a reused buffer, 05 §6.2 / 08 §1.2 — same semantics):
 
 ```rust
-fn read_frame(r: &mut impl BufRead, buf: &mut Vec<u8>) -> io::Result<Option<Vec<u8>>>
+fn read_frame(..., buf: &mut Vec<u8>) -> io::Result<Option<Frame>>
 // None on clean EOF; frame bytes include the header (decode_message re-splits).
 ```
 
