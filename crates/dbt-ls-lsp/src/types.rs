@@ -207,6 +207,10 @@ pub struct CompletionItem {
     pub insert_text: String,
     #[serde(rename = "sortText")]
     pub sort_text: String,
+    /// Opaque payload for `completionItem/resolve` (additive; absent in the
+    /// Go shape, omitted when unused).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 /// LSP CompletionItemKind values used by the server (01 §2.3).
@@ -281,7 +285,38 @@ pub struct ServerCapabilities {
     pub completion_provider: serde_json::Map<String, serde_json::Value>,
     #[serde(rename = "executeCommandProvider")]
     pub execute_command_provider: ExecuteCommandOptions,
+    // Post-parity additive capabilities (FEATURE_REQUESTS.md, 01 §3.1 note).
+    #[serde(rename = "referencesProvider")]
+    pub references_provider: bool,
+    #[serde(rename = "documentSymbolProvider")]
+    pub document_symbol_provider: bool,
+    #[serde(rename = "workspaceSymbolProvider")]
+    pub workspace_symbol_provider: bool,
+    #[serde(rename = "documentHighlightProvider")]
+    pub document_highlight_provider: bool,
+    #[serde(rename = "foldingRangeProvider")]
+    pub folding_range_provider: bool,
+    #[serde(rename = "selectionRangeProvider")]
+    pub selection_range_provider: bool,
+    #[serde(rename = "semanticTokensProvider")]
+    pub semantic_tokens_provider: serde_json::Value,
+    #[serde(rename = "signatureHelpProvider")]
+    pub signature_help_provider: serde_json::Value,
+    #[serde(rename = "diagnosticProvider")]
+    pub diagnostic_provider: serde_json::Value,
 }
+
+/// Semantic token legend (order defines the type indices in the encoding).
+pub const SEMANTIC_TOKEN_TYPES: &[&str] = &[
+    "keyword",
+    "function",
+    "macro",
+    "variable",
+    "string",
+    "number",
+    "operator",
+    "namespace",
+];
 
 #[derive(Debug, Serialize)]
 pub struct ExecuteCommandOptions {
@@ -302,10 +337,31 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 text_document_sync: 2,
                 hover_provider: true,
                 definition_provider: true,
-                completion_provider: serde_json::Map::new(),
+                completion_provider: {
+                    let mut map = serde_json::Map::new();
+                    map.insert("resolveProvider".into(), serde_json::Value::Bool(true));
+                    map
+                },
                 execute_command_provider: ExecuteCommandOptions {
                     commands: vec!["dbt.goToSchema"],
                 },
+                references_provider: true,
+                document_symbol_provider: true,
+                workspace_symbol_provider: true,
+                document_highlight_provider: true,
+                folding_range_provider: true,
+                selection_range_provider: true,
+                semantic_tokens_provider: serde_json::json!({
+                    "legend": { "tokenTypes": SEMANTIC_TOKEN_TYPES, "tokenModifiers": [] },
+                    "full": true,
+                }),
+                signature_help_provider: serde_json::json!({
+                    "triggerCharacters": ["(", ","],
+                }),
+                diagnostic_provider: serde_json::json!({
+                    "interFileDependencies": false,
+                    "workspaceDiagnostics": false,
+                }),
             },
             server_info: ServerInfo {
                 name: "dbt-language-server",
@@ -313,4 +369,129 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
             },
         },
     )
+}
+
+// ---------------------------------------------------------------------------
+// Post-parity additions (FEATURE_REQUESTS.md) — additive beyond the Go shape.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct ErrorResponse {
+    pub jsonrpc: &'static str,
+    pub id: Option<i64>,
+    pub error: ResponseError,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResponseError {
+    pub code: i32,
+    pub message: String,
+}
+
+pub mod error_codes {
+    pub const METHOD_NOT_FOUND: i32 = -32601;
+    pub const INVALID_PARAMS: i32 = -32602;
+}
+
+impl ErrorResponse {
+    pub fn new(id: i64, code: i32, message: impl Into<String>) -> Self {
+        ErrorResponse {
+            jsonrpc: "2.0",
+            id: Some(id),
+            error: ResponseError {
+                code,
+                message: message.into(),
+            },
+        }
+    }
+}
+
+/// Probe for an `id` without knowing the message type (error responses are
+/// sent only for requests, never notifications).
+#[derive(Debug, Deserialize)]
+pub struct MaybeId {
+    #[serde(default)]
+    pub id: Option<i64>,
+}
+
+pub mod symbol_kind {
+    pub const NAMESPACE: i32 = 3;
+    pub const CLASS: i32 = 5;
+    pub const INTERFACE: i32 = 11;
+    pub const FUNCTION: i32 = 12;
+    pub const VARIABLE: i32 = 13;
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolInformation {
+    pub name: String,
+    pub kind: i32,
+    pub location: Location,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DocumentHighlight {
+    pub range: Range,
+    pub kind: i32, // 1 = Text
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FoldingRange {
+    #[serde(rename = "startLine")]
+    pub start_line: u32,
+    #[serde(rename = "endLine")]
+    pub end_line: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SelectionRange {
+    pub range: Range,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<Box<SelectionRange>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SelectionRangeParams<'a> {
+    #[serde(borrow, rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier<'a>,
+    #[serde(default)]
+    pub positions: Vec<Position>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SemanticTokens {
+    pub data: Vec<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignatureHelp {
+    pub signatures: Vec<SignatureInformation>,
+    #[serde(rename = "activeSignature")]
+    pub active_signature: u32,
+    #[serde(rename = "activeParameter")]
+    pub active_parameter: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignatureInformation {
+    pub label: String,
+    pub parameters: Vec<ParameterInformation>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParameterInformation {
+    pub label: String,
+}
+
+/// Pull-diagnostics full report (textDocument/diagnostic).
+#[derive(Debug, Serialize)]
+pub struct FullDocumentDiagnosticReport {
+    pub kind: &'static str, // "full"
+    pub items: Vec<Diagnostic>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceSymbolParams<'a> {
+    #[serde(borrow, default)]
+    pub query: Option<Cow<'a, str>>,
 }

@@ -115,3 +115,18 @@ fn scalar_key_to_string(node: &MarkedYaml<'_>) -> String {
         _ => String::new(),
     }
 }
+
+/// YAML syntax-error probe for diagnostics: 0-based position + message.
+pub fn syntax_error(text: &str) -> Option<(u32, u32, String)> {
+    match MarkedYaml::load_from_str(text) {
+        Ok(_) => None,
+        Err(err) => {
+            let marker = err.marker();
+            Some((
+                (marker.line().saturating_sub(1)) as u32,
+                marker.col() as u32,
+                err.info().to_string(),
+            ))
+        }
+    }
+}

@@ -4,6 +4,7 @@ pub mod context;
 pub mod features;
 pub mod graph;
 pub mod util;
+pub mod yaml_features;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,6 +36,11 @@ pub struct Documents {
 impl Documents {
     pub fn get(&self, uri: &str) -> Option<&Document> {
         self.docs.get(uri)
+    }
+
+    /// textDocument/didClose (P1): forget the document.
+    pub fn close(&mut self, uri: &str) {
+        self.docs.remove(uri);
     }
 
     pub fn open(&mut self, uri: String, text: &str, dialect: &Dialect) {

@@ -45,14 +45,17 @@ impl Dialect {
     /// One completion item per documented function (04 §3).
     pub fn function_completion_items(&self) -> Vec<CompletionItem> {
         self.function_docs()
-            .iter()
-            .map(|(name, docs)| CompletionItem {
+            .keys()
+            .map(|name| CompletionItem {
                 label: name.clone(),
                 detail: String::new(),
-                documentation: docs.clone(),
+                // resolved lazily via completionItem/resolve — these are the
+                // bulkiest documentation strings by far
+                documentation: String::new(),
                 kind: completion_kind::FUNCTION,
                 insert_text: name.clone(),
                 sort_text: name.clone(),
+                data: Some(serde_json::json!({"kind": "function", "name": name})),
             })
             .collect()
     }

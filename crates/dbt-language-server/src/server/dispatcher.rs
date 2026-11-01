@@ -6,10 +6,12 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use dbt_ls_analysis::{features, DbtContext, Documents};
+use dbt_ls_analysis::{features, yaml_features, DbtContext, Documents};
 use dbt_ls_lsp::{
-    rpc, DidChangeParams, DidOpenParams, DidSaveParams, Envelope, ExecuteCommandParams,
-    HoverResult, InitializeParams, Position, PositionParams, RequestId, ResultResponse,
+    error_codes, rpc, Diagnostic, DidChangeParams, DidOpenParams, DidSaveParams, Envelope,
+    ErrorResponse, ExecuteCommandParams, FullDocumentDiagnosticReport, HoverResult,
+    InitializeParams, MaybeId, Position, PositionParams, RequestId, ResultResponse,
+    SelectionRangeParams, WorkspaceSymbolParams,
 };
 use serde::Serialize;
 use tokio::sync::{mpsc, watch};
@@ -74,12 +76,34 @@ impl Dispatcher {
 
         match method.as_str() {
             "initialize" => self.initialize(content),
+            "initialized" => tracing::debug!("client initialized"),
             "textDocument/didOpen" => self.did_open(content),
             "textDocument/didSave" => self.did_save(content),
             "textDocument/didChange" => self.did_change(content),
+            "textDocument/didClose" => self.did_close(content),
             "textDocument/hover" => self.hover(content),
             "textDocument/definition" => self.definition(content),
             "textDocument/completion" => self.completion(content),
+            "completionItem/resolve" => self.resolve_completion(content),
+            "textDocument/references" => self.references(content),
+            "textDocument/documentSymbol" => self.document_symbol(content),
+            "textDocument/documentHighlight" => self.document_highlight(content),
+            "textDocument/foldingRange" => self.folding_range(content),
+            "textDocument/selectionRange" => self.selection_range(content),
+            "textDocument/semanticTokens/full" => self.semantic_tokens(content),
+            "textDocument/signatureHelp" => self.signature_help(content),
+            "textDocument/diagnostic" => self.pull_diagnostics(content),
+            "workspace/symbol" => self.workspace_symbol(content),
+            "workspace/didChangeWatchedFiles" => {
+                // best-effort: clients only send this after dynamic
+                // registration, which this server does not request yet
+                let _ = self.refresh_tx.send(self.root_path.clone());
+            }
+            "$/cancelRequest" => {
+                // accepted per protocol; handlers are sub-millisecond and
+                // synchronous, so there is nothing in flight to cancel
+                tracing::trace!("cancel request acknowledged");
+            }
             "workspace/executeCommand" => self.execute_command(content),
             "shutdown" => self.shutdown(content),
             "exit" => {
@@ -87,7 +111,31 @@ impl Dispatcher {
                 crate::observability::flush();
                 std::process::exit(0);
             }
-            _ => {}
+            other if other.starts_with("$/") => {} // optional notifications
+            _ => {
+                // unknown REQUESTS get MethodNotFound; notifications stay
+                // silently ignored (01 §3 behavior for known-but-unhandled)
+                if let Ok(MaybeId { id: Some(id) }) = serde_json::from_slice::<MaybeId>(content) {
+                    let response = ErrorResponse::new(
+                        id,
+                        error_codes::METHOD_NOT_FOUND,
+                        format!("method not found: {method}"),
+                    );
+                    self.send(&response);
+                }
+            }
+        }
+    }
+
+    /// Reply InvalidParams when a request (id present) has undecodable params.
+    fn invalid_params(&mut self, content: &[u8], method: &str) {
+        if let Ok(MaybeId { id: Some(id) }) = serde_json::from_slice::<MaybeId>(content) {
+            let response = ErrorResponse::new(
+                id,
+                error_codes::INVALID_PARAMS,
+                format!("invalid params for {method}"),
+            );
+            self.send(&response);
         }
     }
 
@@ -118,7 +166,17 @@ impl Dispatcher {
             .open(uri.clone(), &params.text_document.text, &dialect);
         tracing::debug!(%uri, "opened");
         let _ = self.refresh_tx.send(self.root_path.clone());
+        self.publish_static_diagnostics(&uri);
         self.spawn_fusion(uri);
+    }
+
+    fn did_close(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<Envelope<DidSaveParams>>(content) else {
+            return;
+        };
+        let Some(params) = req.params else { return };
+        self.documents.close(&params.text_document.uri);
+        tracing::debug!(uri = %params.text_document.uri, "closed");
     }
 
     fn did_save(&mut self, content: &[u8]) {
@@ -129,6 +187,7 @@ impl Dispatcher {
         let uri = params.text_document.uri.into_owned();
         tracing::debug!(%uri, "saved");
         let _ = self.refresh_tx.send(self.root_path.clone());
+        self.publish_static_diagnostics(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -232,6 +291,186 @@ impl Dispatcher {
         self.send(&dbt_ls_lsp::Response::new(req.id));
     }
 
+    fn resolve_completion(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<MaybeId>(content) else {
+            return;
+        };
+        let Some(id) = req.id else { return };
+        let Ok(item) = serde_json::from_slice::<serde_json::Value>(content) else {
+            return;
+        };
+        let mut item = item.get("params").cloned().unwrap_or(item);
+        let ctx = self.snapshot();
+        if let Some(docs) = item
+            .get("data")
+            .and_then(|data| features::resolve_completion_documentation(&ctx, data))
+        {
+            if let Some(map) = item.as_object_mut() {
+                map.insert("documentation".into(), serde_json::Value::String(docs));
+            }
+        }
+        self.send(&ResultResponse::new(id, item));
+    }
+
+    fn references(&mut self, content: &[u8]) {
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/references");
+            return;
+        };
+        let ctx = self.snapshot();
+        let locations = features::references(&ctx, self.documents.get(&uri), &uri, pos);
+        self.send(&ResultResponse::new(id, locations));
+    }
+
+    fn document_symbol(&mut self, content: &[u8]) {
+        let Some((id, uri, _)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/documentSymbol");
+            return;
+        };
+        let symbols = self
+            .documents
+            .get(&uri)
+            .map(|doc| features::document_symbols(doc, &uri))
+            .unwrap_or_default();
+        self.send(&ResultResponse::new(id, symbols));
+    }
+
+    fn document_highlight(&mut self, content: &[u8]) {
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/documentHighlight");
+            return;
+        };
+        let highlights = self
+            .documents
+            .get(&uri)
+            .map(|doc| features::document_highlights(doc, pos))
+            .unwrap_or_default();
+        self.send(&ResultResponse::new(id, highlights));
+    }
+
+    fn folding_range(&mut self, content: &[u8]) {
+        let Some((id, uri, _)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/foldingRange");
+            return;
+        };
+        let ranges = self
+            .documents
+            .get(&uri)
+            .map(features::folding_ranges)
+            .unwrap_or_default();
+        self.send(&ResultResponse::new(id, ranges));
+    }
+
+    fn selection_range(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<Envelope<SelectionRangeParams>>(content) else {
+            self.invalid_params(content, "textDocument/selectionRange");
+            return;
+        };
+        let Some(params) = req.params else {
+            self.invalid_params(content, "textDocument/selectionRange");
+            return;
+        };
+        let uri = params.text_document.uri.into_owned();
+        let ranges = self
+            .documents
+            .get(&uri)
+            .map(|doc| features::selection_ranges(doc, &params.positions))
+            .unwrap_or_default();
+        self.send(&ResultResponse::new(req.id, ranges));
+    }
+
+    fn semantic_tokens(&mut self, content: &[u8]) {
+        let Some((id, uri, _)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/semanticTokens/full");
+            return;
+        };
+        let tokens = self
+            .documents
+            .get(&uri)
+            .map(features::semantic_tokens)
+            .unwrap_or(dbt_ls_lsp::SemanticTokens { data: Vec::new() });
+        self.send(&ResultResponse::new(id, tokens));
+    }
+
+    fn signature_help(&mut self, content: &[u8]) {
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/signatureHelp");
+            return;
+        };
+        let ctx = self.snapshot();
+        let help = self
+            .documents
+            .get(&uri)
+            .and_then(|doc| features::signature_help(&ctx, doc, pos));
+        self.send(&ResultResponse::new(id, help));
+    }
+
+    fn workspace_symbol(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<Envelope<WorkspaceSymbolParams>>(content) else {
+            self.invalid_params(content, "workspace/symbol");
+            return;
+        };
+        let query = req
+            .params
+            .and_then(|p| p.query.map(|q| q.into_owned()))
+            .unwrap_or_default();
+        let ctx = self.snapshot();
+        self.send(&ResultResponse::new(
+            req.id,
+            features::workspace_symbols(&ctx, &query),
+        ));
+    }
+
+    /// textDocument/diagnostic (pull): same static set the push pipeline uses.
+    fn pull_diagnostics(&mut self, content: &[u8]) {
+        let Some((id, uri, _)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/diagnostic");
+            return;
+        };
+        let items = self.static_diagnostics(&uri);
+        self.send(&ResultResponse::new(
+            id,
+            FullDocumentDiagnosticReport {
+                kind: "full",
+                items,
+            },
+        ));
+    }
+
+    /// Dangling-ref + dbt-YAML + (duckdb) parse diagnostics for one open doc.
+    fn static_diagnostics(&mut self, uri: &str) -> Vec<Diagnostic> {
+        let ctx = self.snapshot();
+        let Some(doc) = self.documents.get(uri) else {
+            return Vec::new();
+        };
+        let items = if is_yaml(uri) {
+            yaml_features::yaml_diagnostics(uri, &doc.text)
+        } else {
+            features::dangling_ref_diagnostics(&ctx, doc)
+        };
+        #[cfg(feature = "duckdb-parser")]
+        if !is_yaml(uri) && ctx.dialect.as_str() == "duckdb" {
+            if let Some(diag) = duckdb_diagnostic(doc) {
+                items.push(diag);
+            }
+        }
+        items
+    }
+
+    /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled
+    /// (07 §3 precedence) — never double-publish.
+    fn publish_static_diagnostics(&mut self, uri: &str) {
+        if self.fusion_enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        if self.documents.get(uri).is_none() {
+            return;
+        }
+        let items = self.static_diagnostics(uri);
+        let note = dbt_ls_lsp::publish_diagnostics(uri.to_string(), items);
+        self.send(&note);
+    }
+
     /// Fusion compile per 04 §2, async + cancellable per URI (fixes Q9).
     fn spawn_fusion(&mut self, uri: String) {
         if !self.fusion_enabled.load(Ordering::Relaxed) {
@@ -250,4 +489,29 @@ impl Dispatcher {
         let handle = tokio::spawn(job.run());
         self.fusion_jobs.insert(uri, handle.abort_handle());
     }
+}
+
+fn is_yaml(uri: &str) -> bool {
+    uri.ends_with(".yml") || uri.ends_with(".yaml")
+}
+
+/// DuckDB 2.0 parse diagnostic for one document (07 §3), feature-gated.
+/// The engine call is blocking but local and milliseconds-scale on
+/// model-sized SQL; a dedicated blocking worker is the follow-up if profiling
+/// says otherwise.
+#[cfg(feature = "duckdb-parser")]
+fn duckdb_diagnostic(doc: &dbt_ls_analysis::Document) -> Option<Diagnostic> {
+    use std::sync::OnceLock;
+    static PARSER: OnceLock<Option<std::sync::Mutex<dbt_ls_duckdb::engine::DuckDbParser>>> =
+        OnceLock::new();
+    let parser = PARSER
+        .get_or_init(|| {
+            dbt_ls_duckdb::engine::DuckDbParser::new()
+                .map(std::sync::Mutex::new)
+                .map_err(|err| tracing::warn!(%err, "duckdb parser unavailable"))
+                .ok()
+        })
+        .as_ref()?;
+    let masked = dbt_ls_duckdb::mask_jinja(&doc.parsed)?;
+    parser.lock().ok()?.parse_diagnostic(&masked, &doc.text)
 }

@@ -169,7 +169,13 @@ silently ignored. JSON parse errors per message are logged and the message dropp
 }
 ```
 
-- `initialized` notification from the client: ignored (falls through dispatch).
+- `initialized` notification from the client: acknowledged as a no-op.
+
+> **Post-parity note:** the Rust server extends this response with additive
+> capabilities beyond the Go shape (references, document/workspace symbols,
+> document highlight, folding/selection ranges, semantic tokens, signature
+> help, pull diagnostics, `completionProvider.resolveProvider`) — see
+> FEATURE_REQUESTS.md. The Go-era fields above are unchanged.
 
 Ordering quirk: Go writes the initialize response *before* assigning
 `LspClientRootPath` — irrelevant semantically (same thread), assign in any order.

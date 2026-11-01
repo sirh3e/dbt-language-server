@@ -211,6 +211,35 @@ fn full_session() {
         "goToSchema returns a yml location or null: {result}"
     );
 
+    // 6b. references on the open model (graph-backed)
+    let refs = lsp.request(
+        "textDocument/references",
+        serde_json::json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": 0, "character": 0},
+            "context": {"includeDeclaration": false}
+        }),
+    );
+    assert!(refs["result"].is_array());
+
+    // 6c. documentSymbol + semanticTokens round-trip
+    let symbols = lsp.request(
+        "textDocument/documentSymbol",
+        serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 0}}),
+    );
+    assert!(symbols["result"].is_array());
+    let tokens = lsp.request(
+        "textDocument/semanticTokens/full",
+        serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 0}}),
+    );
+    assert!(tokens["result"]["data"]
+        .as_array()
+        .is_some_and(|d| !d.is_empty()));
+
+    // 6d. unknown request gets MethodNotFound; unknown notification is silent
+    let unknown = lsp.request("textDocument/rename", serde_json::json!({}));
+    assert_eq!(unknown["error"]["code"], -32601);
+
     // 7. shutdown: bare response without result (01 §3.3), then exit
     let shutdown = lsp.request("shutdown", serde_json::json!({}));
     assert!(
