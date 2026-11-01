@@ -4,7 +4,7 @@
 
 use std::sync::LazyLock;
 
-use minijinja::machinery::{tokenize as jinja_tokenize, Token as JToken, WhitespaceConfig};
+use minijinja::machinery::{tokenize as jinja_tokenize, Token as JToken};
 use minijinja::syntax::SyntaxConfig;
 use regex::Regex;
 
@@ -29,7 +29,7 @@ pub struct RawDocsBlock {
 type JinjaTokens<'a> = Vec<(JToken<'a>, minijinja::machinery::Span)>;
 
 fn tokenize_all(text: &str) -> Result<JinjaTokens<'_>, String> {
-    jinja_tokenize(text, false, SyntaxConfig, WhitespaceConfig::default())
+    jinja_tokenize(text, false, SyntaxConfig::default())
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
 }

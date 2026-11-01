@@ -36,9 +36,9 @@ serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap       = { version = "4", features = ["derive"] }
 regex      = "1"
-sqlparser  = "0.52"            # SQL tokenization (dialect-aware), see §4
-minijinja  = { version = "2", features = ["unstable_machinery"] }  # scan-side Jinja, 06 §2
-petgraph   = "0.6"             # project dependency graph, see §5
+sqlparser  = "0.63"            # SQL tokenization (dialect-aware), see §4
+minijinja  = { version = "3", features = ["unstable_machinery"] }  # scan-side Jinja, 06 §2
+petgraph   = "0.8"             # project dependency graph, see §5
 # planned phase (06 §3): tree-sitter = "…" + cc build-dependency + vendored grammars
 saphyr     = "0.0.3"           # low-level YAML with markers (annotated YAML, 03 §3.1)
 tokio      = { version = "1", features = ["rt-multi-thread", "io-std", "io-util",
@@ -49,11 +49,11 @@ walkdir    = "2"
 # observability (§6.3)
 tracing               = "0.1"
 tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt"] }
-tracing-opentelemetry = "0.28"
-opentelemetry         = "0.27"
-opentelemetry_sdk     = { version = "0.27", features = ["rt-tokio"] }
-opentelemetry-otlp    = { version = "0.27", features = ["grpc-tonic"] }
-console-subscriber    = { version = "0.4", optional = true }   # tokio-console
+tracing-opentelemetry = "0.34"
+opentelemetry         = "0.33"
+opentelemetry_sdk     = { version = "0.33", features = ["rt-tokio"] }
+opentelemetry-otlp    = { version = "0.33", features = ["grpc-tonic"] }
+console-subscriber    = { version = "0.5", optional = true }   # tokio-console
 duckdb                = { version = "2", features = ["bundled", "json"], optional = true }  # 07 §2
 
 [features]
@@ -62,7 +62,7 @@ duckdb-parser = ["dep:duckdb"]               # DuckDB 2.0 parse diagnostics/AST 
 
 [dev-dependencies]
 insta             = { version = "1", features = ["json", "redactions"] }
-rstest            = "0.23"
+rstest            = "0.28"
 pretty_assertions = "1"
 ```
 

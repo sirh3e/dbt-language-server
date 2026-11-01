@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use dbt_ls_dialects::Dialect;
 use dbt_ls_error::{Error, Result};
-use minijinja::machinery::{tokenize as jinja_tokenize, Token as JToken, WhitespaceConfig};
+use minijinja::machinery::{tokenize as jinja_tokenize, Token as JToken};
 use minijinja::syntax::SyntaxConfig;
 use sqlparser::dialect::{
     BigQueryDialect, Dialect as SqlDialect, DuckDbDialect, GenericDialect, PostgreSqlDialect,
@@ -31,7 +31,7 @@ pub fn parse_document(text: &str, dialect: &Dialect) -> Result<ParsedDocument> {
     let table = LineTable::new(text);
     let mut tokens = Vec::new();
 
-    for item in jinja_tokenize(text, false, SyntaxConfig, WhitespaceConfig::default()) {
+    for item in jinja_tokenize(text, false, SyntaxConfig::default()) {
         let (jtok, span) = item.map_err(|e| Error::Jinja {
             path: Default::default(),
             message: e.to_string(),
@@ -189,12 +189,15 @@ fn tokenize_sql_segment(
                 (TokenKind::Symbol(first), text.len() as u32)
             }
         };
-        // sqlparser locations are 1-based line/column within the segment.
-        let Some(line_start) = seg_table.line_start(tw.location.line.saturating_sub(1) as usize)
-        else {
+        // sqlparser spans are 1-based line/column within the segment
+        // (line 0 marks an empty span — skip those).
+        if tw.span.start.line == 0 {
+            continue;
+        }
+        let Some(line_start) = seg_table.line_start(tw.span.start.line as usize - 1) else {
             continue;
         };
-        let offset_in_segment = line_start + tw.location.column.saturating_sub(1) as u32;
+        let offset_in_segment = line_start + tw.span.start.column.saturating_sub(1) as u32;
         let start = base + offset_in_segment;
         push(out, kind, start, start + len, table);
     }

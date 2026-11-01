@@ -29,7 +29,7 @@ may assume mostly-well-formed files and degrades per §2.4 when not.
 ### 2.1 Dependency
 
 ```toml
-minijinja = { version = "2", features = ["unstable_machinery"] }
+minijinja = { version = "3", features = ["unstable_machinery"] }
 ```
 
 `unstable_machinery` exposes `minijinja::machinery`: `tokenize` (spanned token
@@ -213,7 +213,7 @@ capability table when picked up.
 
 ```toml
 # [dependencies] additions
-minijinja = { version = "2", features = ["unstable_machinery"] }
+minijinja = { version = "3", features = ["unstable_machinery"] }
 # phase 2:
 # tree-sitter = "…"        # plus cc (build-dependency) and vendored grammars
 ```
