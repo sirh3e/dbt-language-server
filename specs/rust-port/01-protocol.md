@@ -214,5 +214,6 @@ fusion compile runs on a background thread (deviation), wrap stdout in
 - Never log to stdout (it would corrupt the LSP stream); Go's logger writes to the file only.
   **[DEVIATION — optional]** also/instead log to stderr; LSP clients capture stderr.
 
-Rust: a tiny `Logger` holding `Option<Mutex<File>>`, or `env_logger`-style facade
-writing to the file. Keep the flag semantics.
+Rust: implemented as the `tracing` fmt layer described in 05 §6.3 (same `--debug`
+file semantics; stderr is just another optional layer; OTLP export is opt-in and
+separate). Keep the flag semantics.

@@ -35,8 +35,21 @@ petgraph   = "0.6"             # project dependency graph, see §5
 # planned phase (06 §3): tree-sitter = "…" + cc build-dependency + vendored grammars
 saphyr     = "0.0.3"           # low-level YAML with markers (annotated YAML, 03 §3.1)
 tokio      = { version = "1", features = ["rt-multi-thread", "io-std", "io-util",
-                                          "process", "sync", "time", "macros", "fs"] }
+                                          "process", "sync", "time", "macros", "fs",
+                                          "tracing"] }
 walkdir    = "2"
+
+# observability (§6.3)
+tracing               = "0.1"
+tracing-subscriber    = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-opentelemetry = "0.28"
+opentelemetry         = "0.27"
+opentelemetry_sdk     = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp    = { version = "0.27", features = ["grpc-tonic"] }
+console-subscriber    = { version = "0.4", optional = true }   # tokio-console
+
+[features]
+tokio-console = ["dep:console-subscriber"]   # needs RUSTFLAGS="--cfg tokio_unstable"
 
 [dev-dependencies]
 insta             = { version = "1", features = ["json", "redactions"] }
@@ -121,21 +134,28 @@ Rules:
 
 ## 4. SQL tokenization with `sqlparser`
 
-The Go lexer is a single hand-rolled byte scanner over SQL-with-Jinja. `sqlparser`
-cannot parse Jinja (`{{ ref('x') }}` is not SQL), so the port uses a **two-layer
-lexer** in `src/analysis/parser/`.
+The Go lexer is a single hand-rolled byte scanner over SQL-with-Jinja. The port
+writes **no lexer of its own**: all lexing is done by the two provided crates —
+`minijinja` for the Jinja layer, `sqlparser` for the SQL layer — composed as a
+**two-layer pipeline** in `src/analysis/parser/`.
 
-> Scope note (06 §1): this two-layer lexer is the **live-document** path and must
-> sit behind the `DocumentParser` trait (06 §3.5) so tree-sitter can replace the
-> segmenter later. Scan-side files (macros, docs) are parsed with minijinja
-> (06 §2), never with this pipeline's segmenter.
+> Scope note (06 §1): this pipeline is the **live-document** path and must sit
+> behind the `DocumentParser` trait (06 §3.5) so tree-sitter can replace it later.
+> Scan-side files (macros, docs) use minijinja directly (06 §2).
 
-1. **Jinja segmenter** (`jinja.rs`, hand-rolled, small): one linear scan that splits
-   the document into alternating segments: `Sql(span)` and `Jinja { kind: Expr({{}})
-   | Stmt({%%}) | Comment({##}) , span }`. Tracks (line, column) per segment start.
-   This is unavoidable custom code (~100 lines) and is *not* graph/SQL work.
-2. **SQL segments → `sqlparser::tokenizer::Tokenizer`** with the dialect mapped from
-   the profile (03 §7.2):
+1. **Jinja layer = `minijinja::machinery::tokenize`** over the whole document.
+   Its token stream alternates `TemplateData` tokens (the raw text *between* Jinja
+   constructs — these spans are the SQL segments) with spanned tokens for the
+   contents of `{{ … }}` / `{% … %}` (idents, `.`, `(`, `)`, `,`, string literals)
+   and swallows `{# … #}` comments. This replaces the previously planned
+   hand-rolled segmenter entirely; minijinja spans drive all position math.
+   **Malformed mid-edit input:** `tokenize` errors instead of recovering — on error
+   the parser returns the document's **previous good `ParsedDocument`** (kept per
+   document; an empty one for a never-good document). Features then serve slightly
+   stale tokens while the user types through a broken `{{` — strictly better than
+   Go, which mis-lexes such input. Tree-sitter (06 §3) later removes the staleness.
+2. **SQL segments (the `TemplateData` spans) → `sqlparser::tokenizer::Tokenizer`**
+   with the dialect mapped from the profile (03 §7.2):
 
    | profile `type` | sqlparser dialect |
    |---|---|
@@ -149,16 +169,18 @@ lexer** in `src/analysis/parser/`.
    add the segment's base offset to produce the document-absolute 0-based positions
    the features need. Keyword classification comes from `Token::Word { keyword, .. }`
    — this **replaces the Go keyword tables** (02 §1.2) entirely.
-3. **Jinja expression segments** are tokenized by the same small scanner into the
-   dbt-relevant stream (idents, `.`, `(`, `)`, `,`, quotes/strings), and the
-   **refinement pass from 02 §3 runs unchanged in spirit** over the combined stream:
-   `ref('x')` → REF token, `source('a','b')` → SOURCE/SOURCE_TABLE, `{{ pkg.m( }}` →
-   PACKAGE/MACRO, CTE tracking over the SQL tokens (WITH/IDENT/AS/parens).
+3. **Refinement pass (02 §3, unchanged in spirit)** runs over the merged stream of
+   minijinja tokens (Jinja parts) and sqlparser tokens (SQL parts), both converted
+   to the unified `Token` model below: `ref('x')` → REF token, `source('a','b')` →
+   SOURCE/SOURCE_TABLE, `{{ pkg.m( }}` → PACKAGE/MACRO, CTE tracking over the SQL
+   tokens (WITH/IDENT/AS/parens). The merge/convert layer is plain data mapping —
+   no scanning.
 
 Consequences (accepted deviations from Go, strictly better):
 
-- Strings and comments are tokenized correctly (Go lexes `'customers'` as three
-  tokens and doesn't know comments exist). The refinement pass therefore matches on
+- Strings and comments (SQL *and* Jinja `{# #}`) are tokenized correctly (Go lexes
+  `'customers'` as three tokens and doesn't know comments exist). The refinement
+  pass therefore matches on
   *string tokens* inside `ref(...)` instead of the Go quote/ident/quote triple —
   02's token-pattern tables must be transposed accordingly when porting
   `parser_test.go` (the *outcomes* — which identifier becomes REF/SOURCE/etc. and at
@@ -168,8 +190,8 @@ Consequences (accepted deviations from Go, strictly better):
   beyond snowflake/duckdb get real keyword handling. Hover/definition behavior is
   unaffected (keywords were only ever "not IDENT").
 - Positions: keep everything in bytes internally (like Go, Q6) for v1 parity;
-  the segmenter is the single place that later adds a byte↔UTF-16 conversion table
-  per line (fixing Q6/Q7 in one spot).
+  the merge/convert layer is the single place that later adds a byte↔UTF-16
+  conversion table per line (fixing Q6/Q7 in one spot).
 
 The unified token model (replaces 02 §1 for the implementation):
 
@@ -274,13 +296,49 @@ project rescan, and Fusion blocks the whole loop — Q9.)
 - **Blocking is allowed** in `spawn_blocking`/scoped threads only; the async side
   does I/O and coordination exclusively.
 
-### 6.3 Micro-level
+### 6.3 Observability: `tracing` + OTLP + tokio runtime tracing
+
+All diagnostics output goes through the `tracing` ecosystem — there are no ad-hoc
+log calls. **Nothing ever writes to stdout except LSP frames** (01 §4); tracing
+output goes to a file, stderr, or the OTLP exporter.
+
+- **Instrumentation:** every request/notification handler gets
+  `#[tracing::instrument(skip_all, fields(method, uri = %short_uri))]` — one span
+  per LSP message, so handler latency (the §6.1 budgets) is measured for free as
+  span duration. Long-running units get their own spans: context refresh (with
+  per-builder child spans), per-file scan parsing, fusion compiles (child span per
+  process, diagnostics count as a field), frame read/write. Events (`debug!`,
+  `warn!`, `error!`) replace every Go `logger.Printf` site, including the degraded
+  paths of §2 (skipped files, fallback engaged).
+- **Subscriber layers** (composed in `main` with `tracing_subscriber::registry()`):
+  1. `fmt` layer → the `--debug` log file (preserves 01 §5 behavior: file beside
+     the executable, off without the flag), filtered by `EnvFilter`
+     (`RUST_LOG`, default `info`).
+  2. **OTLP layer** (`tracing-opentelemetry` → `opentelemetry-otlp`, gRPC/tonic,
+     batch exporter on the tokio runtime): **off by default** — an LSP must not
+     open network connections unless opted in. Enabled by `--otlp[=<endpoint>]`
+     or the standard `OTEL_EXPORTER_OTLP_ENDPOINT` env var;
+     `service.name = dbt-language-server`, version as resource attribute.
+     Flush/shutdown the tracer provider on `exit` (01 §3.3) before
+     `process::exit`. Privacy note: spans carry file paths and model names —
+     another reason opt-in is mandatory.
+  3. **tokio runtime tracing:** the `tokio` crate's `tracing` feature is always on
+     (runtime emits task spans); the `tokio-console` cargo feature additionally
+     wires `console_subscriber::spawn()` as a layer for live task/runtime
+     inspection with the `tokio-console` TUI (requires
+     `RUSTFLAGS="--cfg tokio_unstable"`; dev builds only, never release defaults).
+- This supersedes the originally planned ad-hoc per-request timing log line
+  (now: span durations) and makes 01 §5's "also log to stderr" deviation
+  concrete: stderr output is just another optional `fmt` layer if a client
+  wants it.
+
+### 6.4 Micro-level
 
 - Compile every regex once (`std::sync::LazyLock<Regex>`).
 - Reuse allocations in the frame reader (one growable `Vec<u8>` buffer).
 - Intern nothing prematurely; `String` keys in maps are fine at dbt-project scale
-  (thousands of models). Measure before optimizing further: add a
-  `--debug`-gated per-request timing log line (handler + serialize + write µs).
+  (thousands of models). Measure before optimizing further: the per-handler span
+  durations from §6.3 are the measurement.
 - `cargo build --release` with `lto = "thin"`, `codegen-units = 1` in
   `[profile.release]`.
 
@@ -319,10 +377,10 @@ Changes to the tree in 00 §"Proposed crate layout":
 ```
 src/error.rs                      # §2 (new; + Error::Jinja variant per 06 §2.4)
 src/analysis/parser/mod.rs        # DocumentParser trait + ParsedDocument (06 §3.5)
-src/analysis/parser/jinja.rs      # §4 segmenter (new; live-document path)
 src/analysis/parser/jinja_scan.rs # minijinja scan-side extraction (06 §2)
-src/analysis/parser/lexer.rs      # thin: segmenter + sqlparser tokenizer + merge
+src/analysis/parser/lexer.rs      # §4 pipeline: minijinja tokenize + sqlparser + merge/convert
 src/analysis/parser/ts/           # phase 2: tree-sitter ffi.rs/parser.rs/queries (06 §3)
+src/observability.rs              # §6.3: subscriber layers, OTLP init/shutdown
 src/analysis/graph.rs             # §5 (new)
 src/server/                       # replaces flat main-loop code:
 ├── mod.rs                        #   task wiring (§6.2)

@@ -52,7 +52,7 @@ Decided stack (details and rationale in [05-rust-stack.md](05-rust-stack.md)):
 | ad-hoc error returns | custom `Error` enum via `thiserror` (`src/error.rs`); `anyhow` only at the edges (05 §2) |
 | `encoding/json` | `serde` + `serde_json` (field names given per struct in 01/03) |
 | `gopkg.in/yaml.v3` (node positions!) | `saphyr` or `yaml-rust2` **parsed via their low-level `Marker` API** — see note below |
-| hand-rolled SQL lexer + keyword tables | `sqlparser` tokenizer (dialect-aware) behind a small Jinja segmenter (05 §4); segmenter later replaced by tree-sitter via C FFI (06 §3) |
+| hand-rolled SQL lexer + keyword tables | no hand-written lexer: `minijinja` tokenize (Jinja layer) + `sqlparser` tokenizer (SQL layer, dialect-aware) (05 §4); pipeline later replaced by tree-sitter via C FFI (06 §3) |
 | regex macro/docs extraction | `minijinja` (`unstable_machinery` lexer/parser) on scan-side files (06 §2); regexes kept only as per-file fallback |
 | — (no graph in Go) | `petgraph` project dependency graph (05 §5) |
 | `github.com/spf13/pflag` | `clap` (derive) |
@@ -61,6 +61,7 @@ Decided stack (details and rationale in [05-rust-stack.md](05-rust-stack.md)):
 | `bufio.Scanner` + custom split | async framed reader task over `tokio::io::stdin` (01 §1.3 semantics, 05 §6.2) |
 | `os/exec` | `tokio::process::Command` |
 | Go `testing` tables | `rstest` cases + `insta` snapshots + `pretty_assertions` (05 §7) |
+| `log` to a file | `tracing` spans/events; fmt layer for the `--debug` file, OTLP export (opt-in) and tokio runtime tracing / tokio-console (05 §6.3) |
 
 **Critical YAML constraint:** the Go code relies on `yaml.Node.Line`/`.Column` to
 record the position of every parsed value (`AnnotatedField`, see 03). `serde_yaml`
@@ -129,8 +130,8 @@ the standard-compliant improvements deliberately. For a first 1:1 port, hand-rol
 is simpler to verify against the Go binary.
 
 This layout is amended by 05 §8: adds `src/error.rs`, `src/analysis/graph.rs`,
-`src/analysis/parser/jinja.rs`, and replaces the flat main-loop code with a
-`src/server/` module (reader/dispatcher/writer/refresh tasks).
+`src/analysis/parser/jinja_scan.rs`, `src/observability.rs`, and replaces the flat
+main-loop code with a `src/server/` module (reader/dispatcher/writer/refresh tasks).
 
 ## State & concurrency model
 

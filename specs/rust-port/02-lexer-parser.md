@@ -3,9 +3,10 @@
 Source files: `analysis/parser/token.go`, `lexer.go`, `parser.go`.
 Reference tests to port verbatim: `analysis/parser/lexer_test.go`, `parser_test.go`.
 
-> **Implementation note (05 §4):** the Rust port produces tokens via a small Jinja
-> segmenter + `sqlparser`'s dialect-aware tokenizer instead of re-implementing the
-> Go byte lexer (§2) and keyword tables (§1.2). This file remains the *behavioral*
+> **Implementation note (05 §4):** the Rust port produces tokens via
+> `minijinja::machinery::tokenize` (Jinja layer) + `sqlparser`'s dialect-aware
+> tokenizer (SQL layer) instead of re-implementing the Go byte lexer (§2) and
+> keyword tables (§1.2) — no hand-written lexer at all. This file remains the *behavioral*
 > reference: which identifiers end up as REF/VAR/SOURCE/SOURCE_TABLE/MACRO/PACKAGE
 > at which positions (§3), the CTE map, the TokenIndex and cursor/lookback
 > semantics (§3.4–3.6) are unchanged and testable as specified. Port the Go test

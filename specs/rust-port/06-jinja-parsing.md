@@ -7,8 +7,8 @@ file wins. Two decisions are covered:
    scans — it replaces the regex-based extraction of 03 §5 (macros) and 03 §6.4
    (`{% docs %}` blocks).
 2. **tree-sitter**, integrated through its C FFI, is the planned replacement for
-   the hand-rolled live-document segmenter (05 §4). It is specced here so phase 1
-   is built with the right seam, but it is **not required for the parity
+   the live-document minijinja+sqlparser pipeline (05 §4). It is specced here so
+   phase 1 is built with the right seam, but it is **not required for the parity
    milestone**.
 
 ## 1. The two-sided parsing boundary
@@ -16,11 +16,13 @@ file wins. Two decisions are covered:
 | Side | Input | Parser | Why |
 |---|---|---|---|
 | **Project scan** (context refresh, 03 §1.2) | files on disk: macro `.sql`, docs `.md`, model `.sql` for the graph | `minijinja` machinery (this file §2) | files are usually well-formed; we want real Jinja structure (signatures, args, block bodies), not regex approximations |
-| **Live documents** (open editor buffers) | mid-edit, routinely malformed text | phase 1: hand-rolled segmenter + `sqlparser` (05 §4); phase 2: tree-sitter (this file §3) | must never fail on broken input; must be fast on every keystroke |
+| **Live documents** (open editor buffers) | mid-edit, routinely malformed text | phase 1: `minijinja` tokenize + `sqlparser` pipeline (05 §4) — no hand-rolled lexer; phase 2: tree-sitter (this file §3) | both layers come from the provided crates; must stay fast on every keystroke |
 
-Rule: **minijinja is never run on live editor buffers.** Its lexer/parser reports
-errors on malformed input; an LSP must tolerate malformed input continuously. The
-scan side may assume mostly-well-formed files and degrade per §2.4 when not.
+Live-buffer error rule: minijinja's lexer errors on malformed input instead of
+recovering, so the live pipeline keeps each document's **last good
+`ParsedDocument`** and serves it when tokenization fails mid-edit (05 §4 step 1).
+Tree-sitter later removes that staleness with true error tolerance. The scan side
+may assume mostly-well-formed files and degrades per §2.4 when not.
 
 ## 2. minijinja on the project-scan side
 
@@ -114,12 +116,13 @@ Not part of the parity milestone. Phase 1 must only honor §3.5 (the seam).
 
 ### 3.1 What it replaces and why
 
-The hand-rolled Jinja segmenter + per-change full retokenize (05 §4, 05 §6.2) is
-replaced for open documents by tree-sitter, which provides exactly the two
-properties the live side needs:
+The minijinja+sqlparser pipeline with per-change full retokenize (05 §4, 05 §6.2)
+is replaced for open documents by tree-sitter, which provides exactly the two
+properties the live side lacks:
 
 - **Error tolerance by design**: broken mid-edit buffers still produce a tree with
-  ERROR nodes; features keep working around them.
+  ERROR nodes; features keep working around them — no more serving the last good
+  parse while the buffer is broken.
 - **Incremental reparsing**: on didChange, apply `tree.edit(InputEdit)` per content
   change and reparse — cost proportional to the edit, not the file. This retires
   the full-document retokenization budget line in 05 §6.1.
@@ -162,7 +165,8 @@ feature algorithm in 03 §9 stay byte-for-byte unchanged**:
 | SQL injection ranges | fed to `sqlparser` exactly as 05 §4 step 2 (CTE tracking unchanged) |
 
 ERROR-node regions contribute no refined tokens (hover/completion simply find
-nothing there — same degradation the segmenter has today).
+nothing there — a milder degradation than phase 1's whole-document last-good
+fallback).
 
 ### 3.4 Incremental pipeline
 
@@ -188,11 +192,13 @@ pub trait DocumentParser {
 // ParsedDocument = { token_index: TokenIndex, def_tokens: HashMap<String, Token> }
 ```
 
-Phase 1 implementation: `SegmenterParser` (05 §4; `parse_incremental` = full
-reparse). Phase 2 adds `TreeSitterParser` holding the `tree_sitter::Parser` +
-previous `Tree` per document. Selection: tree-sitter becomes the default once it
-passes the full 02-derived behavior suite; keep `SegmenterParser` compiled as the
-fallback (and for `--no-tree-sitter` style debugging) for at least one release.
+Phase 1 implementation: `JinjaSqlParser` (the 05 §4 minijinja+sqlparser pipeline;
+`parse_incremental` = full retokenize of the new text, falling back to the
+previous `ParsedDocument` on tokenize error). Phase 2 adds `TreeSitterParser`
+holding the `tree_sitter::Parser` + previous `Tree` per document. Selection:
+tree-sitter becomes the default once it passes the full 02-derived behavior
+suite; keep `JinjaSqlParser` compiled as the fallback (and for
+`--no-tree-sitter` style debugging) for at least one release.
 
 ### 3.6 Later features unlocked (post-adoption, out of scope here)
 
