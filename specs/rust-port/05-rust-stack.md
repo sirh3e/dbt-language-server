@@ -47,9 +47,11 @@ opentelemetry         = "0.27"
 opentelemetry_sdk     = { version = "0.27", features = ["rt-tokio"] }
 opentelemetry-otlp    = { version = "0.27", features = ["grpc-tonic"] }
 console-subscriber    = { version = "0.4", optional = true }   # tokio-console
+duckdb                = { version = "2", features = ["bundled", "json"], optional = true }  # 07 §2
 
 [features]
 tokio-console = ["dep:console-subscriber"]   # needs RUSTFLAGS="--cfg tokio_unstable"
+duckdb-parser = ["dep:duckdb"]               # DuckDB 2.0 parse diagnostics/AST (07)
 
 [dev-dependencies]
 insta             = { version = "1", features = ["json", "redactions"] }
@@ -169,6 +171,8 @@ writes **no lexer of its own**: all lexing is done by the two provided crates �
    add the segment's base offset to produce the document-absolute 0-based positions
    the features need. Keyword classification comes from `Token::Word { keyword, .. }`
    — this **replaces the Go keyword tables** (02 §1.2) entirely.
+   For `dialect == duckdb`, sqlparser is the **token layer only**; real parsing
+   (syntax diagnostics, AST) is done by the embedded DuckDB 2.0 parser (07 §1–§3).
 3. **Refinement pass (02 §3, unchanged in spirit)** runs over the merged stream of
    minijinja tokens (Jinja parts) and sqlparser tokens (SQL parts), both converted
    to the unified `Token` model below: `ref('x')` → REF token, `source('a','b')` →

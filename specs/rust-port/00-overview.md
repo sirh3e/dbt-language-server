@@ -42,6 +42,7 @@ Spec files:
 - [04-fusion-cli-dialects.md](04-fusion-cli-dialects.md) — CLI, Fusion diagnostics, dialect docs data, build/release
 - [05-rust-stack.md](05-rust-stack.md) — **binding** stack & architecture decisions (error type, sqlparser lexing, petgraph graph, tokio runtime, testing stack); overrides 00–04 where they conflict
 - [06-jinja-parsing.md](06-jinja-parsing.md) — **binding**: minijinja for all scan-side dbt macro/Jinja parsing (replaces the 03 §5/§6.4 regexes), plus the planned tree-sitter (C FFI) phase for live documents and the `DocumentParser` seam phase 1 must ship with
+- [07-duckdb-parser-zig.md](07-duckdb-parser-zig.md) — **binding**: DuckDB 2.0's own (PEG) parser embedded for duckdb-dialect parsing/diagnostics (feature-gated), and the Zig toolchain (`zig cc`/`zig c++`, `cargo-zigbuild`) for all C/C++ compilation and release cross-builds
 
 ## Dependency mapping
 
@@ -62,6 +63,8 @@ Decided stack (details and rationale in [05-rust-stack.md](05-rust-stack.md)):
 | `os/exec` | `tokio::process::Command` |
 | Go `testing` tables | `rstest` cases + `insta` snapshots + `pretty_assertions` (05 §7) |
 | `log` to a file | `tracing` spans/events; fmt layer for the `--debug` file, OTLP export (opt-in) and tokio runtime tracing / tokio-console (05 §6.3) |
+| — (no SQL parsing in Go) | embedded DuckDB 2.0 PEG parser for duckdb-dialect parse diagnostics/AST, `duckdb-parser` feature (07 §1–§3) |
+| `build-all-platforms.sh` (Go cross-compile) | Zig toolchain: `zig cc`/`zig c++` for all C/C++ in the build, `cargo-zigbuild` for the release target matrix (07 §5) |
 
 **Critical YAML constraint:** the Go code relies on `yaml.Node.Line`/`.Column` to
 record the position of every parsed value (`AnnotatedField`, see 03). `serde_yaml`

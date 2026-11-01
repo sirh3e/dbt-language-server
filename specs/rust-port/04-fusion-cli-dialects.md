@@ -143,9 +143,10 @@ function hover/completions; bigquery gets docs but no keywords.
   Rust: `env!("CARGO_PKG_VERSION")`, or build.rs embedding `git describe` into an env
   var for `-v` output parity (`v0.x.y` format — match whatever the release pipeline tags).
 - `build-all-platforms.sh` cross-compiles (linux/darwin/windows × amd64/arm64).
-  Rust equivalent: CI matrix with `cargo build --release --target …` (or `cross`/
-  `cargo-zigbuild` for linux-musl + windows-gnu from one host). Produce the same
-  artifact names the install script expects if the `upgrade` flow is kept.
+  Rust equivalent (binding, 07 §5): `cargo-zigbuild` with the Zig toolchain as
+  the C/C++ compiler, building the full target matrix from one host (glibc-pinned
+  linux-gnu, musl, darwin, windows-gnu). Produce the same artifact names the
+  install script expects if the `upgrade` flow is kept.
 
 ## 5. Acceptance checklist (end-to-end parity)
 

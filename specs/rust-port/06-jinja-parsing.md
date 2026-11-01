@@ -133,7 +133,9 @@ properties the live side lacks:
   already FFI-based; the runtime's C sources build via the crate.
 - Grammars are **vendored C sources** in-repo (e.g. `third_party/tree-sitter-jinja2/`,
   `third_party/tree-sitter-sql/`): `src/parser.c` (+ `scanner.c` where the grammar
-  has one), compiled in `build.rs` with the `cc` crate and linked through the C ABI:
+  has one), compiled in `build.rs` with the `cc` crate — which, like all C/C++ in
+  this project, runs through the Zig toolchain (`CC="zig cc"`, 07 §5) — and linked
+  through the C ABI:
 
 ```rust
 unsafe extern "C" { fn tree_sitter_jinja2() -> *const (); }
