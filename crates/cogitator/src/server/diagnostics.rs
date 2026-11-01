@@ -2,8 +2,8 @@
 //! dbt YAML problems and the feature-gated DuckDB 2.0 parse check. Pure over
 //! the snapshot + documents; the dispatcher publishes.
 
-use magos::{features, yaml_features, DbtContext, Documents};
-use vox::Diagnostic;
+use cogitator_analysis::{features, yaml_features, DbtContext, Documents};
+use cogitator_lsp::Diagnostic;
 
 /// Dangling-ref + dbt-YAML + (duckdb) parse diagnostics for one open doc.
 pub fn static_diagnostics(ctx: &DbtContext, documents: &Documents, uri: &str) -> Vec<Diagnostic> {
@@ -33,18 +33,18 @@ pub(super) fn is_yaml(uri: &str) -> bool {
 /// model-sized SQL; a dedicated blocking worker is the follow-up if profiling
 /// says otherwise.
 #[cfg(feature = "duckdb-parser")]
-fn duckdb_diagnostic(doc: &magos::Document) -> Option<Diagnostic> {
+fn duckdb_diagnostic(doc: &cogitator_analysis::Document) -> Option<Diagnostic> {
     use std::sync::OnceLock;
-    static PARSER: OnceLock<Option<std::sync::Mutex<servitor::engine::DuckDbParser>>> =
+    static PARSER: OnceLock<Option<std::sync::Mutex<cogitator_duckdb::engine::DuckDbParser>>> =
         OnceLock::new();
     let parser = PARSER
         .get_or_init(|| {
-            servitor::engine::DuckDbParser::new()
+            cogitator_duckdb::engine::DuckDbParser::new()
                 .map(std::sync::Mutex::new)
                 .map_err(|err| tracing::warn!(%err, "duckdb parser unavailable"))
                 .ok()
         })
         .as_ref()?;
-    let masked = servitor::mask_jinja(&doc.parsed)?;
+    let masked = cogitator_duckdb::mask_jinja(&doc.parsed)?;
     parser.lock().ok()?.parse_diagnostic(&masked, &doc.text)
 }

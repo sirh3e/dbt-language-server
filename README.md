@@ -1,7 +1,8 @@
 # dbt Language Server (`cogitator`)
 
-LSP for dbt. The server binary and its crates carry Adeptus Mechanicus names
-(cogitator, magos, lexmechanic, codex, vox, lexicanum, servitor, heresy).
+LSP for dbt. The server binary is `cogitator` (Adeptus Mechanicus naming);
+its library crates use the brand as prefix plus the technical role:
+`cogitator-{lsp,parser,analysis,schemas,dialects,duckdb,treesitter,error}`.
 
 ## Features
 

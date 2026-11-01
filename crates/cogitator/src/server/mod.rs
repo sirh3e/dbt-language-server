@@ -11,24 +11,24 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use magos::{build_context, DbtContext};
+use cogitator_analysis::{build_context, DbtContext};
+use cogitator_lsp::rpc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
-use vox::rpc;
 
 pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
     // Backend selection (06 §3.5): tree-sitter is the default; phase-1 stays
     // compiled as the fallback and behind --no-tree-sitter.
     let documents = if use_tree_sitter {
-        match ecclesiarch::TreeSitterParser::new() {
+        match cogitator_treesitter::TreeSitterParser::new() {
             Ok(parser) => dbt_ls_documents(Box::new(parser)),
             Err(err) => {
                 tracing::warn!(%err, "tree-sitter unavailable; using phase-1 pipeline");
-                dbt_ls_documents(Box::new(lexmechanic::JinjaSqlParser))
+                dbt_ls_documents(Box::new(cogitator_parser::JinjaSqlParser))
             }
         }
     } else {
-        dbt_ls_documents(Box::new(lexmechanic::JinjaSqlParser))
+        dbt_ls_documents(Box::new(cogitator_parser::JinjaSqlParser))
     };
 
     let fusion_enabled = Arc::new(AtomicBool::new(false));
@@ -130,6 +130,8 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
     Ok(())
 }
 
-fn dbt_ls_documents(parser: Box<dyn lexmechanic::DocumentParser + Send>) -> magos::Documents {
-    magos::Documents::with_parser(parser)
+fn dbt_ls_documents(
+    parser: Box<dyn cogitator_parser::DocumentParser + Send>,
+) -> cogitator_analysis::Documents {
+    cogitator_analysis::Documents::with_parser(parser)
 }

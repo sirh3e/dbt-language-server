@@ -1,0 +1,18 @@
+[package]
+name = "cogitator-schemas"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cogitator-error = { workspace = true }
+cogitator-lsp = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+saphyr = { workspace = true }
+typify = { workspace = true }
+regress = "0.12"
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }

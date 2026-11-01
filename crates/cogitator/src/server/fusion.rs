@@ -6,10 +6,10 @@
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use cogitator_lsp::{diagnostic_severity, publish_diagnostics, rpc, Diagnostic, Position, Range};
 use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
-use vox::{diagnostic_severity, publish_diagnostics, rpc, Diagnostic, Position, Range};
 
 /// `<fusion> --version` must report a dbt-fusion binary (04 §1.3).
 pub async fn validate_fusion(path: &str) -> bool {

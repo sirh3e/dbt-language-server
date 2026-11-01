@@ -20,15 +20,15 @@ names what already exists in the codebase.
 
 - [x] **`textDocument/didClose`** — closed documents currently stay in the
       `Documents` store forever (leak inherited from the Go server).
-      Building block: `Documents` (`crates/magos/src/lib.rs`) just
+      Building block: `Documents` (`crates/cogitator-analysis/src/lib.rs`) just
       needs a `close(uri)` + dispatch arm.
 - [x] **Wire DuckDB parse diagnostics into the dispatcher** — the masking,
       confidence rule and `json_serialize_sql` engine exist
-      (`crates/servitor`, feature `duckdb-parser`, spec 07 §3) but are
+      (`crates/cogitator-duckdb`, feature `duckdb-parser`, spec 07 §3) but are
       not yet called on didOpen/didSave for duckdb projects.
 - [x] **`textDocument/references`** — find all models referencing a model.
       Building block: the petgraph dependency graph already answers it
-      (`ProjectGraph::dependents_of`, `crates/magos/src/graph.rs`);
+      (`ProjectGraph::dependents_of`, `crates/cogitator-analysis/src/graph.rs`);
       only dispatch + response wiring is missing.
 - [x] **Dangling-ref diagnostics** — warn on `ref('nonexistent')` without
       Fusion. Building block: `ProjectGraph::dangling_refs` (spec 05 §5).
@@ -52,7 +52,7 @@ names what already exists in the codebase.
 
 ## P3 — planned phases (already specced)
 
-- [x] **Tree-sitter backend shipped** (`crates/ecclesiarch`, 06 §3): the
+- [x] **Tree-sitter backend shipped** (`crates/cogitator-treesitter`, 06 §3): the
       vendored dbt-labs jinja2 grammar segments documents error-tolerantly —
       broken constructs degrade locally instead of staling the whole document
       — and is the default `DocumentParser` (fallback: `--no-tree-sitter`).

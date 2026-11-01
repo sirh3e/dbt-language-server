@@ -10,17 +10,17 @@ path = "src/main.rs"
 
 [features]
 default = []
-duckdb-parser = ["servitor/duckdb-parser"]
+duckdb-parser = ["cogitator-duckdb/duckdb-parser"]
 tokio-console = ["dep:console-subscriber"]
 
 [dependencies]
-heresy = { workspace = true }
-vox = { workspace = true }
-lexicanum = { workspace = true }
-magos = { workspace = true }
-lexmechanic = { workspace = true }
-servitor = { workspace = true }
-ecclesiarch = { workspace = true }
+cogitator-error = { workspace = true }
+cogitator-lsp = { workspace = true }
+cogitator-dialects = { workspace = true }
+cogitator-analysis = { workspace = true }
+cogitator-parser = { workspace = true }
+cogitator-duckdb = { workspace = true }
+cogitator-treesitter = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 clap = { workspace = true }

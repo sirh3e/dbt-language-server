@@ -1,0 +1,23 @@
+[package]
+name = "cogitator-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cogitator-error = { workspace = true }
+cogitator-lsp = { workspace = true }
+cogitator-dialects = { workspace = true }
+cogitator-schemas = { workspace = true }
+cogitator-parser = { workspace = true }
+petgraph = { workspace = true }
+regex = { workspace = true }
+walkdir = { workspace = true }
+saphyr = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
+insta = { workspace = true }

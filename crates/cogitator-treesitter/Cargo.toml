@@ -1,0 +1,20 @@
+[package]
+name = "cogitator-treesitter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cogitator-error = { workspace = true }
+cogitator-dialects = { workspace = true }
+cogitator-parser = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-language = { workspace = true }
+tracing = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }

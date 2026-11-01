@@ -6,16 +6,16 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use magos::{features, yaml_features, DbtContext, Documents};
-use serde::Serialize;
-use tokio::sync::{mpsc, watch};
-use tokio::task::AbortHandle;
-use vox::{
+use cogitator_analysis::{features, yaml_features, DbtContext, Documents};
+use cogitator_lsp::{
     error_codes, rpc, Diagnostic, DidChangeParams, DidOpenParams, DidSaveParams, Envelope,
     ErrorResponse, ExecuteCommandParams, FullDocumentDiagnosticReport, HoverResult,
     InitializeParams, MaybeId, Position, PositionParams, RequestId, ResultResponse,
     SelectionRangeParams, WorkspaceSymbolParams,
 };
+use serde::Serialize;
+use tokio::sync::{mpsc, watch};
+use tokio::task::AbortHandle;
 
 use super::fusion;
 
@@ -149,7 +149,7 @@ impl Dispatcher {
             tracing::info!(client = %info.name, version = %info.version, "connected");
         }
         self.root_path = params.root_path.map(|p| p.into_owned()).unwrap_or_default();
-        let response = vox::initialize_response(req.id, crate::VERSION);
+        let response = cogitator_lsp::initialize_response(req.id, crate::VERSION);
         self.send(&response);
         // first refresh so hover works before the first save (05 §6.2)
         let _ = self.refresh_tx.send(self.root_path.clone());
@@ -209,7 +209,7 @@ impl Dispatcher {
         &mut self,
         content: &[u8],
         method: &str,
-        feature: impl FnOnce(&DbtContext, Option<&magos::Document>, &str, Position) -> R,
+        feature: impl FnOnce(&DbtContext, Option<&cogitator_analysis::Document>, &str, Position) -> R,
     ) {
         let Some((id, uri, pos)) = Self::position_request(content) else {
             self.invalid_params(content, method);
@@ -247,9 +247,9 @@ impl Dispatcher {
             "textDocument/definition",
             |ctx, doc, uri, pos| match doc {
                 Some(doc) => features::definition(ctx, doc, uri, pos),
-                None => vox::Location {
+                None => cogitator_lsp::Location {
                     uri: uri.to_string(),
-                    range: vox::Range::zero_width(pos),
+                    range: cogitator_lsp::Range::zero_width(pos),
                 },
             },
         );
@@ -304,7 +304,7 @@ impl Dispatcher {
         };
         tracing::info!("shutdown request");
         // bare response without a result field — Go's exact shape (01 §3.3)
-        self.send(&vox::Response::new(req.id));
+        self.send(&cogitator_lsp::Response::new(req.id));
     }
 
     fn resolve_completion(&mut self, content: &[u8]) {
@@ -380,7 +380,7 @@ impl Dispatcher {
             "textDocument/semanticTokens/full",
             |_, doc, _, _| {
                 doc.map(features::semantic_tokens)
-                    .unwrap_or(vox::SemanticTokens { data: Vec::new() })
+                    .unwrap_or(cogitator_lsp::SemanticTokens { data: Vec::new() })
             },
         );
     }
@@ -438,7 +438,7 @@ impl Dispatcher {
             return;
         }
         let items = self.static_diagnostics(uri);
-        let note = vox::publish_diagnostics(uri.to_string(), items);
+        let note = cogitator_lsp::publish_diagnostics(uri.to_string(), items);
         self.send(&note);
     }
 
