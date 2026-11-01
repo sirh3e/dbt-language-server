@@ -2,6 +2,7 @@
 //! reader → dispatcher (owns Documents) → writer; debounced refresh task
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
+mod diagnostics;
 mod dispatcher;
 mod fusion;
 

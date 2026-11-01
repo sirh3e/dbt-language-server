@@ -211,6 +211,29 @@ fn full_session() {
         "goToSchema returns a yml location or null: {result}"
     );
 
+    // 6a2. dbt YAML completion is wired through the dispatcher
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({
+            "textDocument": {"uri": "file:///tmp/schema.yml", "languageId": "yaml",
+                              "version": 1, "text": "version: 2\nmodels:\n  - name: a\n    "}
+        }),
+    );
+    let yml = lsp.request(
+        "textDocument/completion",
+        serde_json::json!({
+            "textDocument": {"uri": "file:///tmp/schema.yml"},
+            "position": {"line": 3, "character": 4}
+        }),
+    );
+    assert!(
+        yml["result"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|i| i["label"] == "description")),
+        "yaml schema-key completion wired: {}",
+        yml["result"]
+    );
+
     // 6b. references on the open model (graph-backed)
     let refs = lsp.request(
         "textDocument/references",

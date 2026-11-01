@@ -255,16 +255,16 @@ impl Dispatcher {
     }
 
     fn completion(&mut self, content: &[u8]) {
-        let Some((id, uri, pos)) = Self::position_request(content) else {
-            return;
-        };
-        let ctx = self.snapshot();
-        let items = self
-            .documents
-            .get(&uri)
-            .map(|doc| features::completion(&ctx, doc, pos))
-            .unwrap_or_default();
-        self.send(&ResultResponse::new(id, items));
+        self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
+            match doc {
+                // dbt YAML files get schema-key completion (08 §2.6 v1)
+                Some(d) if super::diagnostics::is_yaml(uri) => {
+                    yaml_features::yaml_completion(uri, &d.text, pos)
+                }
+                Some(d) => features::completion(ctx, d, pos),
+                None => Vec::new(),
+            }
+        });
     }
 
     fn execute_command(&mut self, content: &[u8]) {
@@ -422,24 +422,9 @@ impl Dispatcher {
         ));
     }
 
-    /// Dangling-ref + dbt-YAML + (duckdb) parse diagnostics for one open doc.
-    fn static_diagnostics(&mut self, uri: &str) -> Vec<Diagnostic> {
-        let ctx = self.snapshot();
-        let Some(doc) = self.documents.get(uri) else {
-            return Vec::new();
-        };
-        let items = if is_yaml(uri) {
-            yaml_features::yaml_diagnostics(uri, &doc.text)
-        } else {
-            features::dangling_ref_diagnostics(&ctx, doc)
-        };
-        #[cfg(feature = "duckdb-parser")]
-        if !is_yaml(uri) && ctx.dialect.as_str() == "duckdb" {
-            if let Some(diag) = duckdb_diagnostic(doc) {
-                items.push(diag);
-            }
-        }
-        items
+    /// Diagnostics for one open doc — see server::diagnostics.
+    fn static_diagnostics(&self, uri: &str) -> Vec<Diagnostic> {
+        super::diagnostics::static_diagnostics(&self.snapshot(), &self.documents, uri)
     }
 
     /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled
@@ -474,29 +459,4 @@ impl Dispatcher {
         let handle = tokio::spawn(job.run());
         self.fusion_jobs.insert(uri, handle.abort_handle());
     }
-}
-
-fn is_yaml(uri: &str) -> bool {
-    uri.ends_with(".yml") || uri.ends_with(".yaml")
-}
-
-/// DuckDB 2.0 parse diagnostic for one document (07 §3), feature-gated.
-/// The engine call is blocking but local and milliseconds-scale on
-/// model-sized SQL; a dedicated blocking worker is the follow-up if profiling
-/// says otherwise.
-#[cfg(feature = "duckdb-parser")]
-fn duckdb_diagnostic(doc: &dbt_ls_analysis::Document) -> Option<Diagnostic> {
-    use std::sync::OnceLock;
-    static PARSER: OnceLock<Option<std::sync::Mutex<dbt_ls_duckdb::engine::DuckDbParser>>> =
-        OnceLock::new();
-    let parser = PARSER
-        .get_or_init(|| {
-            dbt_ls_duckdb::engine::DuckDbParser::new()
-                .map(std::sync::Mutex::new)
-                .map_err(|err| tracing::warn!(%err, "duckdb parser unavailable"))
-                .ok()
-        })
-        .as_ref()?;
-    let masked = dbt_ls_duckdb::mask_jinja(&doc.parsed)?;
-    parser.lock().ok()?.parse_diagnostic(&masked, &doc.text)
 }
