@@ -169,6 +169,11 @@ formatting of non-scalar values is not worth matching; pick a stable debug forma
 
 ## 5. Macros (`get_macro_details`, `parse_macros`)
 
+> **Implementation note (06 §2.2):** the Rust port extracts macros with the
+> minijinja lexer (and parser when it succeeds), not this regex. The regex below is
+> the behavioral reference and the per-file fallback when minijinja tokenization
+> fails; outputs (name, signature-as-description, uri, range) are identical.
+
 Process list = own project + every installed package (§8). For each project in order,
 for each `macro_paths` entry: walk `root/<path>` recursively for `.sql` files
 (skip path if unreadable); for each file, extract macros from the raw text:
@@ -249,6 +254,11 @@ each entry → `ModelDetails { uri, project_name: own project, description: "See
 schema_uri: "", schema_range: default }` (overwrites model names on collision).
 
 ### 6.4 `{% docs %}` blocks (`parse_markdown.go`)
+
+> **Implementation note (06 §2.3):** block extraction and the `{{ doc(...) }}`
+> substitution use the minijinja lexer in the Rust port; the regexes below are the
+> behavioral reference and per-file fallback. This fixes Q2, the greedy cross-block
+> capture, and the stale-offset splice by construction.
 
 - Collect files: for each `docs_paths` entry, if `ReadDir(path)` succeeds, walk for
   `.md`. **[Q4]** `path` is used as given (relative), *not* joined to project root —

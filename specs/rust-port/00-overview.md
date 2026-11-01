@@ -41,6 +41,7 @@ Spec files:
 - [03-analysis.md](03-analysis.md) — state, dbt context building, YAML schemas, feature algorithms, util functions
 - [04-fusion-cli-dialects.md](04-fusion-cli-dialects.md) — CLI, Fusion diagnostics, dialect docs data, build/release
 - [05-rust-stack.md](05-rust-stack.md) — **binding** stack & architecture decisions (error type, sqlparser lexing, petgraph graph, tokio runtime, testing stack); overrides 00–04 where they conflict
+- [06-jinja-parsing.md](06-jinja-parsing.md) — **binding**: minijinja for all scan-side dbt macro/Jinja parsing (replaces the 03 §5/§6.4 regexes), plus the planned tree-sitter (C FFI) phase for live documents and the `DocumentParser` seam phase 1 must ship with
 
 ## Dependency mapping
 
@@ -51,7 +52,8 @@ Decided stack (details and rationale in [05-rust-stack.md](05-rust-stack.md)):
 | ad-hoc error returns | custom `Error` enum via `thiserror` (`src/error.rs`); `anyhow` only at the edges (05 §2) |
 | `encoding/json` | `serde` + `serde_json` (field names given per struct in 01/03) |
 | `gopkg.in/yaml.v3` (node positions!) | `saphyr` or `yaml-rust2` **parsed via their low-level `Marker` API** — see note below |
-| hand-rolled SQL lexer + keyword tables | `sqlparser` tokenizer (dialect-aware) behind a small Jinja segmenter (05 §4) |
+| hand-rolled SQL lexer + keyword tables | `sqlparser` tokenizer (dialect-aware) behind a small Jinja segmenter (05 §4); segmenter later replaced by tree-sitter via C FFI (06 §3) |
+| regex macro/docs extraction | `minijinja` (`unstable_machinery` lexer/parser) on scan-side files (06 §2); regexes kept only as per-file fallback |
 | — (no graph in Go) | `petgraph` project dependency graph (05 §5) |
 | `github.com/spf13/pflag` | `clap` (derive) |
 | `regexp` | `regex` crate (all patterns in these specs are compatible; compile once with `std::sync::LazyLock`) |
@@ -170,7 +172,7 @@ Documented in context in the other files; collected here so the port makes consc
 | # | Where | Issue |
 |---|---|---|
 | Q1 | completion regexes | `[a-zA-z]` char class (includes `[ \ ] ^ _` backtick) — typo for `[a-zA-Z]` (03) |
-| Q2 | docs-block regex | `([-zA-z]+)` — typo; intended `([a-zA-Z_]+)` or similar (03) |
+| Q2 | docs-block regex | `([-zA-z]+)` — typo; intended `([a-zA-Z_]+)` or similar (03) — fixed by construction by the minijinja extractor (06 §2.3) |
 | Q3 | `getQuoteType` | comment says "last" quote, code returns the *first* quote in the line (03) |
 | Q4 | `getDocsFiles` | docs paths are not joined with the project root → only works if server CWD == project root (03) |
 | Q5 | `GetDialect` | when a workspace root path is known, *only* `<root>/.dbt/profiles.yml` is consulted; `DBT_PROFILES_DIR` and `~/.dbt` are used only when root path is empty (03) |

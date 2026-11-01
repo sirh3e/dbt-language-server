@@ -1,0 +1,218 @@
+# 06 — Jinja Parsing: minijinja (now) & tree-sitter via C FFI (planned)
+
+Binding decisions, same status as 05: where this file conflicts with 00–05, this
+file wins. Two decisions are covered:
+
+1. **minijinja** parses all dbt macro / Jinja code read from disk during project
+   scans — it replaces the regex-based extraction of 03 §5 (macros) and 03 §6.4
+   (`{% docs %}` blocks).
+2. **tree-sitter**, integrated through its C FFI, is the planned replacement for
+   the hand-rolled live-document segmenter (05 §4). It is specced here so phase 1
+   is built with the right seam, but it is **not required for the parity
+   milestone**.
+
+## 1. The two-sided parsing boundary
+
+| Side | Input | Parser | Why |
+|---|---|---|---|
+| **Project scan** (context refresh, 03 §1.2) | files on disk: macro `.sql`, docs `.md`, model `.sql` for the graph | `minijinja` machinery (this file §2) | files are usually well-formed; we want real Jinja structure (signatures, args, block bodies), not regex approximations |
+| **Live documents** (open editor buffers) | mid-edit, routinely malformed text | phase 1: hand-rolled segmenter + `sqlparser` (05 §4); phase 2: tree-sitter (this file §3) | must never fail on broken input; must be fast on every keystroke |
+
+Rule: **minijinja is never run on live editor buffers.** Its lexer/parser reports
+errors on malformed input; an LSP must tolerate malformed input continuously. The
+scan side may assume mostly-well-formed files and degrade per §2.4 when not.
+
+## 2. minijinja on the project-scan side
+
+### 2.1 Dependency
+
+```toml
+minijinja = { version = "2", features = ["unstable_machinery"] }
+```
+
+`unstable_machinery` exposes `minijinja::machinery`: `tokenize` (spanned token
+stream) and `parse` (AST). The module is semver-exempt — pin the exact minijinja
+version in `Cargo.lock` and wrap all machinery access in one module
+(`src/analysis/parser/jinja_scan.rs`) so API churn is contained. Exact function
+signatures are pinned at implementation time.
+
+### 2.2 Macro extraction (replaces 03 §5's regex)
+
+Input: raw text of one macro `.sql` file. Output: `Vec<Macro>` — same struct,
+same semantics as 03 §5 (name, project_name, description = full signature text,
+uri, range of the signature).
+
+Algorithm (lexer-level, the baseline):
+
+1. `machinery::tokenize(text, ...)` → spanned tokens.
+2. Scan for the sequence: `BlockStart` (`{%` / `{%-`), `Ident("macro")`,
+   `Ident(<name>)`, `ParenOpen`, … balanced … `ParenClose`, `BlockEnd`.
+3. `name` = the ident after `macro`. Signature span = from `<name>` through the
+   matching `ParenClose` — byte span → `Range` via the spans minijinja reports
+   (minijinja spans are line/col-based and 1-based; convert to the 0-based
+   positions of 01 §2.2; keep 03 §7.5 `get_line_and_column` for any byte-offset
+   conversions).
+4. `description` = the source slice of the signature span (identical content to
+   what the Go regex captured).
+
+Why lexer-level is the baseline: dbt extends Jinja with tags minijinja's *parser*
+does not know (`{% docs %}`, `{% snapshot %}`, `{% materialization %}`,
+`{% endmacro %}` bodies containing them) — `machinery::parse` fails on those files,
+but `machinery::tokenize` does not care about tag names.
+
+Enrichment (best-effort): when `machinery::parse` succeeds on the file, walk the
+AST's macro nodes to capture structured parameters (names + default expressions).
+Store them as `Vec<MacroParam { name, default: Option<String> }>` on `Macro`
+(new optional field, empty when only lexing succeeded). First consumer: macro
+completion `insertText` can become a snippet with argument placeholders — a
+post-parity improvement; completion output stays as 03 §9.4 until then.
+
+### 2.3 `{% docs %}` blocks (replaces 03 §6.4's regex)
+
+Same tokenize pass over each docs file: find `BlockStart, Ident("docs"),
+Ident(<name>), BlockEnd`, then capture everything up to the matching
+`BlockStart, Ident("enddocs"), BlockEnd` as raw source text; `content` =
+trimmed slice between the two blocks. Multiple blocks per file now extract
+correctly — this fixes **Q2** (broken char class) and the greedy-`(.*)`
+cross-block capture quirk of 03 §6.4 by construction. Name matching accepts any
+Jinja identifier (supersedes the `[a-zA-z]+` class).
+
+`replace_description_docs_blocks` (03 §6.4, the `{{ doc("name") }}` substitution
+inside YAML descriptions) also moves off its regex: tokenize the description
+string, find `VariableStart, Ident("doc"), ParenOpen, Str(<name>), ParenClose,
+VariableEnd`, splice `docs_map[name].content` over the construct's span
+(right-to-left so earlier spans stay valid — fixes the stale-offset quirk).
+If tokenization of a description fails, return it unchanged.
+
+### 2.4 Error handling
+
+- `tokenize` error on a macro/docs file → log (`Error::Yaml`-style context: add an
+  `Error::Jinja { path, message }` variant to 05 §2's enum) and fall back to the
+  03 §5 / §6.4 **regexes for that file only**. The regexes are thereby demoted to
+  documented fallback + behavioral reference; keep their unit tests alive against
+  the fallback path.
+- A macro header sequence that never closes (`ParenClose`/`BlockEnd` missing before
+  EOF) → skip that candidate, continue scanning.
+- Everything stays a pure function per 05 §3: `fn extract_macros(text, project,
+  path) -> Vec<Macro>`, `fn extract_docs_blocks(text) -> Vec<Docs>` — fallback
+  selection inside, I/O outside.
+
+### 2.5 Testing
+
+- Port the existing Go fixtures (`parse_macros_test.go`, `parse_markdown_test.go`)
+  as `rstest` cases: identical expected `Macro`/`Docs` values (insta snapshots for
+  the full vectors, per 05 §7).
+- Add cases the regexes got wrong, locking in the fixes: two `{% docs %}` blocks in
+  one file; docs names with digits/underscores; a description with two
+  `{{ doc(...) }}` references; whitespace-control variants (`{%- macro ... -%}`);
+  a macro signature spanning multiple lines with default args.
+- One malformed-file case per extractor proving the regex fallback engages.
+
+## 3. tree-sitter via C FFI (planned phase — live-document side)
+
+Not part of the parity milestone. Phase 1 must only honor §3.5 (the seam).
+
+### 3.1 What it replaces and why
+
+The hand-rolled Jinja segmenter + per-change full retokenize (05 §4, 05 §6.2) is
+replaced for open documents by tree-sitter, which provides exactly the two
+properties the live side needs:
+
+- **Error tolerance by design**: broken mid-edit buffers still produce a tree with
+  ERROR nodes; features keep working around them.
+- **Incremental reparsing**: on didChange, apply `tree.edit(InputEdit)` per content
+  change and reparse — cost proportional to the edit, not the file. This retires
+  the full-document retokenization budget line in 05 §6.1.
+
+### 3.2 FFI & build mechanics
+
+- Crate `tree-sitter` — Rust bindings over the C runtime (`libtree-sitter`),
+  already FFI-based; the runtime's C sources build via the crate.
+- Grammars are **vendored C sources** in-repo (e.g. `third_party/tree-sitter-jinja2/`,
+  `third_party/tree-sitter-sql/`): `src/parser.c` (+ `scanner.c` where the grammar
+  has one), compiled in `build.rs` with the `cc` crate and linked through the C ABI:
+
+```rust
+unsafe extern "C" { fn tree_sitter_jinja2() -> *const (); }
+let language = unsafe { tree_sitter::Language::from_raw(tree_sitter_jinja2() as *const _) };
+```
+
+  (Exact constructor per the pinned tree-sitter version — newer releases wrap this
+  as `LanguageFn`; the binding site lives in one module,
+  `src/analysis/parser/ts/ffi.rs`, and is the only `unsafe` in the project.)
+- Grammar choice: `tree-sitter-jinja2` as the host language with SQL as an
+  **injected language** (`tree-sitter-sql`) — mirrors how editors highlight dbt
+  models. Evaluate a dbt-specific grammar at integration time if one has matured;
+  the vendoring/build path is identical.
+- Vendored grammar versions are pinned by commit in `third_party/README`.
+
+### 3.3 Mapping trees onto the existing token model
+
+`.scm` query files (compiled once with `tree_sitter::Query`, cached) capture the
+constructs the features need; captures are converted into the refined
+`TokenKind`s of 05 §4 so **02's behavioral contract, the `TokenIndex`, and every
+feature algorithm in 03 §9 stay byte-for-byte unchanged**:
+
+| capture (jinja2 grammar) | refinement |
+|---|---|
+| call with function ident `ref`, first string arg | arg → `Ref` |
+| call `source`, first/second string args | `SourceName` / `SourceTable` |
+| call `var`, first string arg | `Var` |
+| expression-statement call ident (not ref/source/var/config) | `Macro` (+ preceding `ident . ` → `Package`) |
+| SQL injection ranges | fed to `sqlparser` exactly as 05 §4 step 2 (CTE tracking unchanged) |
+
+ERROR-node regions contribute no refined tokens (hover/completion simply find
+nothing there — same degradation the segmenter has today).
+
+### 3.4 Incremental pipeline
+
+didChange (dispatcher, 05 §6.2): apply the text splice (03 §2) **and** the
+equivalent `InputEdit` (byte offsets + Points derived from the same change
+ranges), reparse with the old tree, re-run queries only over changed ranges
+(`QueryCursor::set_byte_range` over the edited region ∪ affected injection
+ranges), and patch the `TokenIndex` lines in that range. Positions remain bytes
+internally; the byte↔UTF-16 conversion single-point (05 §4) applies unchanged.
+
+### 3.5 Phase-1 obligation: the `DocumentParser` seam
+
+So tree-sitter can land without touching features, phase 1 ships document
+tokenization behind a trait:
+
+```rust
+// src/analysis/parser/mod.rs
+pub trait DocumentParser {
+    fn parse_full(&mut self, text: &str, dialect: &Dialect) -> ParsedDocument;
+    fn parse_incremental(&mut self, prev: ParsedDocument, text: &str,
+                         changes: &[ContentChange], dialect: &Dialect) -> ParsedDocument;
+}
+// ParsedDocument = { token_index: TokenIndex, def_tokens: HashMap<String, Token> }
+```
+
+Phase 1 implementation: `SegmenterParser` (05 §4; `parse_incremental` = full
+reparse). Phase 2 adds `TreeSitterParser` holding the `tree_sitter::Parser` +
+previous `Tree` per document. Selection: tree-sitter becomes the default once it
+passes the full 02-derived behavior suite; keep `SegmenterParser` compiled as the
+fallback (and for `--no-tree-sitter` style debugging) for at least one release.
+
+### 3.6 Later features unlocked (post-adoption, out of scope here)
+
+Semantic tokens, folding ranges, document symbols, and selection ranges all fall
+out of the same trees/queries — each would be specced as its own addition to 01's
+capability table when picked up.
+
+## 4. Layout & manifest deltas (amends 05 §1/§8)
+
+```toml
+# [dependencies] additions
+minijinja = { version = "2", features = ["unstable_machinery"] }
+# phase 2:
+# tree-sitter = "…"        # plus cc (build-dependency) and vendored grammars
+```
+
+```
+src/analysis/parser/jinja_scan.rs   # §2: minijinja-based macro/docs extraction (scan side)
+src/analysis/parser/mod.rs          # §3.5: DocumentParser trait + ParsedDocument
+src/analysis/parser/ts/             # phase 2: ffi.rs, parser.rs, queries/*.scm
+third_party/                        # phase 2: vendored grammar C sources, pinned
+build.rs                            # phase 2: cc compilation of grammar sources
+```

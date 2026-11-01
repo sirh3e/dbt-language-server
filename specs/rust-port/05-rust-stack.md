@@ -30,7 +30,9 @@ serde_json = "1"
 clap       = { version = "4", features = ["derive"] }
 regex      = "1"
 sqlparser  = "0.52"            # SQL tokenization (dialect-aware), see §4
+minijinja  = { version = "2", features = ["unstable_machinery"] }  # scan-side Jinja, 06 §2
 petgraph   = "0.6"             # project dependency graph, see §5
+# planned phase (06 §3): tree-sitter = "…" + cc build-dependency + vendored grammars
 saphyr     = "0.0.3"           # low-level YAML with markers (annotated YAML, 03 §3.1)
 tokio      = { version = "1", features = ["rt-multi-thread", "io-std", "io-util",
                                           "process", "sync", "time", "macros", "fs"] }
@@ -121,7 +123,12 @@ Rules:
 
 The Go lexer is a single hand-rolled byte scanner over SQL-with-Jinja. `sqlparser`
 cannot parse Jinja (`{{ ref('x') }}` is not SQL), so the port uses a **two-layer
-lexer** in `src/analysis/parser/`:
+lexer** in `src/analysis/parser/`.
+
+> Scope note (06 §1): this two-layer lexer is the **live-document** path and must
+> sit behind the `DocumentParser` trait (06 §3.5) so tree-sitter can replace the
+> segmenter later. Scan-side files (macros, docs) are parsed with minijinja
+> (06 §2), never with this pipeline's segmenter.
 
 1. **Jinja segmenter** (`jinja.rs`, hand-rolled, small): one linear scan that splits
    the document into alternating segments: `Sql(span)` and `Jinja { kind: Expr({{}})
@@ -310,9 +317,12 @@ copied verbatim.
 Changes to the tree in 00 §"Proposed crate layout":
 
 ```
-src/error.rs                      # §2 (new)
-src/analysis/parser/jinja.rs      # §4 segmenter (new)
+src/error.rs                      # §2 (new; + Error::Jinja variant per 06 §2.4)
+src/analysis/parser/mod.rs        # DocumentParser trait + ParsedDocument (06 §3.5)
+src/analysis/parser/jinja.rs      # §4 segmenter (new; live-document path)
+src/analysis/parser/jinja_scan.rs # minijinja scan-side extraction (06 §2)
 src/analysis/parser/lexer.rs      # thin: segmenter + sqlparser tokenizer + merge
+src/analysis/parser/ts/           # phase 2: tree-sitter ffi.rs/parser.rs/queries (06 §3)
 src/analysis/graph.rs             # §5 (new)
 src/server/                       # replaces flat main-loop code:
 ├── mod.rs                        #   task wiring (§6.2)
