@@ -143,5 +143,5 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 | test (Linux) | mold + sccache, `CARGO_INCREMENTAL=0`, workspace `cargo test`, ±`duckdb-parser` |
 | test (macOS) | sccache, default linker, workspace `cargo test` |
 | lint | `cargo fmt --check`, `clippy --workspace --all-features` |
-| schema-gen check | `cargo typify` regeneration diff check (08 §2.2) |
+| schema-gen check | rerun `schemas/dbt/preprocess.py`; fail on `schemas/dbt/processed/` diffs (08 §2.2) |
 | release | `cargo-zigbuild` matrix per 07 §5 (zig linker; mold not involved) |

@@ -2,3 +2,12 @@ Vendored from https://github.com/dbt-labs/dbt-jsonschema
 commit: 6a401244651d3b5e0fd2f7cfcfb120187118edb4
 files: schemas/latest/{dbt_project,dbt_yml_files,packages,selectors}-latest.json
 Regenerate Rust types: see specs/rust-port/08-schemas-zero-copy.md §2.2
+
+Layout:
+  *-latest.json   pristine upstream copies (never edited)
+  processed/      preprocess.py output, read at compile time by
+                  typify::import_types! in crates/dbt-ls-schemas
+Regenerate processed/ after updating the vendored files:
+  for f in dbt_project dbt_yml_files packages selectors; do
+    python3 schemas/dbt/preprocess.py schemas/dbt/${f}-latest.json schemas/dbt/processed/${f}.json
+  done

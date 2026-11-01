@@ -1,15 +1,35 @@
-//! Committed `cargo typify` output — DO NOT EDIT (specs/rust-port/08 §2.2).
+//! dbt schema types generated at compile time with `typify::import_types!`
+//! (specs/rust-port/08 §2.2, macro style).
 //!
-//! Regeneration (after updating `schemas/dbt/`): the dbt_yml_files schema is
-//! preprocessed first (case-duplicate enum values deduped, `if`/`then`/`else`
-//! validation refinements stripped — typify 0.8 supports neither); the other
-//! schemas generate as-is. See schemas/dbt/README.
+//! The macro reads the **preprocessed** schemas committed under
+//! `schemas/dbt/processed/` (produced by `schemas/dbt/preprocess.py` from the
+//! pristine vendored dbt-jsonschema files — typify-0.8 workarounds documented
+//! there). Paths are relative to this crate's `CARGO_MANIFEST_DIR`.
 
-#[allow(clippy::all, dead_code, unused)]
-pub mod dbt_project;
-#[allow(clippy::all, dead_code, unused)]
-pub mod dbt_yml_files;
-#[allow(clippy::all, dead_code, unused)]
-pub mod packages;
-#[allow(clippy::all, dead_code, unused)]
-pub mod selectors;
+pub mod dbt_project {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/dbt_project.json",
+        unknown_crates = Allow,
+    );
+}
+
+pub mod dbt_yml_files {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/dbt_yml_files.json",
+        unknown_crates = Allow,
+    );
+}
+
+pub mod packages {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/packages.json",
+        unknown_crates = Allow,
+    );
+}
+
+pub mod selectors {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/selectors.json",
+        unknown_crates = Allow,
+    );
+}

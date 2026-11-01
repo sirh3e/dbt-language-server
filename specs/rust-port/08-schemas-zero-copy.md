@@ -96,21 +96,31 @@ The reference for every dbt file shape is **dbt-labs/dbt-jsonschema**
 `schemas/dbt/README` records the upstream commit; updating the schemas is an
 explicit, reviewed commit (fetch → regenerate → diff).
 
-### 2.2 Generation with typify
+### 2.2 Generation with typify (compile-time macro)
 
-Types are generated with Oxide's `typify` via the CLI and **committed**:
+Types are generated at compile time with Oxide's `typify::import_types!`
+macro, one module per schema:
 
-```sh
-cargo typify schemas/dbt/dbt_project.json   -o src/analysis/dbt_schema/generated/dbt_project.rs
-cargo typify schemas/dbt/dbt_yml_files.json -o src/analysis/dbt_schema/generated/dbt_yml_files.rs
-# (same for packages.json, selectors.json; wrapped in a `just gen-schemas` /
-#  `make gen-schemas` recipe so regeneration is one command)
+```rust
+pub mod dbt_project {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/dbt_project.json",
+        unknown_crates = Allow,
+    );
+}
 ```
 
-Committed output, not `build.rs` generation: keeps clean builds fast, makes
-schema updates reviewable diffs, and keeps rust-analyzer happy. `typify` itself
-is a dev tool, **not a runtime dependency**; the generated code depends only on
-`serde`. A CI check runs the recipe and fails on uncommitted diffs.
+The macro reads **preprocessed** copies committed under
+`schemas/dbt/processed/`, produced from the pristine vendored files by the
+committed `schemas/dbt/preprocess.py` (documented typify-0.8 workarounds:
+if/then/else stripped, case-duplicate enum values deduped, `+x`/`x` property
+collisions resolved, `oneOf [X, null]` collapsed, `default` values dropped).
+A CI check regenerates `processed/` and fails on diffs. Trade-off accepted
+with this style: the types compile inside the crate build instead of being
+reviewable committed Rust — contained by `dbt-ls-schemas` being a
+rarely-touched leaf crate (09 §1), so the compile-time story holds.
+`typify` is a normal dependency of that crate; generated code additionally
+uses `serde` and `regress`.
 
 ### 2.3 Replacing the hand-written structs
 

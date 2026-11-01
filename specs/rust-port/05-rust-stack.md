@@ -70,9 +70,9 @@ pretty_assertions = "1"
 for `yaml-rust2` if its marker API fits better; the requirement is per-node
 line/column, 03 §3.1.)
 
-Required dev tools, not dependencies: the Zig toolchain (07 §5), `cargo-typify`
-for regenerating the dbt schema types (08 §2.2), mold on Linux and sccache
-(09 §3–§4).
+Required dev tools, not dependencies: the Zig toolchain (07 §5), mold on
+Linux and sccache (09 §3–§4). Schema types come from the `typify` crate's
+compile-time `import_types!` macro (08 §2.2) — no CLI tool needed.
 
 ## 2. Error handling
 
