@@ -1,24 +1,29 @@
-//! Models, seeds, sources and `{% docs %}` expansion (03 §6):
-//! filesystem collection at the boundary, pure folds below it.
+//! Models, seeds, sources and `{% docs %}` expansion (03 §6), served from
+//! the scan cache: unchanged YAML/markdown files are not re-read or
+//! re-parsed; only the cheap docs-expansion runs per refresh.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use cogitator_lsp::{Position, Range};
-use cogitator_parser::jinja_scan;
+use cogitator_parser::jinja_scan::{self, RawDocsBlock};
 use cogitator_schemas::project::ProjectFile;
-use cogitator_schemas::properties::parse_properties;
+use cogitator_schemas::properties::{parse_properties, PropertiesFile, SourceEntry};
 
-use crate::fs_scan::{read_sources, SourceFile};
+use crate::cache::FileCache;
 use crate::util;
 
 use super::{ModelDetails, ProjectDetails, SourceDetails, SourceTableDetails};
 
-/// Models + seeds + sources (03 §6).
+pub(super) type PropsCache = FileCache<PropertiesFile>;
+pub(super) type DocsCache = FileCache<Vec<RawDocsBlock>>;
+
 pub(super) fn build_model_details(
     root: &Path,
     project: &ProjectFile,
     process_list: &[ProjectDetails],
+    props: &mut PropsCache,
+    docs: &mut DocsCache,
 ) -> (
     HashMap<String, ModelDetails>,
     HashMap<String, SourceDetails>,
@@ -28,8 +33,8 @@ pub(super) fn build_model_details(
 
     for p in process_list {
         let path_map = util::create_file_name_map(&[".sql", ".py"], &p.root, &p.file.model_paths);
-        let docs_map = build_docs_map(&p.root, &p.file);
-        let (schema_models, project_sources) = parse_yaml_models(&p.root, &p.file, &docs_map);
+        let docs_map = build_docs_map(&p.root, &p.file, docs);
+        let (schema_models, project_sources) = schema_entries(&p.root, &p.file, &docs_map, props);
 
         sources.extend(project_sources);
 
@@ -69,82 +74,75 @@ pub(super) fn build_model_details(
         );
     }
 
+    props.sweep();
+    docs.sweep();
     (models, sources)
 }
 
-struct SchemaModel {
-    description: String,
-    alias: Option<String>,
-    schema_uri: PathBuf,
-    name_pos: Position,
+pub(super) struct SchemaModel {
+    pub(super) description: String,
+    pub(super) alias: Option<String>,
+    pub(super) schema_uri: PathBuf,
+    pub(super) name_pos: Position,
 }
 
-/// Properties YAML files under the model paths (03 §6.2), with `{% docs %}`
-/// expansion applied to every description (03 §6.4 / 06 §2.3).
-fn parse_yaml_models(
+/// Properties YAML files under the model paths (03 §6.2): cached per file;
+/// `{{ doc(...) }}` expansion (03 §6.4 / 06 §2.3) applied on retrieval.
+fn schema_entries(
     root: &Path,
     project: &ProjectFile,
     docs_map: &HashMap<String, String>,
-) -> (HashMap<String, SchemaModel>, HashMap<String, SourceDetails>) {
-    let files = read_sources(root, &project.model_paths, ".yml");
-    models_sources_from_yaml(&files, docs_map)
-}
-
-/// Pure over the collected files: parse each properties YAML, expand
-/// `{{ doc(...) }}` references, and fold into the two maps (later files win
-/// per name, like Go's walk order).
-fn models_sources_from_yaml(
-    files: &[SourceFile],
-    docs_map: &HashMap<String, String>,
+    props: &mut PropsCache,
 ) -> (HashMap<String, SchemaModel>, HashMap<String, SourceDetails>) {
     let expand = |description: &str| {
         jinja_scan::replace_doc_refs(description, |name| docs_map.get(name).cloned())
     };
 
-    files
-        .iter()
-        .filter_map(|f| {
-            cogitator_error::ok_or_log(parse_properties(&f.text, &f.path), "properties file")
-                .map(|parsed| (f, parsed))
-        })
-        .fold(
-            (HashMap::new(), HashMap::new()),
-            |(mut models, mut sources), (f, parsed)| {
-                for model in parsed.models {
-                    models.insert(
-                        model.name.clone(),
-                        SchemaModel {
-                            description: expand(&model.description),
-                            alias: model.alias,
-                            schema_uri: f.path.clone(),
-                            name_pos: model.name_pos,
-                        },
-                    );
-                }
-                for source in parsed.sources {
-                    sources.insert(
-                        source.name.clone(),
-                        source_details(source, &f.path, &expand),
-                    );
-                }
-                (models, sources)
-            },
-        )
+    let mut models = HashMap::new();
+    let mut sources = HashMap::new();
+    for rel in &project.model_paths {
+        let dir = root.join(rel);
+        if std::fs::read_dir(&dir).is_err() {
+            continue;
+        }
+        for file in util::walk_filepath(&dir, ".yml") {
+            let Some(parsed) = props.get_or_parse(&file, |text, path| {
+                cogitator_error::ok_or_log(parse_properties(text, path), "properties file")
+            }) else {
+                continue;
+            };
+            for model in &parsed.models {
+                models.insert(
+                    model.name.clone(),
+                    SchemaModel {
+                        description: expand(&model.description),
+                        alias: model.alias.clone(),
+                        schema_uri: file.clone(),
+                        name_pos: model.name_pos,
+                    },
+                );
+            }
+            for source in &parsed.sources {
+                sources.insert(source.name.clone(), source_details(source, &file, &expand));
+            }
+        }
+    }
+    (models, sources)
 }
 
 fn source_details(
-    source: cogitator_schemas::properties::SourceEntry,
+    source: &SourceEntry,
     path: &Path,
     expand: &impl Fn(&str) -> String,
 ) -> SourceDetails {
     let tables = source
         .tables
-        .into_iter()
+        .iter()
         .map(|t| {
             (
                 t.name.clone(),
                 SourceTableDetails {
-                    name: t.name,
+                    name: t.name.clone(),
                     description: expand(&t.description),
                     uri: path.to_path_buf(),
                     range: Range::zero_width(t.name_pos),
@@ -153,7 +151,7 @@ fn source_details(
         })
         .collect();
     SourceDetails {
-        name: source.name,
+        name: source.name.clone(),
         description: expand(&source.description),
         uri: path.to_path_buf(),
         range: Range::zero_width(source.name_pos),
@@ -161,17 +159,26 @@ fn source_details(
     }
 }
 
-/// `{% docs %}` blocks from the docs paths (03 §6.4; Q4 fixed: paths are
-/// joined to the project root).
-fn build_docs_map(root: &Path, project: &ProjectFile) -> HashMap<String, String> {
-    docs_map_from_sources(&read_sources(root, &project.docs_paths, ".md"))
-}
-
-/// Pure: `{% docs %}` blocks across files, last block per name wins.
-fn docs_map_from_sources(files: &[SourceFile]) -> HashMap<String, String> {
-    files
-        .iter()
-        .flat_map(|f| jinja_scan::extract_docs_blocks(&f.text))
-        .map(|block| (block.name, block.content))
-        .collect()
+/// `{% docs %}` blocks from the docs paths (03 §6.4; Q4 fixed), cached.
+fn build_docs_map(
+    root: &Path,
+    project: &ProjectFile,
+    cache: &mut DocsCache,
+) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for rel in &project.docs_paths {
+        let dir = root.join(rel);
+        if std::fs::read_dir(&dir).is_err() {
+            continue;
+        }
+        for file in util::walk_filepath(&dir, ".md") {
+            let Some(blocks) =
+                cache.get_or_parse(&file, |text, _| Some(jinja_scan::extract_docs_blocks(text)))
+            else {
+                continue;
+            };
+            map.extend(blocks.iter().map(|b| (b.name.clone(), b.content.clone())));
+        }
+    }
+    map
 }

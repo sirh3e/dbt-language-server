@@ -34,6 +34,15 @@ names what already exists in the codebase.
       Fusion. Building block: `ProjectGraph::dangling_refs` (spec 05 §5).
 - [x] **`initialized` notification** — currently ignored; handle explicitly.
 
+- [x] **Project scan cache** (05 §6.2 fast path): `FileCache` keyed by
+      (mtime, size) in `cogitator-analysis/src/cache.rs`; the refresh task
+      keeps one `ContextBuilder` alive, so unchanged YAML/macro/docs/model
+      files are never re-read or re-parsed between refreshes.
+- [x] **Column lineage**: `dbt.columnLineage` workspace command
+      (`cogitator-analysis/src/lineage.rs`) — named-placeholder masking,
+      sqlparser AST, CTE-transitive resolution incl. `select *` chains;
+      declines on Jinja control blocks (07 §3.2 confidence rule).
+
 ## P2 — quality of life
 
 - [x] **`completionItem/resolve`** — send lean completion items, resolve

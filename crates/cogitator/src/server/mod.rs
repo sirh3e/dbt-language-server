@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use cogitator_analysis::{build_context, DbtContext};
+use cogitator_analysis::{ContextBuilder, DbtContext};
 use cogitator_lsp::rpc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
@@ -55,6 +55,7 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
     // refresh task: debounced context rebuilds → watch snapshots
     let (ctx_tx, ctx_rx) = watch::channel(Arc::new(DbtContext::default()));
     let (refresh_tx, mut refresh_rx) = mpsc::unbounded_channel::<String>();
+    let builder = Arc::new(std::sync::Mutex::new(ContextBuilder::default()));
     tokio::spawn(async move {
         while let Some(mut root) = refresh_rx.recv().await {
             // debounce: coalesce triggers arriving within 200 ms (05 §6.2)
@@ -65,10 +66,15 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
             }
             let built = tokio::task::spawn_blocking({
                 let root = root.clone();
+                let builder = builder.clone();
                 move || {
                     let span = tracing::info_span!("context_refresh", root = %root);
                     let _enter = span.enter();
-                    build_context(&root)
+                    let mut builder = builder.lock().expect("context builder lock");
+                    let ctx = builder.build(&root);
+                    let (hits, misses) = builder.cache_stats();
+                    tracing::debug!(hits, misses, "scan cache totals");
+                    ctx
                 }
             })
             .await;

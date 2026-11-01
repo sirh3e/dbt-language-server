@@ -16,10 +16,39 @@ use cogitator_schemas::project::{apply_defaults, parse_dbt_project, ProjectFile}
 use crate::graph::ProjectGraph;
 use crate::util;
 
+use cogitator_parser::jinja_scan::{RawDocsBlock, RawMacro};
+use cogitator_schemas::properties::PropertiesFile;
+
+use crate::cache::FileCache;
+use crate::graph::EdgeSeed;
 use macros::build_macro_details;
 use models::build_model_details;
 use packages::package_details;
 use variables::build_variables;
+
+/// Owns the scan caches across refreshes (05 §6.2 fast path): the refresh
+/// task keeps one builder alive, so an unchanged file is never re-parsed.
+#[derive(Default)]
+pub struct ContextBuilder {
+    props: FileCache<PropertiesFile>,
+    macros: FileCache<Vec<RawMacro>>,
+    docs: FileCache<Vec<RawDocsBlock>>,
+    edges: FileCache<Vec<EdgeSeed>>,
+}
+
+impl ContextBuilder {
+    /// (hits, misses) across all four artifact caches.
+    pub fn cache_stats(&self) -> (u64, u64) {
+        [
+            self.props.stats(),
+            self.macros.stats(),
+            self.docs.stats(),
+            self.edges.stats(),
+        ]
+        .iter()
+        .fold((0, 0), |(h, m), (ch, cm)| (h + ch, m + cm))
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ModelDetails {
@@ -83,56 +112,72 @@ pub(super) struct ProjectDetails {
     pub(super) file: ProjectFile,
 }
 
-/// Build the full context from the LSP client root path (03 §1.2).
+/// One-shot build with a fresh cache (tests / convenience).
 pub fn build_context(workspace_root: &str) -> DbtContext {
-    let start = if workspace_root.is_empty() {
-        std::env::current_dir().unwrap_or_default()
-    } else {
-        PathBuf::from(workspace_root)
-    };
-    let Some(root) = util::get_project_root("dbt_project.yml", &start) else {
-        tracing::debug!(?start, "dbt_project.yml not found");
-        return DbtContext::default();
-    };
+    ContextBuilder::default().build(workspace_root)
+}
 
-    let project = load_project_file(&root);
-    let dialect = util::get_dialect(&project.profile, workspace_root);
+impl ContextBuilder {
+    /// Build the full context from the LSP client root path (03 §1.2).
+    pub fn build(&mut self, workspace_root: &str) -> DbtContext {
+        let start = if workspace_root.is_empty() {
+            std::env::current_dir().unwrap_or_default()
+        } else {
+            PathBuf::from(workspace_root)
+        };
+        let Some(root) = util::get_project_root("dbt_project.yml", &start) else {
+            tracing::debug!(?start, "dbt_project.yml not found");
+            return DbtContext::default();
+        };
 
-    let own = ProjectDetails {
-        root: root.clone(),
-        file: project.clone(),
-    };
-    let packages = package_details(&root, &project);
-    let mut process_list = vec![own];
-    process_list.extend(packages);
+        let project = load_project_file(&root);
+        let dialect = util::get_dialect(&project.profile, workspace_root);
 
-    // The three parallel builders of 03 §1.2 plus the graph (05 §5), on
-    // scoped threads — CPU + fs work stays off the async runtime (05 §6.2).
-    let mut models = HashMap::new();
-    let mut sources = HashMap::new();
-    let mut macros = HashMap::new();
-    let mut variables = HashMap::new();
-    let mut graph = ProjectGraph::default();
-    std::thread::scope(|scope| {
-        let models_sources = scope.spawn(|| build_model_details(&root, &project, &process_list));
-        let macros_handle = scope.spawn(|| build_macro_details(&process_list));
-        let vars_handle = scope.spawn(|| build_variables(&root, &project));
-        let graph_handle = scope.spawn(|| ProjectGraph::build(&root, &project, &dialect));
-        (models, sources) = models_sources.join().unwrap_or_default();
-        macros = macros_handle.join().unwrap_or_default();
-        variables = vars_handle.join().unwrap_or_default();
-        graph = graph_handle.join().unwrap_or_default();
-    });
+        let own = ProjectDetails {
+            root: root.clone(),
+            file: project.clone(),
+        };
+        let packages = package_details(&root, &project);
+        let mut process_list = vec![own];
+        process_list.extend(packages);
 
-    DbtContext {
-        project_root: Some(root),
-        project,
-        dialect,
-        model_detail_map: models,
-        source_detail_map: sources,
-        macro_detail_map: macros,
-        variable_detail_map: variables,
-        graph,
+        // The three parallel builders of 03 §1.2 plus the graph (05 §5), on
+        // scoped threads — CPU + fs work stays off the async runtime (05 §6.2).
+        let mut models = HashMap::new();
+        let mut sources = HashMap::new();
+        let mut macros = HashMap::new();
+        let mut variables = HashMap::new();
+        let mut graph = ProjectGraph::default();
+        let (props_cache, macros_cache, docs_cache, edges_cache) = (
+            &mut self.props,
+            &mut self.macros,
+            &mut self.docs,
+            &mut self.edges,
+        );
+        std::thread::scope(|scope| {
+            let models_sources = scope.spawn(|| {
+                build_model_details(&root, &project, &process_list, props_cache, docs_cache)
+            });
+            let macros_handle = scope.spawn(|| build_macro_details(&process_list, macros_cache));
+            let vars_handle = scope.spawn(|| build_variables(&root, &project));
+            let graph_handle =
+                scope.spawn(|| ProjectGraph::build(&root, &project, &dialect, edges_cache));
+            (models, sources) = models_sources.join().unwrap_or_default();
+            macros = macros_handle.join().unwrap_or_default();
+            variables = vars_handle.join().unwrap_or_default();
+            graph = graph_handle.join().unwrap_or_default();
+        });
+
+        DbtContext {
+            project_root: Some(root),
+            project,
+            dialect,
+            model_detail_map: models,
+            source_detail_map: sources,
+            macro_detail_map: macros,
+            variable_detail_map: variables,
+            graph,
+        }
     }
 }
 

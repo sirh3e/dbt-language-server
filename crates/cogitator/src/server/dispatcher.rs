@@ -273,13 +273,22 @@ impl Dispatcher {
             return;
         };
         let Some(params) = req.params else { return };
-        if params.command != "dbt.goToSchema" {
-            return;
-        }
         // untyped arguments (01 §3.4); malformed → request dropped like Go
         let Some(arg) = params.arguments.first().and_then(|a| a.as_object()) else {
             return;
         };
+        if params.command == "dbt.columnLineage" {
+            let uri = arg
+                .get("uri")
+                .and_then(|u| u.as_str())
+                .unwrap_or_default()
+                .to_string();
+            self.column_lineage(req.id, &uri);
+            return;
+        }
+        if params.command != "dbt.goToSchema" {
+            return;
+        }
         let uri = arg
             .get("uri")
             .and_then(|u| u.as_str())
@@ -442,6 +451,24 @@ impl Dispatcher {
         self.send(&note);
     }
 
+    /// `dbt.columnLineage`: lineage for an open document, or for the file on
+    /// disk when the editor has not opened it.
+    fn column_lineage(&mut self, id: i64, uri: &str) {
+        let ctx = self.snapshot();
+        let result = match self.documents.get(uri) {
+            Some(doc) => features_lineage(&doc.parsed, &ctx),
+            None => {
+                let path = uri.strip_prefix("file://").unwrap_or(uri);
+                std::fs::read_to_string(path).ok().and_then(|text| {
+                    cogitator_parser::pipeline::parse_document(&text, &ctx.dialect)
+                        .ok()
+                        .and_then(|parsed| features_lineage(&parsed, &ctx))
+                })
+            }
+        };
+        self.send(&ResultResponse::new(id, result));
+    }
+
     /// Fusion compile per 04 §2, async + cancellable per URI (fixes Q9).
     fn spawn_fusion(&mut self, uri: String) {
         if !self.fusion_enabled.load(Ordering::Relaxed) {
@@ -460,4 +487,11 @@ impl Dispatcher {
         let handle = tokio::spawn(job.run());
         self.fusion_jobs.insert(uri, handle.abort_handle());
     }
+}
+
+fn features_lineage(
+    parsed: &cogitator_parser::ParsedDocument,
+    ctx: &DbtContext,
+) -> Option<cogitator_analysis::lineage::ModelLineage> {
+    cogitator_analysis::lineage::column_lineage(parsed, &ctx.dialect)
 }

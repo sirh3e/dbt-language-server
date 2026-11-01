@@ -17,7 +17,7 @@ specified in `specs/rust-port/`).
 ## Code Style (binding rules in specs/rust-port/05 §2–§3, 08 §1)
 - **Functional core, imperative shell**: extraction/feature logic is pure
   functions over values; filesystem, process and LSP I/O stay in thin shell
-  modules (`fs_scan`, the `server/` tasks).
+  modules (`cache::FileCache` at the scan boundary, the `server/` tasks).
 - **Errors**: one `Error` enum (`cogitator-error`) with `thiserror`; `anyhow`
   only in `main()`/task top-levels. Degradation is explicit at the feature
   layer, never silent deep in helpers.

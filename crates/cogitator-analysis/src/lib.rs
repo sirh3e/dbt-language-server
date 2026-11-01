@@ -1,9 +1,10 @@
 //! Project analysis: state, dbt context, features (specs/rust-port/03).
 
+pub mod cache;
 pub mod context;
 pub mod features;
-pub mod fs_scan;
 pub mod graph;
+pub mod lineage;
 pub mod util;
 pub mod yaml_features;
 
@@ -15,7 +16,8 @@ use cogitator_lsp::ContentChange;
 use cogitator_parser::{DocumentParser, JinjaSqlParser, ParsedDocument};
 
 pub use context::{
-    build_context, DbtContext, MacroDetails, ModelDetails, SourceDetails, VariableDetails,
+    build_context, ContextBuilder, DbtContext, MacroDetails, ModelDetails, SourceDetails,
+    VariableDetails,
 };
 
 /// One open document: the current text plus the last good parse (05 §4

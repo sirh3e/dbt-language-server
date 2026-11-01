@@ -86,7 +86,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     map
                 },
                 execute_command_provider: ExecuteCommandOptions {
-                    commands: vec!["dbt.goToSchema"],
+                    commands: vec!["dbt.goToSchema", "dbt.columnLineage"],
                 },
                 references_provider: true,
                 document_symbol_provider: true,

@@ -526,7 +526,9 @@ dependencies = [
  "regex",
  "rstest",
  "saphyr",
+ "serde",
  "serde_json",
+ "sqlparser",
  "tracing",
  "walkdir",
 ]

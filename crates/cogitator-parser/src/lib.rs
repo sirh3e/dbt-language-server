@@ -158,6 +158,6 @@ pub use pipeline::JinjaSqlParser;
 /// implementations (06 §3.5 seam — used by the tree-sitter crate).
 pub mod backend {
     pub use crate::pipeline::{
-        assemble, collect_ctes, refine, tokenize_sql_segment, tokenize_template,
+        assemble, collect_ctes, refine, sql_dialect, tokenize_sql_segment, tokenize_template,
     };
 }

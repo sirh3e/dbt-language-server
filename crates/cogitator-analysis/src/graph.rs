@@ -12,7 +12,11 @@ use cogitator_parser::{DocumentParser, JinjaSqlParser, TokenKind};
 use cogitator_schemas::project::ProjectFile;
 use petgraph::stable_graph::{NodeIndex, StableDiGraph};
 
+use crate::cache::FileCache;
 use crate::util;
+
+/// Cached per-model edge extraction result: (target kind, edge, target name).
+pub type EdgeSeed = (NodeKind, EdgeKind, String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
@@ -42,34 +46,31 @@ pub struct ProjectGraph {
 }
 
 impl ProjectGraph {
-    pub fn build(root: &Path, project: &ProjectFile, dialect: &Dialect) -> Self {
+    pub fn build(
+        root: &Path,
+        project: &ProjectFile,
+        dialect: &Dialect,
+        cache: &mut FileCache<Vec<EdgeSeed>>,
+    ) -> Self {
         let mut graph = ProjectGraph::default();
-        let parser = JinjaSqlParser;
         let model_files = util::create_file_name_map(&[".sql"], root, &project.model_paths);
 
         for (name, path) in &model_files {
             graph.ensure_node(NodeKind::Model, name.clone(), path.clone());
         }
         for (name, path) in &model_files {
-            let Ok(text) = std::fs::read_to_string(path) else {
-                continue;
-            };
-            let Ok(doc) = parser.parse(&text, dialect) else {
+            let Some(seeds) =
+                cache.get_or_parse(path, |text, _| Some(extract_edge_seeds(text, dialect)))
+            else {
                 continue;
             };
             let from = graph.ensure_node(NodeKind::Model, name.clone(), path.clone());
-            for token in &doc.tokens {
-                let (kind, edge) = match token.kind {
-                    TokenKind::Ref => (NodeKind::Model, EdgeKind::Ref),
-                    TokenKind::SourceName => (NodeKind::Source, EdgeKind::Source),
-                    TokenKind::Macro => (NodeKind::Macro, EdgeKind::MacroCall),
-                    _ => continue,
-                };
-                let target = doc.literal(token).to_string();
-                let to = graph.ensure_node(kind, target, PathBuf::new());
-                graph.graph.update_edge(from, to, edge);
+            for (kind, edge, target) in seeds.iter() {
+                let to = graph.ensure_node(*kind, target.clone(), PathBuf::new());
+                graph.graph.update_edge(from, to, *edge);
             }
         }
+        cache.sweep();
         graph
     }
 
@@ -143,4 +144,23 @@ impl ProjectGraph {
         edges.sort();
         edges
     }
+}
+
+/// Pure per-file edge extraction via the phase-1 pipeline (scan side).
+fn extract_edge_seeds(text: &str, dialect: &Dialect) -> Vec<EdgeSeed> {
+    let Ok(doc) = JinjaSqlParser.parse(text, dialect) else {
+        return Vec::new();
+    };
+    doc.tokens
+        .iter()
+        .filter_map(|token| {
+            let (kind, edge) = match token.kind {
+                TokenKind::Ref => (NodeKind::Model, EdgeKind::Ref),
+                TokenKind::SourceName => (NodeKind::Source, EdgeKind::Source),
+                TokenKind::Macro => (NodeKind::Macro, EdgeKind::MacroCall),
+                _ => return None,
+            };
+            Some((kind, edge, doc.literal(token).to_string()))
+        })
+        .collect()
 }

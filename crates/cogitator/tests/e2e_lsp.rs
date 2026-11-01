@@ -170,6 +170,22 @@ fn full_session() {
     );
     assert!(hover["result"]["contents"].is_string());
 
+    // 4b. column lineage command on the open model
+    let lineage = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({
+            "command": "dbt.columnLineage",
+            "arguments": [{"uri": uri}]
+        }),
+    );
+    assert!(
+        lineage["result"]["columns"]
+            .as_array()
+            .is_some_and(|c| !c.is_empty()),
+        "column lineage over the wire: {}",
+        lineage["result"]
+    );
+
     // 5. completion inside ref('
     lsp.notify(
         "textDocument/didChange",

@@ -153,7 +153,7 @@ fn push(tokens: &mut Vec<Token>, kind: TokenKind, start: u32, end: u32, table: &
     });
 }
 
-fn sql_dialect(dialect: &Dialect) -> Box<dyn SqlDialect> {
+pub fn sql_dialect(dialect: &Dialect) -> Box<dyn SqlDialect> {
     match dialect.as_str() {
         "snowflake" => Box::new(SnowflakeDialect {}),
         "duckdb" => Box::new(DuckDbDialect {}),
