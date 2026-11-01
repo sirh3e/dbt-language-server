@@ -54,6 +54,7 @@ pub(super) fn build_model_details(
                     schema_range: schema
                         .map(|m| Range::zero_width(m.name_pos))
                         .unwrap_or_default(),
+                    columns: schema.map(|m| m.columns.clone()).unwrap_or_default(),
                 },
             );
         }
@@ -70,6 +71,7 @@ pub(super) fn build_model_details(
                 description: "Seed File".to_string(),
                 schema_uri: None,
                 schema_range: Range::default(),
+                columns: Vec::new(),
             },
         );
     }
@@ -84,6 +86,7 @@ pub(super) struct SchemaModel {
     pub(super) alias: Option<String>,
     pub(super) schema_uri: PathBuf,
     pub(super) name_pos: Position,
+    pub(super) columns: Vec<cogitator_schemas::ColumnEntry>,
 }
 
 /// Properties YAML files under the model paths (03 §6.2): cached per file;
@@ -119,6 +122,7 @@ fn schema_entries(
                         alias: model.alias.clone(),
                         schema_uri: file.clone(),
                         name_pos: model.name_pos,
+                        columns: model.columns.clone(),
                     },
                 );
             }
@@ -146,6 +150,7 @@ fn source_details(
                     description: expand(&t.description),
                     uri: path.to_path_buf(),
                     range: Range::zero_width(t.name_pos),
+                    columns: t.columns.clone(),
                 },
             )
         })

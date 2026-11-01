@@ -57,6 +57,8 @@ pub struct ModelDetails {
     pub description: String,
     pub schema_uri: Option<PathBuf>,
     pub schema_range: Range,
+    /// Documented columns from the properties YAML (write-assist).
+    pub columns: Vec<cogitator_schemas::ColumnEntry>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -74,6 +76,7 @@ pub struct SourceTableDetails {
     pub description: String,
     pub uri: PathBuf,
     pub range: Range,
+    pub columns: Vec<cogitator_schemas::ColumnEntry>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

@@ -46,9 +46,12 @@ pub struct CompletionItem {
 
 /// LSP CompletionItemKind values used by the server (01 §2.3).
 pub mod completion_kind {
+    pub const TEXT: i32 = 1;
     pub const FUNCTION: i32 = 3;
+    pub const FIELD: i32 = 5;
     pub const VARIABLE: i32 = 6;
     pub const SNIPPET: i32 = 15;
+    pub const KEYWORD: i32 = 14;
     pub const REFERENCE: i32 = 18;
 }
 

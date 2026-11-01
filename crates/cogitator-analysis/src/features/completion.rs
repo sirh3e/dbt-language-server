@@ -3,6 +3,7 @@
 use std::sync::LazyLock;
 
 use cogitator_lsp::{completion_kind, CompletionItem, Position};
+use cogitator_parser::TokenKind;
 use regex::Regex;
 
 use super::{display_value, DbtContext, Document};
@@ -41,8 +42,131 @@ pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<Comple
     } else if JINJA_RE.is_match(before) {
         macro_items(ctx)
     } else {
-        ctx.dialect.function_completion_items()
+        write_suggestions(ctx, doc, pos)
     }
+}
+
+/// Plain-SQL write assist: dialect functions + SQL keywords + the document's
+/// own CTEs/aliases/identifiers + documented columns of every relation the
+/// document refs or sources (FEATURE_REQUESTS "writing suggestions").
+fn write_suggestions(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<CompletionItem> {
+    let mut items = ctx.dialect.function_completion_items();
+    items.extend(keyword_items());
+    items.extend(local_identifier_items(doc, pos));
+    items.extend(relation_column_items(ctx, doc));
+    items
+}
+
+/// SQL keywords from sqlparser's global table (covers the Snowflake set —
+/// QUALIFY, ILIKE, …) as lowercase suggestions.
+fn keyword_items() -> impl Iterator<Item = CompletionItem> {
+    sqlparser::keywords::ALL_KEYWORDS.iter().map(|kw| {
+        let word = kw.to_lowercase();
+        CompletionItem {
+            label: word.clone(),
+            detail: "SQL keyword".to_string(),
+            documentation: String::new(),
+            kind: completion_kind::KEYWORD,
+            insert_text: word.clone(),
+            sort_text: format!("z{word}"), // keywords sort after everything local
+            data: None,
+        }
+    })
+}
+
+/// CTE names and every identifier already written in the document (table
+/// aliases, column names in use) — excluding the word under the cursor.
+fn local_identifier_items(doc: &Document, pos: Position) -> Vec<CompletionItem> {
+    use cogitator_parser::Keyword;
+
+    let under_cursor = doc
+        .parsed
+        .find_token_at_cursor(pos.line, pos.character.saturating_sub(1));
+    let mut seen = std::collections::BTreeSet::new();
+    let mut items = Vec::new();
+
+    for name in doc.parsed.def_tokens.keys() {
+        if seen.insert(name.to_string()) {
+            items.push(CompletionItem {
+                label: name.to_string(),
+                detail: "CTE in this file".to_string(),
+                documentation: String::new(),
+                kind: completion_kind::VARIABLE,
+                insert_text: name.to_string(),
+                sort_text: format!("a{name}"),
+                data: None,
+            });
+        }
+    }
+    for (i, token) in doc.parsed.tokens.iter().enumerate() {
+        if !matches!(
+            token.kind,
+            TokenKind::Word(Keyword::NoKeyword) | TokenKind::Ident
+        ) {
+            continue;
+        }
+        if under_cursor == Some(i) {
+            continue;
+        }
+        let literal = doc.parsed.literal(token).to_string();
+        if seen.insert(literal.clone()) {
+            items.push(CompletionItem {
+                label: literal.clone(),
+                detail: "identifier in this file".to_string(),
+                documentation: String::new(),
+                kind: completion_kind::TEXT,
+                insert_text: literal.clone(),
+                sort_text: format!("b{literal}"),
+                data: None,
+            });
+        }
+    }
+    items
+}
+
+/// Documented columns of every model this document refs and every source
+/// table it reads, straight from the properties YAML.
+fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
+    let mut seen = std::collections::BTreeSet::new();
+    let mut items = Vec::new();
+    let mut add = |relation: &str, column: &cogitator_schemas::ColumnEntry| {
+        if seen.insert((relation.to_string(), column.name.clone())) {
+            items.push(CompletionItem {
+                label: column.name.clone(),
+                detail: format!("Column of {relation}"),
+                documentation: column.description.clone(),
+                kind: completion_kind::FIELD,
+                insert_text: column.name.clone(),
+                sort_text: format!("a{}", column.name),
+                data: None,
+            });
+        }
+    };
+
+    for token in &doc.parsed.tokens {
+        match token.kind {
+            TokenKind::Ref => {
+                let name = doc.parsed.literal(token);
+                if let Some(model) = ctx.model_detail_map.get(name) {
+                    for column in &model.columns {
+                        add(name, column);
+                    }
+                }
+            }
+            TokenKind::SourceTable => {
+                let table_name = doc.parsed.literal(token);
+                for source in ctx.source_detail_map.values() {
+                    if let Some(table) = source.tables.get(table_name) {
+                        for column in &table.columns {
+                            add(table_name, column);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    items
 }
 
 fn ref_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {

@@ -11,7 +11,9 @@ pub mod properties;
 pub mod yaml;
 
 pub use project::{parse_dbt_project, ProjectFile};
-pub use properties::{parse_properties, ModelEntry, PropertiesFile, SourceEntry, TableEntry};
+pub use properties::{
+    parse_properties, ColumnEntry, ModelEntry, PropertiesFile, SourceEntry, TableEntry,
+};
 
 /// Property-key lists for YAML completion, read from the same processed
 /// schemas the typify macro compiles (08 §2.6 v1).

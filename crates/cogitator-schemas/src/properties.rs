@@ -23,6 +23,14 @@ pub struct ModelEntry {
     pub name_pos: Position,
     pub description: String,
     pub alias: Option<String>,
+    pub columns: Vec<ColumnEntry>,
+}
+
+/// A documented column from the properties YAML (write-assist completion).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnEntry {
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +46,7 @@ pub struct TableEntry {
     pub name: String,
     pub name_pos: Position,
     pub description: String,
+    pub columns: Vec<ColumnEntry>,
 }
 
 /// Parse one properties YAML file. Failures degrade per file (Go returned an
@@ -92,6 +101,7 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                 name_pos,
                 description: m.description.clone().unwrap_or_default(),
                 alias,
+                columns: columns_of(&m.columns),
             }
         })
         .collect();
@@ -117,6 +127,7 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                         name: t.name.clone(),
                         name_pos: table_positions.get(j).copied().unwrap_or_default(),
                         description: t.description.clone().unwrap_or_default(),
+                        columns: columns_of(&t.columns),
                     })
                     .collect(),
             }
@@ -139,7 +150,8 @@ fn prune_for_server(value: &mut serde_json::Value) {
     if let Some(Value::Array(models)) = root.get_mut("models") {
         for m in models {
             if let Value::Object(map) = m {
-                map.retain(|k, _| k == "name" || k == "description");
+                map.retain(|k, _| matches!(k.as_str(), "name" | "description" | "columns"));
+                prune_columns(map);
             }
         }
     }
@@ -155,10 +167,34 @@ fn prune_for_server(value: &mut serde_json::Value) {
                 if let Some(Value::Array(tables)) = map.get_mut("tables") {
                     for t in tables {
                         if let Value::Object(tmap) = t {
-                            tmap.retain(|k, _| k == "name" || k == "description");
+                            tmap.retain(|k, _| {
+                                matches!(k.as_str(), "name" | "description" | "columns")
+                            });
+                            prune_columns(tmap);
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+fn columns_of(columns: &[crate::generated::dbt_yml_files::ColumnProperties]) -> Vec<ColumnEntry> {
+    columns
+        .iter()
+        .map(|c| ColumnEntry {
+            name: c.name.clone(),
+            description: c.description.clone().unwrap_or_default(),
+        })
+        .collect()
+}
+
+fn prune_columns(map: &mut serde_json::Map<String, serde_json::Value>) {
+    use serde_json::Value;
+    if let Some(Value::Array(columns)) = map.get_mut("columns") {
+        for c in columns {
+            if let Value::Object(cmap) = c {
+                cmap.retain(|k, _| k == "name" || k == "description");
             }
         }
     }

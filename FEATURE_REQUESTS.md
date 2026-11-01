@@ -43,6 +43,16 @@ names what already exists in the codebase.
       sqlparser AST, CTE-transitive resolution incl. `select *` chains;
       declines on Jinja control blocks (07 §3.2 confidence rule).
 
+- [x] **Write-assist completion** in plain SQL: local CTEs, identifiers
+      already in the buffer (table aliases, columns in use), documented
+      columns of every `ref`/`source` relation in the file (from the
+      properties YAML, now carried through `cogitator-schemas`), and SQL
+      keywords from sqlparser's table (covers the Snowflake set — QUALIFY,
+      ILIKE, …), sorted local-first.
+- [x] **Snowflake coverage closed out**: profiles.yml → dialect, keyword
+      suggestions, function docs/completion (743 entries), and lineage
+      parsing Snowflake syntax (QUALIFY) — all tested.
+
 ## P2 — quality of life
 
 - [x] **`completionItem/resolve`** — send lean completion items, resolve
