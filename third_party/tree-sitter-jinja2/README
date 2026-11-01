@@ -1,0 +1,5 @@
+Vendored from https://github.com/dbt-labs/tree-sitter-jinja2
+commit: a82ed374f4cb58a1358dd6b26a7157bde1bca3b7
+files: src/parser.c, src/tree_sitter/*.h, grammar.js, LICENSE
+ABI: LANGUAGE_VERSION 14 (compatible with tree-sitter >= 0.25 runtime)
+Compiled by crates/ecclesiarch/build.rs via the cc crate (zig toolchain in CI, 07 §5).

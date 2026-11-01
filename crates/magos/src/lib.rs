@@ -27,14 +27,28 @@ pub struct Document {
 }
 
 /// Open-document store owned by the dispatcher (05 §6.2 — single owner, no
-/// lock).
-#[derive(Default)]
+/// lock). The tokenization backend is injected through the `DocumentParser`
+/// seam (06 §3.5): phase-1 `JinjaSqlParser` by default, the tree-sitter
+/// backend when the binary selects it.
 pub struct Documents {
-    parser: JinjaSqlParser,
+    parser: Box<dyn DocumentParser + Send>,
     docs: HashMap<String, Document>,
 }
 
+impl Default for Documents {
+    fn default() -> Self {
+        Documents::with_parser(Box::new(JinjaSqlParser))
+    }
+}
+
 impl Documents {
+    pub fn with_parser(parser: Box<dyn DocumentParser + Send>) -> Self {
+        Documents {
+            parser,
+            docs: HashMap::new(),
+        }
+    }
+
     pub fn get(&self, uri: &str) -> Option<&Document> {
         self.docs.get(uri)
     }

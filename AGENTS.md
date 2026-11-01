@@ -39,6 +39,7 @@ specified in `specs/rust-port/`).
 - `crates/lexmechanic` — minijinja+sqlparser pipeline, refinement, TokenIndex, jinja_scan
 - `crates/magos` — context builders, feature functions, petgraph project graph
 - `crates/servitor` — Jinja masking + feature-gated DuckDB 2.0 parse diagnostics
+- `crates/ecclesiarch` — tree-sitter document backend (vendored grammar in `third_party/`)
 - `crates/cogitator` — the binary: CLI, tokio tasks, dispatcher, fusion, observability
 - `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
 - `specs/rust-port/` — the binding implementation specs (00–09)

@@ -153,3 +153,11 @@ pub trait DocumentParser {
 }
 
 pub use pipeline::JinjaSqlParser;
+
+/// Shared tokenization backend for alternative [`DocumentParser`]
+/// implementations (06 §3.5 seam — used by the tree-sitter crate).
+pub mod backend {
+    pub use crate::pipeline::{
+        assemble, collect_ctes, refine, tokenize_sql_segment, tokenize_template,
+    };
+}

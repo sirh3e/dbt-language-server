@@ -33,7 +33,7 @@ dbt-language-server/
     ├── magos/                 # State, DbtContext, detail-map builders, features,
     │                          #   petgraph ProjectGraph, util (03, 05 §5)
     ├── servitor/              # DuckDB 2.0 parse diagnostics (07) — OWNS the bundled C++ build
-    ├── ecclesiarch/           # phase 2 tree-sitter (06 §3) — OWNS the grammar C builds; absent in phase 1
+    ├── ecclesiarch/           # tree-sitter backend (06 §3) — OWNS the grammar C builds
     └── cogitator/             # the binary: CLI, tokio task wiring, dispatcher,
                                #   fusion orchestration, observability (01 §3, 04 §1–§2, 05 §6)
 ```

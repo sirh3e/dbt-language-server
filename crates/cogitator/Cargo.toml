@@ -20,6 +20,7 @@ lexicanum = { workspace = true }
 magos = { workspace = true }
 lexmechanic = { workspace = true }
 servitor = { workspace = true }
+ecclesiarch = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 clap = { workspace = true }

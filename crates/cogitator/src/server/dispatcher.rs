@@ -33,6 +33,7 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     pub fn new(
+        documents: Documents,
         write_tx: mpsc::UnboundedSender<Vec<u8>>,
         ctx_rx: watch::Receiver<Arc<DbtContext>>,
         refresh_tx: mpsc::UnboundedSender<String>,
@@ -40,7 +41,7 @@ impl Dispatcher {
         fusion_enabled: Arc<AtomicBool>,
     ) -> Self {
         Dispatcher {
-            documents: Documents::default(),
+            documents,
             write_tx,
             ctx_rx,
             refresh_tx,

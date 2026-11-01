@@ -52,8 +52,14 @@ names what already exists in the codebase.
 
 ## P3 — planned phases (already specced)
 
-- [x] **Tree-sitter batch — token-based v1 shipped** (tree-sitter, 06 §3.6,
-      later upgrades fidelity: error-tolerant trees, richer folding/symbols):
+- [x] **Tree-sitter backend shipped** (`crates/ecclesiarch`, 06 §3): the
+      vendored dbt-labs jinja2 grammar segments documents error-tolerantly —
+      broken constructs degrade locally instead of staling the whole document
+      — and is the default `DocumentParser` (fallback: `--no-tree-sitter`).
+      Still open from 06 §3.4: incremental `tree.edit()` reparse (today each
+      parse is a full, µs-scale reparse).
+- [x] **Tree-sitter batch — token-based v1 shipped** (06 §3.6, the tree can
+      later upgrade fidelity: richer folding/symbols from real nodes):
       - [x] `textDocument/semanticTokens` (full)
       - [x] `textDocument/foldingRange` (multi-line paren pairs)
       - [x] `textDocument/documentSymbol` (CTEs + macros, flat)

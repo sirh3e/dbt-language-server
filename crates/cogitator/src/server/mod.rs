@@ -16,7 +16,21 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 use vox::rpc;
 
-pub async fn run(fusion_path: String) -> Result<()> {
+pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
+    // Backend selection (06 §3.5): tree-sitter is the default; phase-1 stays
+    // compiled as the fallback and behind --no-tree-sitter.
+    let documents = if use_tree_sitter {
+        match ecclesiarch::TreeSitterParser::new() {
+            Ok(parser) => dbt_ls_documents(Box::new(parser)),
+            Err(err) => {
+                tracing::warn!(%err, "tree-sitter unavailable; using phase-1 pipeline");
+                dbt_ls_documents(Box::new(lexmechanic::JinjaSqlParser))
+            }
+        }
+    } else {
+        dbt_ls_documents(Box::new(lexmechanic::JinjaSqlParser))
+    };
+
     let fusion_enabled = Arc::new(AtomicBool::new(false));
     if !fusion_path.is_empty() {
         let flag = fusion_enabled.clone();
@@ -73,8 +87,14 @@ pub async fn run(fusion_path: String) -> Result<()> {
     });
 
     // reader loop feeding the dispatcher (same task: ordering preserved)
-    let mut dispatcher =
-        dispatcher::Dispatcher::new(write_tx, ctx_rx, refresh_tx, fusion_path, fusion_enabled);
+    let mut dispatcher = dispatcher::Dispatcher::new(
+        documents,
+        write_tx,
+        ctx_rx,
+        refresh_tx,
+        fusion_path,
+        fusion_enabled,
+    );
 
     let mut stdin = tokio::io::stdin();
     let mut buf: Vec<u8> = Vec::with_capacity(64 * 1024);
@@ -108,4 +128,8 @@ pub async fn run(fusion_path: String) -> Result<()> {
     drop(dispatcher);
     writer.await.ok();
     Ok(())
+}
+
+fn dbt_ls_documents(parser: Box<dyn lexmechanic::DocumentParser + Send>) -> magos::Documents {
+    magos::Documents::with_parser(parser)
 }
