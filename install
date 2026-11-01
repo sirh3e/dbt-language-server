@@ -2,7 +2,7 @@
 
 set -e
 
-REPO="j-clemons/dbt-language-server"
+REPO="j-clemons/cogitator"
 API_URL="https://api.github.com/repos/$REPO/releases/latest"
 
 # Detect OS
@@ -41,9 +41,9 @@ if [[ "$OS" == "linux" && "$ARCH" != "amd64" ]]; then
     exit 1
 fi
 
-BINARY_NAME="dbt-language-server-${OS}-${ARCH}"
+BINARY_NAME="cogitator-${OS}-${ARCH}"
 INSTALL_DIR="$HOME/.local/bin"
-INSTALL_PATH="$INSTALL_DIR/dbt-language-server"
+INSTALL_PATH="$INSTALL_DIR/cogitator"
 
 echo "Installing $BINARY_NAME to $INSTALL_PATH..."
 

@@ -21,17 +21,20 @@ dbt-language-server/
 ├── third_party/               # phase 2: vendored tree-sitter grammars (06 §3.2)
 ├── testdata/                  # shared fixtures (Go repo copy)
 └── crates/
-    ├── dbt-ls-error/          # Error enum + Result alias (05 §2)
-    ├── dbt-ls-lsp/            # protocol structs + rpc framing (01; Go rpc/ + lsp/)
-    ├── dbt-ls-dialects/       # Dialect enum + function-docs JSON (04 §3; include_str! data)
-    ├── dbt-ls-schemas/        # typify-generated dbt types + saphyr position side-table (08 §2)
-    ├── dbt-ls-parser/         # DocumentParser seam, minijinja+sqlparser pipeline,
+    │   (the crates carry Warhammer 40k names — owner's choice, late rename;
+    │    mapping: error→heresy, lsp→vox, dialects→lexicanum, schemas→codex,
+    │    parser→lexmechanic, analysis→magos, duckdb→servitor, binary→cogitator)
+    ├── heresy/                # Error enum + Result alias (05 §2)
+    ├── vox/                   # protocol structs + rpc framing (01; Go rpc/ + lsp/)
+    ├── lexicanum/             # Dialect enum + function-docs JSON (04 §3; include_str! data)
+    ├── codex/                 # typify-generated dbt types + saphyr position side-table (08 §2)
+    ├── lexmechanic/           # DocumentParser seam, minijinja+sqlparser pipeline,
     │                          #   refinement, TokenIndex, jinja_scan (05 §4, 06 §2/§3.5)
-    ├── dbt-ls-analysis/       # State, DbtContext, detail-map builders, features,
+    ├── magos/                 # State, DbtContext, detail-map builders, features,
     │                          #   petgraph ProjectGraph, util (03, 05 §5)
-    ├── dbt-ls-duckdb/         # DuckDB 2.0 parse diagnostics (07) — OWNS the bundled C++ build
-    ├── dbt-ls-treesitter/     # phase 2 (06 §3) — OWNS the grammar C builds; absent in phase 1
-    └── dbt-language-server/   # the binary: CLI, tokio task wiring, dispatcher,
+    ├── servitor/              # DuckDB 2.0 parse diagnostics (07) — OWNS the bundled C++ build
+    ├── ecclesiarch/           # phase 2 tree-sitter (06 §3) — OWNS the grammar C builds; absent in phase 1
+    └── cogitator/             # the binary: CLI, tokio task wiring, dispatcher,
                                #   fusion orchestration, observability (01 §3, 04 §1–§2, 05 §6)
 ```
 

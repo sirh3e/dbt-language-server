@@ -1,0 +1,15 @@
+[package]
+name = "vox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+heresy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
+insta = { workspace = true }

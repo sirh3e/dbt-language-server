@@ -6,17 +6,17 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://codeberg.org/sirh3e/dbt-language-server"
+repository = "https://codeberg.org/sirh3e/cogitator"
 
 [workspace.dependencies]
 # internal crates
-dbt-ls-error = { path = "crates/dbt-ls-error" }
-dbt-ls-lsp = { path = "crates/dbt-ls-lsp" }
-dbt-ls-dialects = { path = "crates/dbt-ls-dialects" }
-dbt-ls-schemas = { path = "crates/dbt-ls-schemas" }
-dbt-ls-parser = { path = "crates/dbt-ls-parser" }
-dbt-ls-analysis = { path = "crates/dbt-ls-analysis" }
-dbt-ls-duckdb = { path = "crates/dbt-ls-duckdb" }
+heresy = { path = "crates/heresy" }
+vox = { path = "crates/vox" }
+lexicanum = { path = "crates/lexicanum" }
+codex = { path = "crates/codex" }
+lexmechanic = { path = "crates/lexmechanic" }
+magos = { path = "crates/magos" }
+servitor = { path = "crates/servitor" }
 
 # external (05 §1)
 anyhow = "1"

@@ -1,9 +1,0 @@
-[package]
-name = "dbt-ls-dialects"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-
-[dependencies]
-dbt-ls-lsp = { workspace = true }
-serde_json = { workspace = true }

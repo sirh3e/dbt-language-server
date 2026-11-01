@@ -1,6 +1,7 @@
-# dbt Language Server
+# dbt Language Server (`cogitator`)
 
-LSP for dbt
+LSP for dbt. The server binary and its crates carry Adeptus Mechanicus names
+(cogitator, magos, lexmechanic, codex, vox, lexicanum, servitor, heresy).
 
 ## Features
 
@@ -45,10 +46,10 @@ If path to the dbt fusion executable is not provided, `dbt` will be used and wil
 The server is a Rust workspace:
 
 ```
-cargo build --release -p dbt-language-server
+cargo build --release -p cogitator
 ```
 
-The binary lands at `target/release/dbt-language-server`. See `AGENTS.md` for
+The binary (`cogitator`) lands at `target/release/cogitator`. See `AGENTS.md` for
 development commands and `specs/rust-port/` for the implementation specs.
 
 ## Installation
@@ -65,7 +66,7 @@ Configure with your LSP client (e.g., nvim-lspconfig):
 
 ```lua
 require'lspconfig'.dbt.setup{
-  cmd = { "dbt-language-server" },
+  cmd = { "cogitator" },
   filetypes = { "sql", "yaml" },
   root_dir = require'lspconfig'.util.root_pattern("dbt_project.yml"),
 }
@@ -76,14 +77,14 @@ require'lspconfig'.dbt.setup{
 Add executable to $PATH and add to languages.toml
 
 ```toml
-[language-server.dbt-language-server]
-command = "dbt-language-server"
+[language-server.cogitator]
+command = "cogitator"
 
 [[language]]
 name = "dbt"
 scope = "dbt_project.yml"
 file-types = ["sql","yml","yaml"]
-language-servers = ["dbt-language-server"]
+language-servers = ["cogitator"]
 ```
 
 ### Zed

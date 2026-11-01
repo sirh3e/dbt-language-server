@@ -20,15 +20,15 @@ names what already exists in the codebase.
 
 - [x] **`textDocument/didClose`** — closed documents currently stay in the
       `Documents` store forever (leak inherited from the Go server).
-      Building block: `Documents` (`crates/dbt-ls-analysis/src/lib.rs`) just
+      Building block: `Documents` (`crates/magos/src/lib.rs`) just
       needs a `close(uri)` + dispatch arm.
 - [x] **Wire DuckDB parse diagnostics into the dispatcher** — the masking,
       confidence rule and `json_serialize_sql` engine exist
-      (`crates/dbt-ls-duckdb`, feature `duckdb-parser`, spec 07 §3) but are
+      (`crates/servitor`, feature `duckdb-parser`, spec 07 §3) but are
       not yet called on didOpen/didSave for duckdb projects.
 - [x] **`textDocument/references`** — find all models referencing a model.
       Building block: the petgraph dependency graph already answers it
-      (`ProjectGraph::dependents_of`, `crates/dbt-ls-analysis/src/graph.rs`);
+      (`ProjectGraph::dependents_of`, `crates/magos/src/graph.rs`);
       only dispatch + response wiring is missing.
 - [x] **Dangling-ref diagnostics** — warn on `ref('nonexistent')` without
       Fusion. Building block: `ProjectGraph::dangling_refs` (spec 05 §5).
