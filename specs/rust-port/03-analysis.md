@@ -105,6 +105,14 @@ from "no range" — treated as full replacement; matches LSP.
 
 ## 3. `dbt_project.yml` parsing
 
+> **Implementation note (08 §2):** the Rust port deserializes dbt YAML files
+> into types generated from dbt-labs/dbt-jsonschema with `typify` — the structs
+> in this section and §6.2 define the *subset of fields used* and the default
+> rules, not the Rust type definitions. Positions come from a saphyr-marker
+> side-table (08 §2.4) rather than wrapping every field; this section's
+> `AnnotatedField` formulation remains the behavioral reference for which
+> positions exist and how they are computed.
+
 ### 3.1 Annotated YAML
 
 Every interesting scalar/map records its YAML node position (0-based):

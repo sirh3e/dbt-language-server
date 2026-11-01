@@ -28,6 +28,11 @@ struct Token {
 }
 ```
 
+> **Implementation note (08 §1.1):** the Rust port does not store `literal` —
+> tokens carry a byte-span into the document's `Arc<str>` and the text is
+> resolved on demand (zero-copy). Everywhere this file says "literal", read
+> "the span's slice"; lengths, comparisons and map lookups are unchanged.
+
 `TokenType` in Go is a string; symbolic token types use their literal text as the value
 (`"("`, `"{{"`, …) and word types use names (`"IDENT"`, `"REF"`, …). In Rust use an enum;
 nothing serializes token types.

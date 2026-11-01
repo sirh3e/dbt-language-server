@@ -63,6 +63,9 @@ pretty_assertions = "1"
 for `yaml-rust2` if its marker API fits better; the requirement is per-node
 line/column, 03 §3.1.)
 
+Required dev tools, not dependencies: the Zig toolchain (07 §5) and
+`cargo-typify` for regenerating the dbt schema types (08 §2.2).
+
 ## 2. Error handling
 
 One application error type, defined in `src/error.rs` with `thiserror`; every
@@ -133,6 +136,11 @@ Rules:
   `State` methods only orchestrate.
 - Prefer iterator pipelines over index loops where they stay readable; no `clone()`
   to satisfy the borrow checker on hot paths (restructure instead).
+- **Zero-copy rulebook (08 §1) is part of the style:** tokens are spans into
+  `Arc<str>`, inbound params borrow from the frame buffer, scan-side extractors
+  return source slices until the snapshot boundary, responses serialize into the
+  writer's reused buffer. A `clone()`/`to_string()` must name the owner boundary
+  it feeds (08 §1.5) or it's a review defect.
 
 ## 4. SQL tokenization with `sqlparser`
 
@@ -200,7 +208,8 @@ Consequences (accepted deviations from Go, strictly better):
 The unified token model (replaces 02 §1 for the implementation):
 
 ```rust
-pub struct Token { pub kind: TokenKind, pub text: SmolStrOrString, pub line: u32, pub column: u32 }
+pub struct Token { pub kind: TokenKind, pub span: Range<u32>, pub line: u32, pub column: u32 }
+// span indexes into ParsedDocument.text (Arc<str>) — zero-copy, 08 §1.1
 pub enum TokenKind {
     Word { keyword: sqlparser::keywords::Keyword },  // keyword == NoKeyword ⇒ IDENT
     Ref, Var, SourceName, SourceTable, Macro, Package, Config,  // refined dbt kinds
@@ -386,6 +395,8 @@ src/analysis/parser/lexer.rs      # §4 pipeline: minijinja tokenize + sqlparser
 src/analysis/parser/ts/           # phase 2: tree-sitter ffi.rs/parser.rs/queries (06 §3)
 src/observability.rs              # §6.3: subscriber layers, OTLP init/shutdown
 src/analysis/graph.rs             # §5 (new)
+src/analysis/dbt_schema/          # 08 §2: typify-generated types + adapter + position side-table
+schemas/dbt/                      # 08 §2.1: vendored dbt-jsonschema files (pinned)
 src/server/                       # replaces flat main-loop code:
 ├── mod.rs                        #   task wiring (§6.2)
 ├── dispatcher.rs                 #   method match → feature calls
