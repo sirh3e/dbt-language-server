@@ -344,6 +344,10 @@ generated from the conventional-commit history with
 [git-cliff](https://git-cliff.org) (`just changelog`, config in
 `cliff.toml`).
 
+The feature workflow (trunk-based, conventional commits, squash-merged
+PRs) and the release cycle (`just release-prep <version>`, tags start at
+v0.5.0) are defined in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 See `AGENTS.md` for the development command reference and
 [`specs/rust-port/`](specs/rust-port/) for the implementation specs the
 port was written against.

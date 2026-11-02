@@ -79,3 +79,24 @@ hooks:
 # Lint our own shell scripts (the testdata fixture is third-party)
 lint-shell:
     git ls-files '*.sh' '*.bash' | grep -v '^testdata/' | xargs -r shellcheck
+
+# Prepare a release: guards, version bump, check, changelog section,
+# release commit and annotated tag. Review, then:
+#   git push origin main v<version>
+release-prep version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v="{{version}}"
+    [ -z "$(git status --porcelain)" ] || { echo "error: working tree not clean" >&2; exit 1; }
+    [ "$(git branch --show-current)" = "main" ] || { echo "error: not on main" >&2; exit 1; }
+    if [ "$(printf '%s\n' 0.5.0 "$v" | sort -V | head -1)" != "0.5.0" ]; then
+        echo "error: fork releases start at 0.5.0 (upstream owns v0.1.x-v0.4.x)" >&2; exit 1
+    fi
+    perl -pi -e 'if (!$done && s/^version = ".*"/version = "'"$v"'"/) { $done = 1 }' Cargo.toml
+    cargo update --workspace --quiet
+    just check
+    git cliff 724b0f2..HEAD --tag "v$v" -o CHANGELOG.md
+    git add Cargo.toml Cargo.lock CHANGELOG.md
+    git commit -m "chore(release): v$v"
+    git tag -a "v$v" -m "cogitator v$v"
+    echo "tagged v$v — review the commit, then: git push origin main v$v"
