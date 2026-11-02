@@ -1,56 +1,101 @@
 # Agent Guidelines for cogitator (dbt language server)
 
-Rust implementation of the dbt language server (a Cargo workspace; the former
-Go implementation lives in git history up to commit `724b0f2` and is fully
-specified in `specs/rust-port/`).
+Rust implementation of the dbt language server — a complete rewrite of
+j-clemons/dbt-language-server (the Go original lives in git history up to
+commit `724b0f2` and is fully specified in `specs/rust-port/`). First-party
+editor integrations live under `editors/`.
 
 ## Build/Test Commands
-- **justfile**: `just --list` — `just build` / `test` / `fmt` / `lint` / `check` (CI set) / `release` / `duckdb-check` / `gen-schemas`
+- **justfile**: `just --list` — `build` / `test` / `fmt` / `fmt-check` /
+  `lint` / `check` (the CI set) / `release` / `duckdb-check` /
+  `gen-schemas(-check)` / `zigbuild` / `nvim-test` / `emacs-test` /
+  `zed-build` / `changelog` / `hooks`
 - **Build**: `cargo build --workspace`
 - **Test all**: `cargo test --workspace`
 - **Test one crate**: `cargo test -p cogitator-parser`
 - **Test one case**: `cargo test -p cogitator-analysis ref_source_var_refined`
-- **Lint/format**: `cargo clippy --workspace` (zero warnings expected), `cargo fmt --all`
+- **Lint/format**: `cargo clippy --workspace --all-targets` (zero warnings
+  enforced), `cargo fmt --all`
+- **Editor suites** (against a live server + testdata/jaffle_shop_duckdb):
+  `just nvim-test` (Neovim ≥ 0.11 headless), `just emacs-test` (Emacs ≥ 29
+  batch/eglot), `just zed-build` (wasm32-wasip1 compile check)
 - **DuckDB feature** (bundled C++ build, slow): `cargo check -p cogitator --features duckdb-parser`
-- **Release cross-builds**: `cargo-zigbuild` via the Zig toolchain (specs/rust-port/07 §5; CI: .github/workflows/release.yml — linux-amd64, darwin-amd64/arm64, windows-amd64.exe via the `x86_64-pc-windows-gnu` target)
-- **CI tests**: .github/workflows/ci.yml runs `cargo test --workspace` on Ubuntu, Windows and macOS plus fmt/clippy
-- **Windows rules**: never hand-strip `file://` — URIs go through `cogitator_lsp::uri_to_fs_path` (handles `file:///c%3A/…` drive URIs) and paths become URIs via `cogitator_lsp::fs_path_to_uri`; home lookup uses `cogitator_analysis::util::home_dir()` (`$HOME` → `%USERPROFILE%`); compare paths as `Path` (components), not strings
+- **Release cross-builds**: cargo-zigbuild via the Zig toolchain
+  (specs/rust-port/07 §5; .github/workflows/release.yml — linux-amd64,
+  darwin-amd64/arm64, windows-amd64.exe); tests CI in ci.yml runs on
+  Linux, Windows and macOS
+
+## Tooling and Conventions
+- **Commits are Conventional Commits** (`feat(scope): …`, `fix: …`,
+  `docs(specs): …`); CHANGELOG.md is generated with git-cliff
+  (`just changelog` — ranged from the fork point `724b0f2`; the upstream
+  v0.1.x–v0.4.x tags are ignored via cliff.toml, and the first release of
+  this fork must be tagged **v0.5.0 or later**).
+- **Git hooks** run through prek (`prek install`; config in
+  `.pre-commit-config.yaml`: fmt check, clippy -D warnings, dbt-schema
+  freshness).
+- **Windows install**: `install.ps1` (there is deliberately no shell
+  installer; Unix users take release assets or build from source).
+- **GitHub issue forms** live in `.github/ISSUE_TEMPLATE/`.
 
 ## Code Style (binding rules in specs/rust-port/05 §2–§3, 08 §1)
 - **Functional core, imperative shell**: extraction/feature logic is pure
   functions over values; filesystem, process and LSP I/O stay in thin shell
   modules (`cache::FileCache` at the scan boundary, the `server/` tasks).
 - **Errors**: one `Error` enum (`cogitator-error`) with `thiserror`; `anyhow`
-  only in `main()`/task top-levels. Degradation is explicit at the feature
-  layer, never silent deep in helpers.
+  only in `main()`/task top-levels. User-facing failures carry a Reason and
+  a Solution. Degradation is explicit at the feature layer, never silent.
 - **Zero-copy**: tokens are byte spans into `Arc<str>` document text; inbound
   params borrow via `Cow`; a `clone()`/`to_string()` on a hot path must name
   the owner boundary it feeds (08 §1.5).
 - **No hand-written lexers**: minijinja machinery + sqlparser only (05 §4).
 - **Files stay small**: ≤ ~300 lines per module; split by concern.
 - **Logging**: `tracing` spans/events only; nothing but LSP frames on stdout.
+- **Windows rules**: never hand-strip `file://` — URIs go through
+  `cogitator_lsp::uri_to_fs_path` / `fs_path_to_uri` (drive-letter aware);
+  home lookup via `cogitator_analysis::util::home_dir()`
+  (`$HOME` → `%USERPROFILE%`); compare paths as `Path` components, not
+  strings.
 
-## Environment Variables
+## Server surface beyond stock LSP
+- Custom commands (advertised in `cogitator-lsp/src/types/init.rs`,
+  documented in `specs/neovim-plugin/00-plugin.md` §1.6): dbt.goToSchema,
+  dbt.columnLineage, dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
+  dbt.modelGraph, dbt.profiles, dbt.setTarget, dbt.extractModelYaml,
+  dbt.modelTests, dbt.goToTests, dbt.status, dbt.projectGraph. Every
+  command takes one argument object (`{uri, position?, …}`).
+- `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
+- `$/progress` reports context refreshes and dbt runs when the client
+  advertises window.workDoneProgress.
 - **Profiles auth manager**: `profiles::inventory` (cogitator-analysis)
   classifies/validates Snowflake auth per target, redacted; read scope =
   project profile + `--profiles-allow`; active target via `--target` /
   `dbt.setTarget` flows into dialect resolution and dbt `--target`.
+
+## Environment Variables / Flags
 - **DBT_PROFILES_DIR**: profiles.yml directory. Full resolution order
   (`util::profiles_candidates`): `--profiles-dir` /
   `initializationOptions.profilesDir` override → `$DBT_PROFILES_DIR` →
-  `<root>/profiles.yml` → `<root>/.dbt/profiles.yml` (Q5) →
+  `<root>/profiles.yml` → `<root>/.dbt/profiles.yml` →
   `~/.dbt/profiles.yml`; the first file whose profile resolves a target wins.
+- CLI: `--profiles-dir`, `--target`, `--profiles-allow`, `--fusion [path]`,
+  `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`.
 
 ## Project Structure (specs/rust-port/09 §1)
 - `crates/cogitator-error` — error type
-- `crates/cogitator-lsp` — protocol types + Content-Length framing
+- `crates/cogitator-lsp` — protocol types + Content-Length framing + URI helpers
 - `crates/cogitator-dialects` — dialect + bundled SQL function docs
 - `crates/cogitator-schemas` — typify-generated dbt schema types (`schemas/dbt/`) + saphyr position side-tables
 - `crates/cogitator-parser` — minijinja+sqlparser pipeline, refinement, TokenIndex, jinja_scan
-- `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph
+- `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
 - `crates/cogitator-duckdb` — Jinja masking + feature-gated DuckDB 2.0 parse diagnostics
 - `crates/cogitator-treesitter` — tree-sitter document backend (vendored grammar in `third_party/`)
 - `crates/cogitator` — the binary: CLI, tokio tasks, dispatcher, fusion, observability
+- `editors/nvim` — first-party Neovim plugin (commands, graph browser, the
+  Neovim-only :DbtDag project view, headless test suite)
+- `editors/emacs` — eglot + lsp-mode integration (batch test suite)
+- `editors/zed` — Zed extension (Rust→WASM)
 - `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
-- `specs/rust-port/` — the binding implementation specs (00–09)
+- `specs/rust-port/` — the binding implementation specs (00–09);
+  `specs/neovim-plugin/` — the editor-integration spec
 - `testdata/` — shared fixtures (jaffle_shop_duckdb)
