@@ -1,0 +1,76 @@
+name: Bug report
+description: Something in cogitator does not behave as documented
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! The more of the
+        fields below you fill in, the faster it can be fixed.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, in one or two sentences?
+      placeholder: Hovering a ref() in a versioned model shows nothing.
+    validations:
+      required: true
+  - type: dropdown
+    id: editor
+    attributes:
+      label: Editor / client
+      options:
+        - Neovim (editors/nvim plugin)
+        - Neovim (manual LSP config)
+        - Emacs (eglot)
+        - Emacs (lsp-mode)
+        - Zed (editors/zed extension)
+        - Helix
+        - Other (say which in the summary)
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`cogitator --version`, your editor version, and your OS."
+      placeholder: cogitator 0.1.0 · Neovim 0.11.2 · macOS 15
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Ideally against a small dbt project (the repo's
+        testdata/jaffle_shop_duckdb works well as a base).
+      placeholder: |
+        1. Open models/customers.sql
+        2. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: dbt.status output
+      description: >
+        Run `:DbtStatus` (Neovim) / `M-x cogitator-status` (Emacs), or the
+        `dbt.status` command from any client, and paste the result.
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Start the server with `--debug` and attach the relevant part of
+        `log.txt` (written next to the cogitator executable). Redact
+        anything private — the log never contains credentials, but paths
+        can be personal.
+      render: text

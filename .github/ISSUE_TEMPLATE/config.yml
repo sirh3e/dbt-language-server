@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question about setup
+    url: https://github.com/sirh3e/dbt-language-server#installation
+    about: The README covers installation, editor setup and dbt profiles.

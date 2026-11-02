@@ -1,0 +1,50 @@
+name: Feature request
+description: Something cogitator should be able to do
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! The same style as the bug form: short
+        summary first, details after.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What should cogitator do, in one or two sentences?
+      placeholder: Jump from a source() call to the warehouse table DDL.
+    validations:
+      required: true
+  - type: dropdown
+    id: editor
+    attributes:
+      label: Editor / client this matters in
+      options:
+        - All editors (server-side feature)
+        - Neovim (editors/nvim plugin)
+        - Emacs (editors/emacs)
+        - Zed (editors/zed extension)
+        - Helix
+        - Other (say which in the summary)
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: What are you doing today instead, and why is that worse?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: >
+        How should it work? LSP method / command names welcome but not
+        required — FEATURE_REQUESTS.md shows the level of detail that
+        helps.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
