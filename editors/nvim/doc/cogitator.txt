@@ -59,6 +59,8 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtGraph      model-graph browser                 <leader>dg
   :DbtProfiles   show/switch the profiles directory
   :DbtTarget     pick the active profile/target      <leader>dT
+  :DbtExtract    model → schema YAML / add version   <leader>dy
+  :DbtTests      jump to a test of this model        <leader>dq
                  run the code lens on this line      <leader>dL
 
 `:DbtProfiles` without an argument prints the server's profiles.yml

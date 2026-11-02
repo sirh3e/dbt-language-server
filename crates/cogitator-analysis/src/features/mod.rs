@@ -5,15 +5,18 @@
 mod completion;
 mod definition;
 mod diagnostics;
+mod extract;
 mod hover;
 mod navigation;
 mod rename;
 mod signature;
 mod structure;
+mod tests_nav;
 
 pub use completion::{completion, resolve_completion_documentation};
 pub use definition::{definition, go_to_schema};
 pub use diagnostics::dangling_ref_diagnostics;
+pub use extract::{extract_model_yaml, ExtractEdit};
 pub use hover::hover;
 pub use navigation::{
     code_lenses, document_highlights, document_symbols, model_graph, references, workspace_symbols,
@@ -21,6 +24,7 @@ pub use navigation::{
 pub use rename::rename_model;
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
+pub use tests_nav::{model_tests, model_tests_json, ModelTest};
 
 use std::path::Path;
 

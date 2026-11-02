@@ -299,5 +299,49 @@ check(
   vim.inspect(set_result)
 )
 
+-- tests navigation: dbt.modelTests wire shape
+local tests_result
+new_client:exec_cmd({
+  command = "dbt.modelTests",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+}, { bufnr = bufnr }, function(err, result)
+  tests_result = err == nil and result or false
+end)
+pcall(vim.wait, 5000, function()
+  return tests_result ~= nil
+end, 50)
+local has_unique = type(tests_result) == "table"
+  and tests_result.model == "customers"
+  and vim.iter(tests_result.tests or {}):any(function(t)
+    return t.name == "unique" and t.column == "customer_id"
+  end)
+check(has_unique, "yaml: dbt.modelTests lists unique on customer_id", vim.inspect(tests_result):sub(1, 200))
+
+-- extract-to-version: applyEdit lands in the schema BUFFER (never saved)
+new_client:exec_cmd({
+  command = "dbt.extractModelYaml",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+}, { bufnr = bufnr })
+local schema_buf
+pcall(vim.wait, 10000, function()
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(b) and vim.api.nvim_buf_get_name(b):find("models/schema%.yml$") then
+      local text = table.concat(vim.api.nvim_buf_get_lines(b, 0, -1, false), "\n")
+      if text:find("versions:") then
+        schema_buf = b
+        return true
+      end
+    end
+  end
+  return false
+end, 100)
+check(schema_buf ~= nil, "yaml: extract applies versions: to the schema buffer")
+if schema_buf then
+  local text = table.concat(vim.api.nvim_buf_get_lines(schema_buf, 0, -1, false), "\n")
+  check(text:find("latest_version: 1") ~= nil, "yaml: latest_version added", text:sub(1, 200))
+  check(vim.bo[schema_buf].modified, "yaml: schema buffer modified, not written")
+  vim.api.nvim_buf_delete(schema_buf, { force = true }) -- discard, keep fixture clean
+end
+
 print(failures == 0 and "ALL PASSED" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

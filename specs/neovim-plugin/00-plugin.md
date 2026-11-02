@@ -96,6 +96,9 @@ Every command takes **one argument object**, not positional values:
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
+| `dbt.extractModelYaml` | `null` | workspace/applyEdit (CreateFile scaffold, or version TextEdits) + showDocument |
+| `dbt.modelTests` | `{model, tests: [{name, column?, version?, uri, range}]}` or `null` | none |
+| `dbt.goToTests` | `null` | showDocument to the first test + INFO list |
 
 `dbt.profiles` answers `{ path, searched, activeProfile, activeTarget,
 profiles: [{ name, defaultTarget, allowed, targets: [{ name, type,

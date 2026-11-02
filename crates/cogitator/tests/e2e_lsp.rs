@@ -357,6 +357,50 @@ fn full_session() {
 
     // 6d. unknown request gets MethodNotFound; a known request with bad
     // params gets InvalidParams
+    // 6a6. yaml workflow: tests navigation + extract-to-version
+    let tests = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.modelTests", "arguments": [{ "uri": uri }] }),
+    );
+    assert_eq!(tests["result"]["model"], "customers", "{tests}");
+    let list = tests["result"]["tests"].as_array().expect("tests array");
+    assert!(
+        list.iter()
+            .any(|t| t["name"] == "unique" && t["column"] == "customer_id"),
+        "{tests}"
+    );
+
+    lsp.stash.clear();
+    let goto = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.goToTests", "arguments": [{ "uri": uri }] }),
+    );
+    assert!(goto["result"].is_null());
+    assert!(
+        lsp.stash
+            .iter()
+            .any(|m| m["method"] == "window/showDocument"
+                && m["params"]["uri"].as_str().unwrap().ends_with("schema.yml")),
+        "goToTests must navigate: {:?}",
+        lsp.stash
+    );
+
+    lsp.stash.clear();
+    let extract = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.extractModelYaml", "arguments": [{ "uri": uri }] }),
+    );
+    assert!(extract["result"].is_null());
+    let apply = lsp
+        .stash
+        .iter()
+        .find(|m| m["method"] == "workspace/applyEdit")
+        .expect("extract must send workspace/applyEdit");
+    let new_text = apply["params"]["edit"]["documentChanges"][0]["edits"][0]["newText"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(new_text.contains("versions:"), "{apply}");
+
     // 6b. the profiles auth manager over the wire
     let profiles = lsp.request(
         "workspace/executeCommand",

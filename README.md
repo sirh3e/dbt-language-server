@@ -69,7 +69,15 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `ref()`, updates the schema-YAML entry and renames the model file — one
   WorkspaceEdit over the project graph
 - **Code lenses** per model: `N downstream` / `N upstream`, go to schema,
-  column lineage, dbt run/test/compile; per macro: `N call sites`
+  column lineage, dbt run/test/compile, `N tests` (documented) or
+  `Extract schema YAML` (undocumented); per macro: `N call sites`
+- **Extract model → schema YAML** (`dbt.extractModelYaml`): scaffolds
+  `<model>.yml` with the model's real columns (from lineage) when no entry
+  exists, or adds the next `versions:` entry (and bumps `latest_version`)
+  when one does — applied in the editor via workspace/applyEdit
+- **Go to tests** (`dbt.modelTests` / `dbt.goToTests`): jump to every
+  `data_tests`/`tests` entry defined for a model — model-level, per
+  column, and per version (a `<model>_v2.sql` buffer resolves to its base)
 - **Model-graph browser** (`dbt.modelGraph`): direct upstream/downstream
   neighbors for the yazi-style three-pane UI in the Neovim and Emacs
   integrations

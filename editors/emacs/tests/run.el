@@ -109,6 +109,22 @@
   (check (and location (string-suffix-p ".yml" (plist-get location :uri)))
          "integration: dbt.goToSchema returns a schema-YAML Location" location))
 
+;; unit: test labels
+(check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
+              "unique on id (v2)")
+       "tests: label carries column and version")
+
+;; integration: tests navigation wire shape
+(let* ((result (run--exec "dbt.modelTests" (cogitator--command-argument)))
+       (tests (append (plist-get result :tests) nil)))
+  (check (equal (plist-get result :model) "customers")
+         "integration: dbt.modelTests answers for customers")
+  (check (seq-find (lambda (test)
+                     (and (equal (plist-get test :name) "unique")
+                          (equal (plist-get test :column) "customer_id")))
+                   tests)
+         "integration: unique test on customer_id is listed" tests))
+
 ;; unit: target-choice labels from a dbt.profiles report
 (let ((choices (cogitator--target-choices
                 '(:activeProfile "p" :activeTarget "dev"

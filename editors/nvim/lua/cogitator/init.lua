@@ -10,11 +10,12 @@ local function capabilities()
   return vim.tbl_deep_extend("force", vim.lsp.protocol.make_client_capabilities(), {
     -- dbt.openSchema / compiled-SQL opening need showDocument (spec §4.1)
     window = { showDocument = { support = true } },
-    -- model rename includes a RenameFile documentChange (spec §6.1)
+    -- model rename sends a RenameFile documentChange (spec §6.1) and
+    -- dbt.extractModelYaml a CreateFile via workspace/applyEdit
     workspace = {
       workspaceEdit = {
         documentChanges = true,
-        resourceOperations = { "rename" },
+        resourceOperations = { "create", "rename", "delete" },
       },
     },
   })
@@ -37,6 +38,8 @@ local function keymaps(bufnr)
   map("<leader>dT", function()
     require("cogitator.profiles").pick_target()
   end, "dbt: pick the active profile/target")
+  map("<leader>dy", commands.extract, "dbt: extract model into schema YAML / add version")
+  map("<leader>dq", commands.tests, "dbt: jump to a test of this model")
 end
 
 local function on_attach(client, bufnr, config)

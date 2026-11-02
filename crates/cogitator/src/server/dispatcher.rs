@@ -357,6 +357,20 @@ impl Dispatcher {
                 self.run_dbt(req.id, kind, &uri);
                 return;
             }
+            "dbt.extractModelYaml" => {
+                self.extract_model_yaml(req.id, &uri);
+                return;
+            }
+            "dbt.modelTests" => {
+                let ctx = self.snapshot();
+                let result = features::model_tests_json(&ctx, &uri);
+                self.send(&ResultResponse::new(req.id, result));
+                return;
+            }
+            "dbt.goToTests" => {
+                self.go_to_tests(req.id, &uri);
+                return;
+            }
             "dbt.profiles" => {
                 self.profiles_report(req.id);
                 return;
@@ -723,6 +737,142 @@ impl Dispatcher {
                 target,
             },
         );
+        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    /// `dbt.extractModelYaml` (lens entry point): scaffold the schema YAML
+    /// for an undocumented model, or add the next `versions:` entry to an
+    /// existing one — applied in the editor via workspace/applyEdit.
+    fn extract_model_yaml(&mut self, id: i64, uri: &str) {
+        let ctx = self.snapshot();
+        let lineage = self.lineage_for(uri, &ctx);
+        match features::extract_model_yaml(&ctx, uri, lineage.as_ref()) {
+            None => self.show_message(
+                cogitator_lsp::message_type::WARNING,
+                "Cannot extract a schema YAML here.\n\
+                 Reason: this is not a known model, a <model>.yml already \
+                 exists without an entry, or the schema file did not parse.\n\
+                 Solution: open the model's .sql file and check its YAML.",
+            ),
+            Some(features::ExtractEdit::CreateFile { path, content }) => {
+                let new_uri = cogitator_lsp::fs_path_to_uri(&path);
+                self.send_request(
+                    "workspace/applyEdit",
+                    serde_json::json!({
+                        "label": "Extract model YAML",
+                        "edit": { "documentChanges": [
+                            { "kind": "create", "uri": new_uri },
+                            {
+                                "textDocument": { "uri": new_uri, "version": serde_json::Value::Null },
+                                "edits": [ { "range": cogitator_lsp::Range::default(), "newText": content } ],
+                            },
+                        ]},
+                    }),
+                );
+                self.send_request(
+                    "window/showDocument",
+                    cogitator_lsp::ShowDocumentParams {
+                        uri: new_uri,
+                        take_focus: true,
+                        selection: None,
+                    },
+                );
+                self.show_message(
+                    cogitator_lsp::message_type::INFO,
+                    format!(
+                        "Created {} with the model's columns — fill in the \
+                         descriptions and add data_tests.",
+                        path.display()
+                    ),
+                );
+            }
+            Some(features::ExtractEdit::AddVersion {
+                schema_path,
+                edits,
+                next,
+            }) => {
+                let schema_uri = cogitator_lsp::fs_path_to_uri(&schema_path);
+                let selection = edits.first().map(|(range, _)| *range);
+                let edits_json: Vec<serde_json::Value> = edits
+                    .iter()
+                    .map(|(range, text)| serde_json::json!({ "range": range, "newText": text }))
+                    .collect();
+                self.send_request(
+                    "workspace/applyEdit",
+                    serde_json::json!({
+                        "label": format!("Add model version {next}"),
+                        "edit": { "documentChanges": [{
+                            "textDocument": { "uri": schema_uri, "version": serde_json::Value::Null },
+                            "edits": edits_json,
+                        }]},
+                    }),
+                );
+                self.send_request(
+                    "window/showDocument",
+                    cogitator_lsp::ShowDocumentParams {
+                        uri: schema_uri,
+                        take_focus: true,
+                        selection,
+                    },
+                );
+                self.show_message(
+                    cogitator_lsp::message_type::INFO,
+                    format!(
+                        "Added version {next} to {}.\n\
+                         Next: create the versioned model file \
+                         (<model>_v{next}.sql) or set `defined_in` on the \
+                         version entry.",
+                        schema_path.display()
+                    ),
+                );
+            }
+        }
+        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    /// `dbt.goToTests` (lens entry point): jump to the first test defined
+    /// for this model/version and list the rest.
+    fn go_to_tests(&mut self, id: i64, uri: &str) {
+        let ctx = self.snapshot();
+        match features::model_tests(&ctx, uri) {
+            Some((model, tests)) if !tests.is_empty() => {
+                let first = &tests[0];
+                self.send_request(
+                    "window/showDocument",
+                    cogitator_lsp::ShowDocumentParams {
+                        uri: first.uri.clone(),
+                        take_focus: true,
+                        selection: Some(first.range),
+                    },
+                );
+                if tests.len() > 1 {
+                    let lines: Vec<String> = tests
+                        .iter()
+                        .map(|t| {
+                            let mut line = format!("• {}", t.name);
+                            if let Some(column) = &t.column {
+                                line.push_str(&format!(" on {column}"));
+                            }
+                            if let Some(v) = t.version {
+                                line.push_str(&format!(" (v{v})"));
+                            }
+                            line
+                        })
+                        .collect();
+                    self.show_message(
+                        cogitator_lsp::message_type::INFO,
+                        format!("Tests for {model}:\n{}", lines.join("\n")),
+                    );
+                }
+            }
+            _ => self.show_message(
+                cogitator_lsp::message_type::WARNING,
+                "No tests defined for this model.\n\
+                 Reason: its schema YAML has no data_tests/tests entries.\n\
+                 Solution: add them under the model or its columns — \
+                 dbt.extractModelYaml scaffolds the entry if it is missing.",
+            ),
+        }
         self.send(&ResultResponse::new(id, serde_json::Value::Null));
     }
 

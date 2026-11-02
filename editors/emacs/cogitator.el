@@ -182,6 +182,35 @@ CALLBACK as plists whichever client is in charge."
          (cogitator--visit-location location)
        (message "No schema entry found for this model.")))))
 
+;;;###autoload
+(defun cogitator-extract ()
+  "Extract this model into its schema YAML, or add the next version.
+The server applies the change via workspace/applyEdit and navigates to it."
+  (interactive)
+  (cogitator--execute "dbt.extractModelYaml" (cogitator--command-argument) #'ignore))
+
+(defun cogitator--test-label (test)
+  (concat (plist-get test :name)
+          (when-let* ((column (plist-get test :column))) (format " on %s" column))
+          (when-let* ((v (plist-get test :version))) (format " (v%s)" v))))
+
+;;;###autoload
+(defun cogitator-tests ()
+  "Pick a test defined for this model (or one of its versions) and jump."
+  (interactive)
+  (cogitator--execute
+   "dbt.modelTests" (cogitator--command-argument)
+   (lambda (result)
+     (let ((tests (and result (append (plist-get result :tests) nil))))
+       (if (null tests)
+           (message "cogitator: no tests defined for this model (cogitator-extract scaffolds the YAML)")
+         (let* ((choices (mapcar (lambda (test) (cons (cogitator--test-label test) test)) tests))
+                (pick (completing-read (format "tests for %s: " (plist-get result :model))
+                                       (mapcar #'car choices) nil t))
+                (test (cdr (assoc pick choices))))
+           (when test
+             (cogitator--visit-location test))))))))
+
 (defun cogitator--target-choices (report)
   "((LABEL . (:profile P :target T)) …) from a dbt.profiles REPORT plist.
 Only allowed profiles are offered; auth method and issue count shown."

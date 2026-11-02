@@ -17,6 +17,8 @@ cmd("DbtTest", "test", "dbt test for the current model")
 cmd("DbtCompile", "compile", "dbt compile for the current model (opens compiled SQL)")
 cmd("DbtSchema", "schema", "jump to the model's properties-YAML entry")
 cmd("DbtLineage", "lineage", "show column lineage for the current model")
+cmd("DbtExtract", "extract", "extract the model into its schema YAML (or add a version)")
+cmd("DbtTests", "tests", "pick a test defined for this model/version and jump to it")
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()

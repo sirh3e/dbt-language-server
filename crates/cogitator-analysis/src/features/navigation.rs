@@ -175,7 +175,7 @@ fn model_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
     let command =
         |title: &str, command: &'static str| lens(title.to_string(), command, vec![arg.clone()]);
 
-    vec![
+    let mut lenses = vec![
         display(plural(downstream, "downstream")),
         display(plural(upstream, "upstream")),
         command("Go to schema", "dbt.openSchema"),
@@ -183,7 +183,30 @@ fn model_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
         command("dbt run", "dbt.run"),
         command("dbt test", "dbt.test"),
         command("dbt compile", "dbt.compile"),
-    ]
+    ];
+    match ctx
+        .model_detail_map
+        .get(&model)
+        .and_then(|d| d.schema_uri.as_ref())
+    {
+        // no entry yet: offer the scaffold instead of a test count
+        None => lenses.push(command("Extract schema YAML", "dbt.extractModelYaml")),
+        Some(_) => {
+            if let Some((_, tests)) = super::model_tests(ctx, uri) {
+                if !tests.is_empty() {
+                    lenses.push(command(
+                        &format!(
+                            "{} test{}",
+                            tests.len(),
+                            if tests.len() == 1 { "" } else { "s" }
+                        ),
+                        "dbt.goToTests",
+                    ));
+                }
+            }
+        }
+    }
+    lenses
 }
 
 /// One "N call sites" lens per macro defined in this file, anchored at the
