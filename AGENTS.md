@@ -49,6 +49,9 @@ editor integrations live under `editors/`.
   `COGITATOR_REPO/VERSION/BIN_DIR` overrides — never at the upstream Go
   project.
 - **GitHub issue forms** live in `.github/ISSUE_TEMPLATE/`.
+- **Dependabot** (`.github/dependabot.yml`) opens weekly PRs for crate
+  updates (workspace + editors/zed, minor/patch grouped) and GitHub
+  Actions, with conventional `chore(deps)` commit prefixes.
 
 ## Code Style (binding rules in specs/rust-port/05 §2–§3, 08 §1)
 - **Functional core, imperative shell**: extraction/feature logic is pure

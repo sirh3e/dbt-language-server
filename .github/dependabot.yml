@@ -1,0 +1,42 @@
+# Dependabot: pull requests for newer crate versions and action updates.
+# Commit messages stay conventional so git-cliff picks them up.
+version: 2
+updates:
+  # the server workspace
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # one PR for all compatible bumps; majors get their own PRs
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 10
+
+  # the Zed extension (its own standalone crate)
+  - package-ecosystem: cargo
+    directory: "/editors/zed"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions used by ci.yml / release.yml
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(deps)"
