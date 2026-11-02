@@ -53,8 +53,22 @@ names what already exists in the codebase.
       updates the properties-YAML entry and renames the model file
       (documentChanges with the file rename last). Caveat: dependents are
       read from disk; unsaved buffers of other files aren't visible here.
-- [x] **CodeLens "N dependents"** above each model (one graph lookup;
-      display-only lens, no client-specific command).
+- [x] **CodeLens batch** on model files — "N downstream" / "N upstream"
+      counts (graph; dbt terminology: `downstream_of`/`upstream_of`),
+      "Go to schema" (navigates via window/showDocument), "Column lineage"
+      (formatted into window/showMessage), and "dbt run / test / compile"
+      executing per-model (`--select <selector>`, project-root cwd; fusion
+      path when set, else `dbt`), with a successful compile opening
+      target/compiled/<project>/<model>.sql in the editor. Macro files get
+      per-macro "N call sites" lenses. Server→client requests use an
+      outgoing-id counter; client responses are ignored by a response guard.
+- [x] **rootUri / workspaceFolders** honored at initialize (modern clients
+      that omit the deprecated rootPath find the project again).
+- [x] **Actionable error feedback**: failures report through
+      window/showMessage with reason + solution — missing dbt project,
+      unresolved dialect/profiles.yml, invalid fusion binary, dbt executable
+      missing or failing (exit code + stderr tail + exact retry command),
+      missing schema entry, lineage declines, defused upgrade subcommand.
 - [x] **Completion engine** (grammar-aware): the cursor position is
       classified from the token stream — member access (`alias.` → columns
       of the resolved relation via a token-based FROM/JOIN scope index),

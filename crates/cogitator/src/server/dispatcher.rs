@@ -30,6 +30,8 @@ pub struct Dispatcher {
     fusion_enabled: Arc<AtomicBool>,
     fusion_jobs: HashMap<String, AbortHandle>,
     scratch: Vec<u8>,
+    /// id source for server→client requests (responses are ignored).
+    server_request_ids: Arc<std::sync::atomic::AtomicI64>,
 }
 
 impl Dispatcher {
@@ -51,11 +53,28 @@ impl Dispatcher {
             fusion_enabled,
             fusion_jobs: HashMap::new(),
             scratch: Vec::new(),
+            server_request_ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
         }
     }
 
     fn snapshot(&self) -> Arc<DbtContext> {
         self.ctx_rx.borrow().clone()
+    }
+
+    fn show_message(&mut self, message_type: i32, message: impl Into<String>) {
+        let note = cogitator_lsp::show_message(message_type, message);
+        self.send(&note);
+    }
+
+    fn send_request<T: Serialize>(&mut self, method: &'static str, params: T) {
+        let id = self.server_request_ids.fetch_add(1, Ordering::Relaxed);
+        let request = cogitator_lsp::ServerRequest {
+            jsonrpc: "2.0",
+            id,
+            method,
+            params,
+        };
+        self.send(&request);
     }
 
     fn send<T: Serialize>(&mut self, msg: &T) {
@@ -73,6 +92,12 @@ impl Dispatcher {
                 return;
             }
         };
+        if method.is_empty() {
+            // a response to one of our server→client requests (id, no
+            // method) — fire-and-forget: ignore instead of MethodNotFound
+            tracing::trace!("client response ignored");
+            return;
+        }
         let span = tracing::debug_span!("lsp_message", %method);
         let _enter = span.enter();
 
@@ -280,23 +305,45 @@ impl Dispatcher {
         let Some(arg) = params.arguments.first().and_then(|a| a.as_object()) else {
             return;
         };
-        if params.command == "dbt.columnLineage" {
-            let uri = arg
-                .get("uri")
-                .and_then(|u| u.as_str())
-                .unwrap_or_default()
-                .to_string();
-            self.column_lineage(req.id, &uri);
-            return;
-        }
-        if params.command != "dbt.goToSchema" {
-            return;
-        }
         let uri = arg
             .get("uri")
             .and_then(|u| u.as_str())
             .unwrap_or_default()
             .to_string();
+        match params.command.as_ref() {
+            "dbt.columnLineage" => {
+                self.column_lineage(req.id, &uri);
+                return;
+            }
+            "dbt.openSchema" => {
+                self.open_schema(req.id, &uri);
+                return;
+            }
+            "dbt.showLineage" => {
+                self.show_lineage(req.id, &uri);
+                return;
+            }
+            "dbt.run" | "dbt.test" | "dbt.compile" => {
+                let kind = params.command.trim_start_matches("dbt.");
+                let kind: &'static str = match kind {
+                    "run" => "run",
+                    "test" => "test",
+                    _ => "compile",
+                };
+                self.run_dbt(req.id, kind, &uri);
+                return;
+            }
+            "dbt.goToSchema" => {}
+            other => {
+                let response = ErrorResponse::new(
+                    req.id,
+                    error_codes::INVALID_PARAMS,
+                    format!("unknown command: {other}"),
+                );
+                self.send(&response);
+                return;
+            }
+        }
         let pos = arg
             .get("position")
             .map(|p| Position {
@@ -304,7 +351,6 @@ impl Dispatcher {
                 character: p.get("character").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32,
             })
             .unwrap_or_default();
-
         let ctx = self.snapshot();
         let result = features::go_to_schema(&ctx, self.documents.get(&uri), &uri, pos);
         self.send(&ResultResponse::new(req.id, result));
@@ -498,6 +544,146 @@ impl Dispatcher {
             }
         };
         self.send(&ResultResponse::new(id, result));
+    }
+
+    /// `dbt.openSchema` (lens entry point): resolve like goToSchema, then
+    /// navigate the editor via window/showDocument.
+    fn open_schema(&mut self, id: i64, uri: &str) {
+        let ctx = self.snapshot();
+        match features::go_to_schema(&ctx, self.documents.get(uri), uri, Position::default()) {
+            Some(location) => {
+                self.send_request(
+                    "window/showDocument",
+                    cogitator_lsp::ShowDocumentParams {
+                        uri: location.uri,
+                        take_focus: true,
+                        selection: Some(location.range),
+                    },
+                );
+            }
+            None => self.show_message(
+                cogitator_lsp::message_type::WARNING,
+                "No schema entry found for this model.\n\
+                 Reason: the model has no entry in a properties YAML file.\n\
+                 Solution: add it under `models:` in a schema.yml inside your \
+                 model-paths.",
+            ),
+        }
+        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    /// `dbt.showLineage` (lens entry point): format the lineage into a
+    /// window message instead of returning raw JSON.
+    fn show_lineage(&mut self, id: i64, uri: &str) {
+        let ctx = self.snapshot();
+        let lineage = self.lineage_for(uri, &ctx);
+        match lineage {
+            Some(lineage) if !lineage.columns.is_empty() => {
+                let mut lines: Vec<String> = lineage
+                    .columns
+                    .iter()
+                    .take(20)
+                    .map(|c| {
+                        let sources: Vec<String> = c
+                            .sources
+                            .iter()
+                            .map(|s| match s {
+                                cogitator_analysis::lineage::SourceRef::Model { name, column } => {
+                                    format!("{name}.{column}")
+                                }
+                                cogitator_analysis::lineage::SourceRef::Source {
+                                    source,
+                                    table,
+                                    column,
+                                } => format!("{source}.{table}.{column}"),
+                                cogitator_analysis::lineage::SourceRef::Unknown {
+                                    name,
+                                    column,
+                                } => format!("{name}.{column}"),
+                            })
+                            .collect();
+                        format!("{} ← {}", c.name, sources.join(", "))
+                    })
+                    .collect();
+                if lineage.columns.len() > 20 {
+                    lines.push(format!("… and {} more columns", lineage.columns.len() - 20));
+                }
+                self.show_message(
+                    cogitator_lsp::message_type::INFO,
+                    format!("Column lineage:\n{}", lines.join("\n")),
+                );
+            }
+            _ => self.show_message(
+                cogitator_lsp::message_type::WARNING,
+                "Could not derive column lineage for this model.\n\
+                 Reason: the template contains Jinja control blocks \
+                 ({% if %}/{% for %}) or the SQL did not parse as a single \
+                 SELECT.\n\
+                 Solution: lineage works on models whose rendered SQL is one \
+                 SELECT statement; check for unclosed expressions or control \
+                 flow.",
+            ),
+        }
+        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    /// `dbt.run` / `dbt.test` / `dbt.compile` for one model, asynchronously.
+    fn run_dbt(&mut self, id: i64, kind: &'static str, uri: &str) {
+        let ctx = self.snapshot();
+        let Some(root) = ctx.project_root.clone() else {
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                format!(
+                    "Cannot run dbt {kind}: no dbt project found.\n\
+                     Reason: dbt_project.yml was not located from the \
+                     workspace root '{}'.\n\
+                     Solution: open the dbt project directory (the folder \
+                     containing dbt_project.yml) or check the editor's \
+                     rootUri.",
+                    self.root_path
+                ),
+            );
+            self.send(&ResultResponse::new(id, serde_json::Value::Null));
+            return;
+        };
+        let binary = if self.fusion_path.is_empty() {
+            "dbt".to_string()
+        } else {
+            self.fusion_path.clone()
+        };
+        let link = super::commands::ClientLink::new(
+            self.write_tx.clone(),
+            self.server_request_ids.clone(),
+        );
+        super::commands::spawn_dbt(
+            link,
+            super::commands::DbtInvocation {
+                kind,
+                binary,
+                project_root: root,
+                project_name: ctx.project.name.clone(),
+                selector: super::fusion::model_selector_from_uri(uri),
+                model_path: std::path::PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri)),
+            },
+        );
+        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    fn lineage_for(
+        &self,
+        uri: &str,
+        ctx: &DbtContext,
+    ) -> Option<cogitator_analysis::lineage::ModelLineage> {
+        match self.documents.get(uri) {
+            Some(doc) => cogitator_analysis::lineage::column_lineage(&doc.parsed, &ctx.dialect),
+            None => {
+                let path = uri.strip_prefix("file://").unwrap_or(uri);
+                let text = std::fs::read_to_string(path).ok()?;
+                let parsed =
+                    cogitator_parser::pipeline::parse_document(&text, &ctx.dialect).ok()?;
+                cogitator_analysis::lineage::column_lineage(&parsed, &ctx.dialect)
+            }
+        }
     }
 
     /// Fusion compile per 04 §2, async + cancellable per URI (fixes Q9).

@@ -42,7 +42,7 @@ pub fn rename_model(
     // 1. rewrite ref('old') in every dependent (and the model's own file)
     let mut files: Vec<std::path::PathBuf> = ctx
         .graph
-        .dependents_of(&model)
+        .downstream_of(&model)
         .map(|node| node.uri.clone())
         .filter(|p| !p.as_os_str().is_empty())
         .collect();

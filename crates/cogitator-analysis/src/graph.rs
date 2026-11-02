@@ -101,15 +101,32 @@ impl ProjectGraph {
         })
     }
 
-    /// Incoming `Ref` edges of a model (05 §5 use 3: find-references).
-    pub fn dependents_of<'a>(&'a self, name: &str) -> impl Iterator<Item = &'a NodeData> + 'a {
-        let target = self
-            .by_name
-            .get(&(NodeKind::Model, name.to_string()))
-            .copied();
+    /// Models that depend on `name` — its *downstream* (incoming `Ref`
+    /// edges; dbt terminology, 05 §5 use 3: find-references).
+    pub fn downstream_of<'a>(&'a self, name: &str) -> impl Iterator<Item = &'a NodeData> + 'a {
+        self.neighbors(NodeKind::Model, name, petgraph::Direction::Incoming)
+    }
+
+    /// What `name` depends on — its *upstream* (outgoing ref/source edges).
+    pub fn upstream_of<'a>(&'a self, name: &str) -> impl Iterator<Item = &'a NodeData> + 'a {
+        self.neighbors(NodeKind::Model, name, petgraph::Direction::Outgoing)
+    }
+
+    /// Models calling a macro (incoming `MacroCall` edges).
+    pub fn macro_call_sites<'a>(&'a self, name: &str) -> impl Iterator<Item = &'a NodeData> + 'a {
+        self.neighbors(NodeKind::Macro, name, petgraph::Direction::Incoming)
+    }
+
+    fn neighbors<'a>(
+        &'a self,
+        kind: NodeKind,
+        name: &str,
+        direction: petgraph::Direction,
+    ) -> impl Iterator<Item = &'a NodeData> + 'a {
+        let target = self.by_name.get(&(kind, name.to_string())).copied();
         target.into_iter().flat_map(move |idx| {
             self.graph
-                .neighbors_directed(idx, petgraph::Direction::Incoming)
+                .neighbors_directed(idx, direction)
                 .map(|n| &self.graph[n])
         })
     }

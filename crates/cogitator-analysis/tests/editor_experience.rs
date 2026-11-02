@@ -120,18 +120,71 @@ fn rename_model_produces_full_workspace_edit() {
 }
 
 #[test]
-fn code_lens_counts_dependents() {
+fn code_lens_batch_for_models_and_macros() {
     let ctx = ctx();
     let stg = fixture_root().join("models/staging/stg_orders.sql");
     let lenses = features::code_lenses(&ctx, &format!("file://{}", stg.display()));
-    assert_eq!(lenses.len(), 1);
+    let titles: Vec<&str> = lenses.iter().map(|l| l.command.title.as_str()).collect();
     assert!(
-        lenses[0].command.title.ends_with("dependents") || lenses[0].command.title == "1 dependent",
-        "{}",
-        lenses[0].command.title
+        titles.iter().any(|t| t.contains("downstream")),
+        "{titles:?}"
     );
+    assert!(titles.iter().any(|t| t.contains("upstream")), "{titles:?}");
+    for expected in [
+        "Go to schema",
+        "Column lineage",
+        "dbt run",
+        "dbt test",
+        "dbt compile",
+    ] {
+        assert!(titles.contains(&expected), "{expected} in {titles:?}");
+    }
+    let run = lenses
+        .iter()
+        .find(|l| l.command.title == "dbt run")
+        .unwrap();
+    assert_eq!(run.command.command, "dbt.run");
+    assert!(run.command.arguments[0]["uri"]
+        .as_str()
+        .unwrap()
+        .ends_with("stg_orders.sql"));
+
+    // macro files: one call-site lens per macro, anchored at its signature
+    let macro_file = ctx
+        .macro_detail_map
+        .get("jaffle_shop")
+        .and_then(|m| m.values().next())
+        .map(|m| m.uri.clone())
+        .expect("a macro file");
+    let macro_lenses = features::code_lenses(&ctx, &format!("file://{}", macro_file.display()));
+    assert!(!macro_lenses.is_empty());
+    assert!(
+        macro_lenses
+            .iter()
+            .all(|l| l.command.title.contains("call site")),
+        "{macro_lenses:?}"
+    );
+
     // non-model files get none
     assert!(features::code_lenses(&ctx, "file:///tmp/nope.sql").is_empty());
+}
+
+#[test]
+fn graph_upstream_downstream_and_macro_call_sites() {
+    let ctx = ctx();
+    let downstream: Vec<&str> = ctx
+        .graph
+        .downstream_of("stg_orders")
+        .map(|n| n.name.as_str())
+        .collect();
+    assert!(downstream.contains(&"customers"), "{downstream:?}");
+    let upstream: Vec<&str> = ctx
+        .graph
+        .upstream_of("customers")
+        .map(|n| n.name.as_str())
+        .collect();
+    assert!(upstream.contains(&"stg_orders"), "{upstream:?}");
+    assert!(ctx.graph.macro_call_sites("full_name").count() >= 1);
 }
 
 #[test]

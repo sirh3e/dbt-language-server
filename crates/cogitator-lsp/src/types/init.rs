@@ -90,7 +90,15 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     map
                 },
                 execute_command_provider: ExecuteCommandOptions {
-                    commands: vec!["dbt.goToSchema", "dbt.columnLineage"],
+                    commands: vec![
+                        "dbt.goToSchema",
+                        "dbt.columnLineage",
+                        "dbt.openSchema",
+                        "dbt.showLineage",
+                        "dbt.run",
+                        "dbt.test",
+                        "dbt.compile",
+                    ],
                 },
                 references_provider: true,
                 document_symbol_provider: true,

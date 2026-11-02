@@ -28,7 +28,7 @@ pub fn references(
     };
 
     ctx.graph
-        .dependents_of(&model)
+        .downstream_of(&model)
         .filter(|node| !node.uri.as_os_str().is_empty())
         .map(|node| Location {
             uri: file_uri(&node.uri),
@@ -151,26 +151,84 @@ pub fn document_highlights(doc: &Document, pos: Position) -> Vec<DocumentHighlig
         .collect()
 }
 
-/// textDocument/codeLens: "N dependents" above a model file (display-only
-/// lens; the count comes from one graph lookup).
+/// textDocument/codeLens (FEATURE_REQUESTS lens batch): model files get
+/// upstream/downstream counts plus entry points for schema, lineage and
+/// per-model dbt execution; macro files get per-macro call-site counts.
 pub fn code_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
+    let mut lenses = model_lenses(ctx, uri);
+    lenses.extend(macro_lenses(ctx, uri));
+    lenses
+}
+
+fn model_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
     let Some(model) = model_name_from_uri(uri) else {
         return Vec::new();
     };
     if !ctx.model_detail_map.contains_key(&model) {
         return Vec::new();
     }
-    let count = ctx.graph.dependents_of(&model).count();
-    let title = match count {
-        1 => "1 dependent".to_string(),
-        n => format!("{n} dependents"),
-    };
-    vec![cogitator_lsp::CodeLens {
+    let downstream = ctx.graph.downstream_of(&model).count();
+    let upstream = ctx.graph.upstream_of(&model).count();
+    let arg = serde_json::json!({ "uri": uri });
+
+    let display = |title: String| lens(title, "", Vec::new());
+    let command =
+        |title: &str, command: &'static str| lens(title.to_string(), command, vec![arg.clone()]);
+
+    vec![
+        display(plural(downstream, "downstream")),
+        display(plural(upstream, "upstream")),
+        command("Go to schema", "dbt.openSchema"),
+        command("Column lineage", "dbt.showLineage"),
+        command("dbt run", "dbt.run"),
+        command("dbt test", "dbt.test"),
+        command("dbt compile", "dbt.compile"),
+    ]
+}
+
+/// One "N call sites" lens per macro defined in this file, anchored at the
+/// macro's signature.
+fn macro_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
+    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let mut lenses: Vec<cogitator_lsp::CodeLens> = ctx
+        .macro_detail_map
+        .values()
+        .flat_map(|macros| macros.values())
+        .filter(|m| m.uri.as_os_str() == std::ffi::OsStr::new(path))
+        .map(|m| {
+            let count = ctx.graph.macro_call_sites(&m.name).count();
+            cogitator_lsp::CodeLens {
+                range: m.range,
+                command: cogitator_lsp::Command {
+                    title: plural(count, "call site"),
+                    command: String::new(),
+                    arguments: Vec::new(),
+                },
+            }
+        })
+        .collect();
+    lenses.sort_by_key(|l| (l.range.start.line, l.range.start.character));
+    lenses
+}
+
+fn plural(n: usize, noun: &str) -> String {
+    match n {
+        1 => format!("1 {noun}"),
+        n => format!("{n} {noun}s"),
+    }
+}
+
+fn lens(
+    title: String,
+    command: &str,
+    arguments: Vec<serde_json::Value>,
+) -> cogitator_lsp::CodeLens {
+    cogitator_lsp::CodeLens {
         range: Range::default(),
         command: cogitator_lsp::Command {
             title,
-            command: String::new(),
-            arguments: Vec::new(),
+            command: command.to_string(),
+            arguments,
         },
-    }]
+    }
 }

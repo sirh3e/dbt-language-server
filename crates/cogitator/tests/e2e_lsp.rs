@@ -11,6 +11,8 @@ struct Lsp {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
     next_id: i64,
+    /// server→client requests/notifications seen while waiting for replies
+    stash: Vec<serde_json::Value>,
 }
 
 impl Lsp {
@@ -28,6 +30,7 @@ impl Lsp {
             stdin,
             stdout,
             next_id: 0,
+            stash: Vec::new(),
         }
     }
 
@@ -50,9 +53,12 @@ impl Lsp {
         self.stdin.flush().unwrap();
         loop {
             let value = self.read_message();
-            if value.get("id").and_then(|i| i.as_i64()) == Some(id) {
+            let is_reply = value.get("id").and_then(|i| i.as_i64()) == Some(id)
+                && value.get("method").is_none();
+            if is_reply {
                 return value;
             }
+            self.stash.push(value);
         }
     }
 
@@ -273,6 +279,54 @@ fn full_session() {
         "alias member access over the wire: {}",
         member["result"]
     );
+
+    // 6a4. lens batch + openSchema navigation via window/showDocument
+    let lenses = lsp.request(
+        "textDocument/codeLens",
+        serde_json::json!({"textDocument": {"uri": uri}, "position": {"line": 0, "character": 0}}),
+    );
+    let lens_titles: Vec<String> = lenses["result"]
+        .as_array()
+        .expect("lenses")
+        .iter()
+        .map(|l| {
+            l["command"]["title"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    assert!(
+        lens_titles.iter().any(|t| t.contains("downstream")),
+        "{lens_titles:?}"
+    );
+    assert!(
+        lens_titles.contains(&"dbt compile".to_string()),
+        "{lens_titles:?}"
+    );
+
+    let _ = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.openSchema", "arguments": [{"uri": uri}]}),
+    );
+    let show_doc = lsp
+        .stash
+        .iter()
+        .find(|m| m["method"] == "window/showDocument")
+        .cloned()
+        .expect("server sent window/showDocument");
+    assert!(show_doc["params"]["uri"]
+        .as_str()
+        .unwrap()
+        .ends_with(".yml"));
+    // answer the server's request: the response guard must swallow it
+    let reply = serde_json::json!({
+        "jsonrpc": "2.0", "id": show_doc["id"], "result": {"success": true}
+    });
+    let body = serde_json::to_vec(&reply).unwrap();
+    write!(lsp.stdin, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
+    lsp.stdin.write_all(&body).unwrap();
+    lsp.stdin.flush().unwrap();
 
     // 6b. references on the open model (graph-backed)
     let refs = lsp.request(

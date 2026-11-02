@@ -188,3 +188,45 @@ pub mod message_type {
     pub const INFO: i32 = 3;
     pub const LOG: i32 = 4;
 }
+
+/// Server→client request envelope (window/showDocument, …). The server
+/// fire-and-forgets these; client responses are ignored by the dispatcher's
+/// response guard.
+#[derive(Debug, Serialize)]
+pub struct ServerRequest<T> {
+    pub jsonrpc: &'static str,
+    pub id: i64,
+    pub method: &'static str,
+    pub params: T,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ShowMessageParams {
+    #[serde(rename = "type")]
+    pub message_type: i32,
+    pub message: String,
+}
+
+/// window/showMessage notification with the reason/solution text inline.
+pub fn show_message(
+    message_type: i32,
+    message: impl Into<String>,
+) -> Notification<ShowMessageParams> {
+    Notification {
+        jsonrpc: "2.0",
+        method: "window/showMessage",
+        params: ShowMessageParams {
+            message_type,
+            message: message.into(),
+        },
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ShowDocumentParams {
+    pub uri: String,
+    #[serde(rename = "takeFocus")]
+    pub take_focus: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<Range>,
+}
