@@ -99,6 +99,12 @@ Every command takes **one argument object**, not positional values:
 | `dbt.extractModelYaml` | `null` | workspace/applyEdit (CreateFile scaffold, or version TextEdits) + showDocument |
 | `dbt.modelTests` | `{model, tests: [{name, column?, version?, uri, range}]}` or `null` | none |
 | `dbt.goToTests` | `null` | showDocument to the first test + INFO list |
+| `dbt.status` | server/project/profiles/refresh snapshot | none |
+
+When the client advertises `window.workDoneProgress`, context refreshes
+and dbt run/test/compile report through `window/workDoneProgress/create`
++ `$/progress` instead of the start/success showMessages (failures keep
+their Reason/Solution messages).
 
 `dbt.profiles` answers `{ path, searched, activeProfile, activeTarget,
 profiles: [{ name, defaultTarget, allowed, targets: [{ name, type,

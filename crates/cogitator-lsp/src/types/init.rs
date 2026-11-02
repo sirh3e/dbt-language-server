@@ -104,6 +104,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.extractModelYaml",
                         "dbt.modelTests",
                         "dbt.goToTests",
+                        "dbt.status",
                     ],
                 },
                 references_provider: true,

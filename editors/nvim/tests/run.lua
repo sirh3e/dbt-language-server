@@ -343,5 +343,26 @@ if schema_buf then
   vim.api.nvim_buf_delete(schema_buf, { force = true }) -- discard, keep fixture clean
 end
 
+-- server status over the wire
+local status_result
+new_client:exec_cmd({
+  command = "dbt.status",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+}, { bufnr = bufnr }, function(err, result)
+  status_result = err == nil and result or false
+end)
+pcall(vim.wait, 5000, function()
+  return status_result ~= nil
+end, 50)
+check(
+  type(status_result) == "table"
+    and status_result.server.backend == "tree-sitter"
+    and status_result.server.progressSupported == true
+    and status_result.project.models > 0
+    and status_result.refresh.count >= 1,
+  "status: dbt.status reports backend, progress support and project",
+  vim.inspect(status_result):sub(1, 300)
+)
+
 print(failures == 0 and "ALL PASSED" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

@@ -19,6 +19,7 @@ cmd("DbtSchema", "schema", "jump to the model's properties-YAML entry")
 cmd("DbtLineage", "lineage", "show column lineage for the current model")
 cmd("DbtExtract", "extract", "extract the model into its schema YAML (or add a version)")
 cmd("DbtTests", "tests", "pick a test defined for this model/version and jump to it")
+cmd("DbtStatus", "status", "show what the language server knows and has been doing")
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()

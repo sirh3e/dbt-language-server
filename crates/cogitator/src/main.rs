@@ -57,13 +57,13 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if matches!(cli.command, Some(Command::Upgrade)) {
-        // Deliberately defused: the upstream installer would replace this
-        // binary with the pre-Rust release. Repoint once this build has its
-        // own published releases.
-        eprintln!("cogitator: self-upgrade is not configured for this build.");
-        eprintln!("reason:   the previous installer points at the upstream Go releases");
-        eprintln!("solution: build from source (`cargo build --release -p cogitator`)");
-        eprintln!("          or download a release asset once this fork publishes them.");
+        // Deliberately conservative: no self-mutating curl|sh from inside
+        // the server. Point the user at this project's own installer (the
+        // old one belonged to the upstream Go releases).
+        eprintln!("cogitator: self-upgrade does not run from inside the server.");
+        eprintln!("solution: re-run this project's install script:");
+        eprintln!("  curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh");
+        eprintln!("or build from source: cargo build --release -p cogitator");
         std::process::exit(2);
     }
 

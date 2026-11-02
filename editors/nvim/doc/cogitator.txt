@@ -61,6 +61,10 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtTarget     pick the active profile/target      <leader>dT
   :DbtExtract    model → schema YAML / add version   <leader>dy
   :DbtTests      jump to a test of this model        <leader>dq
+  :DbtStatus     language-server status              <leader>dS
+
+Context refreshes and dbt runs also report through $/progress, so they
+appear in |vim.lsp.status()| and plugins like fidget.nvim.
                  run the code lens on this line      <leader>dL
 
 `:DbtProfiles` without an argument prints the server's profiles.yml

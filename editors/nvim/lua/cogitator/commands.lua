@@ -119,6 +119,50 @@ function M.tests()
   end)
 end
 
+--- :DbtStatus — what the server knows and has been doing.
+function M.status()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  if not client then
+    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.status",
+    arguments = { M.build_argument(bufnr, false) },
+  }, { bufnr = bufnr }, function(err, s)
+    if err or not s or s == vim.NIL then
+      vim.notify("dbt.status failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    local target = s.profiles.activeTarget
+    local lines = {
+      ("cogitator %s — backend %s, fusion %s"):format(s.server.version, s.server.backend, s.server.fusion),
+      ("project %s (%s): %d models, %d sources, %d graph edges"):format(
+        s.project.name ~= vim.NIL and s.project.name or "?",
+        s.project.dialect,
+        s.project.models,
+        s.project.sources,
+        s.project.graphEdges
+      ),
+      ("profiles: %s / %s"):format(
+        s.profiles.activeProfile ~= "" and s.profiles.activeProfile or "?",
+        (target ~= vim.NIL and target ~= "") and target or "(default target)"
+      ),
+      ("refresh #%d in %d ms (cache %d hits / %d misses)"):format(
+        s.refresh.count,
+        s.refresh.lastMs,
+        s.refresh.cacheHits,
+        s.refresh.cacheMisses
+      ),
+    }
+    if s.project.root ~= vim.NIL then
+      table.insert(lines, "root: " .. s.project.root)
+    end
+    vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
+  end)
+end
+
 --- Lens-aware wrapper: macro call-site lenses carry command == "" and are
 --- informational only (spec §5.2).
 function M.run_lens()

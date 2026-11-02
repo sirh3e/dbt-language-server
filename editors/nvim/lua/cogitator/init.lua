@@ -40,6 +40,7 @@ local function keymaps(bufnr)
   end, "dbt: pick the active profile/target")
   map("<leader>dy", commands.extract, "dbt: extract model into schema YAML / add version")
   map("<leader>dq", commands.tests, "dbt: jump to a test of this model")
+  map("<leader>dS", commands.status, "dbt: language-server status")
 end
 
 local function on_attach(client, bufnr, config)

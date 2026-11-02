@@ -35,9 +35,16 @@ pub struct Dispatcher {
     /// Shared with the refresh task: initializationOptions and
     /// dbt.setTarget replace the launch-flag values here.
     profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
+    /// Client advertised window.workDoneProgress (set at initialize).
+    progress_supported: Arc<AtomicBool>,
+    /// What the server has been doing, for dbt.status.
+    status: Arc<std::sync::Mutex<super::StatusInfo>>,
 }
 
 impl Dispatcher {
+    // constructed exactly once, in server::run — the shared handles are
+    // clearer spelled out than bundled into a one-off struct
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         documents: Documents,
         write_tx: mpsc::UnboundedSender<Vec<u8>>,
@@ -46,6 +53,8 @@ impl Dispatcher {
         fusion_path: String,
         fusion_enabled: Arc<AtomicBool>,
         profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
+        progress_supported: Arc<AtomicBool>,
+        status: Arc<std::sync::Mutex<super::StatusInfo>>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -59,6 +68,8 @@ impl Dispatcher {
             scratch: Vec::new(),
             server_request_ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
             profiles,
+            progress_supported,
+            status,
         }
     }
 
@@ -182,6 +193,8 @@ impl Dispatcher {
             tracing::info!(client = %info.name, version = %info.version, "connected");
         }
         self.root_path = params.workspace_root().unwrap_or_default();
+        self.progress_supported
+            .store(params.work_done_progress(), Ordering::Relaxed);
         {
             let mut cfg = self.profiles.lock().expect("profiles config lock");
             if let Some(dir) = params.profiles_dir() {
@@ -373,6 +386,10 @@ impl Dispatcher {
             }
             "dbt.profiles" => {
                 self.profiles_report(req.id);
+                return;
+            }
+            "dbt.status" => {
+                self.status_report(req.id);
                 return;
             }
             "dbt.setTarget" => {
@@ -718,6 +735,7 @@ impl Dispatcher {
         let link = super::commands::ClientLink::new(
             self.write_tx.clone(),
             self.server_request_ids.clone(),
+            self.progress_supported.clone(),
         );
         let target = {
             let cfg = self.profiles.lock().expect("profiles config lock");
@@ -874,6 +892,58 @@ impl Dispatcher {
             ),
         }
         self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    /// `dbt.status`: what the server knows and has been doing — project,
+    /// dialect, active profile/target, backend, fusion, refresh stats.
+    fn status_report(&mut self, id: i64) {
+        let ctx = self.snapshot();
+        let cfg = self.profiles.lock().expect("profiles config lock").clone();
+        let info = self.status.lock().expect("status lock").clone();
+        let fusion = if self.fusion_path.is_empty() {
+            "off"
+        } else if self.fusion_enabled.load(Ordering::Relaxed) {
+            "on"
+        } else {
+            "configured (validating or invalid)"
+        };
+        let active_profile = if cfg.profile.is_empty() {
+            ctx.project.profile.clone()
+        } else {
+            cfg.profile.clone()
+        };
+        let dialect = ctx.dialect.as_str();
+        let result = serde_json::json!({
+            "server": {
+                "name": "cogitator",
+                "version": crate::VERSION,
+                "backend": info.backend,
+                "fusion": fusion,
+                "progressSupported": self.progress_supported.load(Ordering::Relaxed),
+            },
+            "project": {
+                "root": ctx.project_root.as_ref().map(|p| p.display().to_string()),
+                "name": ctx.project.name,
+                "dialect": if dialect.is_empty() { "generic (unresolved)" } else { dialect },
+                "models": ctx.model_detail_map.len(),
+                "sources": ctx.source_detail_map.len(),
+                "macroPackages": ctx.macro_detail_map.len(),
+                "graphNodes": ctx.graph.node_count(),
+                "graphEdges": ctx.graph.edge_count(),
+            },
+            "profiles": {
+                "activeProfile": active_profile,
+                "activeTarget": cfg.target,
+                "dirOverride": cfg.dir_override,
+            },
+            "refresh": {
+                "count": info.refreshes,
+                "lastMs": info.last_refresh_ms,
+                "cacheHits": info.cache_hits,
+                "cacheMisses": info.cache_misses,
+            },
+        });
+        self.send(&ResultResponse::new(id, result));
     }
 
     /// `dbt.profiles`: the redacted inventory within the allowed scope, the

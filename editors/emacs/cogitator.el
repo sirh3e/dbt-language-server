@@ -183,6 +183,28 @@ CALLBACK as plists whichever client is in charge."
        (message "No schema entry found for this model.")))))
 
 ;;;###autoload
+(defun cogitator-status ()
+  "Show what the cogitator server knows and has been doing."
+  (interactive)
+  (cogitator--execute
+   "dbt.status" (cogitator--command-argument)
+   (lambda (s)
+     (let ((server (plist-get s :server))
+           (project (plist-get s :project))
+           (profiles (plist-get s :profiles))
+           (refresh (plist-get s :refresh)))
+       (message
+        "cogitator %s — backend %s, fusion %s | project %s (%s): %s models, %s sources | profiles %s/%s | refresh #%s in %s ms"
+        (plist-get server :version) (plist-get server :backend)
+        (plist-get server :fusion)
+        (or (plist-get project :name) "?") (plist-get project :dialect)
+        (plist-get project :models) (plist-get project :sources)
+        (plist-get profiles :activeProfile)
+        (let ((target (plist-get profiles :activeTarget)))
+          (if (and target (not (equal target ""))) target "(default)"))
+        (plist-get refresh :count) (plist-get refresh :lastMs))))))
+
+;;;###autoload
 (defun cogitator-extract ()
   "Extract this model into its schema YAML, or add the next version.
 The server applies the change via workspace/applyEdit and navigates to it."

@@ -115,6 +115,7 @@ fn full_session() {
             "clientInfo": {"name": "e2e", "version": "0"},
             // modern-client shape: rootUri only, no deprecated rootPath
             "rootUri": cogitator_lsp::fs_path_to_uri(&root),
+            "capabilities": {"window": {"workDoneProgress": true}},
             // explicit profiles dir (here: the fixture's own .dbt folder)
             "initializationOptions": {"profilesDir": root.join(".dbt").to_string_lossy()},
         }),
@@ -357,6 +358,24 @@ fn full_session() {
 
     // 6d. unknown request gets MethodNotFound; a known request with bad
     // params gets InvalidParams
+    // 6a5. the context refresh reported itself through $/progress
+    //      (asserted before the later sections clear the stash)
+    assert!(
+        lsp.stash
+            .iter()
+            .any(|m| m["method"] == "window/workDoneProgress/create"),
+        "progress token created: {:?}",
+        lsp.stash
+    );
+    assert!(
+        lsp.stash.iter().any(|m| m["method"] == "$/progress"
+            && m["params"]["value"]["kind"] == "end"
+            && m["params"]["value"]["message"]
+                .as_str()
+                .is_some_and(|s| s.contains("models"))),
+        "refresh reported via $/progress"
+    );
+
     // 6a6. yaml workflow: tests navigation + extract-to-version
     let tests = lsp.request(
         "workspace/executeCommand",
@@ -431,6 +450,17 @@ fn full_session() {
         }),
     );
     assert!(bogus["result"].is_null(), "{bogus}");
+
+    // 6c. status: dbt.status knows the project
+    let status = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.status", "arguments": [{}] }),
+    );
+    let s = &status["result"];
+    assert_eq!(s["server"]["backend"], "tree-sitter", "{s}");
+    assert_eq!(s["project"]["dialect"], "duckdb", "{s}");
+    assert!(s["project"]["models"].as_u64().unwrap() > 0, "{s}");
+    assert!(s["refresh"]["count"].as_u64().unwrap() >= 1, "{s}");
 
     let unknown = lsp.request("textDocument/typeDefinition", serde_json::json!({}));
     assert_eq!(unknown["error"]["code"], -32601);

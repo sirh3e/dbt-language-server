@@ -17,6 +17,17 @@ use cogitator_lsp::rpc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 
+/// What the server has been doing — read by `dbt.status`, written by the
+/// startup wiring and the refresh task.
+#[derive(Debug, Default, Clone)]
+pub struct StatusInfo {
+    pub backend: &'static str,
+    pub refreshes: u64,
+    pub last_refresh_ms: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+}
+
 /// Shared profiles configuration: seeded from launch flags, replaced by
 /// initializationOptions and `dbt.setTarget`, read by every context refresh.
 #[derive(Debug, Default, Clone)]
@@ -99,12 +110,26 @@ pub async fn run(
     // writer task: sole owner of stdout (05 §6.2 / 01 §4)
     let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
     let request_ids = Arc::new(std::sync::atomic::AtomicI64::new(1));
+    // set at initialize from the client's window.workDoneProgress capability
+    let progress_supported = Arc::new(AtomicBool::new(false));
+    let status = Arc::new(std::sync::Mutex::new(StatusInfo {
+        backend: if use_tree_sitter {
+            "tree-sitter"
+        } else {
+            "minijinja+sqlparser"
+        },
+        ..StatusInfo::default()
+    }));
 
     let fusion_enabled = Arc::new(AtomicBool::new(false));
     if !fusion_path.is_empty() {
         let flag = fusion_enabled.clone();
         let path = fusion_path.clone();
-        let link = commands::ClientLink::new(write_tx.clone(), request_ids.clone());
+        let link = commands::ClientLink::new(
+            write_tx.clone(),
+            request_ids.clone(),
+            progress_supported.clone(),
+        );
         tokio::spawn(async move {
             let valid = fusion::validate_fusion(&path).await;
             flag.store(valid, Ordering::Relaxed);
@@ -140,7 +165,12 @@ pub async fn run(
     // launch flags; initializationOptions and dbt.setTarget replace fields
     let profiles = Arc::new(std::sync::Mutex::new(profiles));
     let refresh_profiles = profiles.clone();
-    let refresh_link = commands::ClientLink::new(write_tx.clone(), request_ids.clone());
+    let refresh_link = commands::ClientLink::new(
+        write_tx.clone(),
+        request_ids.clone(),
+        progress_supported.clone(),
+    );
+    let refresh_status = status.clone();
     tokio::spawn(async move {
         let mut warned: Option<String> = None;
         while let Some(mut root) = refresh_rx.recv().await {
@@ -154,6 +184,8 @@ pub async fn run(
                 .lock()
                 .expect("profiles config lock")
                 .clone();
+            let progress = refresh_link.progress_begin("dbt: refreshing project");
+            let started = std::time::Instant::now();
             let built = tokio::task::spawn_blocking({
                 let root = root.clone();
                 let builder = builder.clone();
@@ -166,14 +198,28 @@ pub async fn run(
                     builder.set_profile_override(cfg.profile);
                     builder.set_target_override(cfg.target);
                     let ctx = builder.build(&root);
-                    let (hits, misses) = builder.cache_stats();
-                    tracing::debug!(hits, misses, "scan cache totals");
-                    ctx
+                    let stats = builder.cache_stats();
+                    tracing::debug!(hits = stats.0, misses = stats.1, "scan cache totals");
+                    (ctx, stats)
                 }
             })
             .await;
             match built {
-                Ok(ctx) => {
+                Ok((ctx, (hits, misses))) => {
+                    let elapsed_ms = started.elapsed().as_millis() as u64;
+                    {
+                        let mut info = refresh_status.lock().expect("status lock");
+                        info.refreshes += 1;
+                        info.last_refresh_ms = elapsed_ms;
+                        info.cache_hits = hits;
+                        info.cache_misses = misses;
+                    }
+                    progress.end(format!(
+                        "{} models, {} sources ({} ms)",
+                        ctx.model_detail_map.len(),
+                        ctx.source_detail_map.len(),
+                        elapsed_ms
+                    ));
                     tracing::debug!(
                         models = ctx.model_detail_map.len(),
                         sources = ctx.source_detail_map.len(),
@@ -224,7 +270,10 @@ pub async fn run(
                     }
                     let _ = ctx_tx.send(Arc::new(ctx));
                 }
-                Err(err) => tracing::warn!(%err, "context refresh panicked"),
+                Err(err) => {
+                    progress.end("refresh failed");
+                    tracing::warn!(%err, "context refresh panicked");
+                }
             }
         }
     });
@@ -238,6 +287,8 @@ pub async fn run(
         fusion_path,
         fusion_enabled,
         profiles,
+        progress_supported,
+        status,
     );
 
     let mut stdin = tokio::io::stdin();

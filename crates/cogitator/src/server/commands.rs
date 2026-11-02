@@ -16,11 +16,79 @@ use tokio::sync::mpsc;
 pub struct ClientLink {
     write_tx: mpsc::UnboundedSender<Vec<u8>>,
     ids: Arc<AtomicI64>,
+    /// Client advertised window.workDoneProgress (set at initialize).
+    progress_supported: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// One $/progress series; falls back to silence when the client did not
+/// advertise window.workDoneProgress (callers keep their showMessage
+/// fallbacks for the outcomes that matter).
+pub struct Progress {
+    link: Option<ClientLink>,
+    token: String,
+}
+
+impl Progress {
+    pub fn active(&self) -> bool {
+        self.link.is_some()
+    }
+
+    pub fn end(self, message: impl Into<String>) {
+        if let Some(link) = &self.link {
+            link.progress_value(
+                &self.token,
+                serde_json::json!({ "kind": "end", "message": message.into() }),
+            );
+        }
+    }
 }
 
 impl ClientLink {
-    pub fn new(write_tx: mpsc::UnboundedSender<Vec<u8>>, ids: Arc<AtomicI64>) -> Self {
-        ClientLink { write_tx, ids }
+    pub fn new(
+        write_tx: mpsc::UnboundedSender<Vec<u8>>,
+        ids: Arc<AtomicI64>,
+        progress_supported: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Self {
+        ClientLink {
+            write_tx,
+            ids,
+            progress_supported,
+        }
+    }
+
+    /// Start a work-done progress series ($/progress): token create request
+    /// plus the begin notification. A no-op handle when unsupported.
+    pub fn progress_begin(&self, title: impl Into<String>) -> Progress {
+        if !self.progress_supported.load(Ordering::Relaxed) {
+            return Progress {
+                link: None,
+                token: String::new(),
+            };
+        }
+        let token = format!("cogitator/{}", self.ids.fetch_add(1, Ordering::Relaxed));
+        let id = self.ids.fetch_add(1, Ordering::Relaxed);
+        self.send(&ServerRequest {
+            jsonrpc: "2.0",
+            id,
+            method: "window/workDoneProgress/create",
+            params: serde_json::json!({ "token": token }),
+        });
+        self.progress_value(
+            &token,
+            serde_json::json!({ "kind": "begin", "title": title.into() }),
+        );
+        Progress {
+            link: Some(self.clone()),
+            token,
+        }
+    }
+
+    fn progress_value(&self, token: &str, value: serde_json::Value) {
+        self.send(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "$/progress",
+            "params": { "token": token, "value": value },
+        }));
     }
 
     pub fn show_message(&self, message_type: i32, message: impl Into<String>) {
@@ -78,10 +146,14 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
             .as_deref()
             .map(|t| format!(" (target {t})"))
             .unwrap_or_default();
-        link.show_message(
-            message_type::INFO,
-            format!("dbt {kind} started for '{selector}'{target_suffix}…"),
-        );
+        // progress-capable clients watch $/progress; others get messages
+        let progress = link.progress_begin(format!("dbt {kind}: {selector}{target_suffix}"));
+        if !progress.active() {
+            link.show_message(
+                message_type::INFO,
+                format!("dbt {kind} started for '{selector}'{target_suffix}…"),
+            );
+        }
         let mut command = tokio::process::Command::new(&binary);
         command
             .arg(kind)
@@ -94,6 +166,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
 
         let output = match result {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                progress.end(format!("dbt {kind} failed: '{binary}' not found"));
                 link.show_message(
                     message_type::ERROR,
                     format!(
@@ -106,6 +179,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 return;
             }
             Err(err) => {
+                progress.end(format!("dbt {kind} failed to launch"));
                 link.show_message(
                     message_type::ERROR,
                     format!(
@@ -120,6 +194,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
         };
 
         if !output.status.success() {
+            progress.end(format!("dbt {kind} failed for '{selector}'"));
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
             let detail = tail(
@@ -147,10 +222,14 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
             return;
         }
 
-        link.show_message(
-            message_type::INFO,
-            format!("dbt {kind} succeeded for '{selector}'."),
-        );
+        if progress.active() {
+            progress.end(format!("dbt {kind} succeeded for '{selector}'"));
+        } else {
+            link.show_message(
+                message_type::INFO,
+                format!("dbt {kind} succeeded for '{selector}'."),
+            );
+        }
 
         if kind == "compile" {
             open_compiled(&link, &project_root, &project_name, &model_path);

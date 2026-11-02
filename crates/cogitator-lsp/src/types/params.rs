@@ -34,6 +34,9 @@ pub struct InitializeParams<'a> {
     /// shape must not fail the whole initialize.
     #[serde(rename = "initializationOptions", default)]
     pub initialization_options: Option<serde_json::Value>,
+    /// Client capabilities, kept raw: only a few flags are consulted.
+    #[serde(default)]
+    pub capabilities: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -60,6 +63,15 @@ impl InitializeParams<'_> {
             }
         }
         self.root_path.as_ref().map(|p| p.to_string())
+    }
+
+    /// window.workDoneProgress from the client capabilities ($/progress).
+    pub fn work_done_progress(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .and_then(|c| c.pointer("/window/workDoneProgress"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
     }
 
     fn init_option_str(&self, keys: &[&str]) -> Option<&str> {

@@ -125,6 +125,13 @@
                    tests)
          "integration: unique test on customer_id is listed" tests))
 
+;; integration: server status
+(let ((s (run--exec "dbt.status" (cogitator--command-argument))))
+  (check (and (equal (plist-get (plist-get s :server) :backend) "tree-sitter")
+              (> (plist-get (plist-get s :project) :models) 0)
+              (>= (plist-get (plist-get s :refresh) :count) 1))
+         "integration: dbt.status reports backend and project" s))
+
 ;; unit: target-choice labels from a dbt.profiles report
 (let ((choices (cogitator--target-choices
                 '(:activeProfile "p" :activeTarget "dev"
