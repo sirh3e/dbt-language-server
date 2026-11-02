@@ -67,9 +67,10 @@ emacs-test:
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1
 
-# Regenerate CHANGELOG.md from the conventional commit history (git-cliff)
+# Regenerate CHANGELOG.md from the conventional commit history (git-cliff).
+# The range starts at the fork point: upstream Go commits and tags stay out.
 changelog:
-    git cliff -o CHANGELOG.md
+    git cliff 724b0f2..HEAD -o CHANGELOG.md
 
 # Install the git hooks via prek (the Rust pre-commit runner)
 hooks:

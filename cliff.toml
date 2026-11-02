@@ -10,6 +10,11 @@ header = """# Changelog
 All notable changes to cogitator, the dbt language server
 (a Rust rewrite of j-clemons/dbt-language-server).
 
+The Rust rewrite has no releases yet; everything sits under
+[unreleased]. The v0.1.x–v0.4.x tags in the git history belong to the
+upstream Go project and are ignored here — the first release of this
+fork should start at v0.5.0 to stay clear of them.
+
 <!-- git-cliff: end of header -->
 """
 # A Tera template to be rendered for each release in the changelog.
@@ -44,6 +49,10 @@ postprocessors = [
 # output = "test.md"
 
 [git]
+# The repository is a fork: v0.1.x–v0.4.x are the upstream Go project's
+# releases and must not produce changelog sections. The first release of
+# the Rust rewrite should be tagged v0.5.0 or later.
+ignore_tags = "^v0\\.[1-4]\\."
 # Parse commits according to the conventional commits specification.
 # See https://www.conventionalcommits.org
 conventional_commits = true

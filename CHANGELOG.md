@@ -3,6 +3,11 @@
 All notable changes to cogitator, the dbt language server
 (a Rust rewrite of j-clemons/dbt-language-server).
 
+The Rust rewrite has no releases yet; everything sits under
+[unreleased]. The v0.1.x–v0.4.x tags in the git history belong to the
+upstream Go project and are ignored here — the first release of this
+fork should start at v0.5.0 to stay clear of them.
+
 <!-- git-cliff: end of header -->
 ## [unreleased]
 
@@ -47,6 +52,7 @@ All notable changes to cogitator, the dbt language server
 - *(specs)* Add the cogitator.nvim implementation spec
 - *(readme)* Origin story and the full feature inventory
 - *(changelog)* Generate CHANGELOG.md with git-cliff
+- *(changelog)* Refresh for the tag/selector search and DAG view
 
 ### 🚜 Refactor
 
@@ -60,9 +66,3 @@ All notable changes to cogitator, the dbt language server
 - Remove the Go implementation
 - *(tooling)* Add prek hooks, git-cliff config and recipes
 - *(github)* Issue templates for bugs and feature requests
-## [0.2.0] - 2025-10-04
-
-### 🚀 Features
-
-- BigQuery function docs
-## [0.1.0-beta] - 2025-04-07
