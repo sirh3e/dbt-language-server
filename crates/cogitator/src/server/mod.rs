@@ -17,7 +17,7 @@ use cogitator_lsp::rpc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 
-pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
+pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: String) -> Result<()> {
     // Backend selection (06 §3.5): tree-sitter is the default; phase-1 stays
     // compiled as the fallback and behind --no-tree-sitter.
     let documents = if use_tree_sitter {
@@ -73,6 +73,9 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
     let (ctx_tx, ctx_rx) = watch::channel(Arc::new(DbtContext::default()));
     let (refresh_tx, mut refresh_rx) = mpsc::unbounded_channel::<String>();
     let builder = Arc::new(std::sync::Mutex::new(ContextBuilder::default()));
+    // --profiles-dir at launch; initializationOptions.profilesDir replaces it
+    let profiles_dir = Arc::new(std::sync::Mutex::new(profiles_dir));
+    let refresh_profiles_dir = profiles_dir.clone();
     let refresh_link = commands::ClientLink::new(write_tx.clone(), request_ids.clone());
     tokio::spawn(async move {
         let mut warned: Option<String> = None;
@@ -83,13 +86,19 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
             {
                 root = next;
             }
+            let override_dir = refresh_profiles_dir
+                .lock()
+                .expect("profiles dir lock")
+                .clone();
             let built = tokio::task::spawn_blocking({
                 let root = root.clone();
                 let builder = builder.clone();
+                let override_dir = override_dir.clone();
                 move || {
                     let span = tracing::info_span!("context_refresh", root = %root);
                     let _enter = span.enter();
                     let mut builder = builder.lock().expect("context builder lock");
+                    builder.set_profiles_dir(override_dir);
                     let ctx = builder.build(&root);
                     let (hits, misses) = builder.cache_stats();
                     tracing::debug!(hits, misses, "scan cache totals");
@@ -119,16 +128,22 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
                         && ctx.dialect.as_str().is_empty()
                         && !ctx.project.profile.is_empty()
                     {
+                        let searched: Vec<String> =
+                            cogitator_analysis::util::profiles_candidates(&override_dir, &root)
+                                .iter()
+                                .map(|p| p.display().to_string())
+                                .collect();
                         Some(format!(
-                            "SQL dialect not resolved for profile \
-                             '{}'.\n\
-                             Reason: profiles.yml was not found or has no \
-                             matching target (looked in <workspace>/.dbt/).\n\
-                             Solution: create profiles.yml with this profile, \
-                             or set DBT_PROFILES_DIR when running without a \
-                             workspace root. Function docs and dialect \
-                             keywords are generic until resolved.",
-                            ctx.project.profile
+                            "SQL dialect not resolved for profile '{}'.\n\
+                             Reason: no profiles.yml with a matching target \
+                             was found. Searched: {}.\n\
+                             Solution: create profiles.yml with this profile \
+                             in one of those places, or point --profiles-dir, \
+                             initializationOptions.profilesDir or \
+                             DBT_PROFILES_DIR at its directory. Function docs \
+                             and dialect keywords are generic until resolved.",
+                            ctx.project.profile,
+                            searched.join(", ")
                         ))
                     } else {
                         None
@@ -155,6 +170,7 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool) -> Result<()> {
         refresh_tx,
         fusion_path,
         fusion_enabled,
+        profiles_dir,
     );
 
     let mut stdin = tokio::io::stdin();

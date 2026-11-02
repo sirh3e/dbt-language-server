@@ -142,26 +142,63 @@ pub fn home_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Dialect from profiles.yml (03 §7.2 — Q5 behavior kept: a known workspace
-/// root checks only `<root>/.dbt/profiles.yml`).
-pub fn get_dialect(profile_name: &str, input_dir: &str) -> Dialect {
-    let path = if input_dir.is_empty() {
-        match std::env::var("DBT_PROFILES_DIR") {
-            Ok(dir) if !dir.is_empty() => PathBuf::from(dir).join("profiles.yml"),
-            _ => match home_dir() {
-                Some(home) => home.join(".dbt").join("profiles.yml"),
-                None => return Dialect::default(),
-            },
+/// `~` / `~/x` → the home directory (editor configs often pass these).
+fn expand_home(dir: &str) -> PathBuf {
+    if dir == "~" {
+        return home_dir().unwrap_or_else(|| PathBuf::from(dir));
+    }
+    if let Some(rest) = dir.strip_prefix("~/").or_else(|| dir.strip_prefix("~\\")) {
+        if let Some(home) = home_dir() {
+            return home.join(rest);
         }
-    } else {
-        PathBuf::from(input_dir).join(".dbt").join("profiles.yml")
-    };
+    }
+    PathBuf::from(dir)
+}
 
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        tracing::debug!(?path, "profiles.yml not readable");
-        return Dialect::default();
-    };
-    dialect_from_profiles(&text, profile_name)
+/// Candidate `profiles.yml` files in precedence order, dbt-style:
+/// 1. an explicit override (`--profiles-dir` / `initializationOptions.profilesDir`)
+/// 2. `$DBT_PROFILES_DIR`
+/// 3. `<workspace root>/profiles.yml` (dbt's project-local lookup)
+/// 4. `<workspace root>/.dbt/profiles.yml` (Q5 behavior, kept)
+/// 5. `~/.dbt/profiles.yml`
+pub fn profiles_candidates(override_dir: &str, workspace_root: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if !override_dir.is_empty() {
+        out.push(expand_home(override_dir).join("profiles.yml"));
+    }
+    if let Ok(dir) = std::env::var("DBT_PROFILES_DIR") {
+        if !dir.is_empty() {
+            out.push(expand_home(&dir).join("profiles.yml"));
+        }
+    }
+    if !workspace_root.is_empty() {
+        let root = PathBuf::from(workspace_root);
+        out.push(root.join("profiles.yml"));
+        out.push(root.join(".dbt").join("profiles.yml"));
+    }
+    if let Some(home) = home_dir() {
+        out.push(home.join(".dbt").join("profiles.yml"));
+    }
+    out
+}
+
+/// Dialect from profiles.yml (03 §7.2, extended): the first candidate from
+/// [`profiles_candidates`] that parses and resolves this profile's target
+/// wins; an unreadable or non-matching file falls through to the next.
+pub fn get_dialect(profile_name: &str, workspace_root: &str, profiles_dir: &str) -> Dialect {
+    for path in profiles_candidates(profiles_dir, workspace_root) {
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            tracing::debug!(?path, "profiles.yml candidate not readable");
+            continue;
+        };
+        let dialect = dialect_from_profiles(&text, profile_name);
+        if !dialect.as_str().is_empty() {
+            tracing::debug!(?path, dialect = dialect.as_str(), "dialect resolved");
+            return dialect;
+        }
+        tracing::debug!(?path, profile_name, "candidate has no matching target");
+    }
+    Dialect::default()
 }
 
 pub fn dialect_from_profiles(text: &str, profile_name: &str) -> Dialect {

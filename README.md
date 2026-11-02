@@ -42,6 +42,32 @@ Enabled via a cli argument.
 ```
 If path to the dbt fusion executable is not provided, `dbt` will be used and will look for it in `$PATH`.
 
+### dbt profiles
+
+The SQL dialect comes from your dbt `profiles.yml`. It can live anywhere;
+the first location that contains the project's profile with a resolvable
+target wins:
+
+1. `--profiles-dir <dir>` (CLI, `~` is expanded) or
+   `initializationOptions.profilesDir` sent by your editor at initialize
+   (the client option replaces the CLI flag)
+2. `$DBT_PROFILES_DIR`
+3. `<workspace root>/profiles.yml`
+4. `<workspace root>/.dbt/profiles.yml`
+5. `~/.dbt/profiles.yml` (`%USERPROFILE%\.dbt\profiles.yml` on Windows)
+
+Example Neovim configuration with a custom location:
+
+```lua
+require'lspconfig'.dbt.setup{
+  cmd = { "cogitator" },
+  init_options = { profilesDir = "/data/dbt-profiles" },
+}
+```
+
+If no candidate resolves, the server sends a warning listing every path it
+searched.
+
 ## Building from source
 
 The server is a Rust workspace:

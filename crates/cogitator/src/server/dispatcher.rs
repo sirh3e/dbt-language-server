@@ -32,6 +32,9 @@ pub struct Dispatcher {
     scratch: Vec<u8>,
     /// id source for server→client requests (responses are ignored).
     server_request_ids: Arc<std::sync::atomic::AtomicI64>,
+    /// Shared with the refresh task: initializationOptions.profilesDir
+    /// replaces the --profiles-dir launch value here.
+    profiles_dir: Arc<std::sync::Mutex<String>>,
 }
 
 impl Dispatcher {
@@ -42,6 +45,7 @@ impl Dispatcher {
         refresh_tx: mpsc::UnboundedSender<String>,
         fusion_path: String,
         fusion_enabled: Arc<AtomicBool>,
+        profiles_dir: Arc<std::sync::Mutex<String>>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -54,6 +58,7 @@ impl Dispatcher {
             fusion_jobs: HashMap::new(),
             scratch: Vec::new(),
             server_request_ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
+            profiles_dir,
         }
     }
 
@@ -177,6 +182,10 @@ impl Dispatcher {
             tracing::info!(client = %info.name, version = %info.version, "connected");
         }
         self.root_path = params.workspace_root().unwrap_or_default();
+        if let Some(dir) = params.profiles_dir() {
+            tracing::info!(dir, "profiles dir from initializationOptions");
+            *self.profiles_dir.lock().expect("profiles dir lock") = dir.to_string();
+        }
         let response = cogitator_lsp::initialize_response(req.id, crate::VERSION);
         self.send(&response);
         // first refresh so hover works before the first save (05 §6.2)

@@ -31,8 +31,11 @@ specified in `specs/rust-port/`).
 - **Logging**: `tracing` spans/events only; nothing but LSP frames on stdout.
 
 ## Environment Variables
-- **DBT_PROFILES_DIR**: profiles.yml directory when no workspace root is known
-  (otherwise `<root>/.dbt/profiles.yml` is used — Q5 in specs/rust-port/00).
+- **DBT_PROFILES_DIR**: profiles.yml directory. Full resolution order
+  (`util::profiles_candidates`): `--profiles-dir` /
+  `initializationOptions.profilesDir` override → `$DBT_PROFILES_DIR` →
+  `<root>/profiles.yml` → `<root>/.dbt/profiles.yml` (Q5) →
+  `~/.dbt/profiles.yml`; the first file whose profile resolves a target wins.
 
 ## Project Structure (specs/rust-port/09 §1)
 - `crates/cogitator-error` — error type

@@ -30,6 +30,10 @@ pub struct InitializeParams<'a> {
     pub root_uri: Option<Cow<'a, str>>,
     #[serde(borrow, rename = "workspaceFolders", default)]
     pub workspace_folders: Option<Vec<WorkspaceFolder<'a>>>,
+    /// Kept as raw JSON: the spec allows `any`, so a scalar or an unknown
+    /// shape must not fail the whole initialize.
+    #[serde(rename = "initializationOptions", default)]
+    pub initialization_options: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +60,16 @@ impl InitializeParams<'_> {
             }
         }
         self.root_path.as_ref().map(|p| p.to_string())
+    }
+
+    /// `initializationOptions.profilesDir` (or `profiles_dir`), when the
+    /// client sent one.
+    pub fn profiles_dir(&self) -> Option<&str> {
+        let opts = self.initialization_options.as_ref()?;
+        opts.get("profilesDir")
+            .or_else(|| opts.get("profiles_dir"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
     }
 }
 
@@ -245,6 +259,19 @@ mod tests {
         );
         assert_eq!(uri_to_fs_path("file://localhost/w"), Some("/w".into()));
         assert_eq!(uri_to_fs_path("untitled:x"), None);
+    }
+
+    #[test]
+    fn initialization_options_profiles_dir() {
+        let params: super::InitializeParams = serde_json::from_str(
+            r#"{"rootUri":"file:///w","initializationOptions":{"profilesDir":"/x/profiles"}}"#,
+        )
+        .unwrap();
+        assert_eq!(params.profiles_dir(), Some("/x/profiles"));
+        // a scalar `initializationOptions` must not fail the initialize parse
+        let params: super::InitializeParams =
+            serde_json::from_str(r#"{"initializationOptions":"nonsense"}"#).unwrap();
+        assert_eq!(params.profiles_dir(), None);
     }
 
     #[test]

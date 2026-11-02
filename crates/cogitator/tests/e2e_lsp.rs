@@ -115,6 +115,8 @@ fn full_session() {
             "clientInfo": {"name": "e2e", "version": "0"},
             // modern-client shape: rootUri only, no deprecated rootPath
             "rootUri": cogitator_lsp::fs_path_to_uri(&root),
+            // explicit profiles dir (here: the fixture's own .dbt folder)
+            "initializationOptions": {"profilesDir": root.join(".dbt").to_string_lossy()},
         }),
     );
     let caps = &init["result"]["capabilities"];

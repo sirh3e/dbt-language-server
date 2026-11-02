@@ -34,9 +34,16 @@ pub struct ContextBuilder {
     macros: FileCache<Vec<RawMacro>>,
     docs: FileCache<Vec<RawDocsBlock>>,
     edges: FileCache<Vec<EdgeSeed>>,
+    /// Explicit profiles directory (`--profiles-dir` /
+    /// `initializationOptions.profilesDir`); empty → dbt-style search order.
+    profiles_dir: String,
 }
 
 impl ContextBuilder {
+    pub fn set_profiles_dir(&mut self, dir: impl Into<String>) {
+        self.profiles_dir = dir.into();
+    }
+
     /// (hits, misses) across all four artifact caches.
     pub fn cache_stats(&self) -> (u64, u64) {
         [
@@ -136,7 +143,7 @@ impl ContextBuilder {
         };
 
         let project = load_project_file(&root);
-        let dialect = util::get_dialect(&project.profile, workspace_root);
+        let dialect = util::get_dialect(&project.profile, workspace_root, &self.profiles_dir);
 
         let own = ProjectDetails {
             root: root.clone(),
