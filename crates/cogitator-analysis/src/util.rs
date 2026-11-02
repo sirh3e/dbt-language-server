@@ -63,6 +63,34 @@ static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+/// `{{ config( … ) }}` spans (non-greedy; good enough for tag extraction).
+static CONFIG_SPAN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{\s*config\s*\(([\s\S]*?)\)\s*\}\}").unwrap());
+/// `tags = [...]` or `tags = 'x'` inside a config span.
+static CONFIG_TAGS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"tags\s*=\s*(?:\[([^\]]*)\]|'([^']*)'|"([^"]*)")"#).unwrap());
+static QUOTED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"'([^']*)'|"([^"]*)""#).unwrap());
+
+/// Tags declared in SQL via `{{ config(tags=…) }}` (string or list).
+pub fn config_tags(text: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    for span in CONFIG_SPAN_RE.captures_iter(text) {
+        for caps in CONFIG_TAGS_RE.captures_iter(&span[1]) {
+            if let Some(list) = caps.get(1) {
+                for item in QUOTED_RE.captures_iter(list.as_str()) {
+                    let tag = item.get(1).or_else(|| item.get(2)).map(|m| m.as_str());
+                    tags.extend(tag.map(str::to_string));
+                }
+            } else if let Some(single) = caps.get(2).or_else(|| caps.get(3)) {
+                tags.push(single.as_str().to_string());
+            }
+        }
+    }
+    tags.sort();
+    tags.dedup();
+    tags
+}
+
 /// `env_var()` references in `input` that resolve to nothing: no value in
 /// the environment and no inline default (resolve_env_vars emits the
 /// DBT_ENV_DEFAULT_ placeholder for exactly these).

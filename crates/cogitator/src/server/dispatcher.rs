@@ -392,6 +392,12 @@ impl Dispatcher {
                 self.status_report(req.id);
                 return;
             }
+            "dbt.projectGraph" => {
+                let ctx = self.snapshot();
+                let result = features::project_graph_json(&ctx);
+                self.send(&ResultResponse::new(req.id, result));
+                return;
+            }
             "dbt.setTarget" => {
                 let target = arg
                     .get("target")

@@ -19,7 +19,8 @@ pub use diagnostics::dangling_ref_diagnostics;
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use hover::hover;
 pub use navigation::{
-    code_lenses, document_highlights, document_symbols, model_graph, references, workspace_symbols,
+    code_lenses, document_highlights, document_symbols, model_graph, project_graph_json,
+    references, workspace_symbols,
 };
 pub use rename::rename_model;
 pub use signature::signature_help;

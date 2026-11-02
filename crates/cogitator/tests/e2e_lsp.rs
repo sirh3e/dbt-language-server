@@ -451,6 +451,36 @@ fn full_session() {
     );
     assert!(bogus["result"].is_null(), "{bogus}");
 
+    // 6b2. tag/selector search + the project DAG
+    let tagged = lsp.request(
+        "workspace/symbol",
+        serde_json::json!({ "query": "tag:nightly" }),
+    );
+    assert_eq!(tagged["result"][0]["name"], "customers", "{tagged}");
+    let selectors = lsp.request(
+        "workspace/symbol",
+        serde_json::json!({ "query": "selector:" }),
+    );
+    assert!(
+        selectors["result"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|e| e["name"] == "nightly")),
+        "{selectors}"
+    );
+    let dag = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.projectGraph", "arguments": [{}] }),
+    );
+    assert!(
+        dag["result"]["nodes"]
+            .as_array()
+            .is_some_and(|n| n.len() > 5),
+        "{dag}"
+    );
+    assert!(dag["result"]["edges"]
+        .as_array()
+        .is_some_and(|e| !e.is_empty()));
+
     // 6c. status: dbt.status knows the project
     let status = lsp.request(
         "workspace/executeCommand",

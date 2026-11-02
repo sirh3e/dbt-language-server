@@ -18,12 +18,15 @@ use super::{ModelDetails, ProjectDetails, SourceDetails, SourceTableDetails};
 pub(super) type PropsCache = FileCache<PropertiesFile>;
 pub(super) type DocsCache = FileCache<Vec<RawDocsBlock>>;
 
+pub(super) type SqlTagsCache = FileCache<Vec<String>>;
+
 pub(super) fn build_model_details(
     root: &Path,
     project: &ProjectFile,
     process_list: &[ProjectDetails],
     props: &mut PropsCache,
     docs: &mut DocsCache,
+    sql_tags: &mut SqlTagsCache,
 ) -> (
     HashMap<String, ModelDetails>,
     HashMap<String, SourceDetails>,
@@ -44,6 +47,15 @@ pub(super) fn build_model_details(
                 .and_then(|m| m.alias.clone())
                 .filter(|a| !a.is_empty())
                 .unwrap_or_else(|| stem.clone());
+            // yaml tags plus `{{ config(tags=…) }}` from the SQL (cached)
+            let mut tags = schema.map(|m| m.tags.clone()).unwrap_or_default();
+            if let Some(from_sql) =
+                sql_tags.get_or_parse(&file_path, |text, _| Some(util::config_tags(text)))
+            {
+                tags.extend(from_sql.iter().cloned());
+            }
+            tags.sort();
+            tags.dedup();
             models.insert(
                 key,
                 ModelDetails {
@@ -55,6 +67,7 @@ pub(super) fn build_model_details(
                         .map(|m| Range::zero_width(m.name_pos))
                         .unwrap_or_default(),
                     columns: schema.map(|m| m.columns.clone()).unwrap_or_default(),
+                    tags,
                 },
             );
         }
@@ -72,12 +85,14 @@ pub(super) fn build_model_details(
                 schema_uri: None,
                 schema_range: Range::default(),
                 columns: Vec::new(),
+                tags: Vec::new(),
             },
         );
     }
 
     props.sweep();
     docs.sweep();
+    sql_tags.sweep();
     (models, sources)
 }
 
@@ -87,6 +102,7 @@ pub(super) struct SchemaModel {
     pub(super) schema_uri: PathBuf,
     pub(super) name_pos: Position,
     pub(super) columns: Vec<cogitator_schemas::ColumnEntry>,
+    pub(super) tags: Vec<String>,
 }
 
 /// Properties YAML files under the model paths (03 §6.2): cached per file;
@@ -123,6 +139,7 @@ fn schema_entries(
                         schema_uri: file.clone(),
                         name_pos: model.name_pos,
                         columns: model.columns.clone(),
+                        tags: model.tags.clone(),
                     },
                 );
             }

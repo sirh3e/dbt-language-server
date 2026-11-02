@@ -364,5 +364,45 @@ check(
   vim.inspect(status_result):sub(1, 300)
 )
 
+-- the project DAG (Neovim-only): wire shape, boxes, edges, columns
+local dag_result
+new_client:exec_cmd({
+  command = "dbt.projectGraph",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+}, { bufnr = bufnr }, function(err, result)
+  dag_result = err == nil and result or false
+end)
+pcall(vim.wait, 5000, function()
+  return dag_result ~= nil
+end, 50)
+check(
+  type(dag_result) == "table" and #dag_result.nodes > 5 and #dag_result.edges > 0,
+  "dag: dbt.projectGraph lists nodes and edges",
+  type(dag_result) == "table" and #dag_result.nodes or dag_result
+)
+
+local dag = require("cogitator.dag")
+dag.open()
+pcall(vim.wait, 10000, function()
+  return dag._state ~= nil and dag._state.boxes ~= nil and next(dag._state.boxes) ~= nil
+end, 100)
+check(dag._state ~= nil, "dag: :DbtDag opened")
+if dag._state then
+  local text = table.concat(vim.api.nvim_buf_get_lines(dag._state.buf, 0, -1, false), "\n")
+  check(text:find("╭") ~= nil and text:find("▸") ~= nil, "dag: boxes and edge arrows drawn")
+  check(text:find("stg_customers", 1, true) ~= nil and text:find("customers", 1, true) ~= nil,
+    "dag: model names present")
+  check(text:find("#nightly", 1, true) ~= nil, "dag: tags shown on tagged nodes", text:sub(1, 200))
+  -- C toggles columns everywhere (docglow-style expansion)
+  dag._state.all_expanded = true
+  vim.api.nvim_feedkeys("C", "x", false) -- flips it back off…
+  vim.api.nvim_feedkeys("C", "x", false) -- …and on again, exercising the mapping
+  local expanded = table.concat(vim.api.nvim_buf_get_lines(dag._state.buf, 0, -1, false), "\n")
+  check(expanded:find("• customer_id", 1, true) ~= nil, "dag: expanded nodes list columns",
+    expanded:sub(1, 300))
+  dag.close()
+  check(dag._state == nil, "dag: closes cleanly")
+end
+
 print(failures == 0 and "ALL PASSED" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

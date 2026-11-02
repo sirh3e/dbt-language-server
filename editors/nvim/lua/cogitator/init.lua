@@ -41,6 +41,9 @@ local function keymaps(bufnr)
   map("<leader>dy", commands.extract, "dbt: extract model into schema YAML / add version")
   map("<leader>dq", commands.tests, "dbt: jump to a test of this model")
   map("<leader>dS", commands.status, "dbt: language-server status")
+  map("<leader>dD", function()
+    require("cogitator.dag").open()
+  end, "dbt: project DAG (Neovim only)")
 end
 
 local function on_attach(client, bufnr, config)

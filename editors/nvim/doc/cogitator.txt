@@ -62,6 +62,15 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtExtract    model → schema YAML / add version   <leader>dy
   :DbtTests      jump to a test of this model        <leader>dq
   :DbtStatus     language-server status              <leader>dS
+  :DbtDag        project DAG, dbt-docs style         <leader>dD
+  :DbtTags       pick a tag, then a model
+  :DbtSelectors  pick a selectors.yml entry
+
+`:DbtDag` (a *Neovim-only* feature) draws the whole project as a layered
+DAG: `<CR>` opens the model under the cursor, `c`/`C` expand columns in
+one/all nodes (docglow-style), `L` shows column lineage, `R` refreshes,
+`q` closes. Search also works through |vim.lsp.buf.workspace_symbol|
+with `tag:x` and `selector:x` queries.
 
 Context refreshes and dbt runs also report through $/progress, so they
 appear in |vim.lsp.status()| and plugins like fidget.nvim.

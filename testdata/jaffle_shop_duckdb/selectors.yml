@@ -1,0 +1,11 @@
+selectors:
+  - name: nightly
+    description: Everything the nightly job builds
+    definition:
+      method: tag
+      value: nightly
+  - name: marts_only
+    description: Customer-facing marts
+    definition:
+      method: fqn
+      value: customers

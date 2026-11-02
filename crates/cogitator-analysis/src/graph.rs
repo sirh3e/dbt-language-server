@@ -18,7 +18,7 @@ use crate::util;
 /// Cached per-model edge extraction result: (target kind, edge, target name).
 pub type EdgeSeed = (NodeKind, EdgeKind, String);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum NodeKind {
     Model,
     Source,
@@ -156,6 +156,79 @@ impl ProjectGraph {
                 .neighbors_directed(idx, direction)
                 .map(|n| &self.graph[n])
         })
+    }
+
+    /// The model/source DAG for `dbt.projectGraph`: every non-macro node
+    /// with its layer (dependencies at 0, each dependent one past its
+    /// deepest dependency) and the ref/source edges as
+    /// (dependency name+kind, dependent name+kind) — left-to-right flow.
+    #[allow(clippy::type_complexity)]
+    pub fn dag(
+        &self,
+    ) -> (
+        Vec<(&NodeData, usize)>,
+        Vec<((NodeKind, String), (NodeKind, String))>,
+    ) {
+        use petgraph::visit::EdgeRef;
+        use petgraph::Direction::Outgoing;
+
+        fn depth(
+            graph: &StableDiGraph<NodeData, EdgeKind>,
+            idx: NodeIndex,
+            memo: &mut HashMap<NodeIndex, usize>,
+            visiting: &mut Vec<NodeIndex>,
+        ) -> usize {
+            if let Some(&d) = memo.get(&idx) {
+                return d;
+            }
+            if visiting.contains(&idx) {
+                return 0; // cycle guard: break at the current node
+            }
+            visiting.push(idx);
+            let mut best = 0;
+            for edge in graph.edges_directed(idx, Outgoing) {
+                if matches!(edge.weight(), EdgeKind::MacroCall) {
+                    continue;
+                }
+                best = best.max(1 + depth(graph, edge.target(), memo, visiting));
+            }
+            visiting.pop();
+            memo.insert(idx, best);
+            best
+        }
+
+        let mut memo = HashMap::new();
+        let mut nodes: Vec<(&NodeData, usize)> = self
+            .graph
+            .node_indices()
+            .filter(|&i| self.graph[i].kind != NodeKind::Macro)
+            .map(|i| {
+                let d = depth(&self.graph, i, &mut memo, &mut Vec::new());
+                (&self.graph[i], d)
+            })
+            .collect();
+        nodes.sort_by(|a, b| (a.1, &a.0.name).cmp(&(b.1, &b.0.name)));
+
+        let mut edges: Vec<((NodeKind, String), (NodeKind, String))> = self
+            .graph
+            .edge_indices()
+            .filter_map(|e| {
+                let (from, to) = self.graph.edge_endpoints(e)?;
+                (!matches!(self.graph[e], EdgeKind::MacroCall)
+                    && self.graph[from].kind != NodeKind::Macro
+                    && self.graph[to].kind != NodeKind::Macro)
+                    .then(|| {
+                        // dependency first: the DAG flows dependency → dependent
+                        (
+                            (self.graph[to].kind, self.graph[to].name.clone()),
+                            (self.graph[from].kind, self.graph[from].name.clone()),
+                        )
+                    })
+            })
+            .collect();
+        edges.sort();
+        edges.dedup();
+        (nodes, edges)
     }
 
     pub fn node_count(&self) -> usize {

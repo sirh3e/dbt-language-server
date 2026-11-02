@@ -81,6 +81,16 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Model-graph browser** (`dbt.modelGraph`): direct upstream/downstream
   neighbors for the yazi-style three-pane UI in the Neovim and Emacs
   integrations
+- **Tag and selector search**: model tags from YAML and
+  `{{ config(tags=…) }}` plus `selectors.yml` entries are indexed;
+  `workspace/symbol` understands `tag:x` and `selector:x` queries in any
+  editor, and Neovim adds `:DbtTags` / `:DbtSelectors` pickers
+- **Project DAG view — Neovim only**: `:DbtDag` renders the whole project
+  dbt-docs style (layered left→right, box-drawn nodes with tags, edges),
+  and docglow-style column information inside the nodes (`c`/`C` expand,
+  `L` column lineage, `<CR>` opens the model). The `dbt.projectGraph`
+  data command is editor-neutral, but this UI ships only in the Neovim
+  plugin.
 
 **dbt workflow**
 

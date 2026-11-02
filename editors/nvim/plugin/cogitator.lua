@@ -20,6 +20,12 @@ cmd("DbtLineage", "lineage", "show column lineage for the current model")
 cmd("DbtExtract", "extract", "extract the model into its schema YAML (or add a version)")
 cmd("DbtTests", "tests", "pick a test defined for this model/version and jump to it")
 cmd("DbtStatus", "status", "show what the language server knows and has been doing")
+cmd("DbtTags", "tags", "pick a dbt tag, then a model carrying it")
+cmd("DbtSelectors", "selectors", "pick a selectors.yml entry and jump to it")
+
+vim.api.nvim_create_user_command("DbtDag", function()
+  require("cogitator.dag").open()
+end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()

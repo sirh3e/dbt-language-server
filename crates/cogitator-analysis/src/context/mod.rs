@@ -34,6 +34,8 @@ pub struct ContextBuilder {
     macros: FileCache<Vec<RawMacro>>,
     docs: FileCache<Vec<RawDocsBlock>>,
     edges: FileCache<Vec<EdgeSeed>>,
+    /// `{{ config(tags=…) }}` per model file (tag search).
+    sql_tags: FileCache<Vec<String>>,
     /// Explicit profiles directory (`--profiles-dir` /
     /// `initializationOptions.profilesDir`); empty → dbt-style search order.
     profiles_dir: String,
@@ -63,6 +65,7 @@ impl ContextBuilder {
             self.macros.stats(),
             self.docs.stats(),
             self.edges.stats(),
+            self.sql_tags.stats(),
         ]
         .iter()
         .fold((0, 0), |(h, m), (ch, cm)| (h + ch, m + cm))
@@ -78,6 +81,17 @@ pub struct ModelDetails {
     pub schema_range: Range,
     /// Documented columns from the properties YAML (write-assist).
     pub columns: Vec<cogitator_schemas::ColumnEntry>,
+    /// Tags from the YAML entry and `{{ config(tags=…) }}` (tag search).
+    pub tags: Vec<String>,
+}
+
+/// One entry of the project-root `selectors.yml` (selector search).
+#[derive(Debug, Clone, Default)]
+pub struct SelectorDetails {
+    pub name: String,
+    pub description: String,
+    pub uri: PathBuf,
+    pub range: Range,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -128,6 +142,7 @@ pub struct DbtContext {
     /// package name → macro name → details (03 §5).
     pub macro_detail_map: HashMap<String, HashMap<String, MacroDetails>>,
     pub variable_detail_map: HashMap<String, VariableDetails>,
+    pub selector_detail_map: HashMap<String, SelectorDetails>,
     pub graph: ProjectGraph,
 }
 
@@ -178,15 +193,23 @@ impl ContextBuilder {
         let mut macros = HashMap::new();
         let mut variables = HashMap::new();
         let mut graph = ProjectGraph::default();
-        let (props_cache, macros_cache, docs_cache, edges_cache) = (
+        let (props_cache, macros_cache, docs_cache, edges_cache, sql_tags_cache) = (
             &mut self.props,
             &mut self.macros,
             &mut self.docs,
             &mut self.edges,
+            &mut self.sql_tags,
         );
         std::thread::scope(|scope| {
             let models_sources = scope.spawn(|| {
-                build_model_details(&root, &project, &process_list, props_cache, docs_cache)
+                build_model_details(
+                    &root,
+                    &project,
+                    &process_list,
+                    props_cache,
+                    docs_cache,
+                    sql_tags_cache,
+                )
             });
             let macros_handle = scope.spawn(|| build_macro_details(&process_list, macros_cache));
             let vars_handle = scope.spawn(|| build_variables(&root, &project));
@@ -198,6 +221,8 @@ impl ContextBuilder {
             graph = graph_handle.join().unwrap_or_default();
         });
 
+        let selector_detail_map = load_selectors(&root);
+
         DbtContext {
             project_root: Some(root),
             project,
@@ -206,9 +231,48 @@ impl ContextBuilder {
             source_detail_map: sources,
             macro_detail_map: macros,
             variable_detail_map: variables,
+            selector_detail_map,
             graph,
         }
     }
+}
+
+/// `<root>/selectors.yml` → name/description entries with positions
+/// (selector search; absent file → empty map).
+fn load_selectors(root: &Path) -> HashMap<String, SelectorDetails> {
+    use cogitator_schemas::yaml::{as_str, get, items, position_of};
+    use saphyr::{LoadableYamlNode, MarkedYaml};
+
+    let path = root.join("selectors.yml");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return HashMap::new();
+    };
+    let Ok(docs) = MarkedYaml::load_from_str(&text) else {
+        return HashMap::new();
+    };
+    let Some(top) = docs.first() else {
+        return HashMap::new();
+    };
+    let mut out = HashMap::new();
+    for entry in get(top, "selectors").into_iter().flat_map(items) {
+        let Some(name) = get(entry, "name").and_then(as_str) else {
+            continue;
+        };
+        let position = get(entry, "name").map(position_of).unwrap_or_default();
+        out.insert(
+            name.to_string(),
+            SelectorDetails {
+                name: name.to_string(),
+                description: get(entry, "description")
+                    .and_then(as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                uri: path.clone(),
+                range: Range::zero_width(position),
+            },
+        );
+    }
+    out
 }
 
 /// Parse `<root>/dbt_project.yml` with env_var resolution and defaults

@@ -89,8 +89,63 @@ pub fn document_symbols(doc: &Document, uri: &str) -> Vec<SymbolInformation> {
 /// workspace/symbol: models, sources and macros matching `query`.
 pub fn workspace_symbols(ctx: &DbtContext, query: &str) -> Vec<SymbolInformation> {
     let query = query.to_lowercase();
+
+    // `tag:x` → models carrying tag x; `selector:x` → selectors.yml
+    // entries. A bare prefix lists everything of that kind.
+    if let Some(tag) = query.strip_prefix("tag:") {
+        let tag = tag.trim();
+        let mut out: Vec<SymbolInformation> = ctx
+            .model_detail_map
+            .iter()
+            .filter(|(_, m)| {
+                tag.is_empty() || m.tags.iter().any(|t| t.to_lowercase().contains(tag))
+            })
+            .filter(|(_, m)| !m.tags.is_empty())
+            .map(|(name, m)| SymbolInformation {
+                name: name.clone(),
+                kind: symbol_kind::CLASS,
+                location: Location {
+                    uri: file_uri(&m.uri),
+                    range: Range::default(),
+                },
+            })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        return out;
+    }
+    if let Some(selector) = query.strip_prefix("selector:") {
+        let selector = selector.trim();
+        let mut out: Vec<SymbolInformation> = ctx
+            .selector_detail_map
+            .iter()
+            .filter(|(name, _)| selector.is_empty() || name.to_lowercase().contains(selector))
+            .map(|(name, s)| SymbolInformation {
+                name: name.clone(),
+                kind: symbol_kind::KEY,
+                location: Location {
+                    uri: file_uri(&s.uri),
+                    range: s.range,
+                },
+            })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        return out;
+    }
+
     let matches = |name: &str| query.is_empty() || name.to_lowercase().contains(&query);
     let mut out = Vec::new();
+    for (name, s) in &ctx.selector_detail_map {
+        if matches(name) {
+            out.push(SymbolInformation {
+                name: name.clone(),
+                kind: symbol_kind::KEY,
+                location: Location {
+                    uri: file_uri(&s.uri),
+                    range: s.range,
+                },
+            });
+        }
+    }
     for (name, m) in &ctx.model_detail_map {
         if matches(name) {
             out.push(SymbolInformation {
@@ -297,4 +352,78 @@ pub fn model_graph(
         "upstream": upstream.into_iter().map(entry).collect::<Vec<_>>(),
         "downstream": downstream.into_iter().map(entry).collect::<Vec<_>>(),
     }))
+}
+
+// ---------------------------------------------------------------------------
+// dbt.projectGraph (the Neovim-only DAG view's data source)
+// ---------------------------------------------------------------------------
+
+/// The whole model/source DAG with layers, tags and documented columns.
+pub fn project_graph_json(ctx: &DbtContext) -> serde_json::Value {
+    use crate::graph::NodeKind;
+
+    let (nodes, edges) = ctx.graph.dag();
+    let id = |kind: NodeKind, name: &str| {
+        format!(
+            "{}:{name}",
+            if kind == NodeKind::Source {
+                "source"
+            } else {
+                "model"
+            }
+        )
+    };
+    let node_json = nodes
+        .iter()
+        .map(|(data, layer)| {
+            let (uri, tags, columns) = match data.kind {
+                NodeKind::Source => (
+                    ctx.source_detail_map
+                        .get(&data.name)
+                        .map(|s| file_uri(&s.uri)),
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                _ => {
+                    let details = ctx.model_detail_map.get(&data.name);
+                    (
+                        details
+                            .map(|d| &d.uri)
+                            .filter(|p| !p.as_os_str().is_empty())
+                            .map(|p| file_uri(p)),
+                        details.map(|d| d.tags.clone()).unwrap_or_default(),
+                        details
+                            .map(|d| {
+                                d.columns
+                                    .iter()
+                                    .map(|c| {
+                                        serde_json::json!({
+                                            "name": c.name,
+                                            "description": c.description,
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    )
+                }
+            };
+            serde_json::json!({
+                "id": id(data.kind, &data.name),
+                "name": data.name,
+                "kind": if data.kind == NodeKind::Source { "source" } else { "model" },
+                "layer": layer,
+                "uri": uri,
+                "tags": tags,
+                "columns": columns,
+            })
+        })
+        .collect::<Vec<_>>();
+    let edge_json = edges
+        .iter()
+        .map(|((fk, fname), (tk, tname))| {
+            serde_json::json!({ "from": id(*fk, fname), "to": id(*tk, tname) })
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({ "nodes": node_json, "edges": edge_json })
 }

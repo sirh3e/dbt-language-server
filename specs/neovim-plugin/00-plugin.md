@@ -100,6 +100,22 @@ Every command takes **one argument object**, not positional values:
 | `dbt.modelTests` | `{model, tests: [{name, column?, version?, uri, range}]}` or `null` | none |
 | `dbt.goToTests` | `null` | showDocument to the first test + INFO list |
 | `dbt.status` | server/project/profiles/refresh snapshot | none |
+| `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
+
+`workspace/symbol` additionally understands `tag:x` (models carrying tag
+x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`) and
+`selector:x` (selectors.yml entries) queries.
+
+### 5.3b Project DAG view (`:DbtDag`) — **Neovim only**
+
+`lua/cogitator/dag.lua` renders `dbt.projectGraph` as a dbt-docs-style
+DAG in a scratch tab: layers left→right, box-drawn nodes with `#tags`,
+orthogonal edges with corner glyphs (never overdrawing box content), and
+docglow-style column information inside expanded nodes. Keys: `<CR>`
+open, `c` toggle this node's columns, `C` toggle all, `L` column lineage
+via `dbt.showLineage`, `R` refresh, `q` close. The server command is
+editor-neutral; this UI is deliberately implemented only in the Neovim
+plugin.
 
 When the client advertises `window.workDoneProgress`, context refreshes
 and dbt run/test/compile report through `window/workDoneProgress/create`

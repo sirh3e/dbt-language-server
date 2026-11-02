@@ -119,6 +119,84 @@ function M.tests()
   end)
 end
 
+--- :DbtTags — pick a tag, then a model carrying it, and open it.
+function M.tags()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  if not client then
+    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.projectGraph",
+    arguments = { M.build_argument(bufnr, false) },
+  }, { bufnr = bufnr }, function(err, graph)
+    if err or not graph or graph == vim.NIL then
+      vim.notify("dbt.projectGraph failed", vim.log.levels.ERROR)
+      return
+    end
+    local by_tag = {}
+    for _, node in ipairs(graph.nodes) do
+      for _, tag in ipairs(node.tags or {}) do
+        by_tag[tag] = by_tag[tag] or {}
+        table.insert(by_tag[tag], node)
+      end
+    end
+    local tags = vim.tbl_keys(by_tag)
+    table.sort(tags)
+    if #tags == 0 then
+      vim.notify("no tags in this project (tags: in YAML or {{ config(tags=…) }})", vim.log.levels.INFO)
+      return
+    end
+    vim.ui.select(tags, {
+      prompt = "dbt tag",
+      format_item = function(tag)
+        return ("#%s  (%d model%s)"):format(tag, #by_tag[tag], #by_tag[tag] == 1 and "" or "s")
+      end,
+    }, function(tag)
+      if not tag then
+        return
+      end
+      vim.ui.select(by_tag[tag], {
+        prompt = "#" .. tag,
+        format_item = function(node)
+          return node.name
+        end,
+      }, function(node)
+        if node and node.uri and node.uri ~= vim.NIL then
+          vim.cmd.edit(vim.uri_to_fname(node.uri))
+        end
+      end)
+    end)
+  end)
+end
+
+--- :DbtSelectors — pick a selectors.yml entry and jump to it.
+function M.selectors()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  if not client then
+    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
+    return
+  end
+  client:request("workspace/symbol", { query = "selector:" }, function(err, symbols)
+    if err or not symbols or #symbols == 0 then
+      vim.notify("no selectors.yml entries in this project", vim.log.levels.INFO)
+      return
+    end
+    vim.ui.select(symbols, {
+      prompt = "dbt selector",
+      format_item = function(s)
+        return s.name
+      end,
+    }, function(symbol)
+      if symbol then
+        vim.lsp.util.show_document(symbol.location, client.offset_encoding, { focus = true })
+      end
+    end)
+  end, bufnr)
+end
+
 --- :DbtStatus — what the server knows and has been doing.
 function M.status()
   local bufnr = vim.api.nvim_get_current_buf()

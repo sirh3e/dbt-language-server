@@ -102,6 +102,8 @@ pub mod symbol_kind {
     pub const INTERFACE: i32 = 11;
     pub const FUNCTION: i32 = 12;
     pub const VARIABLE: i32 = 13;
+    /// Used for selectors.yml entries (selector search).
+    pub const KEY: i32 = 20;
 }
 
 #[derive(Debug, Clone, Serialize)]

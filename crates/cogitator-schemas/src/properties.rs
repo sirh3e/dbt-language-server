@@ -24,6 +24,8 @@ pub struct ModelEntry {
     pub description: String,
     pub alias: Option<String>,
     pub columns: Vec<ColumnEntry>,
+    /// `tags:` and `config.tags` of the entry (tag search, dbt.projectGraph).
+    pub tags: Vec<String>,
 }
 
 /// A documented column from the properties YAML (write-assist completion,
@@ -68,19 +70,19 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
     // so entries join positionally with the generated structs. The alias also
     // comes from the tree: dbt-jsonschema does not model `config.alias` on
     // properties-file models, but dbt (and the Go server) honor it (03 §6.3).
-    let model_positions: Vec<(Position, Option<String>, Vec<Position>)> =
-        yaml::get(&marked, "models")
-            .map(|models| {
-                yaml::items(models)
-                    .map(|m| {
-                        let alias = yaml::get(m, "config")
-                            .and_then(|c| yaml::get(c, "alias"))
-                            .and_then(|a| yaml::as_str(a).map(str::to_string));
-                        (name_position(m), alias, column_positions(m))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+    type ModelSide = (Position, Option<String>, Vec<String>, Vec<Position>);
+    let model_positions: Vec<ModelSide> = yaml::get(&marked, "models")
+        .map(|models| {
+            yaml::items(models)
+                .map(|m| {
+                    let alias = yaml::get(m, "config")
+                        .and_then(|c| yaml::get(c, "alias"))
+                        .and_then(|a| yaml::as_str(a).map(str::to_string));
+                    (name_position(m), alias, tags_of(m), column_positions(m))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     type TableSide = (Position, Vec<Position>);
     let source_nodes: Vec<(Position, Vec<TableSide>)> = yaml::get(&marked, "sources")
         .map(|sources| {
@@ -104,13 +106,15 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let (name_pos, alias, column_pos) = model_positions.get(i).cloned().unwrap_or_default();
+            let (name_pos, alias, tags, column_pos) =
+                model_positions.get(i).cloned().unwrap_or_default();
             ModelEntry {
                 name: m.name.clone(),
                 name_pos,
                 description: m.description.clone().unwrap_or_default(),
                 alias,
                 columns: columns_of(&m.columns, &column_pos),
+                tags,
             }
         })
         .collect();
@@ -148,6 +152,25 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
         .collect();
 
     Ok(PropertiesFile { models, sources })
+}
+
+/// `tags:` on the entry plus `config.tags`, each a string or a list.
+fn tags_of(entry: &saphyr::MarkedYaml<'_>) -> Vec<String> {
+    let mut tags = Vec::new();
+    let nodes = [
+        yaml::get(entry, "tags"),
+        yaml::get(entry, "config").and_then(|c| yaml::get(c, "tags")),
+    ];
+    for node in nodes.into_iter().flatten() {
+        if let Some(tag) = yaml::as_str(node) {
+            tags.push(tag.to_string());
+        } else {
+            tags.extend(yaml::items(node).filter_map(|t| yaml::as_str(t).map(str::to_string)));
+        }
+    }
+    tags.sort();
+    tags.dedup();
+    tags
 }
 
 fn name_position(entry: &saphyr::MarkedYaml<'_>) -> Position {
