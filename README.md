@@ -99,6 +99,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Actionable errors**: every failure surfaces as an editor message with
   a Reason and a Solution (missing project, unresolved dialect, missing
   dbt binary, failed runs with the exact retry command)
+- **Status visibility**: context refreshes and dbt runs report through
+  standard `$/progress` (visible in `vim.lsp.status()`, fidget, eglot's
+  mode line), and `dbt.status` (`:DbtStatus`, `M-x cogitator-status`)
+  answers with the full picture — backend, fusion state, project counts,
+  dialect, active profile/target, refresh timings and cache stats
 
 **Engine and infrastructure**
 
@@ -202,10 +207,17 @@ showing each target's auth method and issues); in Emacs:
 
 ## Installation
 
-This Rust rewrite has no published releases yet — build from source
-(below) or grab a binary from this repository's releases page once the
-first tag is cut. (The old curl installer belongs to the pre-Rust upstream
-releases and would install the previous Go binary.)
+Once the first tag is cut, [install.sh](install.sh) installs the latest
+release (it replaces the old installer, which pointed at the upstream Go
+project):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh
+```
+
+`COGITATOR_REPO`, `COGITATOR_VERSION` and `COGITATOR_BIN_DIR` override the
+repository, tag and install directory. Until then, build from source
+(below) or grab a binary from the releases page.
 
 Release assets cover Linux (`cogitator-linux-amd64`), macOS
 (`cogitator-darwin-amd64`, `cogitator-darwin-arm64`) and Windows
@@ -291,6 +303,12 @@ clippy with `-D warnings`, all test suites, schema freshness),
 against `testdata/jaffle_shop_duckdb`), `just zed-build`,
 `just duckdb-check`, `just gen-schemas`. CI runs the Rust suite on Linux,
 Windows and macOS; releases cross-compile with cargo-zigbuild.
+
+Git hooks run through [prek](https://prek.j178.dev)
+(`prek install`, config in `.pre-commit-config.yaml`); the changelog is
+generated from the conventional-commit history with
+[git-cliff](https://git-cliff.org) (`just changelog`, config in
+`cliff.toml`).
 
 See `AGENTS.md` for the development command reference and
 [`specs/rust-port/`](specs/rust-port/) for the implementation specs the
