@@ -535,7 +535,7 @@ impl Dispatcher {
         let result = match self.documents.get(uri) {
             Some(doc) => features_lineage(&doc.parsed, &ctx),
             None => {
-                let path = uri.strip_prefix("file://").unwrap_or(uri);
+                let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
                 std::fs::read_to_string(path).ok().and_then(|text| {
                     cogitator_parser::pipeline::parse_document(&text, &ctx.dialect)
                         .ok()
@@ -663,7 +663,9 @@ impl Dispatcher {
                 project_root: root,
                 project_name: ctx.project.name.clone(),
                 selector: super::fusion::model_selector_from_uri(uri),
-                model_path: std::path::PathBuf::from(uri.strip_prefix("file://").unwrap_or(uri)),
+                model_path: std::path::PathBuf::from(
+                    cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string()),
+                ),
             },
         );
         self.send(&ResultResponse::new(id, serde_json::Value::Null));
@@ -677,7 +679,7 @@ impl Dispatcher {
         match self.documents.get(uri) {
             Some(doc) => cogitator_analysis::lineage::column_lineage(&doc.parsed, &ctx.dialect),
             None => {
-                let path = uri.strip_prefix("file://").unwrap_or(uri);
+                let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
                 let text = std::fs::read_to_string(path).ok()?;
                 let parsed =
                     cogitator_parser::pipeline::parse_document(&text, &ctx.dialect).ok()?;

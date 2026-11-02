@@ -123,7 +123,7 @@ fn rename_model_produces_full_workspace_edit() {
 fn code_lens_batch_for_models_and_macros() {
     let ctx = ctx();
     let stg = fixture_root().join("models/staging/stg_orders.sql");
-    let lenses = features::code_lenses(&ctx, &format!("file://{}", stg.display()));
+    let lenses = features::code_lenses(&ctx, &cogitator_lsp::fs_path_to_uri(&stg));
     let titles: Vec<&str> = lenses.iter().map(|l| l.command.title.as_str()).collect();
     assert!(
         titles.iter().any(|t| t.contains("downstream")),
@@ -156,7 +156,7 @@ fn code_lens_batch_for_models_and_macros() {
         .and_then(|m| m.values().next())
         .map(|m| m.uri.clone())
         .expect("a macro file");
-    let macro_lenses = features::code_lenses(&ctx, &format!("file://{}", macro_file.display()));
+    let macro_lenses = features::code_lenses(&ctx, &cogitator_lsp::fs_path_to_uri(&macro_file));
     assert!(!macro_lenses.is_empty());
     assert!(
         macro_lenses

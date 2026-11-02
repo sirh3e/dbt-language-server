@@ -189,12 +189,13 @@ fn model_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
 /// One "N call sites" lens per macro defined in this file, anchored at the
 /// macro's signature.
 fn macro_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
-    let path = uri.strip_prefix("file://").unwrap_or(uri);
+    let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
     let mut lenses: Vec<cogitator_lsp::CodeLens> = ctx
         .macro_detail_map
         .values()
         .flat_map(|macros| macros.values())
-        .filter(|m| m.uri.as_os_str() == std::ffi::OsStr::new(path))
+        // Path equality compares components, so `/` and `\` separators match
+        .filter(|m| m.uri.as_path() == std::path::Path::new(path.as_str()))
         .map(|m| {
             let count = ctx.graph.macro_call_sites(&m.name).count();
             cogitator_lsp::CodeLens {

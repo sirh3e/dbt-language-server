@@ -132,15 +132,25 @@ pub fn get_line_and_column(input: &str, idx: usize) -> (u32, u32) {
     (line, (idx.min(input.len()) - last_nl) as u32)
 }
 
+/// Home directory: `$HOME`, falling back to `%USERPROFILE%` (on Windows,
+/// cmd.exe and service contexts often set only the latter).
+pub fn home_dir() -> Option<PathBuf> {
+    std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
+        .ok()
+        .filter(|h| !h.is_empty())
+        .map(PathBuf::from)
+}
+
 /// Dialect from profiles.yml (03 §7.2 — Q5 behavior kept: a known workspace
 /// root checks only `<root>/.dbt/profiles.yml`).
 pub fn get_dialect(profile_name: &str, input_dir: &str) -> Dialect {
     let path = if input_dir.is_empty() {
         match std::env::var("DBT_PROFILES_DIR") {
             Ok(dir) if !dir.is_empty() => PathBuf::from(dir).join("profiles.yml"),
-            _ => match std::env::var("HOME") {
-                Ok(home) => PathBuf::from(home).join(".dbt").join("profiles.yml"),
-                Err(_) => return Dialect::default(),
+            _ => match home_dir() {
+                Some(home) => home.join(".dbt").join("profiles.yml"),
+                None => return Dialect::default(),
             },
         }
     } else {

@@ -11,7 +11,8 @@ use cogitator_lsp::{
 /// Diagnostics for a dbt YAML document: YAML syntax errors at their reported
 /// position, schema-level deserialize errors at the file start.
 pub fn yaml_diagnostics(uri: &str, text: &str) -> Vec<Diagnostic> {
-    let path = Path::new(uri.strip_prefix("file://").unwrap_or(uri));
+    let fs_path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+    let path = Path::new(&fs_path);
     let is_project = path.file_name().is_some_and(|f| f == "dbt_project.yml");
 
     if let Some((line, character, message)) = cogitator_schemas::yaml::syntax_error(text) {

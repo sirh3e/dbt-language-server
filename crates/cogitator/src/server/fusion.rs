@@ -206,10 +206,15 @@ pub fn parse_fusion_log_msg(msg: &str, code: &str, level: &str) -> (String, Stri
 }
 
 /// 04 §2.1: path after the last "models" → dotted selector; else "*".
+/// Decodes the URI first so percent-escapes and Windows drive prefixes
+/// never leak into the selector.
 pub fn model_selector_from_uri(uri: &str) -> String {
-    match uri.rfind("models") {
+    let path = cogitator_lsp::uri_to_fs_path(uri)
+        .unwrap_or_else(|| uri.to_string())
+        .replace('\\', "/");
+    match path.rfind("models") {
         None => "*".to_string(),
-        Some(idx) => uri[idx + "models".len()..]
+        Some(idx) => path[idx + "models".len()..]
             .trim_start_matches('/')
             .trim_end_matches(".sql")
             .replace('/', "."),
@@ -219,8 +224,7 @@ pub fn model_selector_from_uri(uri: &str) -> String {
 /// 04 §2.2: `~/.dbt/dbt-language-server/fusion-artifacts/<project>` with
 /// log/ and target/ subdirs.
 fn fusion_artifact_path(project_name: &str) -> Option<PathBuf> {
-    let home = std::env::var("HOME").ok()?;
-    let base = PathBuf::from(home)
+    let base = cogitator_analysis::util::home_dir()?
         .join(".dbt")
         .join("dbt-language-server")
         .join("fusion-artifacts")

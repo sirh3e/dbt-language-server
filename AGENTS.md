@@ -12,7 +12,9 @@ specified in `specs/rust-port/`).
 - **Test one case**: `cargo test -p cogitator-analysis ref_source_var_refined`
 - **Lint/format**: `cargo clippy --workspace` (zero warnings expected), `cargo fmt --all`
 - **DuckDB feature** (bundled C++ build, slow): `cargo check -p cogitator --features duckdb-parser`
-- **Release cross-builds**: `cargo-zigbuild` via the Zig toolchain (specs/rust-port/07 §5; CI: .github/workflows/release.yml)
+- **Release cross-builds**: `cargo-zigbuild` via the Zig toolchain (specs/rust-port/07 §5; CI: .github/workflows/release.yml — linux-amd64, darwin-amd64/arm64, windows-amd64.exe via the `x86_64-pc-windows-gnu` target)
+- **CI tests**: .github/workflows/ci.yml runs `cargo test --workspace` on Ubuntu, Windows and macOS plus fmt/clippy
+- **Windows rules**: never hand-strip `file://` — URIs go through `cogitator_lsp::uri_to_fs_path` (handles `file:///c%3A/…` drive URIs) and paths become URIs via `cogitator_lsp::fs_path_to_uri`; home lookup uses `cogitator_analysis::util::home_dir()` (`$HOME` → `%USERPROFILE%`); compare paths as `Path` (components), not strings
 
 ## Code Style (binding rules in specs/rust-port/05 §2–§3, 08 §1)
 - **Functional core, imperative shell**: extraction/feature logic is pure

@@ -31,12 +31,12 @@ pub(crate) use crate::context::DbtContext;
 pub(crate) use crate::Document;
 
 fn file_uri(path: &Path) -> String {
-    format!("file://{}", path.display())
+    cogitator_lsp::fs_path_to_uri(path)
 }
 
 pub fn model_name_from_uri(uri: &str) -> Option<String> {
-    let path = uri.strip_prefix("file://").unwrap_or(uri);
-    let base = Path::new(path).file_name()?.to_string_lossy();
+    let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+    let base = Path::new(&path).file_name()?.to_string_lossy();
     base.strip_suffix(".sql").map(str::to_string)
 }
 

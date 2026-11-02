@@ -56,9 +56,15 @@ development commands and `specs/rust-port/` for the implementation specs.
 ## Installation
 
 This Rust rewrite has no published releases yet — build from source (above)
-or grab `cogitator-<os>-<arch>` from this repository's releases page once the
-first tag is cut. (The old curl installer belongs to the pre-Rust upstream
-releases and would install the previous Go binary.)
+or grab a binary from this repository's releases page once the first tag is
+cut. (The old curl installer belongs to the pre-Rust upstream releases and
+would install the previous Go binary.)
+
+Release assets cover Linux (`cogitator-linux-amd64`), macOS
+(`cogitator-darwin-amd64`, `cogitator-darwin-arm64`) and Windows
+(`cogitator-windows-amd64.exe`). On Windows, put `cogitator.exe` somewhere on
+`%PATH%` and configure your editor the same way as below; `file:///c%3A/…`
+URIs, `%USERPROFILE%`-based profile lookup and backslash paths are handled.
 
 ### Neovim
 

@@ -77,7 +77,7 @@ fn hover_and_definition_on_a_real_model() {
     let ctx = ctx();
     let model_path = fixture_root().join("models/customers.sql");
     let text = std::fs::read_to_string(&model_path).unwrap();
-    let uri = format!("file://{}", model_path.display());
+    let uri = cogitator_lsp::fs_path_to_uri(&model_path);
 
     let mut docs = Documents::default();
     docs.open(uri.clone(), &text, &ctx.dialect);

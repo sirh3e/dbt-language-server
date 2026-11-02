@@ -155,7 +155,7 @@ fn open_compiled(link: &ClientLink, root: &Path, project: &str, model_path: &Pat
         .join(project)
         .join(relative);
     if compiled.is_file() {
-        link.show_document(format!("file://{}", compiled.display()), None);
+        link.show_document(cogitator_lsp::fs_path_to_uri(&compiled), None);
     } else {
         link.show_message(
             message_type::WARNING,

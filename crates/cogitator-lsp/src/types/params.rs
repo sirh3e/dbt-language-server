@@ -59,7 +59,9 @@ impl InitializeParams<'_> {
     }
 }
 
-/// `file://` URI → filesystem path (percent-decoded).
+/// `file://` URI → filesystem path (percent-decoded). Windows drive-letter
+/// URIs (`file:///C:/…`; VS Code sends `file:///c%3A/…`) decode to `C:/…` —
+/// `Path` accepts forward slashes on Windows.
 pub fn uri_to_fs_path(uri: &str) -> Option<String> {
     let rest = uri.strip_prefix("file://")?;
     // strip an authority (file://localhost/..., rare)
@@ -82,7 +84,56 @@ pub fn uri_to_fs_path(uri: &str) -> Option<String> {
         out.push(bytes[i]);
         i += 1;
     }
-    String::from_utf8(out).ok()
+    String::from_utf8(out).ok().map(strip_drive_slash)
+}
+
+/// `/C:/work` (the decoded path of a Windows drive URI) → `C:/work`;
+/// anything else is returned unchanged.
+fn strip_drive_slash(path: String) -> String {
+    let b = path.as_bytes();
+    let is_drive = b.len() >= 3
+        && b[0] == b'/'
+        && b[1].is_ascii_alphabetic()
+        && b[2] == b':'
+        && (b.len() == 3 || b[3] == b'/');
+    if is_drive {
+        path[1..].to_string()
+    } else {
+        path
+    }
+}
+
+/// Filesystem path → `file://` URI: backslashes become `/`, a Windows drive
+/// path gets its leading slash (`C:\w` → `file:///C:/w`), and bytes outside
+/// the URI path character set are percent-encoded.
+pub fn fs_path_to_uri(path: &std::path::Path) -> String {
+    use std::fmt::Write;
+
+    let raw = path.to_string_lossy().replace('\\', "/");
+    let mut out = String::with_capacity(raw.len() + 8);
+    out.push_str("file://");
+    if !raw.starts_with('/') {
+        out.push('/');
+    }
+    for byte in raw.bytes() {
+        match byte {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'.'
+            | b'_'
+            | b'~'
+            | b'/'
+            | b':'
+            | b'+'
+            | b'@' => out.push(byte as char),
+            _ => {
+                let _ = write!(out, "%{byte:02X}");
+            }
+        }
+    }
+    out
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -183,7 +234,7 @@ pub struct RenameParams<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::uri_to_fs_path;
+    use super::{fs_path_to_uri, uri_to_fs_path};
 
     #[test]
     fn uri_decoding() {
@@ -194,5 +245,40 @@ mod tests {
         );
         assert_eq!(uri_to_fs_path("file://localhost/w"), Some("/w".into()));
         assert_eq!(uri_to_fs_path("untitled:x"), None);
+    }
+
+    #[test]
+    fn windows_drive_uris() {
+        // VS Code on Windows percent-encodes the drive colon
+        assert_eq!(
+            uri_to_fs_path("file:///c%3A/work/proj"),
+            Some("c:/work/proj".into())
+        );
+        assert_eq!(
+            uri_to_fs_path("file:///C:/work/proj"),
+            Some("C:/work/proj".into())
+        );
+        // a bare drive root, and a non-drive path that merely looks close
+        assert_eq!(uri_to_fs_path("file:///c%3A"), Some("c:".into()));
+        assert_eq!(uri_to_fs_path("file:///cx/y"), Some("/cx/y".into()));
+    }
+
+    #[test]
+    fn path_encoding() {
+        use std::path::Path;
+        assert_eq!(fs_path_to_uri(Path::new("/w/proj")), "file:///w/proj");
+        assert_eq!(
+            fs_path_to_uri(Path::new("/w/my proj")),
+            "file:///w/my%20proj"
+        );
+        assert_eq!(
+            fs_path_to_uri(Path::new(r"C:\work\proj")),
+            "file:///C:/work/proj"
+        );
+        // round-trips through the decoder
+        assert_eq!(
+            uri_to_fs_path(&fs_path_to_uri(Path::new("C:/a b/c.sql"))),
+            Some("C:/a b/c.sql".into())
+        );
     }
 }

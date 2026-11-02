@@ -104,7 +104,7 @@ fn full_session() {
     let root = fixture_root().canonicalize().unwrap();
     let model = root.join("models/customers.sql");
     let text = std::fs::read_to_string(&model).unwrap();
-    let uri = format!("file://{}", model.display());
+    let uri = cogitator_lsp::fs_path_to_uri(&model);
 
     let mut lsp = Lsp::start();
 
@@ -114,7 +114,7 @@ fn full_session() {
         serde_json::json!({
             "clientInfo": {"name": "e2e", "version": "0"},
             // modern-client shape: rootUri only, no deprecated rootPath
-            "rootUri": format!("file://{}", root.display()),
+            "rootUri": cogitator_lsp::fs_path_to_uri(&root),
         }),
     );
     let caps = &init["result"]["capabilities"];
