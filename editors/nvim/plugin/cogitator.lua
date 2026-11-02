@@ -21,3 +21,16 @@ cmd("DbtLineage", "lineage", "show column lineage for the current model")
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()
 end, { desc = "browse the model graph (upstream | model | downstream)" })
+
+vim.api.nvim_create_user_command("DbtProfiles", function(opts)
+  local profiles = require("cogitator.profiles")
+  if opts.args == "" then
+    profiles.report(require("cogitator").config or require("cogitator.config").build({}))
+  else
+    profiles.set(opts.args)
+  end
+end, {
+  nargs = "?",
+  complete = "dir",
+  desc = "show the dbt profiles resolution, or switch the profiles directory",
+})

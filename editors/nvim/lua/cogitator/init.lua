@@ -53,6 +53,30 @@ local function on_attach(client, bufnr, config)
   require("cogitator.lens").attach(bufnr, config)
 end
 
+--- (Re-)register the server definition; assignment form replaces any
+--- previous definition outright, which :DbtProfiles relies on.
+function M.register(config)
+  local server = {
+    cmd = config.cmd,
+    filetypes = config.filetypes,
+    capabilities = capabilities(),
+  }
+  if config.profiles_dir then
+    server.init_options = { profilesDir = vim.fn.expand(config.profiles_dir) }
+  end
+  if config.attach_outside_project then
+    local markers = config.root_markers
+    server.root_dir = function(bufnr, on_dir)
+      local path = vim.api.nvim_buf_get_name(bufnr)
+      local found = vim.fs.root(path ~= "" and path or 0, markers)
+      on_dir(found or vim.fn.getcwd())
+    end
+  else
+    server.root_markers = config.root_markers
+  end
+  vim.lsp.config.cogitator = server
+end
+
 function M.setup(opts)
   local config = require("cogitator.config").build(opts or {})
   M.config = config
@@ -65,26 +89,7 @@ function M.setup(opts)
     return
   end
 
-  local server = {
-    cmd = config.cmd,
-    filetypes = config.filetypes,
-    capabilities = capabilities(),
-  }
-  if config.profiles_dir then
-    server.init_options = { profilesDir = config.profiles_dir }
-  end
-  if config.attach_outside_project then
-    local markers = config.root_markers
-    server.root_dir = function(bufnr, on_dir)
-      local path = vim.api.nvim_buf_get_name(bufnr)
-      local found = vim.fs.root(path ~= "" and path or 0, markers)
-      on_dir(found or vim.fn.getcwd())
-    end
-  else
-    server.root_markers = config.root_markers
-  end
-
-  vim.lsp.config("cogitator", server)
+  M.register(config)
   vim.lsp.enable("cogitator")
 
   vim.api.nvim_create_autocmd("LspAttach", {

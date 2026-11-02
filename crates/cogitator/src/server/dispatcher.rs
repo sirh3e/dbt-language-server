@@ -377,8 +377,10 @@ impl Dispatcher {
             return;
         };
         tracing::info!("shutdown request");
-        // bare response without a result field — Go's exact shape (01 §3.3)
-        self.send(&cogitator_lsp::Response::new(req.id));
+        // Deliberate deviation from Go's bare response: JSON-RPC requires a
+        // result member on success, and Neovim rejects the bare shape as
+        // INVALID_SERVER_MESSAGE, leaving the client lingering on restart.
+        self.send(&ResultResponse::new(req.id, serde_json::Value::Null));
     }
 
     fn resolve_completion(&mut self, content: &[u8]) {

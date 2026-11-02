@@ -57,7 +57,13 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
+  :DbtProfiles   show/switch the profiles directory
                  run the code lens on this line      <leader>dL
+
+`:DbtProfiles` without an argument prints the server's profiles.yml
+resolution order with the winning candidate marked. With a directory
+argument it switches `profiles_dir` and restarts the server, since
+initializationOptions only apply at initialize.
 
 The graph browser (|:DbtGraph|) is a yazi-style three-pane float: direct
 upstream models on the left, the current model in the center, direct

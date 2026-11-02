@@ -207,5 +207,43 @@ end
 graph.close()
 check(graph._state == nil, "integration: graph browser closes cleanly")
 
+-- profiles: candidate order and the :DbtProfiles runtime switch
+local profiles = require("cogitator.profiles")
+local cands = profiles.candidates({ profiles_dir = "/override" }, "/work")
+check(
+  cands[1] == vim.fs.joinpath("/override", "profiles.yml")
+    and vim.tbl_contains(cands, vim.fs.joinpath("/work", ".dbt", "profiles.yml")),
+  "profiles: candidates start with the override",
+  vim.inspect(cands)
+)
+
+-- switch to a genuinely different directory so the restarted client is
+-- distinguishable by its initializationOptions
+local other_dir = vim.fs.joinpath(vim.uv.os_tmpdir(), "cogitator-nvim-profiles-" .. vim.uv.os_getpid())
+vim.fn.mkdir(other_dir, "p")
+vim.fn.writefile(
+  { "jaffle_shop:", "  target: dev", "  outputs:", "    dev:", "      type: snowflake" },
+  vim.fs.joinpath(other_dir, "profiles.yml")
+)
+profiles.set(other_dir)
+-- the dying client can emit a late notification that would interrupt a
+-- plain vim.wait, so pump events in small tolerant slices instead
+local switched = false
+for _ = 1, 150 do
+  pcall(vim.wait, 100)
+  local c = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  if c and c.config.init_options and c.config.init_options.profilesDir == other_dir then
+    switched = true
+    break
+  end
+end
+check(
+  switched,
+  "profiles: :DbtProfiles restarts with the new initializationOptions",
+  vim.inspect(vim.tbl_map(function(c)
+    return c.config.init_options
+  end, vim.lsp.get_clients({ name = "cogitator" })))
+)
+
 print(failures == 0 and "ALL PASSED" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

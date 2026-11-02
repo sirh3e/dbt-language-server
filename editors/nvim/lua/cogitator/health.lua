@@ -22,25 +22,7 @@ local function binary_check(cmd)
   end
 end
 
-local function profiles_candidates(config, root)
-  local candidates = {}
-  if config.profiles_dir and config.profiles_dir ~= "" then
-    table.insert(candidates, vim.fs.joinpath(vim.fn.expand(config.profiles_dir), "profiles.yml"))
-  end
-  local env = vim.env.DBT_PROFILES_DIR
-  if env and env ~= "" then
-    table.insert(candidates, vim.fs.joinpath(env, "profiles.yml"))
-  end
-  if root then
-    table.insert(candidates, vim.fs.joinpath(root, "profiles.yml"))
-    table.insert(candidates, vim.fs.joinpath(root, ".dbt", "profiles.yml"))
-  end
-  local home = vim.env.HOME or vim.env.USERPROFILE
-  if home and home ~= "" then
-    table.insert(candidates, vim.fs.joinpath(home, ".dbt", "profiles.yml"))
-  end
-  return candidates
-end
+local profiles = require("cogitator.profiles")
 
 function M.check()
   health.start("cogitator.nvim")
@@ -69,7 +51,7 @@ function M.check()
   end
 
   local found = false
-  for _, candidate in ipairs(profiles_candidates(config, root)) do
+  for _, candidate in ipairs(profiles.candidates(config, root)) do
     if not found and vim.uv.fs_stat(candidate) then
       health.ok("profiles.yml: " .. candidate)
       found = true

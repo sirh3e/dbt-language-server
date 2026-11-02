@@ -362,11 +362,12 @@ fn full_session() {
     let bad = lsp.request("textDocument/rename", serde_json::json!({}));
     assert_eq!(bad["error"]["code"], -32602);
 
-    // 7. shutdown: bare response without result (01 §3.3), then exit
+    // 7. shutdown must carry "result": null (deliberate deviation from the
+    //    Go bare shape — Neovim rejects it as INVALID_SERVER_MESSAGE)
     let shutdown = lsp.request("shutdown", serde_json::json!({}));
     assert!(
-        shutdown.get("result").is_none(),
-        "no result field: {shutdown}"
+        shutdown.get("result").is_some_and(|r| r.is_null()),
+        "result: null expected: {shutdown}"
     );
     lsp.notify("exit", serde_json::json!({}));
     let status = lsp.child.wait().unwrap();
