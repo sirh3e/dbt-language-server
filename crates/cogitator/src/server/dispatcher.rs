@@ -342,6 +342,13 @@ impl Dispatcher {
                 self.run_dbt(req.id, kind, &uri);
                 return;
             }
+            "dbt.modelGraph" => {
+                let model = arg.get("model").and_then(|m| m.as_str());
+                let ctx = self.snapshot();
+                let result = features::model_graph(&ctx, &uri, model);
+                self.send(&ResultResponse::new(req.id, result));
+                return;
+            }
             "dbt.goToSchema" => {}
             other => {
                 let response = ErrorResponse::new(

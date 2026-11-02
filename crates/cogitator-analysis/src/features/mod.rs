@@ -16,7 +16,7 @@ pub use definition::{definition, go_to_schema};
 pub use diagnostics::dangling_ref_diagnostics;
 pub use hover::hover;
 pub use navigation::{
-    code_lenses, document_highlights, document_symbols, references, workspace_symbols,
+    code_lenses, document_highlights, document_symbols, model_graph, references, workspace_symbols,
 };
 pub use rename::rename_model;
 pub use signature::signature_help;

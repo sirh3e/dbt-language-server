@@ -233,3 +233,45 @@ fn lens(
         },
     }
 }
+
+// ---------------------------------------------------------------------------
+// dbt.modelGraph (editors/nvim graph browser)
+// ---------------------------------------------------------------------------
+
+/// The model, its file, and its direct upstream/downstream neighbors with
+/// navigable URIs. `model_arg` (re-centering on a neighbor) wins over `uri`.
+pub fn model_graph(
+    ctx: &DbtContext,
+    uri: &str,
+    model_arg: Option<&str>,
+) -> Option<serde_json::Value> {
+    use crate::graph::{NodeData, NodeKind};
+
+    let model = match model_arg {
+        Some(m) if !m.is_empty() => m.to_string(),
+        _ => model_name_from_uri(uri)?,
+    };
+    let details = ctx.model_detail_map.get(&model)?;
+    let (upstream, downstream) = ctx.graph.model_neighbors(&model);
+    let entry = |node: &NodeData| {
+        let (kind, node_uri) = match node.kind {
+            NodeKind::Source => (
+                "source",
+                ctx.source_detail_map
+                    .get(&node.name)
+                    .map(|s| file_uri(&s.uri)),
+            ),
+            _ => (
+                "model",
+                (!node.uri.as_os_str().is_empty()).then(|| file_uri(&node.uri)),
+            ),
+        };
+        serde_json::json!({ "name": node.name, "kind": kind, "uri": node_uri })
+    };
+    Some(serde_json::json!({
+        "model": model,
+        "uri": file_uri(&details.uri),
+        "upstream": upstream.into_iter().map(entry).collect::<Vec<_>>(),
+        "downstream": downstream.into_iter().map(entry).collect::<Vec<_>>(),
+    }))
+}

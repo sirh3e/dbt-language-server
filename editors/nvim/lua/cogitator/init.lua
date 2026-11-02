@@ -31,6 +31,9 @@ local function keymaps(bufnr)
   map("<leader>dt", commands.test, "dbt: test this model")
   map("<leader>dc", commands.compile, "dbt: compile this model")
   map("<leader>dL", commands.run_lens, "dbt: run code lens on this line")
+  map("<leader>dg", function()
+    require("cogitator.graph").open()
+  end, "dbt: browse the model graph")
 end
 
 local function on_attach(client, bufnr, config)

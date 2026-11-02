@@ -95,8 +95,10 @@ URIs, `%USERPROFILE%`-based profile lookup and backslash paths are handled.
 ### Neovim
 
 This repository ships a first-party plugin at `editors/nvim`
-(spec: `specs/neovim-plugin/00-plugin.md`) with `:Dbt*` commands, code-lens
-wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim:
+(spec: `specs/neovim-plugin/00-plugin.md`) with `:Dbt*` commands, a
+yazi-style model-graph browser (`:DbtGraph`: upstream | model | downstream,
+`<CR>` re-centers, `o` opens), code-lens wiring, `<leader>d` keymaps and
+`:checkhealth cogitator`. With lazy.nvim:
 
 ```lua
 {

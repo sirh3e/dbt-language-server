@@ -56,7 +56,21 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
+  :DbtGraph      model-graph browser                 <leader>dg
                  run the code lens on this line      <leader>dL
+
+The graph browser (|:DbtGraph|) is a yazi-style three-pane float: direct
+upstream models on the left, the current model in the center, direct
+downstream models on the right. Keys inside it:
+
+  h / l          move focus between the panes
+  j / k          select an entry in a side pane
+  <CR>           re-center the graph on the selected neighbor
+  o              open the selected entry's file (center: the model itself)
+  q / <Esc>      close the browser
+
+Sources appear in the upstream pane tagged `[source]`; they have no
+further lineage behind them.
 
 Code lenses on each model: "N downstream", "N upstream", "Go to schema",
 "Column lineage", "dbt run", "dbt test", "dbt compile"; macros get an

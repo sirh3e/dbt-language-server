@@ -160,5 +160,52 @@ check(
   vim.inspect(last)
 )
 
+-- dbt.modelGraph: wire shape with direct neighbors
+local graph_result
+client:exec_cmd({
+  command = "dbt.modelGraph",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+}, { bufnr = bufnr }, function(err, result)
+  graph_result = err == nil and result or false
+end)
+vim.wait(5000, function()
+  return graph_result ~= nil
+end, 50)
+local up_names = {}
+if type(graph_result) == "table" and graph_result.upstream then
+  up_names = vim.tbl_map(function(e)
+    return e.name
+  end, graph_result.upstream)
+end
+check(
+  type(graph_result) == "table"
+    and graph_result.model == "customers"
+    and vim.tbl_contains(up_names, "stg_customers"),
+  "integration: dbt.modelGraph lists direct upstream",
+  vim.inspect(graph_result):sub(1, 200)
+)
+
+-- the yazi-style browser: three panes, upstream pane lists neighbors
+local graph = require("cogitator.graph")
+graph.open()
+vim.wait(5000, function()
+  return graph._state ~= nil and graph._state.data ~= nil
+end, 50)
+local s = graph._state
+local ui_ok = s ~= nil
+  and s.data ~= nil
+  and vim.api.nvim_win_is_valid(s.wins.left)
+  and vim.api.nvim_win_is_valid(s.wins.center)
+  and vim.api.nvim_win_is_valid(s.wins.right)
+check(ui_ok, "integration: graph browser opens three panes")
+if ui_ok then
+  local left = table.concat(vim.api.nvim_buf_get_lines(s.bufs.left, 0, -1, false), "\n")
+  check(left:find("stg_customers") ~= nil, "integration: upstream pane lists stg_customers", left)
+  local center = table.concat(vim.api.nvim_buf_get_lines(s.bufs.center, 0, -1, false), "\n")
+  check(center:find("customers") ~= nil, "integration: center pane names the model", center)
+end
+graph.close()
+check(graph._state == nil, "integration: graph browser closes cleanly")
+
 print(failures == 0 and "ALL PASSED" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

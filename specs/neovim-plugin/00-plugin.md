@@ -61,7 +61,7 @@ error.
 - `codeLensProvider: { resolveProvider: false }`
 - `executeCommandProvider.commands`:
   `dbt.goToSchema`, `dbt.columnLineage`, `dbt.openSchema`, `dbt.showLineage`,
-  `dbt.run`, `dbt.test`, `dbt.compile`
+  `dbt.run`, `dbt.test`, `dbt.compile`, `dbt.modelGraph`
 - `serverInfo.name == "cogitator"`
 
 ### 1.5 Server→client traffic the plugin must handle
@@ -93,6 +93,19 @@ Every command takes **one argument object**, not positional values:
 | `dbt.columnLineage` | lineage JSON or `null` | none |
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
 | `dbt.run` / `dbt.test` / `dbt.compile` | `null` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument |
+| `dbt.modelGraph` | graph payload or `null` | none |
+
+`dbt.modelGraph` also accepts `{ "model": "<name>" }` in place of `uri`
+(re-centering) and answers with direct neighbors only:
+
+```json
+{ "model": "customers", "uri": "file:///…/customers.sql",
+  "upstream":   [ { "name": "stg_customers", "kind": "model",  "uri": "file:///…" } ],
+  "downstream": [ { "name": "mart_x",        "kind": "model",  "uri": "file:///…" } ] }
+```
+
+`kind` is `model` or `source`; `uri` is `null` for dangling refs and for
+sources without a defining YAML.
 
 ---
 
@@ -218,13 +231,26 @@ this buffer") when no client is attached.
 - Model lenses in display order: `N downstream`, `N upstream`,
   `Go to schema`, `Column lineage`, `dbt run`, `dbt test`, `dbt compile`.
 
-### 5.3 Default buffer-local keymaps (when `keymaps = true`)
+### 5.3 Model-graph browser (`:DbtGraph`, `lua/cogitator/graph.lua`)
+
+A yazi-style three-pane float over `dbt.modelGraph`: direct upstream on the
+left, the current model (name, path, counts) in the center, direct
+downstream on the right. Keys: `h`/`l` move focus between panes, `j`/`k`
+select in a side pane, `<CR>` re-centers the graph on the selected neighbor
+(a `dbt.modelGraph` call by `model` name), `o` opens the selected entry's
+file (closing the browser), `q`/`<Esc>` close. Sources are tagged
+`[source]` and refuse re-centering with an INFO notice; entries without a
+`uri` are tagged `(missing)`. One instance at a time; the fetch runs
+through the originating buffer's client.
+
+### 5.4 Default buffer-local keymaps (when `keymaps = true`)
 
 A `<leader>d` prefix, deliberately clear of Neovim 0.11's built-in `gr*`
 LSP maps: `<leader>ds` → `:DbtSchema`, `<leader>dl` → `:DbtLineage`,
 `<leader>dr` → `:DbtRun`, `<leader>dt` → `:DbtTest`, `<leader>dc` →
-`:DbtCompile`, `<leader>dL` → `vim.lsp.codelens.run`. All with `desc` set,
-all buffer-local on attach only.
+`:DbtCompile`, `<leader>dg` → `:DbtGraph`, `<leader>dL` →
+`vim.lsp.codelens.run`. All with `desc` set, all buffer-local on attach
+only.
 
 ---
 

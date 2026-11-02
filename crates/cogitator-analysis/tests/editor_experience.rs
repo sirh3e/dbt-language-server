@@ -224,3 +224,38 @@ fn signature_help_uses_structured_params_with_defaults() {
         assert!(macros.values().all(|m| !m.params.is_empty()));
     }
 }
+
+#[test]
+fn model_graph_direct_neighbors() {
+    let ctx = build_context(fixture_root().to_str().unwrap());
+
+    let graph = features::model_graph(&ctx, "", Some("customers")).expect("customers graph");
+    assert_eq!(graph["model"], "customers");
+    assert!(graph["uri"].as_str().unwrap().ends_with("customers.sql"));
+    let upstream: Vec<&str> = graph["upstream"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert!(upstream.contains(&"stg_customers"), "{upstream:?}");
+
+    // re-center by name (no uri): the neighbor's downstream points back
+    let stg = features::model_graph(&ctx, "", Some("stg_customers")).expect("stg graph");
+    let down: Vec<&str> = stg["downstream"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["name"].as_str().unwrap())
+        .collect();
+    assert!(down.contains(&"customers"), "{down:?}");
+    // model entries carry navigable uris and the model kind
+    assert!(stg["downstream"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|e| e["kind"] == "model" && e["uri"].is_string()));
+
+    // unknown model → no payload (the dispatcher answers null)
+    assert!(features::model_graph(&ctx, "", Some("nope")).is_none());
+}

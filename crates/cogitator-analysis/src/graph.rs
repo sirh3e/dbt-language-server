@@ -112,6 +112,33 @@ impl ProjectGraph {
         self.neighbors(NodeKind::Model, name, petgraph::Direction::Outgoing)
     }
 
+    /// Direct neighbors for the model-graph browser (`dbt.modelGraph`):
+    /// upstream = outgoing ref/source targets (macros excluded), downstream
+    /// = incoming ref dependents. Sorted by name for a stable UI.
+    pub fn model_neighbors<'a>(&'a self, name: &str) -> (Vec<&'a NodeData>, Vec<&'a NodeData>) {
+        use petgraph::visit::EdgeRef;
+        use petgraph::Direction::{Incoming, Outgoing};
+
+        let Some(&idx) = self.by_name.get(&(NodeKind::Model, name.to_string())) else {
+            return (Vec::new(), Vec::new());
+        };
+        let mut upstream: Vec<&NodeData> = self
+            .graph
+            .edges_directed(idx, Outgoing)
+            .filter(|e| !matches!(e.weight(), EdgeKind::MacroCall))
+            .map(|e| &self.graph[e.target()])
+            .collect();
+        let mut downstream: Vec<&NodeData> = self
+            .graph
+            .edges_directed(idx, Incoming)
+            .filter(|e| matches!(e.weight(), EdgeKind::Ref))
+            .map(|e| &self.graph[e.source()])
+            .collect();
+        upstream.sort_by(|a, b| a.name.cmp(&b.name));
+        downstream.sort_by(|a, b| a.name.cmp(&b.name));
+        (upstream, downstream)
+    }
+
     /// Models calling a macro (incoming `MacroCall` edges).
     pub fn macro_call_sites<'a>(&'a self, name: &str) -> impl Iterator<Item = &'a NodeData> + 'a {
         self.neighbors(NodeKind::Macro, name, petgraph::Direction::Incoming)
