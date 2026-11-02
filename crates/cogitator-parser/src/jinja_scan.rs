@@ -15,9 +15,18 @@ pub struct RawMacro {
     pub name: String,
     /// Full `name(args…)` signature text (Go kept it as the description).
     pub signature: String,
+    /// Structured parameters (spec 06 §2.2 enrichment): names + default
+    /// expressions, extracted at token level so dbt-tagged files work too.
+    pub params: Vec<MacroParam>,
     /// 0-based (line, column) of the signature start/end.
     pub start: (u32, u32),
     pub end: (u32, u32),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacroParam {
+    pub name: String,
+    pub default: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,9 +95,11 @@ fn extract_macros_from_tokens(text: &str, tokens: &JinjaTokens<'_>) -> Vec<RawMa
             if let Some(close) = close {
                 let sig_start = name_span.start_offset as usize;
                 let sig_end = close.end_offset as usize;
+                let signature = text[sig_start..sig_end].to_string();
                 out.push(RawMacro {
                     name,
-                    signature: text[sig_start..sig_end].to_string(),
+                    params: params_from_signature(&signature),
+                    signature,
                     start: table.line_col(sig_start as u32),
                     end: table.line_col(sig_end as u32),
                 });
@@ -216,12 +227,59 @@ fn extract_macros_regex(text: &str) -> Vec<RawMacro> {
             let name = signature.split('(').next()?.to_string();
             Some(RawMacro {
                 name,
+                params: params_from_signature(signature),
                 signature: signature.to_string(),
                 start: table.line_col(m.start() as u32),
                 end: table.line_col(m.end() as u32),
             })
         })
         .collect()
+}
+
+/// Structured params from `name(a, b=expr, …)` — top-level commas only, so
+/// defaults containing calls/collections stay intact.
+pub fn params_from_signature(signature: &str) -> Vec<MacroParam> {
+    let Some(inner) = signature
+        .split_once('(')
+        .map(|(_, rest)| rest.strip_suffix(')').unwrap_or(rest))
+    else {
+        return Vec::new();
+    };
+    let mut params = Vec::new();
+    let mut depth = 0i32;
+    let mut current = String::new();
+    let flush = |piece: &str, params: &mut Vec<MacroParam>| {
+        let piece = piece.trim();
+        if piece.is_empty() {
+            return;
+        }
+        match piece.split_once('=') {
+            Some((name, default)) => params.push(MacroParam {
+                name: name.trim().to_string(),
+                default: Some(default.trim().to_string()),
+            }),
+            None => params.push(MacroParam {
+                name: piece.to_string(),
+                default: None,
+            }),
+        }
+    };
+    for c in inner.chars() {
+        match c {
+            '(' | '[' | '{' => {
+                depth += 1;
+                current.push(c);
+            }
+            ')' | ']' | '}' => {
+                depth -= 1;
+                current.push(c);
+            }
+            ',' if depth == 0 => flush(&std::mem::take(&mut current), &mut params),
+            _ => current.push(c),
+        }
+    }
+    flush(&current, &mut params);
+    params
 }
 
 fn extract_docs_regex(text: &str) -> Vec<RawDocsBlock> {

@@ -47,6 +47,7 @@ fn details(raw: &RawMacro, project_name: &str, path: &Path) -> MacroDetails {
         name: raw.name.clone(),
         project_name: project_name.to_string(),
         description: raw.signature.clone(),
+        params: raw.params.clone(),
         uri: path.to_path_buf(),
         range: Range {
             start: Position {

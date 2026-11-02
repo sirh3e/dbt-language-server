@@ -61,11 +61,50 @@ pub fn hover(ctx: &DbtContext, doc: &Document, pos: Position) -> String {
                 .map(|m| m.description.clone())
                 .unwrap_or_default()
         }
-        _ => ctx
-            .dialect
-            .function_docs()
-            .get(literal)
-            .cloned()
-            .unwrap_or_default(),
+        _ => {
+            // documented column of a relation in this document? (editor-
+            // experience feature: column hover, with lineage when derivable)
+            if let Some(hit) = super::completion::scope::resolve_column(ctx, doc, literal) {
+                let mut text = format!("Column of {}", hit.relation);
+                if !hit.description.is_empty() {
+                    text.push_str("\n\n");
+                    text.push_str(&hit.description);
+                }
+                if let Some(lineage) = crate::lineage::column_lineage(&doc.parsed, &ctx.dialect) {
+                    let sources: Vec<String> = lineage
+                        .columns
+                        .iter()
+                        .filter(|c| c.name == literal || c.name == "*")
+                        .flat_map(|c| c.sources.iter())
+                        .map(|s| match s {
+                            crate::lineage::SourceRef::Model { name, column } => {
+                                format!("{name}.{column}")
+                            }
+                            crate::lineage::SourceRef::Source {
+                                source,
+                                table,
+                                column,
+                            } => {
+                                format!("{source}.{table}.{column}")
+                            }
+                            crate::lineage::SourceRef::Unknown { name, column } => {
+                                format!("{name}.{column}")
+                            }
+                        })
+                        .filter(|s| s.ends_with(&format!(".{literal}")) || !s.ends_with(".*"))
+                        .collect();
+                    if !sources.is_empty() {
+                        text.push_str("\n\nLineage: ");
+                        text.push_str(&sources.join(", "));
+                    }
+                }
+                return text;
+            }
+            ctx.dialect
+                .function_docs()
+                .get(literal)
+                .cloned()
+                .unwrap_or_default()
+        }
     }
 }

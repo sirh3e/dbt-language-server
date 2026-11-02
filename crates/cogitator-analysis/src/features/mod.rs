@@ -7,6 +7,7 @@ mod definition;
 mod diagnostics;
 mod hover;
 mod navigation;
+mod rename;
 mod signature;
 mod structure;
 
@@ -14,7 +15,10 @@ pub use completion::{completion, resolve_completion_documentation};
 pub use definition::{definition, go_to_schema};
 pub use diagnostics::dangling_ref_diagnostics;
 pub use hover::hover;
-pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
+pub use navigation::{
+    code_lenses, document_highlights, document_symbols, references, workspace_symbols,
+};
+pub use rename::rename_model;
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
 

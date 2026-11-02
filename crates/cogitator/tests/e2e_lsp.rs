@@ -298,9 +298,12 @@ fn full_session() {
         .as_array()
         .is_some_and(|d| !d.is_empty()));
 
-    // 6d. unknown request gets MethodNotFound; unknown notification is silent
-    let unknown = lsp.request("textDocument/rename", serde_json::json!({}));
+    // 6d. unknown request gets MethodNotFound; a known request with bad
+    // params gets InvalidParams
+    let unknown = lsp.request("textDocument/typeDefinition", serde_json::json!({}));
     assert_eq!(unknown["error"]["code"], -32601);
+    let bad = lsp.request("textDocument/rename", serde_json::json!({}));
+    assert_eq!(bad["error"]["code"], -32602);
 
     // 7. shutdown: bare response without result (01 §3.3), then exit
     let shutdown = lsp.request("shutdown", serde_json::json!({}));

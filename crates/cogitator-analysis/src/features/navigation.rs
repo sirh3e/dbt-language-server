@@ -150,3 +150,27 @@ pub fn document_highlights(doc: &Document, pos: Position) -> Vec<DocumentHighlig
         })
         .collect()
 }
+
+/// textDocument/codeLens: "N dependents" above a model file (display-only
+/// lens; the count comes from one graph lookup).
+pub fn code_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
+    let Some(model) = model_name_from_uri(uri) else {
+        return Vec::new();
+    };
+    if !ctx.model_detail_map.contains_key(&model) {
+        return Vec::new();
+    }
+    let count = ctx.graph.dependents_of(&model).count();
+    let title = match count {
+        1 => "1 dependent".to_string(),
+        n => format!("{n} dependents"),
+    };
+    vec![cogitator_lsp::CodeLens {
+        range: Range::default(),
+        command: cogitator_lsp::Command {
+            title,
+            command: String::new(),
+            arguments: Vec::new(),
+        },
+    }]
+}

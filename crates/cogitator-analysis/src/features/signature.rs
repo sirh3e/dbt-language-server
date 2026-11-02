@@ -36,7 +36,7 @@ pub fn signature_help(ctx: &DbtContext, doc: &Document, pos: Position) -> Option
                         .map(|t| doc.parsed.literal(t).to_string())
                         .unwrap_or_else(|| ctx.project.name.clone());
                     let details = ctx.macro_detail_map.get(&package)?.get(name)?;
-                    return Some(signature_from_text(&details.description, commas));
+                    return Some(signature_help_for(details, commas));
                 }
                 depth -= 1;
             }
@@ -44,6 +44,35 @@ pub fn signature_help(ctx: &DbtContext, doc: &Document, pos: Position) -> Option
         }
     }
     None
+}
+
+/// Structured params when the scan captured them (06 §2.2); the text split
+/// remains as fallback for cache entries without params.
+fn signature_help_for(
+    details: &crate::context::MacroDetails,
+    active_parameter: u32,
+) -> SignatureHelp {
+    if details.params.is_empty() {
+        return signature_from_text(&details.description, active_parameter);
+    }
+    let parameters = details
+        .params
+        .iter()
+        .map(|p| ParameterInformation {
+            label: match &p.default {
+                Some(default) => format!("{}={}", p.name, default),
+                None => p.name.clone(),
+            },
+        })
+        .collect();
+    SignatureHelp {
+        signatures: vec![SignatureInformation {
+            label: details.description.clone(),
+            parameters,
+        }],
+        active_signature: 0,
+        active_parameter,
+    }
 }
 
 fn signature_from_text(signature: &str, active_parameter: u32) -> SignatureHelp {

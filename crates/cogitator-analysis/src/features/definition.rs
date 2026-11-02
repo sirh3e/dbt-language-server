@@ -69,16 +69,22 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 .unwrap_or(fallback)
         }
         _ => {
-            // CTE jump within the file (03 §9.2 default arm).
-            parsed
-                .def_tokens
-                .get(literal)
-                .map(|def| Location {
+            // CTE jump within the file (03 §9.2 default arm) …
+            if let Some(def) = parsed.def_tokens.get(literal) {
+                return Location {
                     uri: uri.to_string(),
                     range: Range::zero_width(Position {
                         line: def.line,
                         character: def.column,
                     }),
+                };
+            }
+            // … else a documented column jumps to its YAML entry.
+            super::completion::scope::resolve_column(ctx, doc, literal)
+                .and_then(|hit| hit.yaml)
+                .map(|(path, pos)| Location {
+                    uri: file_uri(&path),
+                    range: Range::zero_width(pos),
                 })
                 .unwrap_or(fallback)
         }

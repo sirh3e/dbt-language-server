@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use cogitator_analysis::{features, yaml_features, DbtContext, Documents};
+
 use cogitator_lsp::{
     error_codes, rpc, Diagnostic, DidChangeParams, DidOpenParams, DidSaveParams, Envelope,
     ErrorResponse, ExecuteCommandParams, FullDocumentDiagnosticReport, HoverResult,
@@ -93,6 +94,8 @@ impl Dispatcher {
             "textDocument/selectionRange" => self.selection_range(content),
             "textDocument/semanticTokens/full" => self.semantic_tokens(content),
             "textDocument/signatureHelp" => self.signature_help(content),
+            "textDocument/rename" => self.rename(content),
+            "textDocument/codeLens" => self.code_lens(content),
             "textDocument/diagnostic" => self.pull_diagnostics(content),
             "workspace/symbol" => self.workspace_symbol(content),
             "workspace/didChangeWatchedFiles" => {
@@ -392,6 +395,34 @@ impl Dispatcher {
                     .unwrap_or(cogitator_lsp::SemanticTokens { data: Vec::new() })
             },
         );
+    }
+
+    fn rename(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::RenameParams>>(content)
+        else {
+            self.invalid_params(content, "textDocument/rename");
+            return;
+        };
+        let Some(params) = req.params else {
+            self.invalid_params(content, "textDocument/rename");
+            return;
+        };
+        let ctx = self.snapshot();
+        let uri = params.text_document.uri.into_owned();
+        let edit = features::rename_model(
+            &ctx,
+            self.documents.get(&uri),
+            &uri,
+            params.position,
+            &params.new_name,
+        );
+        self.send(&ResultResponse::new(req.id, edit));
+    }
+
+    fn code_lens(&mut self, content: &[u8]) {
+        self.respond_position(content, "textDocument/codeLens", |ctx, _, uri, _| {
+            features::code_lenses(ctx, uri)
+        });
     }
 
     fn signature_help(&mut self, content: &[u8]) {

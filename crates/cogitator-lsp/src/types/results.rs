@@ -163,3 +163,28 @@ pub struct FullDocumentDiagnosticReport {
     pub kind: &'static str, // "full"
     pub items: Vec<Diagnostic>,
 }
+
+// ---------------------------------------------------------------------------
+// CodeLens + window message types
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Command {
+    pub title: String,
+    pub command: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodeLens {
+    pub range: Range,
+    pub command: Command,
+}
+
+pub mod message_type {
+    pub const ERROR: i32 = 1;
+    pub const WARNING: i32 = 2;
+    pub const INFO: i32 = 3;
+    pub const LOG: i32 = 4;
+}

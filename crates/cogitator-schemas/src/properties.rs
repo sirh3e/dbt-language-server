@@ -26,11 +26,14 @@ pub struct ModelEntry {
     pub columns: Vec<ColumnEntry>,
 }
 
-/// A documented column from the properties YAML (write-assist completion).
+/// A documented column from the properties YAML (write-assist completion,
+/// column hover/definition).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnEntry {
     pub name: String,
     pub description: String,
+    /// Position of the column's `name:` value node in the YAML file.
+    pub name_pos: Position,
 }
 
 #[derive(Debug, Clone)]
@@ -65,24 +68,30 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
     // so entries join positionally with the generated structs. The alias also
     // comes from the tree: dbt-jsonschema does not model `config.alias` on
     // properties-file models, but dbt (and the Go server) honor it (03 §6.3).
-    let model_positions: Vec<(Position, Option<String>)> = yaml::get(&marked, "models")
-        .map(|models| {
-            yaml::items(models)
-                .map(|m| {
-                    let alias = yaml::get(m, "config")
-                        .and_then(|c| yaml::get(c, "alias"))
-                        .and_then(|a| yaml::as_str(a).map(str::to_string));
-                    (name_position(m), alias)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let source_nodes: Vec<(Position, Vec<Position>)> = yaml::get(&marked, "sources")
+    let model_positions: Vec<(Position, Option<String>, Vec<Position>)> =
+        yaml::get(&marked, "models")
+            .map(|models| {
+                yaml::items(models)
+                    .map(|m| {
+                        let alias = yaml::get(m, "config")
+                            .and_then(|c| yaml::get(c, "alias"))
+                            .and_then(|a| yaml::as_str(a).map(str::to_string));
+                        (name_position(m), alias, column_positions(m))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+    type TableSide = (Position, Vec<Position>);
+    let source_nodes: Vec<(Position, Vec<TableSide>)> = yaml::get(&marked, "sources")
         .map(|sources| {
             yaml::items(sources)
                 .map(|s| {
                     let tables = yaml::get(s, "tables")
-                        .map(|t| yaml::items(t).map(name_position).collect())
+                        .map(|t| {
+                            yaml::items(t)
+                                .map(|table| (name_position(table), column_positions(table)))
+                                .collect()
+                        })
                         .unwrap_or_default();
                     (name_position(s), tables)
                 })
@@ -95,13 +104,13 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let (name_pos, alias) = model_positions.get(i).cloned().unwrap_or_default();
+            let (name_pos, alias, column_pos) = model_positions.get(i).cloned().unwrap_or_default();
             ModelEntry {
                 name: m.name.clone(),
                 name_pos,
                 description: m.description.clone().unwrap_or_default(),
                 alias,
-                columns: columns_of(&m.columns),
+                columns: columns_of(&m.columns, &column_pos),
             }
         })
         .collect();
@@ -123,11 +132,15 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                     .tables
                     .iter()
                     .enumerate()
-                    .map(|(j, t)| TableEntry {
-                        name: t.name.clone(),
-                        name_pos: table_positions.get(j).copied().unwrap_or_default(),
-                        description: t.description.clone().unwrap_or_default(),
-                        columns: columns_of(&t.columns),
+                    .map(|(j, t)| {
+                        let (name_pos, column_pos) =
+                            table_positions.get(j).cloned().unwrap_or_default();
+                        TableEntry {
+                            name: t.name.clone(),
+                            name_pos,
+                            description: t.description.clone().unwrap_or_default(),
+                            columns: columns_of(&t.columns, &column_pos),
+                        }
                     })
                     .collect(),
             }
@@ -179,14 +192,26 @@ fn prune_for_server(value: &mut serde_json::Value) {
     }
 }
 
-fn columns_of(columns: &[crate::generated::dbt_yml_files::ColumnProperties]) -> Vec<ColumnEntry> {
+fn columns_of(
+    columns: &[crate::generated::dbt_yml_files::ColumnProperties],
+    positions: &[Position],
+) -> Vec<ColumnEntry> {
     columns
         .iter()
-        .map(|c| ColumnEntry {
+        .enumerate()
+        .map(|(i, c)| ColumnEntry {
             name: c.name.clone(),
             description: c.description.clone().unwrap_or_default(),
+            name_pos: positions.get(i).copied().unwrap_or_default(),
         })
         .collect()
+}
+
+/// Positions of each `columns[j].name` value node of one model/table entry.
+fn column_positions(entry: &saphyr::MarkedYaml<'_>) -> Vec<Position> {
+    yaml::get(entry, "columns")
+        .map(|columns| yaml::items(columns).map(name_position).collect())
+        .unwrap_or_default()
 }
 
 fn prune_columns(map: &mut serde_json::Map<String, serde_json::Value>) {

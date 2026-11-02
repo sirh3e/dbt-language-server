@@ -6,7 +6,7 @@
 
 mod context;
 mod providers;
-mod scope;
+pub(crate) mod scope;
 
 use std::sync::LazyLock;
 

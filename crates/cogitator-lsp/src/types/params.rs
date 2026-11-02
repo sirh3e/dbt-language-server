@@ -113,3 +113,13 @@ pub struct WorkspaceSymbolParams<'a> {
     #[serde(borrow, default)]
     pub query: Option<Cow<'a, str>>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct RenameParams<'a> {
+    #[serde(borrow, rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier<'a>,
+    #[serde(default)]
+    pub position: Position,
+    #[serde(borrow, rename = "newName", default)]
+    pub new_name: Cow<'a, str>,
+}

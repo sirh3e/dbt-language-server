@@ -85,6 +85,8 @@ pub struct MacroDetails {
     pub project_name: String,
     /// The macro signature text (hover/completion documentation, 03 §5).
     pub description: String,
+    /// Structured parameters (06 §2.2 enrichment) for signature help.
+    pub params: Vec<cogitator_parser::jinja_scan::MacroParam>,
     pub uri: PathBuf,
     pub range: Range,
 }

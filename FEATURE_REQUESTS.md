@@ -43,6 +43,18 @@ names what already exists in the codebase.
       sqlparser AST, CTE-transitive resolution incl. `select *` chains;
       declines on Jinja control blocks (07 §3.2 confidence rule).
 
+- [x] **Column hover + go-to-definition**: hovering a column shows
+      "Column of <relation>" with its YAML description and, when derivable,
+      its lineage sources inline (dbt.columnLineage surfaced in the editor);
+      definition jumps to the column's YAML entry (column positions now ride
+      the saphyr side-table like model names).
+- [x] **Model rename** (`textDocument/rename`): the graph knows every
+      dependent, so the returned WorkspaceEdit rewrites each `ref('…')`,
+      updates the properties-YAML entry and renames the model file
+      (documentChanges with the file rename last). Caveat: dependents are
+      read from disk; unsaved buffers of other files aren't visible here.
+- [x] **CodeLens "N dependents"** above each model (one graph lookup;
+      display-only lens, no client-specific command).
 - [x] **Completion engine** (grammar-aware): the cursor position is
       classified from the token stream — member access (`alias.` → columns
       of the resolved relation via a token-based FROM/JOIN scope index),
@@ -111,11 +123,9 @@ Implemented from this bucket (they turned out cheap on the existing data):
 
 Still open, with reasons:
 
-- `textDocument/rename` / `prepareRename` (cross-file model rename; the
-  graph makes it plausible, but write-side edits are a new scope)
 - `textDocument/formatting` / `rangeFormatting` / `onTypeFormatting`
   (would mean embedding a SQL formatter)
-- `textDocument/codeAction`, `codeLens`,
+- `textDocument/codeAction`, `prepareRename`,
   `inlayHint`, `inlineValue`, `documentLink`, `linkedEditingRange`,
   `documentColor`
 - `textDocument/typeDefinition` / `implementation` / `declaration`

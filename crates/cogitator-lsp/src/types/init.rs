@@ -47,6 +47,10 @@ pub struct ServerCapabilities {
     pub signature_help_provider: serde_json::Value,
     #[serde(rename = "diagnosticProvider")]
     pub diagnostic_provider: serde_json::Value,
+    #[serde(rename = "renameProvider")]
+    pub rename_provider: bool,
+    #[serde(rename = "codeLensProvider")]
+    pub code_lens_provider: serde_json::Value,
 }
 
 /// Semantic token legend (order defines the type indices in the encoding).
@@ -105,6 +109,8 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     "interFileDependencies": false,
                     "workspaceDiagnostics": false,
                 }),
+                rename_provider: true,
+                code_lens_provider: serde_json::json!({ "resolveProvider": false }),
             },
             server_info: ServerInfo {
                 name: "cogitator",
