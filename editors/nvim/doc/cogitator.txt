@@ -58,6 +58,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
   :DbtProfiles   show/switch the profiles directory
+  :DbtTarget     pick the active profile/target      <leader>dT
                  run the code lens on this line      <leader>dL
 
 `:DbtProfiles` without an argument prints the server's profiles.yml

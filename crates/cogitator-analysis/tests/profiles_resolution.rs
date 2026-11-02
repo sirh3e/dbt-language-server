@@ -30,6 +30,7 @@ fn override_dir_wins_over_workspace_lookup() {
         "jaffle_shop",
         fixture_root().to_str().unwrap(),
         dir.to_str().unwrap(),
+        None,
     );
     assert_eq!(dialect.as_str(), "snowflake");
 }
@@ -37,7 +38,7 @@ fn override_dir_wins_over_workspace_lookup() {
 #[test]
 fn workspace_dot_dbt_lookup_kept() {
     // no override: the fixture's <root>/.dbt/profiles.yml resolves duckdb
-    let dialect = get_dialect("jaffle_shop", fixture_root().to_str().unwrap(), "");
+    let dialect = get_dialect("jaffle_shop", fixture_root().to_str().unwrap(), "", None);
     assert_eq!(dialect.as_str(), "duckdb");
 }
 
@@ -51,6 +52,7 @@ fn non_matching_override_falls_through_to_workspace() {
         "jaffle_shop",
         fixture_root().to_str().unwrap(),
         dir.to_str().unwrap(),
+        None,
     );
     assert_eq!(dialect.as_str(), "duckdb");
 }

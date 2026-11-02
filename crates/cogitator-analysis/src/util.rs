@@ -63,6 +63,19 @@ static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
+/// `env_var()` references in `input` that resolve to nothing: no value in
+/// the environment and no inline default (resolve_env_vars emits the
+/// DBT_ENV_DEFAULT_ placeholder for exactly these).
+pub fn unresolved_env_vars(input: &str) -> Vec<String> {
+    ENV_VAR_RE
+        .captures_iter(input)
+        .filter_map(|caps| {
+            let name = &caps[2];
+            (std::env::var(name).is_err() && caps.get(4).is_none()).then(|| name.to_string())
+        })
+        .collect()
+}
+
 pub fn resolve_env_vars(input: &str) -> String {
     ENV_VAR_RE
         .replace_all(input, |caps: &Captures| {
@@ -185,13 +198,19 @@ pub fn profiles_candidates(override_dir: &str, workspace_root: &str) -> Vec<Path
 /// Dialect from profiles.yml (03 §7.2, extended): the first candidate from
 /// [`profiles_candidates`] that parses and resolves this profile's target
 /// wins; an unreadable or non-matching file falls through to the next.
-pub fn get_dialect(profile_name: &str, workspace_root: &str, profiles_dir: &str) -> Dialect {
+/// `target` (dbt.setTarget / --target) replaces the profile's default.
+pub fn get_dialect(
+    profile_name: &str,
+    workspace_root: &str,
+    profiles_dir: &str,
+    target: Option<&str>,
+) -> Dialect {
     for path in profiles_candidates(profiles_dir, workspace_root) {
         let Ok(text) = std::fs::read_to_string(&path) else {
             tracing::debug!(?path, "profiles.yml candidate not readable");
             continue;
         };
-        let dialect = dialect_from_profiles(&text, profile_name);
+        let dialect = dialect_from_profiles(&text, profile_name, target);
         if !dialect.as_str().is_empty() {
             tracing::debug!(?path, dialect = dialect.as_str(), "dialect resolved");
             return dialect;
@@ -201,7 +220,7 @@ pub fn get_dialect(profile_name: &str, workspace_root: &str, profiles_dir: &str)
     Dialect::default()
 }
 
-pub fn dialect_from_profiles(text: &str, profile_name: &str) -> Dialect {
+pub fn dialect_from_profiles(text: &str, profile_name: &str, target: Option<&str>) -> Dialect {
     let Ok(docs) = MarkedYaml::load_from_str(text) else {
         return Dialect::default();
     };
@@ -213,8 +232,12 @@ pub fn dialect_from_profiles(text: &str, profile_name: &str) -> Dialect {
         tracing::debug!(profile_name, "profile not found in profiles.yml");
         return Dialect::default();
     };
-    let Some(target) = get(profile, "target").and_then(cogitator_schemas::yaml::as_str) else {
-        return Dialect::default();
+    let target = match target.filter(|t| !t.is_empty()) {
+        Some(t) => t,
+        None => match get(profile, "target").and_then(cogitator_schemas::yaml::as_str) {
+            Some(t) => t,
+            None => return Dialect::default(),
+        },
     };
     get(profile, "outputs")
         .and_then(|outputs| get(outputs, target))

@@ -94,6 +94,15 @@ Every command takes **one argument object**, not positional values:
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
 | `dbt.run` / `dbt.test` / `dbt.compile` | `null` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument |
 | `dbt.modelGraph` | graph payload or `null` | none |
+| `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
+| `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
+
+`dbt.profiles` answers `{ path, searched, activeProfile, activeTarget,
+profiles: [{ name, defaultTarget, allowed, targets: [{ name, type,
+auth: { method, issues: [string] } }] }] }` — auth methods and problems,
+never credential values; profiles outside the allowlist appear by name
+with `allowed: false`. `dbt.setTarget` takes
+`{ "target": "prod", "profile"?: "name" }`.
 
 `dbt.modelGraph` also accepts `{ "model": "<name>" }` in place of `uri`
 (re-centering) and answers with direct neighbors only:

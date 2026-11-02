@@ -32,9 +32,9 @@ pub struct Dispatcher {
     scratch: Vec<u8>,
     /// id source for server→client requests (responses are ignored).
     server_request_ids: Arc<std::sync::atomic::AtomicI64>,
-    /// Shared with the refresh task: initializationOptions.profilesDir
-    /// replaces the --profiles-dir launch value here.
-    profiles_dir: Arc<std::sync::Mutex<String>>,
+    /// Shared with the refresh task: initializationOptions and
+    /// dbt.setTarget replace the launch-flag values here.
+    profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
 }
 
 impl Dispatcher {
@@ -45,7 +45,7 @@ impl Dispatcher {
         refresh_tx: mpsc::UnboundedSender<String>,
         fusion_path: String,
         fusion_enabled: Arc<AtomicBool>,
-        profiles_dir: Arc<std::sync::Mutex<String>>,
+        profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -58,7 +58,7 @@ impl Dispatcher {
             fusion_jobs: HashMap::new(),
             scratch: Vec::new(),
             server_request_ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
-            profiles_dir,
+            profiles,
         }
     }
 
@@ -182,9 +182,24 @@ impl Dispatcher {
             tracing::info!(client = %info.name, version = %info.version, "connected");
         }
         self.root_path = params.workspace_root().unwrap_or_default();
-        if let Some(dir) = params.profiles_dir() {
-            tracing::info!(dir, "profiles dir from initializationOptions");
-            *self.profiles_dir.lock().expect("profiles dir lock") = dir.to_string();
+        {
+            let mut cfg = self.profiles.lock().expect("profiles config lock");
+            if let Some(dir) = params.profiles_dir() {
+                tracing::info!(dir, "profiles dir from initializationOptions");
+                cfg.dir_override = dir.to_string();
+            }
+            if let Some(profile) = params.profile() {
+                tracing::info!(profile, "profile from initializationOptions");
+                cfg.profile = profile.to_string();
+            }
+            if let Some(target) = params.target() {
+                tracing::info!(target, "target from initializationOptions");
+                cfg.target = target.to_string();
+            }
+            let allow = params.profiles_allow();
+            if !allow.is_empty() {
+                cfg.allow = allow;
+            }
         }
         let response = cogitator_lsp::initialize_response(req.id, crate::VERSION);
         self.send(&response);
@@ -340,6 +355,23 @@ impl Dispatcher {
                     _ => "compile",
                 };
                 self.run_dbt(req.id, kind, &uri);
+                return;
+            }
+            "dbt.profiles" => {
+                self.profiles_report(req.id);
+                return;
+            }
+            "dbt.setTarget" => {
+                let target = arg
+                    .get("target")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let profile = arg
+                    .get("profile")
+                    .and_then(|p| p.as_str())
+                    .map(str::to_string);
+                self.set_target(req.id, target, profile);
                 return;
             }
             "dbt.modelGraph" => {
@@ -673,6 +705,10 @@ impl Dispatcher {
             self.write_tx.clone(),
             self.server_request_ids.clone(),
         );
+        let target = {
+            let cfg = self.profiles.lock().expect("profiles config lock");
+            (!cfg.target.is_empty()).then(|| cfg.target.clone())
+        };
         super::commands::spawn_dbt(
             link,
             super::commands::DbtInvocation {
@@ -684,9 +720,181 @@ impl Dispatcher {
                 model_path: std::path::PathBuf::from(
                     cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string()),
                 ),
+                target,
             },
         );
         self.send(&ResultResponse::new(id, serde_json::Value::Null));
+    }
+
+    /// `dbt.profiles`: the redacted inventory within the allowed scope, the
+    /// winning candidate file, and the active profile/target.
+    fn profiles_report(&mut self, id: i64) {
+        use cogitator_analysis::profiles::{load_inventory, ProfileScope};
+
+        let ctx = self.snapshot();
+        let cfg = self.profiles.lock().expect("profiles config lock").clone();
+        let candidates =
+            cogitator_analysis::util::profiles_candidates(&cfg.dir_override, &self.root_path);
+        let searched: Vec<String> = candidates.iter().map(|p| p.display().to_string()).collect();
+        let Some(path) = candidates.into_iter().find(|p| p.is_file()) else {
+            self.show_message(
+                cogitator_lsp::message_type::WARNING,
+                format!(
+                    "No profiles.yml found.\n\
+                     Searched: {}.\n\
+                     Solution: create one, or point --profiles-dir, \
+                     initializationOptions.profilesDir or DBT_PROFILES_DIR at it.",
+                    searched.join(", ")
+                ),
+            );
+            self.send(&ResultResponse::new(
+                id,
+                serde_json::json!({
+                    "path": serde_json::Value::Null,
+                    "searched": searched,
+                    "profiles": [],
+                }),
+            ));
+            return;
+        };
+        let scope = ProfileScope::Allowed {
+            project: &ctx.project.profile,
+            extra: &cfg.allow,
+        };
+        let inventory = load_inventory(&path, &scope);
+        let active_profile = if cfg.profile.is_empty() {
+            ctx.project.profile.clone()
+        } else {
+            cfg.profile.clone()
+        };
+        let active_target = if cfg.target.is_empty() {
+            inventory
+                .profile(&active_profile)
+                .map(|p| p.default_target.clone())
+                .unwrap_or_default()
+        } else {
+            cfg.target.clone()
+        };
+        let mut result = inventory.to_json();
+        result["searched"] = serde_json::json!(searched);
+        result["activeProfile"] = serde_json::json!(active_profile);
+        result["activeTarget"] = serde_json::json!(active_target);
+        self.send(&ResultResponse::new(id, result));
+    }
+
+    /// `dbt.setTarget`: switch the active profile/target (allowlist-checked),
+    /// trigger a context refresh, and confirm with the target's auth status.
+    fn set_target(&mut self, id: i64, target: String, profile: Option<String>) {
+        use cogitator_analysis::profiles::{load_inventory, ProfileScope};
+
+        let respond_null = |me: &mut Self| {
+            me.send(&ResultResponse::new(id, serde_json::Value::Null));
+        };
+        if target.is_empty() {
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                "dbt.setTarget needs a target name.\n\
+                 Solution: pass arguments: [{ \"target\": \"dev\" }], optionally \
+                 with \"profile\".",
+            );
+            respond_null(self);
+            return;
+        }
+        let ctx = self.snapshot();
+        let cfg = self.profiles.lock().expect("profiles config lock").clone();
+        let Some(path) =
+            cogitator_analysis::util::profiles_candidates(&cfg.dir_override, &self.root_path)
+                .into_iter()
+                .find(|p| p.is_file())
+        else {
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                "Cannot switch target: no profiles.yml found.\n\
+                 Solution: create one, or point --profiles-dir / \
+                 initializationOptions.profilesDir / DBT_PROFILES_DIR at it.",
+            );
+            respond_null(self);
+            return;
+        };
+        let scope = ProfileScope::Allowed {
+            project: &ctx.project.profile,
+            extra: &cfg.allow,
+        };
+        let inventory = load_inventory(&path, &scope);
+        let profile_given = profile.as_deref().is_some_and(|p| !p.is_empty());
+        let profile_name = profile.filter(|p| !p.is_empty()).unwrap_or_else(|| {
+            if cfg.profile.is_empty() {
+                ctx.project.profile.clone()
+            } else {
+                cfg.profile.clone()
+            }
+        });
+        let Some(info) = inventory.profile(&profile_name) else {
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                format!(
+                    "Profile '{profile_name}' not found in {}.",
+                    inventory.path.display()
+                ),
+            );
+            respond_null(self);
+            return;
+        };
+        if !info.allowed {
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                format!(
+                    "Profile '{profile_name}' is not readable.\n\
+                     Reason: by default only the project's own profile is; \
+                     '{profile_name}' is not on the allowlist.\n\
+                     Solution: add it via --profiles-allow {profile_name} or \
+                     initializationOptions.profilesAllow."
+                ),
+            );
+            respond_null(self);
+            return;
+        }
+        let Some(chosen) = info.targets.iter().find(|t| t.name == target) else {
+            let available: Vec<&str> = info.targets.iter().map(|t| t.name.as_str()).collect();
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                format!(
+                    "Target '{target}' not found in profile '{profile_name}'.\n\
+                     Available targets: {}.",
+                    available.join(", ")
+                ),
+            );
+            respond_null(self);
+            return;
+        };
+        let mut message = format!(
+            "Active target: {profile_name}/{target} ({}, auth: {}).",
+            chosen.adapter_type,
+            chosen.auth.method.as_str()
+        );
+        let level = if chosen.auth.issues.is_empty() {
+            cogitator_lsp::message_type::INFO
+        } else {
+            message.push_str("\nAuth problems:");
+            for issue in &chosen.auth.issues {
+                message.push_str("\n• ");
+                message.push_str(&issue.message);
+            }
+            cogitator_lsp::message_type::WARNING
+        };
+        {
+            let mut live = self.profiles.lock().expect("profiles config lock");
+            live.target = target.clone();
+            if profile_given {
+                live.profile = profile_name.clone();
+            }
+        }
+        let _ = self.refresh_tx.send(self.root_path.clone());
+        self.show_message(level, message);
+        self.send(&ResultResponse::new(
+            id,
+            serde_json::json!({ "profile": profile_name, "target": target }),
+        ));
     }
 
     fn lineage_for(

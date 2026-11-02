@@ -62,14 +62,47 @@ impl InitializeParams<'_> {
         self.root_path.as_ref().map(|p| p.to_string())
     }
 
+    fn init_option_str(&self, keys: &[&str]) -> Option<&str> {
+        let opts = self.initialization_options.as_ref()?;
+        keys.iter()
+            .find_map(|key| opts.get(*key))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+    }
+
     /// `initializationOptions.profilesDir` (or `profiles_dir`), when the
     /// client sent one.
     pub fn profiles_dir(&self) -> Option<&str> {
-        let opts = self.initialization_options.as_ref()?;
-        opts.get("profilesDir")
-            .or_else(|| opts.get("profiles_dir"))
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
+        self.init_option_str(&["profilesDir", "profiles_dir"])
+    }
+
+    /// `initializationOptions.profile`: the active profile override.
+    pub fn profile(&self) -> Option<&str> {
+        self.init_option_str(&["profile"])
+    }
+
+    /// `initializationOptions.target`: the active target override.
+    pub fn target(&self) -> Option<&str> {
+        self.init_option_str(&["target"])
+    }
+
+    /// `initializationOptions.profilesAllow` (or `profiles_allow`): extra
+    /// profiles the server may read besides the project's own.
+    pub fn profiles_allow(&self) -> Vec<String> {
+        self.initialization_options
+            .as_ref()
+            .and_then(|opts| {
+                opts.get("profilesAllow")
+                    .or_else(|| opts.get("profiles_allow"))
+            })
+            .and_then(|v| v.as_array())
+            .map(|list| {
+                list.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 

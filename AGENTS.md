@@ -31,6 +31,10 @@ specified in `specs/rust-port/`).
 - **Logging**: `tracing` spans/events only; nothing but LSP frames on stdout.
 
 ## Environment Variables
+- **Profiles auth manager**: `profiles::inventory` (cogitator-analysis)
+  classifies/validates Snowflake auth per target, redacted; read scope =
+  project profile + `--profiles-allow`; active target via `--target` /
+  `dbt.setTarget` flows into dialect resolution and dbt `--target`.
 - **DBT_PROFILES_DIR**: profiles.yml directory. Full resolution order
   (`util::profiles_candidates`): `--profiles-dir` /
   `initializationOptions.profilesDir` override → `$DBT_PROFILES_DIR` →

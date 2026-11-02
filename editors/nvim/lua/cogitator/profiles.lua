@@ -47,6 +47,70 @@ function M.report(config)
   vim.notify(table.concat(lines, "\n"), found and vim.log.levels.INFO or vim.log.levels.WARN)
 end
 
+--- :DbtTarget — fetch the dbt.profiles inventory and switch the active
+--- profile/target through dbt.setTarget (no restart needed: the server
+--- re-resolves the dialect and passes --target to dbt runs).
+function M.pick_target()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  if not client then
+    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.profiles",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, report)
+    if err or not report or report == vim.NIL then
+      vim.notify("dbt.profiles failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    local choices = {}
+    for _, profile in ipairs(report.profiles or {}) do
+      if profile.allowed then
+        for _, target in ipairs(profile.targets or {}) do
+          local issues = (target.auth and target.auth.issues) or {}
+          local active = profile.name == report.activeProfile and target.name == report.activeTarget
+          table.insert(choices, {
+            profile = profile.name,
+            target = target.name,
+            label = ("%s/%s — %s, %s%s%s"):format(
+              profile.name,
+              target.name,
+              target.type ~= vim.NIL and target.type or "?",
+              (target.auth and target.auth.method) or "?",
+              #issues > 0 and ("  ⚠ " .. #issues .. " issue" .. (#issues > 1 and "s" or "")) or "",
+              active and "  (active)" or ""
+            ),
+          })
+        end
+      end
+    end
+    if #choices == 0 then
+      vim.notify(
+        "No readable targets. Reason: only the project's profile (and the allowlist) is exposed.\n"
+          .. "Solution: check profiles.yml, or widen profiles_allow.",
+        vim.log.levels.WARN
+      )
+      return
+    end
+    vim.ui.select(choices, {
+      prompt = "dbt target",
+      format_item = function(c)
+        return c.label
+      end,
+    }, function(choice)
+      if not choice then
+        return
+      end
+      client:exec_cmd({
+        command = "dbt.setTarget",
+        arguments = { { target = choice.target, profile = choice.profile } },
+      }, { bufnr = bufnr })
+    end)
+  end)
+end
+
 --- Switch the profiles directory and restart cogitator so the server
 --- re-initializes with the new initializationOptions.
 function M.set(dir)

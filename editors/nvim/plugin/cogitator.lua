@@ -22,6 +22,10 @@ vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()
 end, { desc = "browse the model graph (upstream | model | downstream)" })
 
+vim.api.nvim_create_user_command("DbtTarget", function()
+  require("cogitator.profiles").pick_target()
+end, { desc = "pick the active dbt profile/target (auth-aware)" })
+
 vim.api.nvim_create_user_command("DbtProfiles", function(opts)
   local profiles = require("cogitator.profiles")
   if opts.args == "" then

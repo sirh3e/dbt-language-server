@@ -17,7 +17,71 @@ use cogitator_lsp::rpc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch};
 
-pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: String) -> Result<()> {
+/// Shared profiles configuration: seeded from launch flags, replaced by
+/// initializationOptions and `dbt.setTarget`, read by every context refresh.
+#[derive(Debug, Default, Clone)]
+pub struct ProfilesConfig {
+    /// `--profiles-dir` / initializationOptions.profilesDir.
+    pub dir_override: String,
+    /// Profiles readable besides the project's own (`--profiles-allow`).
+    pub allow: Vec<String>,
+    /// Active profile override; empty → the project's profile.
+    pub profile: String,
+    /// Active target override; empty → the profile's default target.
+    pub target: String,
+}
+
+/// Auth problems of the *active* target, as one Reason/Solution warning.
+fn auth_warning(cfg: &ProfilesConfig, root: &str, ctx: &DbtContext) -> Option<String> {
+    use cogitator_analysis::profiles::{load_inventory, ProfileScope};
+
+    if ctx.project.profile.is_empty() {
+        return None;
+    }
+    let path = cogitator_analysis::util::profiles_candidates(&cfg.dir_override, root)
+        .into_iter()
+        .find(|p| p.is_file())?;
+    let scope = ProfileScope::Allowed {
+        project: &ctx.project.profile,
+        extra: &cfg.allow,
+    };
+    let inventory = load_inventory(&path, &scope);
+    let profile_name = if cfg.profile.is_empty() {
+        ctx.project.profile.as_str()
+    } else {
+        cfg.profile.as_str()
+    };
+    let profile = inventory.profile(profile_name)?;
+    let target_name = if cfg.target.is_empty() {
+        profile.default_target.as_str()
+    } else {
+        cfg.target.as_str()
+    };
+    let target = profile.targets.iter().find(|t| t.name == target_name)?;
+    if target.auth.issues.is_empty() {
+        return None;
+    }
+    let list: Vec<String> = target
+        .auth
+        .issues
+        .iter()
+        .map(|i| format!("• {}", i.message))
+        .collect();
+    Some(format!(
+        "Connection auth for {profile_name}/{target_name} ({}, {}) has problems:\n{}\n\
+         Solution: fix {} — dbt run/test/compile will fail until then.",
+        target.adapter_type,
+        target.auth.method.as_str(),
+        list.join("\n"),
+        inventory.path.display()
+    ))
+}
+
+pub async fn run(
+    fusion_path: String,
+    use_tree_sitter: bool,
+    profiles: ProfilesConfig,
+) -> Result<()> {
     // Backend selection (06 §3.5): tree-sitter is the default; phase-1 stays
     // compiled as the fallback and behind --no-tree-sitter.
     let documents = if use_tree_sitter {
@@ -73,9 +137,9 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: Strin
     let (ctx_tx, ctx_rx) = watch::channel(Arc::new(DbtContext::default()));
     let (refresh_tx, mut refresh_rx) = mpsc::unbounded_channel::<String>();
     let builder = Arc::new(std::sync::Mutex::new(ContextBuilder::default()));
-    // --profiles-dir at launch; initializationOptions.profilesDir replaces it
-    let profiles_dir = Arc::new(std::sync::Mutex::new(profiles_dir));
-    let refresh_profiles_dir = profiles_dir.clone();
+    // launch flags; initializationOptions and dbt.setTarget replace fields
+    let profiles = Arc::new(std::sync::Mutex::new(profiles));
+    let refresh_profiles = profiles.clone();
     let refresh_link = commands::ClientLink::new(write_tx.clone(), request_ids.clone());
     tokio::spawn(async move {
         let mut warned: Option<String> = None;
@@ -86,19 +150,21 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: Strin
             {
                 root = next;
             }
-            let override_dir = refresh_profiles_dir
+            let cfg = refresh_profiles
                 .lock()
-                .expect("profiles dir lock")
+                .expect("profiles config lock")
                 .clone();
             let built = tokio::task::spawn_blocking({
                 let root = root.clone();
                 let builder = builder.clone();
-                let override_dir = override_dir.clone();
+                let cfg = cfg.clone();
                 move || {
                     let span = tracing::info_span!("context_refresh", root = %root);
                     let _enter = span.enter();
                     let mut builder = builder.lock().expect("context builder lock");
-                    builder.set_profiles_dir(override_dir);
+                    builder.set_profiles_dir(cfg.dir_override);
+                    builder.set_profile_override(cfg.profile);
+                    builder.set_target_override(cfg.target);
                     let ctx = builder.build(&root);
                     let (hits, misses) = builder.cache_stats();
                     tracing::debug!(hits, misses, "scan cache totals");
@@ -129,7 +195,7 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: Strin
                         && !ctx.project.profile.is_empty()
                     {
                         let searched: Vec<String> =
-                            cogitator_analysis::util::profiles_candidates(&override_dir, &root)
+                            cogitator_analysis::util::profiles_candidates(&cfg.dir_override, &root)
                                 .iter()
                                 .map(|p| p.display().to_string())
                                 .collect();
@@ -146,7 +212,8 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: Strin
                             searched.join(", ")
                         ))
                     } else {
-                        None
+                        // dialect fine: check the active target's auth next
+                        auth_warning(&cfg, &root, &ctx)
                     };
                     if warning != warned {
                         if let Some(text) = &warning {
@@ -170,7 +237,7 @@ pub async fn run(fusion_path: String, use_tree_sitter: bool, profiles_dir: Strin
         refresh_tx,
         fusion_path,
         fusion_enabled,
-        profiles_dir,
+        profiles,
     );
 
     let mut stdin = tokio::io::stdin();

@@ -357,6 +357,37 @@ fn full_session() {
 
     // 6d. unknown request gets MethodNotFound; a known request with bad
     // params gets InvalidParams
+    // 6b. the profiles auth manager over the wire
+    let profiles = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.profiles", "arguments": [{}] }),
+    );
+    let report = &profiles["result"];
+    assert_eq!(report["activeProfile"], "jaffle_shop", "{report}");
+    assert_eq!(report["activeTarget"], "dev", "{report}");
+    let jaffle = &report["profiles"][0];
+    assert_eq!(jaffle["name"], "jaffle_shop");
+    assert_eq!(jaffle["allowed"], true);
+    assert_eq!(jaffle["targets"][0]["type"], "duckdb");
+    assert!(jaffle["targets"][0]["auth"]["method"].is_string());
+
+    let switched = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({
+            "command": "dbt.setTarget",
+            "arguments": [{ "target": "dev" }]
+        }),
+    );
+    assert_eq!(switched["result"]["target"], "dev", "{switched}");
+    let bogus = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({
+            "command": "dbt.setTarget",
+            "arguments": [{ "target": "no_such_target" }]
+        }),
+    );
+    assert!(bogus["result"].is_null(), "{bogus}");
+
     let unknown = lsp.request("textDocument/typeDefinition", serde_json::json!({}));
     assert_eq!(unknown["error"]["code"], -32601);
     let bad = lsp.request("textDocument/rename", serde_json::json!({}));

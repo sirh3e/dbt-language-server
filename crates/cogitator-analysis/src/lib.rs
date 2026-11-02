@@ -5,6 +5,7 @@ pub mod context;
 pub mod features;
 pub mod graph;
 pub mod lineage;
+pub mod profiles;
 pub mod util;
 pub mod yaml_features;
 

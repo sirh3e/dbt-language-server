@@ -245,5 +245,59 @@ check(
   end, vim.lsp.get_clients({ name = "cogitator" })))
 )
 
+-- the auth manager over the wire: dbt.profiles + dbt.setTarget against the
+-- restarted client (its temp profiles dir holds a snowflake jaffle_shop)
+local new_client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+-- poll: right after the restart the first context refresh may not have
+-- landed yet, and without it the project profile (the read scope) is empty
+local report
+for _ = 1, 75 do
+  local pending
+  new_client:exec_cmd({
+    command = "dbt.profiles",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    pending = err == nil and result or false
+  end)
+  pcall(vim.wait, 2000, function()
+    return pending ~= nil
+  end, 50)
+  if type(pending) == "table" and pending.activeProfile == "jaffle_shop" then
+    report = pending
+    break
+  end
+  pcall(vim.wait, 200)
+end
+local target0 = type(report) == "table"
+  and report.profiles
+  and report.profiles[1]
+  and report.profiles[1].targets
+  and report.profiles[1].targets[1]
+check(
+  type(report) == "table"
+    and report.activeProfile == "jaffle_shop"
+    and target0
+    and target0.type == "snowflake"
+    and #target0.auth.issues > 0,
+  "profiles: dbt.profiles reports targets with auth issues",
+  vim.inspect(report):sub(1, 300)
+)
+
+local set_result
+new_client:exec_cmd({
+  command = "dbt.setTarget",
+  arguments = { { target = "dev" } },
+}, { bufnr = bufnr }, function(err, result)
+  set_result = err == nil and result or false
+end)
+vim.wait(5000, function()
+  return set_result ~= nil
+end, 50)
+check(
+  type(set_result) == "table" and set_result.target == "dev",
+  "profiles: dbt.setTarget switches the active target",
+  vim.inspect(set_result)
+)
+
 print(failures == 0 and "ALL PASSED" or (failures .. " failure(s)"))
 os.exit(failures == 0 and 0 or 1)

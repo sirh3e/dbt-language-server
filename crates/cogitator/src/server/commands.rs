@@ -57,6 +57,8 @@ pub struct DbtInvocation {
     pub project_name: String,
     pub selector: String,
     pub model_path: PathBuf,
+    /// Active target (dbt.setTarget / --target); appended as `--target`.
+    pub target: Option<String>,
 }
 
 /// Spawn `dbt <kind> --select <selector>` for one model and report the
@@ -70,17 +72,25 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
             project_name,
             selector,
             model_path,
+            target,
         } = invocation;
+        let target_suffix = target
+            .as_deref()
+            .map(|t| format!(" (target {t})"))
+            .unwrap_or_default();
         link.show_message(
             message_type::INFO,
-            format!("dbt {kind} started for '{selector}'…"),
+            format!("dbt {kind} started for '{selector}'{target_suffix}…"),
         );
-        let result = tokio::process::Command::new(&binary)
+        let mut command = tokio::process::Command::new(&binary);
+        command
             .arg(kind)
             .args(["--select", &selector])
-            .current_dir(&project_root)
-            .output()
-            .await;
+            .current_dir(&project_root);
+        if let Some(t) = &target {
+            command.args(["--target", t]);
+        }
+        let result = command.output().await;
 
         let output = match result {
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
@@ -120,13 +130,16 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 },
                 400,
             );
+            let retry = match &target {
+                Some(t) => format!("{binary} {kind} --select {selector} --target {t}"),
+                None => format!("{binary} {kind} --select {selector}"),
+            };
             link.show_message(
                 message_type::ERROR,
                 format!(
                     "dbt {kind} failed for '{selector}' (exit {}).\n\
                      {detail}\n\
-                     Solution: run `{binary} {kind} --select {selector}` in \
-                     {} for the full output.",
+                     Solution: run `{retry}` in {} for the full output.",
                     output.status.code().unwrap_or(-1),
                     project_root.display(),
                 ),

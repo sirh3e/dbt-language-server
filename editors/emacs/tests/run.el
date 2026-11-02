@@ -109,6 +109,28 @@
   (check (and location (string-suffix-p ".yml" (plist-get location :uri)))
          "integration: dbt.goToSchema returns a schema-YAML Location" location))
 
+;; unit: target-choice labels from a dbt.profiles report
+(let ((choices (cogitator--target-choices
+                '(:activeProfile "p" :activeTarget "dev"
+                  :profiles [(:name "p" :allowed t
+                              :targets [(:name "dev" :type "snowflake"
+                                         :auth (:method "key-pair" :issues ["x"]))])
+                             (:name "hidden" :allowed :json-false :targets [])]))))
+  (check (and (= 1 (length choices))
+              (string-match-p "p/dev — snowflake, key-pair  ⚠ 1  (active)"
+                              (caar choices)))
+         "target: choices show auth method, issues and active marker" choices))
+
+;; integration: the auth manager over the wire
+(let ((report (run--exec "dbt.profiles" (cogitator--command-argument))))
+  (check (equal (plist-get report :activeProfile) "jaffle_shop")
+         "integration: dbt.profiles reports the active profile" report)
+  (check (equal (plist-get report :activeTarget) "dev")
+         "integration: dbt.profiles reports the active target"))
+(let ((switched (run--exec "dbt.setTarget" '(:target "dev"))))
+  (check (equal (plist-get switched :target) "dev")
+         "integration: dbt.setTarget switches the target" switched))
+
 ;; the graph browser: three panes, re-centerable, restorable
 (cogitator-graph)
 (cl-loop repeat 50

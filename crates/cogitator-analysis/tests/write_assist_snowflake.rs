@@ -69,7 +69,7 @@ fn snowflake_dialect_from_profiles() {
         "      account: xy12345\n",
     );
     assert_eq!(
-        util::dialect_from_profiles(profiles, "analytics"),
+        util::dialect_from_profiles(profiles, "analytics", None),
         Dialect::new("snowflake")
     );
 }

@@ -34,6 +34,9 @@ local function keymaps(bufnr)
   map("<leader>dg", function()
     require("cogitator.graph").open()
   end, "dbt: browse the model graph")
+  map("<leader>dT", function()
+    require("cogitator.profiles").pick_target()
+  end, "dbt: pick the active profile/target")
 end
 
 local function on_attach(client, bufnr, config)

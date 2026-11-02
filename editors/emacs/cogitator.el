@@ -182,6 +182,50 @@ CALLBACK as plists whichever client is in charge."
          (cogitator--visit-location location)
        (message "No schema entry found for this model.")))))
 
+(defun cogitator--target-choices (report)
+  "((LABEL . (:profile P :target T)) …) from a dbt.profiles REPORT plist.
+Only allowed profiles are offered; auth method and issue count shown."
+  (let (choices)
+    (seq-do
+     (lambda (profile)
+       (when (eq (plist-get profile :allowed) t)
+         (seq-do
+          (lambda (target)
+            (let* ((auth (plist-get target :auth))
+                   (issues (length (append (plist-get auth :issues) nil)))
+                   (active (and (equal (plist-get profile :name)
+                                       (plist-get report :activeProfile))
+                                (equal (plist-get target :name)
+                                       (plist-get report :activeTarget))))
+                   (label (format "%s/%s — %s, %s%s%s"
+                                  (plist-get profile :name)
+                                  (plist-get target :name)
+                                  (or (plist-get target :type) "?")
+                                  (or (plist-get auth :method) "?")
+                                  (if (> issues 0) (format "  ⚠ %d" issues) "")
+                                  (if active "  (active)" ""))))
+              (push (cons label (list :profile (plist-get profile :name)
+                                      :target (plist-get target :name)))
+                    choices)))
+          (plist-get profile :targets))))
+     (plist-get report :profiles))
+    (nreverse choices)))
+
+;;;###autoload
+(defun cogitator-target ()
+  "Pick the active dbt profile/target from the profiles.yml inventory.
+The server re-resolves the SQL dialect and passes --target to dbt runs."
+  (interactive)
+  (cogitator--execute
+   "dbt.profiles" (cogitator--command-argument)
+   (lambda (report)
+     (let ((choices (cogitator--target-choices report)))
+       (if (null choices)
+           (message "cogitator: no readable targets (check profiles.yml / the allowlist)")
+         (when-let* ((pick (completing-read "dbt target: " (mapcar #'car choices) nil t))
+                     (cell (assoc pick choices)))
+           (cogitator--execute "dbt.setTarget" (cdr cell) #'ignore)))))))
+
 ;; ---------------------------------------------------------------------------
 ;; eglot (spec §4; built-in since Emacs 29)
 ;; ---------------------------------------------------------------------------

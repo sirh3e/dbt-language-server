@@ -30,6 +30,15 @@ struct Cli {
     /// initializationOptions.profilesDir replaces it at initialize time.
     #[arg(short = 'p', long = "profiles-dir")]
     profiles_dir: Option<String>,
+    /// Active dbt target (replaces the profile's default `target:`); also
+    /// passed as `--target` to dbt run/test/compile. Switchable at runtime
+    /// via the dbt.setTarget command.
+    #[arg(short = 't', long = "target")]
+    target: Option<String>,
+    /// Profiles readable besides the project's own (comma-separated).
+    /// By default only dbt_project.yml's profile is parsed and exposed.
+    #[arg(long = "profiles-allow", value_delimiter = ',')]
+    profiles_allow: Vec<String>,
     /// Export traces via OTLP (optional endpoint; also honors
     /// OTEL_EXPORTER_OTLP_ENDPOINT). Off by default (05 §6.3).
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -72,7 +81,12 @@ fn main() -> Result<()> {
         server::run(
             cli.fusion.unwrap_or_default(),
             !cli.no_tree_sitter,
-            cli.profiles_dir.unwrap_or_default(),
+            server::ProfilesConfig {
+                dir_override: cli.profiles_dir.unwrap_or_default(),
+                allow: cli.profiles_allow,
+                profile: String::new(),
+                target: cli.target.unwrap_or_default(),
+            },
         )
         .await
     })

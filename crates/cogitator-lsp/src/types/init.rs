@@ -99,6 +99,8 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.test",
                         "dbt.compile",
                         "dbt.modelGraph",
+                        "dbt.profiles",
+                        "dbt.setTarget",
                     ],
                 },
                 references_provider: true,

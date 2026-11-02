@@ -13,6 +13,9 @@ use cogitator_lsp::{
 pub fn yaml_diagnostics(uri: &str, text: &str) -> Vec<Diagnostic> {
     let fs_path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
     let path = Path::new(&fs_path);
+    if path.file_name().is_some_and(|f| f == "profiles.yml") {
+        return profiles_diagnostics(path, text);
+    }
     let is_project = path.file_name().is_some_and(|f| f == "dbt_project.yml");
 
     if let Some((line, character, message)) = cogitator_schemas::yaml::syntax_error(text) {
@@ -100,4 +103,37 @@ pub fn yaml_completion(uri: &str, text: &str, pos: Position) -> Vec<CompletionIt
             data: None,
         })
         .collect()
+}
+
+/// profiles.yml: connection-auth validation as diagnostics. Every profile
+/// in the file is validated — the user is editing their own file; the
+/// allowlist only gates what the dbt.profiles command exposes.
+fn profiles_diagnostics(path: &Path, text: &str) -> Vec<Diagnostic> {
+    if let Some((line, character, message)) = cogitator_schemas::yaml::syntax_error(text) {
+        return vec![diag(
+            Range::zero_width(Position { line, character }),
+            format!("yaml syntax error: {message}"),
+            diagnostic_severity::ERROR,
+        )];
+    }
+    let inventory = crate::profiles::inventory(path, text, &crate::profiles::ProfileScope::All);
+    let mut out = Vec::new();
+    for profile in &inventory.profiles {
+        for target in &profile.targets {
+            for issue in &target.auth.issues {
+                out.push(diag(
+                    Range::zero_width(issue.position),
+                    format!(
+                        "auth ({}/{}, {}): {}",
+                        profile.name,
+                        target.name,
+                        target.auth.method.as_str(),
+                        issue.message
+                    ),
+                    diagnostic_severity::WARNING,
+                ));
+            }
+        }
+    }
+    out
 }

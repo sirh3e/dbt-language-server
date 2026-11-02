@@ -37,11 +37,23 @@ pub struct ContextBuilder {
     /// Explicit profiles directory (`--profiles-dir` /
     /// `initializationOptions.profilesDir`); empty → dbt-style search order.
     profiles_dir: String,
+    /// Active profile/target overrides (`dbt.setTarget`, `--target`); empty
+    /// → the project's profile and its default target.
+    profile_override: String,
+    target_override: String,
 }
 
 impl ContextBuilder {
     pub fn set_profiles_dir(&mut self, dir: impl Into<String>) {
         self.profiles_dir = dir.into();
+    }
+
+    pub fn set_profile_override(&mut self, profile: impl Into<String>) {
+        self.profile_override = profile.into();
+    }
+
+    pub fn set_target_override(&mut self, target: impl Into<String>) {
+        self.target_override = target.into();
     }
 
     /// (hits, misses) across all four artifact caches.
@@ -143,7 +155,13 @@ impl ContextBuilder {
         };
 
         let project = load_project_file(&root);
-        let dialect = util::get_dialect(&project.profile, workspace_root, &self.profiles_dir);
+        let profile = if self.profile_override.is_empty() {
+            project.profile.as_str()
+        } else {
+            self.profile_override.as_str()
+        };
+        let target = (!self.target_override.is_empty()).then_some(self.target_override.as_str());
+        let dialect = util::get_dialect(profile, workspace_root, &self.profiles_dir, target);
 
         let own = ProjectDetails {
             root: root.clone(),

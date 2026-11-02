@@ -83,6 +83,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `initializationOptions.profilesDir`, `$DBT_PROFILES_DIR`,
   `<root>/profiles.yml`, `<root>/.dbt/profiles.yml`, `~/.dbt/profiles.yml`
   — first file whose profile resolves a target wins (details below)
+- **Connection auth manager**: Snowflake auth classification (password,
+  key pair, SSO, OAuth, MFA, JWT) with per-method validation, a redacted
+  `dbt.profiles` inventory behind a profile allowlist, runtime
+  profile/target switching (`dbt.setTarget`, `:DbtTarget`), and auth
+  diagnostics inside profiles.yml
 - **Actionable errors**: every failure surfaces as an editor message with
   a Reason and a Solution (missing project, unresolved dialect, missing
   dbt binary, failed runs with the exact retry command)
@@ -159,6 +164,33 @@ searched. In the Neovim plugin, `profiles_dir` in `setup()` or
 `:DbtProfiles <dir>` at runtime configures this; in Emacs it is
 `cogitator-profiles-dir`; in Zed it is
 `lsp.cogitator.initialization_options.profilesDir`.
+
+### Connection auth manager (Snowflake first-class)
+
+Snowflake alone has half a dozen ways to connect — password, key pair,
+SSO (`authenticator: externalbrowser`), OAuth, MFA, JWT. The server parses
+profiles.yml into a **redacted inventory** (auth methods and what is
+missing, never a credential value) and validates each target:
+
+- unresolved `{{ env_var('…') }}` references (no value, no default)
+- password auth without `user`/`password`, key-pair auth whose
+  `private_key_path` does not exist, OAuth without `token`, missing
+  `account`, unknown `authenticator` values
+
+Problems surface three ways: a warning when the *active* target is broken,
+diagnostics inside profiles.yml when you open it, and the
+`dbt.profiles` report.
+
+**Read scope**: by default only the profile named in `dbt_project.yml` is
+parsed and exposed; widen it with `--profiles-allow name1,name2` or
+`initializationOptions.profilesAllow`.
+
+**Active target**: the profile's default `target:` unless overridden by
+`--target` / `initializationOptions.target` — or switched at runtime with
+the `dbt.setTarget` command, which re-resolves the SQL dialect and passes
+`--target` to dbt run/test/compile. In Neovim: `:DbtTarget` (a picker
+showing each target's auth method and issues); in Emacs:
+`M-x cogitator-target`.
 
 ## Installation
 
