@@ -1,0 +1,17 @@
+# Standalone crate (not part of the server workspace): Zed compiles
+# extensions to WebAssembly with its own toolchain.
+[package]
+name = "zed-cogitator"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+zed_extension_api = "0.6.0"

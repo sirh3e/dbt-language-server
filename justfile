@@ -62,3 +62,7 @@ nvim-test:
 emacs-test:
     cargo build -p cogitator
     emacs -Q --batch -L editors/emacs -l editors/emacs/tests/run.el
+
+# Compile the Zed extension to WebAssembly the way Zed does
+zed-build:
+    cd editors/zed && cargo build --target wasm32-wasip1
