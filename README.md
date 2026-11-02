@@ -55,10 +55,10 @@ development commands and `specs/rust-port/` for the implementation specs.
 
 ## Installation
 
-Download [latest release](https://github.com/j-clemons/dbt-language-server/releases/latest) or install via curl
-```
-curl -fsSL https://j-clemons.com/dbt-language-server/install | bash
-```
+This Rust rewrite has no published releases yet — build from source (above)
+or grab `cogitator-<os>-<arch>` from this repository's releases page once the
+first tag is cut. (The old curl installer belongs to the pre-Rust upstream
+releases and would install the previous Go binary.)
 
 ### Neovim
 

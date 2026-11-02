@@ -26,6 +26,63 @@ pub struct InitializeParams<'a> {
     pub client_info: Option<ClientInfo<'a>>,
     #[serde(borrow, rename = "rootPath", default)]
     pub root_path: Option<Cow<'a, str>>,
+    #[serde(borrow, rename = "rootUri", default)]
+    pub root_uri: Option<Cow<'a, str>>,
+    #[serde(borrow, rename = "workspaceFolders", default)]
+    pub workspace_folders: Option<Vec<WorkspaceFolder<'a>>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkspaceFolder<'a> {
+    #[serde(borrow)]
+    pub uri: Cow<'a, str>,
+    #[serde(borrow, default)]
+    pub name: Option<Cow<'a, str>>,
+}
+
+impl InitializeParams<'_> {
+    /// Workspace root as a filesystem path: workspaceFolders[0] wins, then
+    /// rootUri, then the deprecated rootPath (interop fix — modern clients
+    /// may omit rootPath entirely).
+    pub fn workspace_root(&self) -> Option<String> {
+        if let Some(folder) = self.workspace_folders.as_ref().and_then(|f| f.first()) {
+            if let Some(path) = uri_to_fs_path(&folder.uri) {
+                return Some(path);
+            }
+        }
+        if let Some(uri) = &self.root_uri {
+            if let Some(path) = uri_to_fs_path(uri) {
+                return Some(path);
+            }
+        }
+        self.root_path.as_ref().map(|p| p.to_string())
+    }
+}
+
+/// `file://` URI → filesystem path (percent-decoded).
+pub fn uri_to_fs_path(uri: &str) -> Option<String> {
+    let rest = uri.strip_prefix("file://")?;
+    // strip an authority (file://localhost/..., rare)
+    let path = match rest.find('/') {
+        Some(0) => rest,
+        Some(idx) => &rest[idx..],
+        None => return None,
+    };
+    let mut out = Vec::with_capacity(path.len());
+    let bytes = path.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(byte) = u8::from_str_radix(&path[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).ok()
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -122,4 +179,20 @@ pub struct RenameParams<'a> {
     pub position: Position,
     #[serde(borrow, rename = "newName", default)]
     pub new_name: Cow<'a, str>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::uri_to_fs_path;
+
+    #[test]
+    fn uri_decoding() {
+        assert_eq!(uri_to_fs_path("file:///w/proj"), Some("/w/proj".into()));
+        assert_eq!(
+            uri_to_fs_path("file:///w/my%20proj"),
+            Some("/w/my proj".into())
+        );
+        assert_eq!(uri_to_fs_path("file://localhost/w"), Some("/w".into()));
+        assert_eq!(uri_to_fs_path("untitled:x"), None);
+    }
 }

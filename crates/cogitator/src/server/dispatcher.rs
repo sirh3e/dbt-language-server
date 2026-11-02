@@ -151,7 +151,7 @@ impl Dispatcher {
         if let Some(info) = &params.client_info {
             tracing::info!(client = %info.name, version = %info.version, "connected");
         }
-        self.root_path = params.root_path.map(|p| p.into_owned()).unwrap_or_default();
+        self.root_path = params.workspace_root().unwrap_or_default();
         let response = cogitator_lsp::initialize_response(req.id, crate::VERSION);
         self.send(&response);
         // first refresh so hover works before the first save (05 §6.2)

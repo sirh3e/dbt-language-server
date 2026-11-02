@@ -107,7 +107,8 @@ fn full_session() {
         "initialize",
         serde_json::json!({
             "clientInfo": {"name": "e2e", "version": "0"},
-            "rootPath": root.to_str().unwrap(),
+            // modern-client shape: rootUri only, no deprecated rootPath
+            "rootUri": format!("file://{}", root.display()),
         }),
     );
     let caps = &init["result"]["capabilities"];
