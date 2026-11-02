@@ -1,0 +1,35 @@
+# Git hooks, run with prek (https://prek.j178.dev — the Rust pre-commit
+# runner; the plain `pre-commit` tool reads this file too):
+#
+#   prek install          # once: installs the git hook
+#   prek run --all-files  # run everything manually
+#
+# All hooks are local and reuse the repo's own toolchain — nothing is
+# downloaded at hook time.
+repos:
+  - repo: local
+    hooks:
+      - id: fmt
+        name: cargo fmt --check
+        entry: cargo fmt --all --check
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: clippy
+        name: cargo clippy (zero warnings)
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: schemas-fresh
+        name: generated dbt schemas are fresh
+        entry: just gen-schemas-check
+        language: system
+        files: ^schemas/dbt/
+        pass_filenames: false
+      - id: install-sh-syntax
+        name: install.sh parses
+        entry: sh -n install.sh
+        language: system
+        files: ^install\.sh$
+        pass_filenames: false

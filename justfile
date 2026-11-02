@@ -66,3 +66,11 @@ emacs-test:
 # Compile the Zed extension to WebAssembly the way Zed does
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1
+
+# Regenerate CHANGELOG.md from the conventional commit history (git-cliff)
+changelog:
+    git cliff -o CHANGELOG.md
+
+# Install the git hooks via prek (the Rust pre-commit runner)
+hooks:
+    prek install
