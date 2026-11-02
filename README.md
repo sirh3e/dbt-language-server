@@ -217,17 +217,19 @@ showing each target's auth method and issues); in Emacs:
 
 ## Installation
 
-Once the first tag is cut, [install.sh](install.sh) installs the latest
-release (it replaces the old installer, which pointed at the upstream Go
-project):
+On Linux and macOS, grab the binary for your platform from the
+[releases page](https://github.com/sirh3e/dbt-language-server/releases)
+and put it on `$PATH` (or build from source, below). On **Windows**,
+[install.ps1](install.ps1) downloads the latest release and adds it to
+your user `PATH`:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.ps1 | iex"
 ```
 
-`COGITATOR_REPO`, `COGITATOR_VERSION` and `COGITATOR_BIN_DIR` override the
-repository, tag and install directory. Until then, build from source
-(below) or grab a binary from the releases page.
+`COGITATOR_REPO`, `COGITATOR_VERSION` and `COGITATOR_BIN_DIR` environment
+variables override the repository, tag and install directory. (The old
+curl installer belonged to the upstream Go project and is gone.)
 
 Release assets cover Linux (`cogitator-linux-amd64`), macOS
 (`cogitator-darwin-amd64`, `cogitator-darwin-arm64`) and Windows

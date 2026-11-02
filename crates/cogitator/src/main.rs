@@ -61,9 +61,10 @@ fn main() -> Result<()> {
         // the server. Point the user at this project's own installer (the
         // old one belonged to the upstream Go releases).
         eprintln!("cogitator: self-upgrade does not run from inside the server.");
-        eprintln!("solution: re-run this project's install script:");
-        eprintln!("  curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh");
-        eprintln!("or build from source: cargo build --release -p cogitator");
+        eprintln!("solution: download the asset for your platform from");
+        eprintln!("  https://github.com/sirh3e/dbt-language-server/releases");
+        eprintln!("(Windows: install.ps1 from the repository), or build from");
+        eprintln!("source: cargo build --release -p cogitator");
         std::process::exit(2);
     }
 

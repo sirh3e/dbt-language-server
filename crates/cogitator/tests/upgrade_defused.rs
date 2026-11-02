@@ -11,7 +11,7 @@ fn upgrade_points_at_this_projects_installer() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("sirh3e/dbt-language-server/main/install.sh"),
+        stderr.contains("sirh3e/dbt-language-server/releases"),
         "{stderr}"
     );
     assert!(stderr.contains("solution:"), "{stderr}");

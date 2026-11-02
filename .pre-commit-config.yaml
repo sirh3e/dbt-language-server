@@ -27,9 +27,3 @@ repos:
         language: system
         files: ^schemas/dbt/
         pass_filenames: false
-      - id: install-sh-syntax
-        name: install.sh parses
-        entry: sh -n install.sh
-        language: system
-        files: ^install\.sh$
-        pass_filenames: false
