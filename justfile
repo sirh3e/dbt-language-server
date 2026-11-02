@@ -52,3 +52,8 @@ zigbuild target:
 # remove build artifacts
 clean:
     cargo clean
+
+# Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
+nvim-test:
+    cargo build -p cogitator
+    nvim --headless -l editors/nvim/tests/run.lua

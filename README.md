@@ -94,15 +94,28 @@ URIs, `%USERPROFILE%`-based profile lookup and backslash paths are handled.
 
 ### Neovim
 
-Add executable to $PATH
-Configure with your LSP client (e.g., nvim-lspconfig):
+This repository ships a first-party plugin at `editors/nvim`
+(spec: `specs/neovim-plugin/00-plugin.md`) with `:Dbt*` commands, code-lens
+wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim:
 
 ```lua
-require'lspconfig'.dbt.setup{
+{
+  dir = "/path/to/dbt-language-server/editors/nvim", -- or a git subdir plugin
+  config = function()
+    require("cogitator").setup({})
+  end,
+}
+```
+
+Or configure any LSP client manually (binary on `$PATH`):
+
+```lua
+vim.lsp.config("cogitator", {
   cmd = { "cogitator" },
   filetypes = { "sql", "yaml" },
-  root_dir = require'lspconfig'.util.root_pattern("dbt_project.yml"),
-}
+  root_markers = { "dbt_project.yml" },
+})
+vim.lsp.enable("cogitator")
 ```
 
 ### Helix

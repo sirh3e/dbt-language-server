@@ -1,0 +1,101 @@
+*cogitator.txt*  Neovim integration for the cogitator dbt language server
+
+==============================================================================
+CONTENTS                                                     *cogitator-nvim*
+
+  1. Setup ........................... |cogitator-nvim-setup|
+  2. Options ......................... |cogitator-nvim-options|
+  3. Commands and keymaps ............ |cogitator-nvim-commands|
+  4. Caveats ......................... |cogitator-nvim-caveats|
+  5. Neovim 0.10 fallback ............ |cogitator-nvim-0.10|
+
+==============================================================================
+1. Setup                                               *cogitator-nvim-setup*
+
+Requires Neovim 0.11+ and the `cogitator` binary (a release asset or
+`cargo build --release -p cogitator`). >lua
+
+    require("cogitator").setup({})
+<
+The server attaches to `sql` and `yaml` buffers inside a dbt project (a
+directory with `dbt_project.yml` upward from the file). Run
+`:checkhealth cogitator` to verify the binary, the project root and the
+profiles.yml resolution.
+
+==============================================================================
+2. Options                                           *cogitator-nvim-options*
+
+Defaults shown: >lua
+
+    require("cogitator").setup({
+      cmd = { "cogitator" },      -- server command; flags are appended
+      profiles_dir = nil,         -- profiles.yml dir → initializationOptions
+      fusion = false,             -- true, or "/path/to/dbt" for Fusion mode
+      tree_sitter = true,         -- false → --no-tree-sitter
+      debug = false,              -- true → --debug (log.txt next to binary)
+      filetypes = { "sql", "yaml" },
+      root_markers = { "dbt_project.yml" },
+      attach_outside_project = false, -- true: fall back to cwd as root
+      lens = {
+        enabled = true,
+        events = { "BufEnter", "CursorHold", "InsertLeave" },
+      },
+      keymaps = true,             -- the buffer-local <leader>d maps below
+      semantic_tokens = true,
+    })
+<
+`profiles_dir` is sent as `initializationOptions.profilesDir`; the server
+resolution order is: this override, `$DBT_PROFILES_DIR`,
+`<root>/profiles.yml`, `<root>/.dbt/profiles.yml`, `~/.dbt/profiles.yml`.
+
+==============================================================================
+3. Commands and keymaps                             *cogitator-nvim-commands*
+
+  :DbtRun        dbt run for the current model       <leader>dr
+  :DbtTest       dbt test for the current model      <leader>dt
+  :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
+  :DbtSchema     jump to the schema.yml entry        <leader>ds
+  :DbtLineage    show column lineage (message)       <leader>dl
+                 run the code lens on this line      <leader>dL
+
+Code lenses on each model: "N downstream", "N upstream", "Go to schema",
+"Column lineage", "dbt run", "dbt test", "dbt compile"; macros get an
+informational "N call sites" lens (not executable).
+
+dbt run/test/compile are asynchronous; progress and results arrive as
+notifications (`:messages` keeps them).
+
+==============================================================================
+4. Caveats                                           *cogitator-nvim-caveats*
+
+- Rename (|vim.lsp.buf.rename()| on a model or `ref`) rewrites dependents,
+  the schema.yml entry, and renames the model file. Dependents are read
+  from disk: save other modified buffers before renaming.
+- Completion ranking comes from the server via `sortText`; keep your
+  completion engine's sortText comparator enabled.
+
+==============================================================================
+5. Neovim 0.10 fallback                                 *cogitator-nvim-0.10*
+
+Without |vim.lsp.config()|, configure through nvim-lspconfig: >lua
+
+    require("lspconfig.configs").cogitator = {
+      default_config = {
+        cmd = { "cogitator" },
+        filetypes = { "sql", "yaml" },
+        root_dir = require("lspconfig.util").root_pattern("dbt_project.yml"),
+        init_options = { profilesDir = nil },
+      },
+    }
+    require("lspconfig").cogitator.setup({
+      capabilities = vim.tbl_deep_extend("force",
+        vim.lsp.protocol.make_client_capabilities(), {
+          window = { showDocument = { support = true } },
+          workspace = { workspaceEdit = {
+            documentChanges = true,
+            resourceOperations = { "rename" },
+          } },
+        }),
+    })
+<
+vim:tw=78:ts=8:ft=help:norl:
