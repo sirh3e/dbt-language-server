@@ -26,6 +26,8 @@ All notable changes to cogitator, the dbt language server
 - *(profiles)* Add the Snowflake connection auth manager
 - *(lsp)* Extract-model-to-YAML with versions and go-to-tests
 - *(server)* Report status via $/progress and a dbt.status command
+- *(lsp)* Search tags and selectors
+- *(nvim)* Dbt-docs-style project DAG with columns (Neovim only)
 
 ### 🐛 Bug Fixes
 
@@ -44,6 +46,7 @@ All notable changes to cogitator, the dbt language server
 - Track missing LSP features in FEATURE_REQUESTS.md
 - *(specs)* Add the cogitator.nvim implementation spec
 - *(readme)* Origin story and the full feature inventory
+- *(changelog)* Generate CHANGELOG.md with git-cliff
 
 ### 🚜 Refactor
 
@@ -56,6 +59,7 @@ All notable changes to cogitator, the dbt language server
 
 - Remove the Go implementation
 - *(tooling)* Add prek hooks, git-cliff config and recipes
+- *(github)* Issue templates for bugs and feature requests
 ## [0.2.0] - 2025-10-04
 
 ### 🚀 Features
