@@ -75,3 +75,7 @@ changelog:
 # Install the git hooks via prek (the Rust pre-commit runner)
 hooks:
     prek install
+
+# Lint our own shell scripts (the testdata fixture is third-party)
+lint-shell:
+    git ls-files '*.sh' '*.bash' | grep -v '^testdata/' | xargs -r shellcheck

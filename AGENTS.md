@@ -7,7 +7,8 @@ editor integrations live under `editors/`.
 
 ## Build/Test Commands
 - **justfile**: `just --list` — `build` / `test` / `fmt` / `fmt-check` /
-  `lint` / `check` (the CI set) / `release` / `duckdb-check` /
+  `lint` / `lint-shell` (shellcheck; testdata fixtures excluded) /
+  `check` (the CI set) / `release` / `duckdb-check` /
   `gen-schemas(-check)` / `zigbuild` / `nvim-test` / `emacs-test` /
   `zed-build` / `changelog` / `hooks`
 - **Build**: `cargo build --workspace`
@@ -33,7 +34,11 @@ editor integrations live under `editors/`.
   this fork must be tagged **v0.5.0 or later**).
 - **Git hooks** run through prek (`prek install`; config in
   `.pre-commit-config.yaml`: fmt check, clippy -D warnings, dbt-schema
-  freshness).
+  freshness, shellcheck).
+- **CI builds are path-gated**: the three-OS cargo matrix and the lint job
+  run only when the Rust/C side changed (`crates/**`, Cargo files,
+  schemas, testdata, .cargo, justfile, ci.yml — via dorny/paths-filter);
+  shell changes run a shellcheck job instead.
 - **Windows install**: `install.ps1` (there is deliberately no shell
   installer; Unix users take release assets or build from source).
 - **GitHub issue forms** live in `.github/ISSUE_TEMPLATE/`.

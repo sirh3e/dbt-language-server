@@ -27,3 +27,10 @@ repos:
         language: system
         files: ^schemas/dbt/
         pass_filenames: false
+      - id: shellcheck
+        name: shellcheck
+        entry: shellcheck
+        language: system
+        types: [shell]
+        # the dbt-completion.bash fixture is third-party code
+        exclude: ^testdata/

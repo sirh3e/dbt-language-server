@@ -7,8 +7,36 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  # Builds are expensive: run them only when the Rust/C side (or what its
+  # tests depend on) changed. Docs- and editor-only pushes skip the matrix.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      shell: ${{ steps.filter.outputs.shell }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'schemas/**'
+              - 'testdata/**'
+              - '.cargo/**'
+              - 'justfile'
+              - '.github/workflows/ci.yml'
+            shell:
+              - '**/*.sh'
+              - '**/*.bash'
+
   test:
     name: test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +58,8 @@ jobs:
         run: cargo test --workspace
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,3 +79,13 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+
+  shellcheck:
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck (testdata fixture is third-party)
+        run: git ls-files '*.sh' '*.bash' | grep -v '^testdata/' | xargs -r shellcheck
