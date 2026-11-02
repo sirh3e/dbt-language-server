@@ -12,6 +12,9 @@ Binary name: `dbt-language-server`. Behavior:
    with inherited stdout/stderr; exit 0 on success, fatal log on failure.
    For the Rust port, point the URL at the port's own install script (decide at
    release time); otherwise identical. (`clap` subcommand `upgrade`.)
+   *Resolved:* the port ships its own `install.sh`/`install.ps1` targeting this
+   repository's releases; `upgrade` only prints that pointer and never
+   self-mutates (deliberate deviation).
 2. Flags (pflag → clap):
    - `-v, --version` (bool): print version string + newline, exit 0.
    - `-d, --debug` (bool): enable file logging (01 §5).

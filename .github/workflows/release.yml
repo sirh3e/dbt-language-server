@@ -53,7 +53,7 @@ jobs:
       - name: Build release binaries (cargo-zigbuild, 07 §5 matrix)
         run: |
           mkdir -p dist
-          # target triple -> legacy asset suffix the install script expects
+          # target triple -> asset suffix install.sh / install.ps1 download
           build() {
             local target="$1" suffix="$2" ext="${3:-}"
             cargo zigbuild --release --target "$target" -p cogitator

@@ -217,19 +217,26 @@ showing each target's auth method and issues); in Emacs:
 
 ## Installation
 
-On Linux and macOS, grab the binary for your platform from the
-[releases page](https://github.com/sirh3e/dbt-language-server/releases)
-and put it on `$PATH` (or build from source, below). On **Windows**,
-[install.ps1](install.ps1) downloads the latest release and adds it to
-your user `PATH`:
+On **Linux and macOS**, [install.sh](install.sh) downloads the latest
+release into `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh
+```
+
+On **Windows**, [install.ps1](install.ps1) does the same into
+`%LOCALAPPDATA%\Programs\cogitator` and adds it to your user `PATH`:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.ps1 | iex"
 ```
 
-`COGITATOR_REPO`, `COGITATOR_VERSION` and `COGITATOR_BIN_DIR` environment
-variables override the repository, tag and install directory. (The old
-curl installer belonged to the upstream Go project and is gone.)
+Both scripts point at **this** repository (the upstream Go project's
+installer no longer applies) and honor `COGITATOR_REPO`,
+`COGITATOR_VERSION` and `COGITATOR_BIN_DIR` environment variables.
+Alternatively grab a binary from the
+[releases page](https://github.com/sirh3e/dbt-language-server/releases)
+or build from source (below).
 
 Release assets cover Linux (`cogitator-linux-amd64`), macOS
 (`cogitator-darwin-amd64`, `cogitator-darwin-arm64`) and Windows

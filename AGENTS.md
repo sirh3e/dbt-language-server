@@ -44,8 +44,10 @@ editor integrations live under `editors/`.
   run only when the Rust/C side changed (`crates/**`, Cargo files,
   schemas, testdata, .cargo, justfile, ci.yml — via dorny/paths-filter);
   shell changes run a shellcheck job instead.
-- **Windows install**: `install.ps1` (there is deliberately no shell
-  installer; Unix users take release assets or build from source).
+- **Installers**: `install.sh` (Linux/macOS) and `install.ps1` (Windows),
+  both pointing at THIS repository's releases with
+  `COGITATOR_REPO/VERSION/BIN_DIR` overrides — never at the upstream Go
+  project.
 - **GitHub issue forms** live in `.github/ISSUE_TEMPLATE/`.
 
 ## Code Style (binding rules in specs/rust-port/05 §2–§3, 08 §1)
