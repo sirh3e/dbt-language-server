@@ -135,6 +135,21 @@ file-types = ["sql","yml","yaml"]
 language-servers = ["cogitator"]
 ```
 
+### Emacs
+
+First-party integration at `editors/emacs` for **eglot** (built-in, Emacs
+29+) and **lsp-mode**: `M-x cogitator-run/test/compile/schema/lineage` and
+the same model-graph browser as the Neovim plugin (`M-x cogitator-graph`).
+See `editors/emacs/README.md`:
+
+```elisp
+(add-to-list 'load-path "/path/to/dbt-language-server/editors/emacs")
+(require 'cogitator)
+(require 'cogitator-graph)
+(cogitator-setup-eglot)
+(add-hook 'sql-mode-hook #'eglot-ensure)
+```
+
 ### Zed
 
 Search Extensions -> dbt and install.

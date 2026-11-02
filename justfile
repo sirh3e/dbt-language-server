@@ -57,3 +57,8 @@ clean:
 nvim-test:
     cargo build -p cogitator
     nvim --headless -l editors/nvim/tests/run.lua
+
+# Batch Emacs integration tests (needs emacs >= 29 and a debug server build)
+emacs-test:
+    cargo build -p cogitator
+    emacs -Q --batch -L editors/emacs -l editors/emacs/tests/run.el
