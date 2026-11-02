@@ -316,6 +316,21 @@ against `testdata/jaffle_shop_duckdb`), `just zed-build`,
 `just duckdb-check`, `just gen-schemas`. CI runs the Rust suite on Linux,
 Windows and macOS; releases cross-compile with cargo-zigbuild.
 
+The whole toolchain is declared in Nix, derived from one source
+(`nix/tooling.nix` — add tools there, nowhere else). Three ways in:
+
+```bash
+nix-shell          # classic, via shell.nix
+```
+
+```bash
+devenv shell       # devenv.nix (devenv.sh); `check` runs the CI set
+```
+
+```bash
+direnv allow       # .envrc picks devenv when installed, else nix-shell
+```
+
 Git hooks run through [prek](https://prek.j178.dev)
 (`prek install`, config in `.pre-commit-config.yaml`); the changelog is
 generated from the conventional-commit history with

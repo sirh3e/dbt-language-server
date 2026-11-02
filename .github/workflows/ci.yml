@@ -14,6 +14,7 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       shell: ${{ steps.filter.outputs.shell }}
+      nix: ${{ steps.filter.outputs.nix }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -32,6 +33,10 @@ jobs:
             shell:
               - '**/*.sh'
               - '**/*.bash'
+            nix:
+              - '**/*.nix'
+              - 'devenv.yaml'
+              - '.envrc'
 
   test:
     name: test (${{ matrix.os }})
@@ -89,3 +94,27 @@ jobs:
 
       - name: shellcheck (testdata fixture is third-party)
         run: git ls-files '*.sh' '*.bash' | grep -v '^testdata/' | xargs -r shellcheck
+
+  # Proves shell.nix evaluates and the dev environment assembles.
+  # (devenv itself is not exercised here to keep the job light.)
+  nix-shell:
+    needs: changes
+    if: needs.changes.outputs.nix == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - name: Enter the dev shell and check the toolchain
+        run: |
+          nix-shell --run '
+            cargo --version &&
+            rustfmt --version &&
+            just --version &&
+            shellcheck --version &&
+            git-cliff --version &&
+            python3 --version &&
+            nvim --version | head -1 &&
+            emacs --version | head -1
+          '

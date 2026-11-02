@@ -27,6 +27,11 @@ editor integrations live under `editors/`.
   Linux, Windows and macOS
 
 ## Tooling and Conventions
+- **Nix dev environment**: the toolchain is declared once in
+  `nix/tooling.nix` and consumed by both `shell.nix` (nix-shell/direnv)
+  and `devenv.nix` (devenv; Rust via its languages.rust module). New
+  tools go into `nix/tooling.nix`, nowhere else; CI's `nix-shell` job
+  proves the shell assembles.
 - **Commits are Conventional Commits** (`feat(scope): …`, `fix: …`,
   `docs(specs): …`); CHANGELOG.md is generated with git-cliff
   (`just changelog` — ranged from the fork point `724b0f2`; the upstream

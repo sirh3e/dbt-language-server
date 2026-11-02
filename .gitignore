@@ -11,3 +11,6 @@ logs/
 
 # IDE
 /.idea
+.direnv/
+.devenv/
+devenv.lock
