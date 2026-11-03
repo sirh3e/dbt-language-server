@@ -1717,3 +1717,69 @@ fn inlay_links_and_linked_editing() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// workspace/diagnostic (01 §6.4): project-wide dangling findings,
+/// full → unchanged on the same revision, and stale clean files
+/// answering an empty full report.
+#[test]
+fn workspace_diagnostics_full_then_unchanged() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-wsdiag-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    std::fs::write(
+        root.join("models/dangler.sql"),
+        "select * from {{ ref('customrs') }}\n",
+    )
+    .unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let report = lsp.request("workspace/diagnostic", serde_json::json!({}));
+    let items = report["result"]["items"].as_array().expect("items").clone();
+    let dangler = items
+        .iter()
+        .find(|i| {
+            i["uri"]
+                .as_str()
+                .is_some_and(|u| u.ends_with("dangler.sql"))
+        })
+        .expect("dangler finding");
+    assert_eq!(dangler["kind"], "full", "{dangler}");
+    assert!(
+        dangler["items"][0]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("'customrs'") && m.contains("customers")),
+        "{dangler}"
+    );
+    let result_id = dangler["resultId"].as_str().expect("resultId").to_string();
+
+    // same revision → unchanged
+    let second = lsp.request(
+        "workspace/diagnostic",
+        serde_json::json!({"previousResultIds": [
+            {"uri": dangler["uri"], "value": result_id},
+            {"uri": "file:///gone/clean.sql", "value": "0"}
+        ]}),
+    );
+    let second_items = second["result"]["items"].as_array().expect("items");
+    let again = second_items
+        .iter()
+        .find(|i| i["uri"] == dangler["uri"])
+        .expect("tracked uri");
+    assert_eq!(again["kind"], "unchanged", "{again}");
+    // the clean tracked file clears with an empty full report
+    let cleared = second_items
+        .iter()
+        .find(|i| i["uri"] == "file:///gone/clean.sql")
+        .expect("stale uri");
+    assert_eq!(cleared["kind"], "full", "{cleared}");
+    assert_eq!(
+        cleared["items"].as_array().map(Vec::len),
+        Some(0),
+        "{cleared}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

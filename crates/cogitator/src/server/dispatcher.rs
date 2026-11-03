@@ -53,6 +53,8 @@ pub struct Dispatcher {
     toggles: Arc<super::SharedToggles>,
     /// Running dbt invocations, cancellable by token (dbt.cancel).
     jobs: Arc<super::jobs::DbtJobs>,
+    /// Bumped per context rebuild — the workspace/diagnostic resultId.
+    context_revision: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Dispatcher {
@@ -76,6 +78,7 @@ impl Dispatcher {
         config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
         toggles: Arc<super::SharedToggles>,
         jobs: Arc<super::jobs::DbtJobs>,
+        context_revision: Arc<std::sync::atomic::AtomicU64>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -97,6 +100,7 @@ impl Dispatcher {
             config_status,
             toggles,
             jobs,
+            context_revision,
         }
     }
 
@@ -201,6 +205,7 @@ impl Dispatcher {
             "textDocument/documentLink" => self.document_link(content),
             "textDocument/linkedEditingRange" => self.linked_editing(content),
             "textDocument/diagnostic" => self.pull_diagnostics(content),
+            "workspace/diagnostic" => self.workspace_diagnostics(content),
             "workspace/symbol" => self.workspace_symbol(content),
             "workspace/didChangeWatchedFiles" => {
                 // best-effort: clients only send this after dynamic
@@ -1018,6 +1023,62 @@ impl Dispatcher {
                 kind: "full",
                 items,
             })
+        });
+    }
+
+    /// workspace/diagnostic (01 §6.4): project-wide dangling findings
+    /// under the global context-revision result-id scheme.
+    fn workspace_diagnostics(&mut self, content: &[u8]) {
+        let Ok(req) =
+            serde_json::from_slice::<Envelope<cogitator_lsp::WorkspaceDiagnosticParams>>(content)
+        else {
+            self.invalid_params(content, "workspace/diagnostic");
+            return;
+        };
+        let previous: std::collections::HashMap<String, String> = req
+            .params
+            .unwrap_or_default()
+            .previous_result_ids
+            .into_iter()
+            .map(|p| (p.uri, p.value))
+            .collect();
+        let ctx = self.snapshot();
+        let revision = self.context_revision.load(Ordering::Relaxed).to_string();
+        self.offload_blocking(req.id, "workspace/diagnostic", move || {
+            let findings =
+                features::project_diagnostics(&ctx, &|path| std::fs::read_to_string(path).ok());
+            let mut items = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for (uri, diagnostics) in findings {
+                seen.insert(uri.clone());
+                if previous.get(&uri) == Some(&revision) {
+                    items.push(cogitator_lsp::WorkspaceDocumentReport::Unchanged {
+                        uri,
+                        result_id: revision.clone(),
+                        version: None,
+                    });
+                } else {
+                    items.push(cogitator_lsp::WorkspaceDocumentReport::Full {
+                        uri,
+                        result_id: revision.clone(),
+                        version: None,
+                        items: diagnostics,
+                    });
+                }
+            }
+            // files the client still tracks that are clean now answer an
+            // empty Full so stale findings clear
+            for (uri, _) in previous {
+                if !seen.contains(&uri) {
+                    items.push(cogitator_lsp::WorkspaceDocumentReport::Full {
+                        uri,
+                        result_id: revision.clone(),
+                        version: None,
+                        items: Vec::new(),
+                    });
+                }
+            }
+            super::reply::Reply::result(&cogitator_lsp::WorkspaceDiagnosticReport { items })
         });
     }
 

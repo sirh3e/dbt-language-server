@@ -25,6 +25,7 @@ mod rename;
 mod signature;
 mod structure;
 mod tests_nav;
+mod workspace_diagnostics;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
 pub use code_actions::{code_actions, TargetChoice};
@@ -50,6 +51,7 @@ pub use rename::rename_model;
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
+pub use workspace_diagnostics::project_diagnostics;
 
 use std::path::Path;
 

@@ -194,8 +194,10 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     trigger_characters: &["(", ","],
                 },
                 diagnostic_provider: DiagnosticOptions {
+                    // false ON PURPOSE (01 §6.3): cross-file truth travels
+                    // through workspace/diagnostic, not per-file re-pulls
                     inter_file_dependencies: false,
-                    workspace_diagnostics: false,
+                    workspace_diagnostics: true,
                 },
                 rename_provider: true,
                 code_lens_provider: CodeLensOptions {

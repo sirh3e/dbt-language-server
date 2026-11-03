@@ -13,6 +13,7 @@ mod messages;
 mod params;
 mod results;
 mod workspace;
+mod workspace_diag;
 
 pub use actions::*;
 pub use core::*;
@@ -25,3 +26,4 @@ pub use messages::*;
 pub use params::*;
 pub use results::*;
 pub use workspace::*;
+pub use workspace_diag::*;

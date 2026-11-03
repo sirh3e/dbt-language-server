@@ -256,6 +256,9 @@ pub async fn run(
             .store(mib * 1024 * 1024, Ordering::Relaxed);
     }
     let jobs = Arc::new(jobs::DbtJobs::default());
+    // workspace/diagnostic result ids: one global revision per rebuild
+    let context_revision = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let refresh_revision = context_revision.clone();
     let toggles = Arc::new(SharedToggles::default());
     toggles.lints.store(launch.lint.flags(0), Ordering::Relaxed);
     if let Some(on) = launch.warehouse.columns {
@@ -388,6 +391,7 @@ pub async fn run(
                         }
                         warned = warning;
                     }
+                    refresh_revision.fetch_add(1, Ordering::Relaxed);
                     let _ = ctx_tx.send(Arc::new(ctx));
                 }
                 Err(err) => {
@@ -443,6 +447,7 @@ pub async fn run(
         config_status,
         toggles,
         jobs,
+        context_revision,
     );
 
     let mut stdin = tokio::io::stdin();
