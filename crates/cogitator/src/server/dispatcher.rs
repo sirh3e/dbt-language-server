@@ -129,6 +129,7 @@ impl Dispatcher {
             span.record("id", id);
         }
         let _enter = span.enter();
+        let started = std::time::Instant::now();
 
         match method.as_str() {
             "initialize" => self.initialize(content),
@@ -184,6 +185,7 @@ impl Dispatcher {
                 }
             }
         }
+        crate::metrics::record_request(&method, started.elapsed().as_secs_f64() * 1000.0);
     }
 
     /// Reply InvalidParams when a request (id present) has undecodable params.

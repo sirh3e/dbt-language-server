@@ -10,11 +10,15 @@ use tracing_subscriber::EnvFilter;
 /// Keeps the OTLP provider alive; flushed on drop / `exit` (01 §3.3).
 pub struct Guard {
     otlp: Option<opentelemetry_sdk::trace::SdkTracerProvider>,
+    metrics: Option<opentelemetry_sdk::metrics::SdkMeterProvider>,
 }
 
 impl Guard {
     pub fn shutdown(&self) {
         if let Some(provider) = &self.otlp {
+            let _ = provider.shutdown();
+        }
+        if let Some(provider) = &self.metrics {
             let _ = provider.shutdown();
         }
     }
@@ -83,6 +87,15 @@ pub fn init(debug: bool, otlp: Option<&str>) -> Result<()> {
         (None, false) => None,
         (endpoint, _) => Some(build_otlp(endpoint.filter(|e| !e.is_empty()))?),
     };
+    // metrics ride the same gate and resource as traces (05 §6.3)
+    let meter_provider = match &otlp_provider {
+        Some(_) => {
+            let provider = build_otlp_metrics(otlp.filter(|e| !e.is_empty()))?;
+            crate::metrics::init(&provider);
+            Some(provider)
+        }
+        None => None,
+    };
     let otlp_layer = otlp_provider.as_ref().map(|provider| {
         use opentelemetry::trace::TracerProvider as _;
         use tracing_subscriber::Layer as _;
@@ -104,12 +117,36 @@ pub fn init(debug: bool, otlp: Option<&str>) -> Result<()> {
 
     let _ = GUARD.set(Guard {
         otlp: otlp_provider,
+        metrics: meter_provider,
     });
     Ok(())
 }
 
-fn build_otlp(endpoint: Option<&str>) -> Result<opentelemetry_sdk::trace::SdkTracerProvider> {
+fn build_otlp_metrics(
+    endpoint: Option<&str>,
+) -> Result<opentelemetry_sdk::metrics::SdkMeterProvider> {
+    use opentelemetry_otlp::WithExportConfig;
+
+    let mut exporter = opentelemetry_otlp::MetricExporter::builder().with_tonic();
+    if let Some(endpoint) = endpoint {
+        exporter = exporter.with_endpoint(endpoint.to_string());
+    }
+    let exporter = exporter.build()?;
+    Ok(opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_periodic_exporter(exporter)
+        .with_resource(otlp_resource())
+        .build())
+}
+
+fn otlp_resource() -> opentelemetry_sdk::Resource {
     use opentelemetry::KeyValue;
+    opentelemetry_sdk::Resource::builder()
+        .with_service_name("dbt-language-server") // 05 §6.3's resource name
+        .with_attributes([KeyValue::new("service.version", crate::VERSION)])
+        .build()
+}
+
+fn build_otlp(endpoint: Option<&str>) -> Result<opentelemetry_sdk::trace::SdkTracerProvider> {
     use opentelemetry_otlp::WithExportConfig;
 
     let mut exporter = opentelemetry_otlp::SpanExporter::builder().with_tonic();
@@ -118,12 +155,8 @@ fn build_otlp(endpoint: Option<&str>) -> Result<opentelemetry_sdk::trace::SdkTra
     }
     let exporter = exporter.build()?;
 
-    let resource = opentelemetry_sdk::Resource::builder()
-        .with_service_name("dbt-language-server") // 05 §6.3's resource name
-        .with_attributes([KeyValue::new("service.version", crate::VERSION)])
-        .build();
     Ok(opentelemetry_sdk::trace::SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
-        .with_resource(resource)
+        .with_resource(otlp_resource())
         .build())
 }

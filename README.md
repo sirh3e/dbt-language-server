@@ -267,6 +267,22 @@ the `dbt.setTarget` command, which re-resolves the SQL dialect and passes
 showing each target's auth method and issues); in Emacs:
 `M-x cogitator-target`.
 
+## Observability
+
+Off by default. `--otlp[=endpoint]` (or `OTEL_EXPORTER_OTLP_ENDPOINT`)
+exports **traces** (one span per LSP message with method/id, context
+refreshes with per-builder children, dbt invocations with exit codes,
+fusion compiles with diagnostic counts) and **metrics**
+(`lsp.requests`, `lsp.request.duration` ms histogram by method — the
+spec's latency-budget measurement — `context.refreshes` +
+`context.refresh.duration`, `scan.cache` and `derived.cache` hit/miss
+counters, `dbt.invocations` by kind and outcome) over gRPC/tonic as
+`service.name = dbt-language-server`. `--debug` appends a plain-text
+log to `log.txt` beside the executable (falls back to a warning when
+that directory is read-only). Nothing but LSP frames ever touches
+stdout. **Privacy note:** spans and logs carry file paths and model
+names — point `--otlp` only at collectors you trust with them.
+
 ## Installation
 
 On **Linux and macOS**, [install.sh](install.sh) downloads the latest

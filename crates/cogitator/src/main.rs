@@ -1,6 +1,7 @@
 //! cogitator — the dbt language server binary: CLI entry (specs/rust-port/04 §1) and runtime
 //! bootstrap (05 §6.2).
 
+mod metrics;
 mod observability;
 mod server;
 

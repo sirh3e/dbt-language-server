@@ -113,6 +113,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
 
             let output = match result {
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    crate::metrics::record_dbt(kind, "binary-missing");
                     progress.end(format!("dbt {kind} failed: '{binary}' not found"));
                     link.show_message(
                         message_type::ERROR,
@@ -126,6 +127,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                     return;
                 }
                 Err(err) => {
+                    crate::metrics::record_dbt(kind, "launch-failed");
                     progress.end(format!("dbt {kind} failed to launch"));
                     link.show_message(
                         message_type::ERROR,
@@ -142,6 +144,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
 
             tracing::Span::current().record("exit", output.status.code().unwrap_or(-1));
             if !output.status.success() {
+                crate::metrics::record_dbt(kind, "failed");
                 tracing::warn!(code = output.status.code(), "dbt subprocess failed");
                 progress.end(format!("dbt {kind} failed for '{label}'"));
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -168,6 +171,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 return;
             }
 
+            crate::metrics::record_dbt(kind, "succeeded");
             if progress.active() {
                 progress.end(format!("dbt {kind} succeeded for '{label}'"));
             } else {

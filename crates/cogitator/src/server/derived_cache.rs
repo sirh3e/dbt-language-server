@@ -38,10 +38,12 @@ struct Counters {
 impl Counters {
     fn hit(&self, surface: &'static str) {
         tracing::trace!(surface, "derived cache hit");
+        crate::metrics::record_derived_cache(surface, true);
         self.hits.fetch_add(1, Ordering::Relaxed);
     }
     fn miss(&self, surface: &'static str) {
         tracing::trace!(surface, "derived cache miss");
+        crate::metrics::record_derived_cache(surface, false);
         self.misses.fetch_add(1, Ordering::Relaxed);
     }
 }

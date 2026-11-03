@@ -183,6 +183,9 @@ pub async fn run(
     let refresh_status = status.clone();
     tokio::spawn(async move {
         let mut warned: Option<String> = None;
+        // scan-cache totals are cumulative across builds: keep the last
+        // observation so the metrics see per-refresh deltas
+        let (mut prev_hits, mut prev_misses) = (0u64, 0u64);
         while let Some(mut root) = refresh_rx.recv().await {
             // debounce: coalesce triggers arriving within 200 ms (05 §6.2)
             while let Ok(Some(next)) =
@@ -224,6 +227,12 @@ pub async fn run(
                         info.cache_hits = hits;
                         info.cache_misses = misses;
                     }
+                    crate::metrics::record_refresh(
+                        elapsed_ms as f64,
+                        hits.saturating_sub(prev_hits),
+                        misses.saturating_sub(prev_misses),
+                    );
+                    (prev_hits, prev_misses) = (hits, misses);
                     progress.end(format!(
                         "{} models, {} sources ({} ms)",
                         ctx.model_detail_map.len(),

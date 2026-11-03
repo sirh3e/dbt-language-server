@@ -355,6 +355,27 @@ output goes to a file, stderr, or the OTLP exporter.
   concrete: stderr output is just another optional `fmt` layer if a client
   wants it.
 
+#### 6.3.1 Metrics (delivered with the telemetry batch)
+
+Same `--otlp` gate and resource as traces; recorders no-op otherwise.
+Inventory (names are binding):
+
+| metric | type | attributes |
+|---|---|---|
+| `lsp.requests` | counter | `method` |
+| `lsp.request.duration` | histogram (ms) | `method` — the §6.1 budget measurement |
+| `context.refreshes` | counter | — |
+| `context.refresh.duration` | histogram (ms) | — |
+| `scan.cache` | counter | `outcome` = hit\|miss (per-refresh deltas) |
+| `derived.cache` | counter | `surface` = profiles\|lineage\|results, `outcome` |
+| `dbt.invocations` | counter | `kind`, `outcome` = succeeded\|failed\|launch-failed\|binary-missing |
+
+Also binding since this batch: per-LAYER EnvFilters (a global filter
+must never hide spans from one exporter), `service.name =
+dbt-language-server`, flush on EVERY shutdown path (exit notification,
+stdin EOF, malformed frame), and `--debug` degrading to a stderr
+warning when log.txt is unwritable.
+
 ### 6.4 Micro-level
 
 - Compile every regex once (`std::sync::LazyLock<Regex>`).
