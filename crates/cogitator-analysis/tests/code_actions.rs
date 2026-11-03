@@ -24,6 +24,11 @@ fn titles(actions: &[cogitator_lsp::CodeAction]) -> Vec<String> {
     actions.iter().map(|a| a.title.clone()).collect()
 }
 
+/// Every action in these tests is command-only; unwrap accordingly.
+fn cmd(a: &cogitator_lsp::CodeAction) -> &cogitator_lsp::Command {
+    a.command.as_ref().expect("command-only action")
+}
+
 #[test]
 fn model_file_offers_the_lens_command_set() {
     let ctx = ctx();
@@ -35,7 +40,7 @@ fn model_file_offers_the_lens_command_set() {
     // customers has a schema entry with tests: the goToTests tail, not the
     // extract scaffold
     assert!(
-        actions.iter().any(|a| a.command.command == "dbt.goToTests"),
+        actions.iter().any(|a| cmd(a).command == "dbt.goToTests"),
         "{titles:?}"
     );
     assert!(
@@ -43,12 +48,8 @@ fn model_file_offers_the_lens_command_set() {
         "{titles:?}"
     );
     for a in &actions {
-        assert!(
-            a.command.command.starts_with("dbt."),
-            "{}",
-            a.command.command
-        );
-        let arg = serde_json::to_value(&a.command.arguments[0]).unwrap();
+        assert!(cmd(a).command.starts_with("dbt."), "{}", cmd(a).command);
+        let arg = serde_json::to_value(&cmd(a).arguments[0]).unwrap();
         assert_eq!(arg["uri"], serde_json::Value::String(uri.clone()));
     }
 }
@@ -64,7 +65,7 @@ fn model_without_schema_entry_offers_the_scaffold() {
         "{titles:?}"
     );
     assert!(
-        !actions.iter().any(|a| a.command.command == "dbt.goToTests"),
+        !actions.iter().any(|a| cmd(a).command == "dbt.goToTests"),
         "{titles:?}"
     );
 }
@@ -91,8 +92,8 @@ fn ref_token_prepends_the_target_schema_action() {
     });
     let actions = features::code_actions(&ctx, docs.get(&uri), &uri, range, None, None);
     assert_eq!(actions[0].title, "Open schema of 'customers'");
-    assert_eq!(actions[0].command.command, "dbt.openSchema");
-    let arg = serde_json::to_value(&actions[0].command.arguments[0]).unwrap();
+    assert_eq!(cmd(&actions[0]).command, "dbt.openSchema");
+    let arg = serde_json::to_value(&cmd(&actions[0]).arguments[0]).unwrap();
     assert!(
         arg["uri"]
             .as_str()
@@ -124,8 +125,8 @@ fn yaml_entry_offers_model_and_tests_jumps() {
             "Go to tests of 'customers'".to_string()
         ]
     );
-    assert_eq!(actions[0].command.command, "dbt.openModel");
-    let arg = serde_json::to_value(&actions[0].command.arguments[0]).unwrap();
+    assert_eq!(cmd(&actions[0]).command, "dbt.openModel");
+    let arg = serde_json::to_value(&cmd(&actions[0]).arguments[0]).unwrap();
     assert!(
         arg["uri"]
             .as_str()
@@ -159,8 +160,8 @@ fn profiles_yaml_offers_target_switch_actions() {
             "Switch target: jaffle_shop/prod".to_string()
         ]
     );
-    assert_eq!(actions[1].command.command, "dbt.setTarget");
-    let arg = serde_json::to_value(&actions[1].command.arguments[0]).unwrap();
+    assert_eq!(cmd(&actions[1]).command, "dbt.setTarget");
+    let arg = serde_json::to_value(&cmd(&actions[1]).arguments[0]).unwrap();
     assert_eq!(arg["target"], "prod");
     assert_eq!(arg["profile"], "jaffle_shop");
 }

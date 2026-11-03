@@ -34,28 +34,28 @@ pub fn code_actions(
     only: Option<&[String]>,
     targets: Option<&[TargetChoice]>,
 ) -> Vec<CodeAction> {
-    // our actions are kind-less, so a client filtering for specific kinds
-    // (quickfix, refactor…) honestly gets nothing
-    if only.is_some_and(|kinds| !kinds.is_empty()) {
-        return Vec::new();
-    }
     // the active profiles.yml: target switching is the only action set
     // that makes sense there (works even in editors without pickers)
-    if let Some(choices) = targets {
-        return choices.iter().map(target_action).collect();
-    }
-    let mut actions = Vec::new();
-    if let Some(doc) = doc {
-        actions.extend(ref_target_action(ctx, doc, range));
-    }
-    actions.extend(
-        model_commands(ctx, uri)
-            .into_iter()
-            .map(|(title, command)| action(title, command, uri.to_string())),
-    );
-    if actions.is_empty() {
-        actions.extend(yaml_entry_actions(ctx, uri, range));
-    }
+    let mut actions = if let Some(choices) = targets {
+        choices.iter().map(target_action).collect()
+    } else {
+        let mut actions = Vec::new();
+        if let Some(doc) = doc {
+            actions.extend(ref_target_action(ctx, doc, range));
+        }
+        actions.extend(
+            model_commands(ctx, uri)
+                .into_iter()
+                .map(|(title, command)| action(title, command, uri.to_string())),
+        );
+        if actions.is_empty() {
+            actions.extend(yaml_entry_actions(ctx, uri, range));
+        }
+        actions
+    };
+    // kind filtering (01 §6.2): kind-less command actions drop out of a
+    // kind-filtered request; quickfixes (assembled by the caller) match
+    actions.retain(|a| a.allowed_by(only));
     actions
 }
 
@@ -123,24 +123,24 @@ fn target_action(choice: &TargetChoice) -> CodeAction {
         profile: choice.profile.clone(),
     })
     .expect("action argument serializes");
-    CodeAction {
-        command: Command {
-            title: title.clone(),
+    CodeAction::command_only(
+        title.clone(),
+        Command {
+            title,
             command: "dbt.setTarget".to_string(),
             arguments: vec![arg],
         },
-        title,
-    }
+    )
 }
 
 fn action(title: String, command: &'static str, uri: String) -> CodeAction {
     let arg = serde_json::to_value(CommandArgument { uri }).expect("action argument serializes");
-    CodeAction {
-        command: Command {
-            title: title.clone(),
+    CodeAction::command_only(
+        title.clone(),
+        Command {
+            title,
             command: command.to_string(),
             arguments: vec![arg],
         },
-        title,
-    }
+    )
 }
