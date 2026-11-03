@@ -81,8 +81,10 @@ editor integrations live under `editors/`.
   documented in `specs/neovim-plugin/00-plugin.md` §1.6): dbt.goToSchema,
   dbt.columnLineage, dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
   dbt.modelGraph, dbt.profiles, dbt.setTarget, dbt.extractModelYaml,
-  dbt.modelTests, dbt.goToTests, dbt.status, dbt.projectGraph. Every
-  command takes one argument object (`{uri, position?, …}`).
+  dbt.modelTests, dbt.goToTests, dbt.status, dbt.projectGraph,
+  dbt.modelInfo (neighbors + versions + tests + compiledUri for the
+  Neovim-only :DbtBrowse). Every command takes one argument object
+  (`{uri, position?, …}`).
 - `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
 - `$/progress` reports context refreshes and dbt runs when the client
   advertises window.workDoneProgress.

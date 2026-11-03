@@ -91,6 +91,14 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `L` column lineage, `<CR>` opens the model). The `dbt.projectGraph`
   data command is editor-neutral, but this UI ships only in the Neovim
   plugin.
+- **Project browser — Neovim only**: `:DbtBrowse` opens a yazi-style
+  float over the whole project — every model in a searchable center
+  list (`/` filters as you type), direct upstream/downstream in the
+  side panes, and a preview below with the raw SQL, the compiled SQL
+  from `target/compiled/` and the model's versions + tests. Backed by
+  the editor-neutral `dbt.modelInfo` command (neighbors, versions,
+  tests and the compiled-SQL location in one round trip); the UI ships
+  only in the Neovim plugin.
 
 **dbt workflow**
 

@@ -101,6 +101,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.goToTests` | `null` | showDocument to the first test + INFO list |
 | `dbt.status` | server/project/profiles/refresh snapshot | none |
 | `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
+| `dbt.modelInfo` | `{model, uri, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
 
 `workspace/symbol` additionally understands `tag:x` (models carrying tag
 x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`) and
@@ -116,6 +117,46 @@ open, `c` toggle this node's columns, `C` toggle all, `L` column lineage
 via `dbt.showLineage`, `R` refresh, `q` close. The server command is
 editor-neutral; this UI is deliberately implemented only in the Neovim
 plugin.
+
+### 5.3c Project browser (`:DbtBrowse`) — **Neovim only**
+
+`lua/cogitator/browse.lua` (+ `lua/cogitator/browse_preview.lua` for
+the bottom pane) is the yazi-style browser over the whole project: the
+center float lists every model from `dbt.projectGraph` (`/` filters
+live, smart-case substring), the side floats show the selection's
+direct upstream/downstream from `dbt.modelInfo` (debounced per cursor
+move, stale responses discarded), and the full-width preview below
+switches between `[1]` the raw SQL, `[2]` the compiled SQL from
+`target/compiled/<project>/…` (a hint when dbt has not compiled the
+model — the browser never runs dbt itself) and `[3]` versions + tests.
+Keys: `j`/`k` move, `h`/`l` switch panes, `p` focus the preview, `<CR>`
+on a side entry re-selects it in the center, `<CR>`/`o` on the center
+opens the file, `1`/`2`/`3`/`<Tab>` switch the preview tab, `<Esc>`
+clears the filter first and closes second, `q` closes. The server
+command is editor-neutral; this UI is deliberately implemented only in
+the Neovim plugin.
+
+`dbt.modelInfo` takes `{uri?, model?}` (`model` wins) and answers
+everything the browser's preview needs in one round trip:
+
+```json
+{ "model": "customer_orders", "uri": "file:///…/customer_orders.sql",
+  "upstream":   [{ "name": "orders", "kind": "model", "uri": "file:///…" }],
+  "downstream": [],
+  "versions": { "latestVersion": 2,
+                "versions": [{ "v": 1, "uri": "file:///…_v1.sql" },
+                             { "v": 2, "uri": "file:///…customer_orders.sql" }] },
+  "tests": [{ "name": "not_null", "column": "order_count", "version": 1,
+              "uri": "file:///…/customer_orders.yml", "range": { … } }],
+  "compiledUri": null }
+```
+
+`upstream`/`downstream` entries are the `dbt.modelGraph` shape, `tests`
+the `dbt.modelTests` shape. `versions` is `null` for an unversioned
+model; a version's `uri` follows dbt's file convention
+(`<model>_v<N>.sql`, the latest version may live in `<model>.sql`).
+`compiledUri` is non-null only when
+`target/compiled/<project>/<model path>` exists on disk.
 
 When the client advertises `window.workDoneProgress`, context refreshes
 and dbt run/test/compile report through `window/workDoneProgress/create`
