@@ -18,5 +18,5 @@ fn upgrade_points_at_this_projects_installer() {
         stderr.contains("sirh3e/dbt-language-server/releases"),
         "{stderr}"
     );
-    assert!(stderr.contains("solution:"), "{stderr}");
+    assert!(stderr.contains("Solution:"), "{stderr}");
 }

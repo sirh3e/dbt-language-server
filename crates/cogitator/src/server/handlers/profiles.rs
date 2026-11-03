@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use cogitator_analysis::features;
 use cogitator_analysis::profiles::ProfilesInventory;
+use cogitator_error::guidance::Guidance;
 use cogitator_lsp::{message_type, Position};
 
 use super::super::derived_cache::DerivedCache;
@@ -67,13 +68,13 @@ pub fn report(snap: &Snapshot, derived: &DerivedCache) -> Reply {
         ))
         .with(Effect::ShowMessage {
             level: message_type::WARNING,
-            text: format!(
-                "No profiles.yml found.\n\
-                 Searched: {}.\n\
-                 Solution: create one, or point --profiles-dir, \
-                 initializationOptions.profilesDir or DBT_PROFILES_DIR at it.",
-                searched.join(", ")
-            ),
+            text: Guidance::new("No profiles.yml found.")
+                .because(format!("searched: {}.", searched.join(", ")))
+                .fix(
+                    "create one, or point --profiles-dir, \
+                     initializationOptions.profilesDir or DBT_PROFILES_DIR at it.",
+                )
+                .to_message(),
         });
     };
     let inventory =
@@ -105,18 +106,25 @@ pub fn set_target(
 ) -> SetTargetOutcome {
     let fail = |reply: Reply| SetTargetOutcome { reply, apply: None };
     if target.is_empty() {
-        return fail(Reply::null().with(error(
-            "dbt.setTarget needs a target name.\n\
-             Solution: pass arguments: [{ \"target\": \"dev\" }], optionally \
-             with \"profile\".",
-        )));
+        return fail(
+            Reply::null().with(error(
+                Guidance::new("dbt.setTarget needs a target name.")
+                    .fix("pass arguments: [{ \"target\": \"dev\" }], optionally with \"profile\".")
+                    .to_message(),
+            )),
+        );
     }
     let Some(path) = find_profiles_file(&snap.profiles, &snap.root_path) else {
-        return fail(Reply::null().with(error(
-            "Cannot switch target: no profiles.yml found.\n\
-             Solution: create one, or point --profiles-dir / \
-             initializationOptions.profilesDir / DBT_PROFILES_DIR at it.",
-        )));
+        return fail(
+            Reply::null().with(error(
+                Guidance::new("Cannot switch target: no profiles.yml found.")
+                    .fix(
+                        "create one, or point --profiles-dir / \
+                     initializationOptions.profilesDir / DBT_PROFILES_DIR at it.",
+                    )
+                    .to_message(),
+            )),
+        );
     };
     let inventory =
         derived.profiles_inventory(&path, &snap.ctx.project.profile, &snap.profiles.allow);
@@ -150,13 +158,20 @@ pub fn set_target(
         return fail(Reply::null().with(error(guidance.to_message())));
     };
     if !info.allowed {
-        return fail(Reply::null().with(error(format!(
-            "Profile '{profile_name}' is not readable.\n\
-             Reason: by default only the project's own profile is; \
-             '{profile_name}' is not on the allowlist.\n\
-             Solution: add it via --profiles-allow {profile_name} or \
-             initializationOptions.profilesAllow."
-        ))));
+        return fail(
+            Reply::null().with(error(
+                Guidance::new(format!("Profile '{profile_name}' is not readable."))
+                    .because(format!(
+                        "by default only the project's own profile is; \
+                     '{profile_name}' is not on the allowlist."
+                    ))
+                    .fix(format!(
+                        "add it via --profiles-allow {profile_name} or \
+                     initializationOptions.profilesAllow."
+                    ))
+                    .to_message(),
+            )),
+        );
     }
     let Some(chosen) = info.targets.iter().find(|t| t.name == target) else {
         let available: Vec<&str> = info.targets.iter().map(|t| t.name.as_str()).collect();
@@ -214,8 +229,9 @@ pub fn set_profiles_dir(dir: String) -> SetProfilesDirOutcome {
     if dir.is_empty() {
         return SetProfilesDirOutcome {
             reply: Reply::null().with(error(
-                "No profiles directory given.\n\
-                 Solution: call dbt.setProfilesDir with {\"dir\": \"/path/to/directory\"}.",
+                Guidance::new("No profiles directory given.")
+                    .fix("call dbt.setProfilesDir with {\"dir\": \"/path/to/directory\"}.")
+                    .to_message(),
             )),
             apply: None,
         };

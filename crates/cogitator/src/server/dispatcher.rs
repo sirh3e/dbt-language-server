@@ -808,15 +808,18 @@ impl Dispatcher {
         let Some(root) = ctx.project_root.clone() else {
             self.show_message(
                 cogitator_lsp::message_type::ERROR,
-                format!(
-                    "Cannot run dbt {kind}: no dbt project found.\n\
-                     Reason: dbt_project.yml was not located from the \
-                     workspace root '{}'.\n\
-                     Solution: open the dbt project directory (the folder \
-                     containing dbt_project.yml) or check the editor's \
-                     rootUri.",
+                cogitator_error::guidance::Guidance::new(format!(
+                    "Cannot run dbt {kind}: no dbt project found."
+                ))
+                .because(format!(
+                    "dbt_project.yml was not located from the workspace root '{}'.",
                     self.root_path
-                ),
+                ))
+                .fix(
+                    "open the dbt project directory (the folder containing \
+                     dbt_project.yml) or check the editor's rootUri.",
+                )
+                .to_message(),
             );
             self.send(&ResultResponse::new(id, serde_json::Value::Null));
             return;

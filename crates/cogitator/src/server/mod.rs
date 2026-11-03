@@ -111,14 +111,17 @@ fn auth_warning(
         .iter()
         .map(|i| format!("• {}", i.message))
         .collect();
-    Some(format!(
-        "Connection auth for {profile_name}/{target_name} ({}, {}) has problems:\n{}\n\
-         Solution: fix {} — dbt run/test/compile will fail until then.",
-        target.adapter_type,
-        target.auth.method.as_str(),
-        list.join("\n"),
-        inventory.path.display()
-    ))
+    Some(
+        cogitator_error::guidance::Guidance::new(format!(
+            "Connection auth for {profile_name}/{target_name} ({}, {}) has problems:\n{}",
+            target.adapter_type,
+            target.auth.method.as_str(),
+            list.join("\n")
+        ))
+        .at(inventory.path.display().to_string())
+        .fix("fix the profile — dbt run/test/compile will fail until then.")
+        .to_message(),
+    )
 }
 
 pub async fn run(
@@ -172,14 +175,13 @@ pub async fn run(
             if !valid {
                 link.show_message(
                     cogitator_lsp::message_type::ERROR,
-                    format!(
-                        "dbt Fusion features are disabled.\n\
-                         Reason: '{path}' was not found or is not a \
-                         dbt-fusion binary (its --version must report \
-                         dbt-fusion).\n\
-                         Solution: install dbt Fusion, or pass the correct \
-                         path via --fusion <path>."
-                    ),
+                    cogitator_error::guidance::Guidance::new("dbt Fusion features are disabled.")
+                        .because(format!(
+                            "'{path}' was not found or is not a dbt-fusion binary \
+                             (its --version must report dbt-fusion)."
+                        ))
+                        .fix("install dbt Fusion, or pass the correct path via --fusion <path>.")
+                        .to_message(),
                 );
             }
         });
@@ -276,14 +278,18 @@ pub async fn run(
                     // proactive feedback: explain *why* features are degraded
                     // and what fixes it — at most once per distinct cause
                     let warning = if ctx.project_root.is_none() && !root.is_empty() {
-                        Some(format!(
-                            "No dbt project found.\n\
-                             Reason: dbt_project.yml was not located from \
-                             '{root}' (searched upward and downward).\n\
-                             Solution: open the folder containing \
-                             dbt_project.yml; hover/completion for refs \
-                             stays empty until then."
-                        ))
+                        Some(
+                            cogitator_error::guidance::Guidance::new("No dbt project found.")
+                                .because(format!(
+                                    "dbt_project.yml was not located from '{root}' \
+                                     (searched upward and downward)."
+                                ))
+                                .fix(
+                                    "open the folder containing dbt_project.yml; \
+                                     hover/completion for refs stays empty until then.",
+                                )
+                                .to_message(),
+                        )
                     } else if ctx.project_root.is_some()
                         && ctx.dialect.as_str().is_empty()
                         && !ctx.project.profile.is_empty()
@@ -293,18 +299,25 @@ pub async fn run(
                                 .iter()
                                 .map(|p| p.display().to_string())
                                 .collect();
-                        Some(format!(
-                            "SQL dialect not resolved for profile '{}'.\n\
-                             Reason: no profiles.yml with a matching target \
-                             was found. Searched: {}.\n\
-                             Solution: create profiles.yml with this profile \
-                             in one of those places, or point --profiles-dir, \
-                             initializationOptions.profilesDir or \
-                             DBT_PROFILES_DIR at its directory. Function docs \
-                             and dialect keywords are generic until resolved.",
-                            ctx.project.profile,
-                            searched.join(", ")
-                        ))
+                        Some(
+                            cogitator_error::guidance::Guidance::new(format!(
+                                "SQL dialect not resolved for profile '{}'.",
+                                ctx.project.profile
+                            ))
+                            .because(format!(
+                                "no profiles.yml with a matching target was found. \
+                                 Searched: {}.",
+                                searched.join(", ")
+                            ))
+                            .fix(
+                                "create profiles.yml with this profile in one of those \
+                                 places, or point --profiles-dir, \
+                                 initializationOptions.profilesDir or DBT_PROFILES_DIR \
+                                 at its directory. Function docs and dialect keywords \
+                                 are generic until resolved.",
+                            )
+                            .to_message(),
+                        )
                     } else {
                         // dialect fine: check the active target's auth next
                         auth_warning(&cfg, &root, &ctx, &refresh_derived)

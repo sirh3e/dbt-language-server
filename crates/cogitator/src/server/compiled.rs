@@ -29,14 +29,17 @@ pub fn compiled_sql(
     };
     let file_uri = cogitator_lsp::fs_path_to_uri(&path);
     if meta.len() > MAX_COMPILED_BYTES {
-        let warning = format!(
-            "Compiled SQL for '{name}' was not sent.\n\
-             Reason: {} is {:.1} MiB, over the {} MiB wire cap.\n\
-             Solution: open the compiled file directly.",
-            path.display(),
+        let warning = cogitator_error::guidance::Guidance::new(format!(
+            "Compiled SQL for '{name}' was not sent."
+        ))
+        .at(path.display().to_string())
+        .because(format!(
+            "the file is {:.1} MiB, over the {} MiB wire cap.",
             meta.len() as f64 / (1024.0 * 1024.0),
             MAX_COMPILED_BYTES / (1024 * 1024),
-        );
+        ))
+        .fix("open the compiled file directly.")
+        .to_message();
         return (
             Some(CompiledSql {
                 model: name,

@@ -4,6 +4,7 @@
 
 use cogitator_analysis::features;
 use cogitator_analysis::lineage::{ModelLineage, SourceRef};
+use cogitator_error::guidance::Guidance;
 use cogitator_lsp::{message_type, Position, ShowDocumentParams};
 
 use super::super::reply::{Effect, Reply};
@@ -38,10 +39,10 @@ pub fn open_schema(snap: &Snapshot, uri: &str) -> Reply {
     match features::go_to_schema(&snap.ctx, doc, uri, Position::default()) {
         Some(location) => Reply::null().with(show_document(location.uri, Some(location.range))),
         None => Reply::null().with(warning(
-            "No schema entry found for this model.\n\
-             Reason: the model has no entry in a properties YAML file.\n\
-             Solution: add it under `models:` in a schema.yml inside your \
-             model-paths.",
+            Guidance::new("No schema entry found for this model.")
+                .because("the model has no entry in a properties YAML file.")
+                .fix("add it under `models:` in a schema.yml inside your model-paths.")
+                .to_message(),
         )),
     }
 }
@@ -107,13 +108,16 @@ pub fn show_lineage(lineage: Option<&ModelLineage>) -> Reply {
             Reply::null().with(info(format!("Column lineage:\n{}", lines.join("\n"))))
         }
         _ => Reply::null().with(warning(
-            "Could not derive column lineage for this model.\n\
-             Reason: the template contains Jinja control blocks \
-             ({% if %}/{% for %}) or the SQL did not parse as a single \
-             SELECT.\n\
-             Solution: lineage works on models whose rendered SQL is one \
-             SELECT statement; check for unclosed expressions or control \
-             flow.",
+            Guidance::new("Could not derive column lineage for this model.")
+                .because(
+                    "the template contains Jinja control blocks ({% if %}/{% for %}) \
+                     or the SQL did not parse as a single SELECT.",
+                )
+                .fix(
+                    "lineage works on models whose rendered SQL is one SELECT \
+                     statement; check for unclosed expressions or control flow.",
+                )
+                .to_message(),
         )),
     }
 }
@@ -144,10 +148,13 @@ pub fn go_to_tests(snap: &Snapshot, uri: &str) -> Reply {
             reply
         }
         _ => Reply::null().with(warning(
-            "No tests defined for this model.\n\
-             Reason: its schema YAML has no data_tests/tests entries.\n\
-             Solution: add them under the model or its columns — \
-             dbt.extractModelYaml scaffolds the entry if it is missing.",
+            Guidance::new("No tests defined for this model.")
+                .because("its schema YAML has no data_tests/tests entries.")
+                .fix(
+                    "add them under the model or its columns — dbt.extractModelYaml \
+                     scaffolds the entry if it is missing.",
+                )
+                .to_message(),
         )),
     }
 }
@@ -157,10 +164,13 @@ pub fn go_to_tests(snap: &Snapshot, uri: &str) -> Reply {
 pub fn extract_model_yaml(snap: &Snapshot, uri: &str, lineage: Option<&ModelLineage>) -> Reply {
     match features::extract_model_yaml(&snap.ctx, uri, lineage) {
         None => Reply::null().with(warning(
-            "Cannot extract a schema YAML here.\n\
-             Reason: this is not a known model, a <model>.yml already \
-             exists without an entry, or the schema file did not parse.\n\
-             Solution: open the model's .sql file and check its YAML.",
+            Guidance::new("Cannot extract a schema YAML here.")
+                .because(
+                    "this is not a known model, a <model>.yml already exists \
+                     without an entry, or the schema file did not parse.",
+                )
+                .fix("open the model's .sql file and check its YAML.")
+                .to_message(),
         )),
         Some(features::ExtractEdit::CreateFile { path, content }) => {
             let new_uri = cogitator_lsp::fs_path_to_uri(&path);

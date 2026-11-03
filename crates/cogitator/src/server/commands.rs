@@ -117,12 +117,12 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                     progress.end(format!("dbt {kind} failed: '{binary}' not found"));
                     link.show_message(
                         message_type::ERROR,
-                        format!(
-                            "Failed to launch '{binary}'.\n\
-                         Reason: the executable was not found on PATH.\n\
-                         Solution: install dbt, or start cogitator with \
-                         --fusion <path-to-dbt-binary>."
-                        ),
+                        cogitator_error::guidance::Guidance::new(format!(
+                            "Failed to launch '{binary}'."
+                        ))
+                        .because("the executable was not found on PATH.")
+                        .fix("install dbt, or start cogitator with --fusion <path-to-dbt-binary>.")
+                        .to_message(),
                     );
                     return;
                 }
@@ -131,11 +131,15 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                     progress.end(format!("dbt {kind} failed to launch"));
                     link.show_message(
                         message_type::ERROR,
-                        format!(
-                            "Failed to launch '{binary}': {err}.\n\
-                         Solution: check that the binary is executable and \
-                         the project directory is readable."
-                        ),
+                        cogitator_error::guidance::Guidance::new(format!(
+                            "Failed to launch '{binary}'."
+                        ))
+                        .because(format!("{err}."))
+                        .fix(
+                            "check that the binary is executable and the project \
+                             directory is readable.",
+                        )
+                        .to_message(),
                     );
                     return;
                 }
@@ -160,13 +164,16 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 let retry = format!("{binary} {}", args.join(" "));
                 link.show_message(
                     message_type::ERROR,
-                    format!(
-                        "dbt {kind} failed for '{label}' (exit {}).\n\
-                     {detail}\n\
-                     Solution: run `{retry}` in {} for the full output.",
-                        output.status.code().unwrap_or(-1),
-                        project_root.display(),
-                    ),
+                    cogitator_error::guidance::Guidance::new(format!(
+                        "dbt {kind} failed for '{label}' (exit {}).",
+                        output.status.code().unwrap_or(-1)
+                    ))
+                    .because(detail)
+                    .fix(format!(
+                        "run `{retry}` in {} for the full output.",
+                        project_root.display()
+                    ))
+                    .to_message(),
                 );
                 return;
             }
@@ -201,14 +208,17 @@ fn open_compiled(link: &ClientLink, root: &Path, project: &str, model_path: &Pat
     } else {
         link.show_message(
             message_type::WARNING,
-            format!(
-                "Compiled SQL not found at {}.\n\
-                 Reason: this dbt version or your target-path setting writes \
-                 compiled output elsewhere.\n\
-                 Solution: check `target-path` in dbt_project.yml and look \
-                 under <target-path>/compiled/.",
-                compiled.display()
-            ),
+            cogitator_error::guidance::Guidance::new("Compiled SQL not found.")
+                .at(compiled.display().to_string())
+                .because(
+                    "this dbt version or your target-path setting writes compiled \
+                     output elsewhere.",
+                )
+                .fix(
+                    "check `target-path` in dbt_project.yml and look under \
+                     <target-path>/compiled/.",
+                )
+                .to_message(),
         );
     }
 }
