@@ -62,6 +62,22 @@ pub fn model_tests(snap: &Snapshot, derived: &DerivedCache, uri: &str) -> Reply 
 #[tracing::instrument(skip_all, fields(uri = %short_uri(uri)))]
 pub fn compiled_sql(snap: &Snapshot, uri: &str, model: Option<&str>) -> Reply {
     let (result, warning) = super::super::compiled::compiled_sql(&snap.ctx, uri, model);
+    if result.is_none() {
+        // unknown model: say so instead of a silent null
+        let requested = model.unwrap_or_default();
+        let guidance = cogitator_error::guidance::Guidance::new(format!(
+            "No model '{requested}' to fetch compiled SQL for."
+        ))
+        .suggest(cogitator_error::guidance::closest_matches(
+            requested,
+            snap.ctx.model_detail_map.keys().map(String::as_str),
+        ))
+        .fix("pass {\"model\": <a known model>} or a model file's uri.");
+        return Reply::null().with(Effect::ShowMessage {
+            level: message_type::WARNING,
+            text: guidance.to_message(),
+        });
+    }
     let mut reply = Reply::result(&result);
     if let Some(text) = warning {
         reply = reply.with(Effect::ShowMessage {

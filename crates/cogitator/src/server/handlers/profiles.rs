@@ -129,10 +129,25 @@ pub fn set_target(
         }
     });
     let Some(info) = inventory.profile(&profile_name) else {
-        return fail(Reply::null().with(error(format!(
-            "Profile '{profile_name}' not found in {}.",
-            inventory.path.display()
-        ))));
+        let guidance = cogitator_error::guidance::Guidance::new(format!(
+            "Profile '{profile_name}' not found."
+        ))
+        .at(inventory.path.display().to_string())
+        .because(format!(
+            "the file defines: {}.",
+            inventory
+                .profiles
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+        .suggest(cogitator_error::guidance::closest_matches(
+            &profile_name,
+            inventory.profiles.iter().map(|p| p.name.as_str()),
+        ))
+        .fix("pass one of those as {\"profile\": …}, or add the profile to profiles.yml.");
+        return fail(Reply::null().with(error(guidance.to_message())));
     };
     if !info.allowed {
         return fail(Reply::null().with(error(format!(
@@ -145,11 +160,17 @@ pub fn set_target(
     }
     let Some(chosen) = info.targets.iter().find(|t| t.name == target) else {
         let available: Vec<&str> = info.targets.iter().map(|t| t.name.as_str()).collect();
-        return fail(Reply::null().with(error(format!(
-            "Target '{target}' not found in profile '{profile_name}'.\n\
-             Available targets: {}.",
-            available.join(", ")
-        ))));
+        let guidance = cogitator_error::guidance::Guidance::new(format!(
+            "Target '{target}' not found in profile '{profile_name}'."
+        ))
+        .at(inventory.path.display().to_string())
+        .because(format!("available targets: {}.", available.join(", ")))
+        .suggest(cogitator_error::guidance::closest_matches(
+            &target,
+            available.iter().copied(),
+        ))
+        .fix("run dbt.setTarget with one of the available targets.");
+        return fail(Reply::null().with(error(guidance.to_message())));
     };
     let mut message = format!(
         "Active target: {profile_name}/{target} ({}, auth: {}).",

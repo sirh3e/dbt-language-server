@@ -59,12 +59,19 @@ pub fn open_model(snap: &Snapshot, uri: &str, model: Option<&str>) -> Reply {
     };
     match target {
         Some(target) => Reply::null().with(show_document(target, None)),
-        None => Reply::null().with(warning(
-            "Cannot open the model.\n\
-             Reason: no uri was given and the model name is not \
-             in the project.\n\
-             Solution: pass {uri} or {model: <known model>}.",
-        )),
+        None => {
+            let requested = model.unwrap_or_default();
+            let guidance = cogitator_error::guidance::Guidance::new(format!(
+                "Cannot open model '{requested}'."
+            ))
+            .because("no uri was given and the name is not in the project.")
+            .suggest(cogitator_error::guidance::closest_matches(
+                requested,
+                snap.ctx.model_detail_map.keys().map(String::as_str),
+            ))
+            .fix("pass {\"uri\": …} or {\"model\": <a known model>}.");
+            Reply::null().with(warning(guidance.to_message()))
+        }
     }
 }
 

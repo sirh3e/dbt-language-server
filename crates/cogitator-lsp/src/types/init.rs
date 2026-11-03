@@ -123,6 +123,33 @@ pub struct ServerInfo {
     pub version: String,
 }
 
+/// The executeCommand roster (append-only: clients may assume index 0
+/// is dbt.goToSchema). ONE truth for the capability and did-you-mean.
+pub const COMMANDS: &[&str] = &[
+    "dbt.goToSchema",
+    "dbt.columnLineage",
+    "dbt.openSchema",
+    "dbt.showLineage",
+    "dbt.run",
+    "dbt.test",
+    "dbt.compile",
+    "dbt.modelGraph",
+    "dbt.profiles",
+    "dbt.setTarget",
+    "dbt.extractModelYaml",
+    "dbt.modelTests",
+    "dbt.goToTests",
+    "dbt.status",
+    "dbt.projectGraph",
+    "dbt.modelInfo",
+    "dbt.relation",
+    "dbt.compiledSql",
+    "dbt.parse",
+    "dbt.openModel",
+    "dbt.setProfilesDir",
+    "dbt.cache",
+];
+
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {
     ResultResponse::new(
         id,
@@ -136,30 +163,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     trigger_characters: &[".", "'", "\"", " ", "("],
                 },
                 execute_command_provider: ExecuteCommandOptions {
-                    commands: vec![
-                        "dbt.goToSchema",
-                        "dbt.columnLineage",
-                        "dbt.openSchema",
-                        "dbt.showLineage",
-                        "dbt.run",
-                        "dbt.test",
-                        "dbt.compile",
-                        "dbt.modelGraph",
-                        "dbt.profiles",
-                        "dbt.setTarget",
-                        "dbt.extractModelYaml",
-                        "dbt.modelTests",
-                        "dbt.goToTests",
-                        "dbt.status",
-                        "dbt.projectGraph",
-                        "dbt.modelInfo",
-                        "dbt.relation",
-                        "dbt.compiledSql",
-                        "dbt.parse",
-                        "dbt.openModel",
-                        "dbt.setProfilesDir",
-                        "dbt.cache",
-                    ],
+                    commands: COMMANDS.to_vec(),
                 },
                 references_provider: true,
                 document_symbol_provider: true,

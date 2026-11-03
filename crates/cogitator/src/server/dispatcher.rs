@@ -523,11 +523,16 @@ impl Dispatcher {
             }
             "dbt.goToSchema" => {}
             other => {
-                let response = ErrorResponse::new(
-                    req.id,
-                    error_codes::INVALID_PARAMS,
-                    format!("unknown command: {other}"),
-                );
+                let guidance = cogitator_error::guidance::Guidance::new(format!(
+                    "Unknown command '{other}'."
+                ))
+                .suggest(cogitator_error::guidance::closest_matches(
+                    other,
+                    cogitator_lsp::COMMANDS.iter().copied(),
+                ))
+                .fix("the full roster is in the initialize response's executeCommandProvider.");
+                let response =
+                    ErrorResponse::new(req.id, error_codes::INVALID_PARAMS, guidance.to_message());
                 self.send(&response);
                 return;
             }
