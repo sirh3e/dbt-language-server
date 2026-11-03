@@ -1225,6 +1225,9 @@ impl Dispatcher {
         if !self.fusion_enabled.load(Ordering::Relaxed) {
             return;
         }
+        // completed jobs never removed themselves: drop finished handles so
+        // the map stays bounded by the number of URIs actually in flight
+        self.fusion_jobs.retain(|_, handle| !handle.is_finished());
         if let Some(previous) = self.fusion_jobs.remove(&uri) {
             previous.abort();
         }
