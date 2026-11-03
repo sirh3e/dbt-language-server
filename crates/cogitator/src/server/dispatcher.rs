@@ -646,12 +646,23 @@ impl Dispatcher {
             .and_then(|c| c.only)
             .map(|kinds| kinds.into_iter().map(|k| k.into_owned()).collect());
         let ctx = self.snapshot();
+        // profiles.yml buffers offer "Switch target" actions instead
+        let targets = {
+            let cfg = self.profiles.lock().expect("profiles config lock").clone();
+            super::relation::profiles_target_choices(
+                &cfg,
+                &self.root_path,
+                &ctx.project.profile,
+                &uri,
+            )
+        };
         let actions = features::code_actions(
             &ctx,
             self.documents.get(&uri),
             &uri,
             params.range,
             only.as_deref(),
+            targets.as_deref(),
         );
         self.send(&ResultResponse::new(req.id, actions));
     }

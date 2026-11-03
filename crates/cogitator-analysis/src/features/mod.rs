@@ -19,7 +19,7 @@ mod signature;
 mod structure;
 mod tests_nav;
 
-pub use code_actions::code_actions;
+pub use code_actions::{code_actions, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};
 pub use definition::{definition, go_to_schema};

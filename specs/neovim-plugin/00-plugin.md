@@ -62,7 +62,11 @@ is ignored, never an error.
   `context.only` filter answers `[]` (the actions are kind-less). On a
   `ref('x')` token, "Open schema of 'x'" is prepended; in a properties
   YAML, the entry at/above the cursor offers "Open model" (via
-  `dbt.openModel`) and "Go to tests".
+  `dbt.openModel`) and "Go to tests". In the **active profiles.yml**
+  the action set is instead one "Switch target: profile/target" per
+  allowed profile×target (the active pair marked) running
+  `dbt.setTarget` — target switching without a picker, usable from any
+  stock LSP editor including Zed.
 - `semanticTokensProvider`: `full: true`, legend token types (in index
   order): `keyword, function, macro, variable, string, number, operator,
   namespace`; no modifiers

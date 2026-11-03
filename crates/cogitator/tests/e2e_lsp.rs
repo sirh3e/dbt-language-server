@@ -341,6 +341,27 @@ fn full_session() {
         "{action_commands:?}"
     );
 
+    // 6a4b². in the active profiles.yml, code actions switch targets —
+    // the picker-less path that even Zed can use
+    let profiles_uri = cogitator_lsp::fs_path_to_uri(&root.join(".dbt/profiles.yml"));
+    let profile_actions = lsp.request(
+        "textDocument/codeAction",
+        serde_json::json!({"textDocument": {"uri": profiles_uri},
+                           "range": {"start": {"line": 0, "character": 0},
+                                     "end": {"line": 0, "character": 0}},
+                           "context": {"diagnostics": []}}),
+    );
+    let switch_titles: Vec<String> = profile_actions["result"]
+        .as_array()
+        .expect("profiles actions")
+        .iter()
+        .map(|a| a["title"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(
+        switch_titles.contains(&"Switch target: jaffle_shop/dev (active)".to_string()),
+        "{switch_titles:?}"
+    );
+
     let _ = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.openSchema", "arguments": [{"uri": uri}]}),

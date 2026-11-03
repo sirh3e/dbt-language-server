@@ -28,7 +28,7 @@ fn titles(actions: &[cogitator_lsp::CodeAction]) -> Vec<String> {
 fn model_file_offers_the_lens_command_set() {
     let ctx = ctx();
     let uri = model_uri("models/customers.sql");
-    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None);
+    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None);
     let titles = titles(&actions);
     assert!(titles.contains(&"Go to schema".to_string()), "{titles:?}");
     assert!(titles.contains(&"dbt run".to_string()), "{titles:?}");
@@ -57,7 +57,7 @@ fn model_file_offers_the_lens_command_set() {
 fn model_without_schema_entry_offers_the_scaffold() {
     let ctx = ctx();
     let uri = model_uri("models/staging/stg_stripe_payments.sql");
-    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None);
+    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None);
     let titles = titles(&actions);
     assert!(
         titles.contains(&"Extract schema YAML".to_string()),
@@ -74,7 +74,7 @@ fn kind_filter_yields_nothing() {
     let ctx = ctx();
     let uri = model_uri("models/customers.sql");
     let only = vec!["quickfix".to_string()];
-    let actions = features::code_actions(&ctx, None, &uri, Range::default(), Some(&only));
+    let actions = features::code_actions(&ctx, None, &uri, Range::default(), Some(&only), None);
     assert_eq!(titles(&actions), Vec::<String>::new());
 }
 
@@ -89,7 +89,7 @@ fn ref_token_prepends_the_target_schema_action() {
         line: 0,
         character: 24,
     });
-    let actions = features::code_actions(&ctx, docs.get(&uri), &uri, range, None);
+    let actions = features::code_actions(&ctx, docs.get(&uri), &uri, range, None, None);
     assert_eq!(actions[0].title, "Open schema of 'customers'");
     assert_eq!(actions[0].command.command, "dbt.openSchema");
     let arg = serde_json::to_value(&actions[0].command.arguments[0]).unwrap();
@@ -116,7 +116,7 @@ fn yaml_entry_offers_model_and_tests_jumps() {
         line: entry_line,
         character: 0,
     });
-    let actions = features::code_actions(&ctx, None, &uri, range, None);
+    let actions = features::code_actions(&ctx, None, &uri, range, None, None);
     assert_eq!(
         titles(&actions),
         vec![
@@ -132,4 +132,35 @@ fn yaml_entry_offers_model_and_tests_jumps() {
             .is_some_and(|u| u.ends_with("customers.sql")),
         "{arg}"
     );
+}
+
+#[test]
+fn profiles_yaml_offers_target_switch_actions() {
+    use cogitator_analysis::features::TargetChoice;
+    let ctx = ctx();
+    let choices = vec![
+        TargetChoice {
+            profile: "jaffle_shop".into(),
+            target: "dev".into(),
+            active: true,
+        },
+        TargetChoice {
+            profile: "jaffle_shop".into(),
+            target: "prod".into(),
+            active: false,
+        },
+    ];
+    let uri = "file:///home/me/.dbt/profiles.yml";
+    let actions = features::code_actions(&ctx, None, uri, Range::default(), None, Some(&choices));
+    assert_eq!(
+        titles(&actions),
+        vec![
+            "Switch target: jaffle_shop/dev (active)".to_string(),
+            "Switch target: jaffle_shop/prod".to_string()
+        ]
+    );
+    assert_eq!(actions[1].command.command, "dbt.setTarget");
+    let arg = serde_json::to_value(&actions[1].command.arguments[0]).unwrap();
+    assert_eq!(arg["target"], "prod");
+    assert_eq!(arg["profile"], "jaffle_shop");
 }

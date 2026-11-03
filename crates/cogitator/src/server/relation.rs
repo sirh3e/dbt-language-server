@@ -7,6 +7,59 @@ use cogitator_analysis::profiles::{load_inventory, ProfileScope};
 
 use super::ProfilesConfig;
 
+/// "Switch target" code-action choices when `uri` IS the active
+/// profiles.yml: every allowed profile×target, the active pair marked.
+/// `None` for any other uri — the pure feature then skips the branch.
+pub fn profiles_target_choices(
+    cfg: &ProfilesConfig,
+    root: &str,
+    project_profile: &str,
+    uri: &str,
+) -> Option<Vec<cogitator_analysis::features::TargetChoice>> {
+    let path = cogitator_lsp::uri_to_fs_path(uri)?;
+    let active_file = cogitator_analysis::util::profiles_candidates(&cfg.dir_override, root)
+        .into_iter()
+        .find(|p| p.is_file())?;
+    // Path equality compares components, so `/` and `\` separators match
+    if active_file.as_path() != std::path::Path::new(path.as_str()) {
+        return None;
+    }
+    let scope = ProfileScope::Allowed {
+        project: project_profile,
+        extra: &cfg.allow,
+    };
+    let inventory = load_inventory(&active_file, &scope);
+    let active_profile = if cfg.profile.is_empty() {
+        project_profile.to_string()
+    } else {
+        cfg.profile.clone()
+    };
+    let active_target = if cfg.target.is_empty() {
+        inventory
+            .profile(&active_profile)
+            .map(|p| p.default_target.clone())
+            .unwrap_or_default()
+    } else {
+        cfg.target.clone()
+    };
+    let choices: Vec<_> = inventory
+        .profiles
+        .iter()
+        .filter(|p| p.allowed)
+        .flat_map(|p| {
+            p.targets
+                .iter()
+                .map(|t| cogitator_analysis::features::TargetChoice {
+                    profile: p.name.clone(),
+                    target: t.name.clone(),
+                    active: p.name == active_profile && t.name == active_target,
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    Some(choices)
+}
+
 /// The active target's database/schema, or `None` when no profiles.yml,
 /// profile or target resolves — dbt.relation then answers with nulls.
 pub fn active_target_relation(

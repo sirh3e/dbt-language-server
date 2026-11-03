@@ -6,9 +6,25 @@
 
 use cogitator_lsp::{CodeAction, Command, Range};
 use cogitator_parser::TokenKind;
+use serde::Serialize;
 
 use super::lenses::{model_commands, CommandArgument};
 use super::{file_uri, DbtContext, Document};
+
+/// One profile×target pair offered as a "Switch target" action in the
+/// active profiles.yml (assembled by the shell — fs stays out of here).
+#[derive(Debug)]
+pub struct TargetChoice {
+    pub profile: String,
+    pub target: String,
+    pub active: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct SetTargetArgument {
+    target: String,
+    profile: String,
+}
 
 pub fn code_actions(
     ctx: &DbtContext,
@@ -16,11 +32,17 @@ pub fn code_actions(
     uri: &str,
     range: Range,
     only: Option<&[String]>,
+    targets: Option<&[TargetChoice]>,
 ) -> Vec<CodeAction> {
     // our actions are kind-less, so a client filtering for specific kinds
     // (quickfix, refactor…) honestly gets nothing
     if only.is_some_and(|kinds| !kinds.is_empty()) {
         return Vec::new();
+    }
+    // the active profiles.yml: target switching is the only action set
+    // that makes sense there (works even in editors without pickers)
+    if let Some(choices) = targets {
+        return choices.iter().map(target_action).collect();
     }
     let mut actions = Vec::new();
     if let Some(doc) = doc {
@@ -87,6 +109,28 @@ fn yaml_entry_actions(ctx: &DbtContext, uri: &str, range: Range) -> Vec<CodeActi
             model_uri,
         ),
     ]
+}
+
+fn target_action(choice: &TargetChoice) -> CodeAction {
+    let title = format!(
+        "Switch target: {}/{}{}",
+        choice.profile,
+        choice.target,
+        if choice.active { " (active)" } else { "" }
+    );
+    let arg = serde_json::to_value(SetTargetArgument {
+        target: choice.target.clone(),
+        profile: choice.profile.clone(),
+    })
+    .expect("action argument serializes");
+    CodeAction {
+        command: Command {
+            title: title.clone(),
+            command: "dbt.setTarget".to_string(),
+            arguments: vec![arg],
+        },
+        title,
+    }
 }
 
 fn action(title: String, command: &'static str, uri: String) -> CodeAction {
