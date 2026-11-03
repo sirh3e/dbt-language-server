@@ -5,6 +5,7 @@
 mod client_link;
 mod commands;
 mod compiled;
+mod config_file;
 mod derived_cache;
 mod diagnostics;
 mod dispatcher;
@@ -35,6 +36,23 @@ pub struct StatusInfo {
     pub last_refresh_ms: u64,
     pub cache_hits: u64,
     pub cache_misses: u64,
+}
+
+/// Hot-tunable numeric settings (cogitator.yml `limits:` / `refresh:`),
+/// read lock-free at their use sites.
+#[derive(Debug)]
+pub struct SharedLimits {
+    pub compiled_cap_bytes: std::sync::atomic::AtomicU64,
+    pub refresh_debounce_ms: std::sync::atomic::AtomicU64,
+}
+
+impl Default for SharedLimits {
+    fn default() -> Self {
+        SharedLimits {
+            compiled_cap_bytes: std::sync::atomic::AtomicU64::new(2 * 1024 * 1024),
+            refresh_debounce_ms: std::sync::atomic::AtomicU64::new(200),
+        }
+    }
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by
@@ -206,6 +224,8 @@ pub async fn run(
     let refresh_profiles = profiles.clone();
     let derived = Arc::new(derived_cache::DerivedCache::default());
     let refresh_derived = derived.clone();
+    let limits = Arc::new(SharedLimits::default());
+    let refresh_limits = limits.clone();
     let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
         request_ids.clone(),
@@ -218,10 +238,13 @@ pub async fn run(
         // observation so the metrics see per-refresh deltas
         let (mut prev_hits, mut prev_misses) = (0u64, 0u64);
         while let Some(mut root) = refresh_rx.recv().await {
-            // debounce: coalesce triggers arriving within 200 ms (05 §6.2)
-            while let Ok(Some(next)) =
-                tokio::time::timeout(Duration::from_millis(200), refresh_rx.recv()).await
-            {
+            // debounce: coalesce triggers within the (hot-tunable) window
+            let debounce = Duration::from_millis(
+                refresh_limits
+                    .refresh_debounce_ms
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            );
+            while let Ok(Some(next)) = tokio::time::timeout(debounce, refresh_rx.recv()).await {
                 root = next;
             }
             let cfg = refresh_profiles
@@ -353,6 +376,7 @@ pub async fn run(
         progress_supported,
         status,
         derived,
+        limits,
     );
 
     let mut stdin = tokio::io::stdin();

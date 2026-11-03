@@ -20,4 +20,6 @@ pub struct Snapshot {
     pub fusion_path: String,
     #[allow(dead_code)]
     pub fusion_enabled: bool,
+    /// dbt.compiledSql wire cap (hot via cogitator.yml).
+    pub compiled_cap_bytes: u64,
 }

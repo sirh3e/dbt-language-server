@@ -61,7 +61,8 @@ pub fn model_tests(snap: &Snapshot, derived: &DerivedCache, uri: &str) -> Reply 
 /// `dbt.compiledSql`: bounded read, warning effect past the cap.
 #[tracing::instrument(skip_all, fields(uri = %short_uri(uri)))]
 pub fn compiled_sql(snap: &Snapshot, uri: &str, model: Option<&str>) -> Reply {
-    let (result, warning) = super::super::compiled::compiled_sql(&snap.ctx, uri, model);
+    let (result, warning) =
+        super::super::compiled::compiled_sql(&snap.ctx, uri, model, snap.compiled_cap_bytes);
     if result.is_none() {
         // unknown model: say so instead of a silent null
         let requested = model.unwrap_or_default();

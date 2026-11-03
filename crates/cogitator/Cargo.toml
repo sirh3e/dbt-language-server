@@ -15,6 +15,8 @@ tokio-console = ["dep:console-subscriber"]
 
 [dependencies]
 cogitator-error = { workspace = true }
+cogitator-schemas = { workspace = true }
+saphyr = { workspace = true }
 cogitator-lsp = { workspace = true }
 cogitator-dialects = { workspace = true }
 cogitator-analysis = { workspace = true }

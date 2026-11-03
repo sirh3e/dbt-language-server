@@ -41,6 +41,8 @@ pub struct Dispatcher {
     derived: Arc<super::derived_cache::DerivedCache>,
     /// Offloaded requests by id — real $/cancelRequest lives here.
     in_flight: super::offload::InFlight,
+    /// Hot-tunable numeric settings (cogitator.yml).
+    limits: Arc<super::SharedLimits>,
 }
 
 impl Dispatcher {
@@ -58,6 +60,7 @@ impl Dispatcher {
         progress_supported: Arc<AtomicBool>,
         status: Arc<std::sync::Mutex<super::StatusInfo>>,
         derived: Arc<super::derived_cache::DerivedCache>,
+        limits: Arc<super::SharedLimits>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -73,6 +76,7 @@ impl Dispatcher {
             status,
             derived,
             in_flight: super::offload::InFlight::default(),
+            limits,
         }
     }
 
@@ -92,6 +96,7 @@ impl Dispatcher {
             profiles: self.profiles.lock().expect("profiles config lock").clone(),
             fusion_path: self.fusion_path.clone(),
             fusion_enabled: self.fusion_enabled.load(Ordering::Relaxed),
+            compiled_cap_bytes: self.limits.compiled_cap_bytes.load(Ordering::Relaxed),
         }
     }
 
