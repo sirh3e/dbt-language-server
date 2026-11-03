@@ -17,10 +17,24 @@
      "type": "string"
     },
     "invocation_id": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "invocation_started_at": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "env": {
      "type": "object",
@@ -47,10 +61,24 @@
          "type": "string"
         },
         "started_at": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
         },
         "completed_at": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
         }
        }
       }
@@ -65,61 +93,102 @@
       "type": "object"
      },
      "message": {
-      "type": "string"
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "failures": {
-      "type": "integer"
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "unique_id": {
       "type": "string"
      },
      "compiled": {
-      "type": "boolean"
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "compiled_code": {
-      "type": "string"
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "relation_name": {
-      "type": "string"
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
      },
      "batch_results": {
-      "type": "object",
-      "title": "BatchResults",
-      "properties": {
-       "successful": {
-        "type": "array",
-        "items": {
-         "type": "array",
-         "prefixItems": [
-          {
-           "type": "string"
-          },
-          {
-           "type": "string"
+      "anyOf": [
+       {
+        "type": "object",
+        "title": "BatchResults",
+        "properties": {
+         "successful": {
+          "type": "array",
+          "items": {
+           "type": "array",
+           "prefixItems": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "string"
+            }
+           ],
+           "maxItems": 2,
+           "minItems": 2
           }
-         ],
-         "maxItems": 2,
-         "minItems": 2
+         },
+         "failed": {
+          "type": "array",
+          "items": {
+           "type": "array",
+           "prefixItems": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "string"
+            }
+           ],
+           "maxItems": 2,
+           "minItems": 2
+          }
+         }
         }
        },
-       "failed": {
-        "type": "array",
-        "items": {
-         "type": "array",
-         "prefixItems": [
-          {
-           "type": "string"
-          },
-          {
-           "type": "string"
-          }
-         ],
-         "maxItems": 2,
-         "minItems": 2
-        }
+       {
+        "type": "null"
        }
-      },
-      "additionalProperties": false
+      ]
      }
     }
    }

@@ -17,10 +17,24 @@
      "type": "string"
     },
     "invocation_id": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "invocation_started_at": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "env": {
      "type": "object",
@@ -66,41 +80,88 @@
       "title": "FreshnessThreshold",
       "properties": {
        "warn_after": {
-        "type": "object",
-        "title": "Time",
-        "properties": {
-         "count": {
-          "type": "integer"
+        "anyOf": [
+         {
+          "type": "object",
+          "title": "Time",
+          "properties": {
+           "count": {
+            "anyOf": [
+             {
+              "type": "integer"
+             },
+             {
+              "type": "null"
+             }
+            ]
+           },
+           "period": {
+            "anyOf": [
+             {
+              "enum": [
+               "minute",
+               "hour",
+               "day"
+              ]
+             },
+             {
+              "type": "null"
+             }
+            ]
+           }
+          }
          },
-         "period": {
-          "enum": [
-           "minute",
-           "hour",
-           "day"
-          ]
+         {
+          "type": "null"
          }
-        },
-        "additionalProperties": false
+        ]
        },
        "error_after": {
-        "type": "object",
-        "title": "Time",
-        "properties": {
-         "count": {
-          "type": "integer"
+        "anyOf": [
+         {
+          "type": "object",
+          "title": "Time",
+          "properties": {
+           "count": {
+            "anyOf": [
+             {
+              "type": "integer"
+             },
+             {
+              "type": "null"
+             }
+            ]
+           },
+           "period": {
+            "anyOf": [
+             {
+              "enum": [
+               "minute",
+               "hour",
+               "day"
+              ]
+             },
+             {
+              "type": "null"
+             }
+            ]
+           }
+          }
          },
-         "period": {
-          "enum": [
-           "minute",
-           "hour",
-           "day"
-          ]
+         {
+          "type": "null"
          }
-        },
-        "additionalProperties": false
+        ]
        },
        "filter": {
-        "type": "string"
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ]
        }
       }
      },
@@ -117,10 +178,24 @@
          "type": "string"
         },
         "started_at": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
         },
         "completed_at": {
-         "type": "string"
+         "anyOf": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "null"
+          }
+         ]
         }
        }
       }

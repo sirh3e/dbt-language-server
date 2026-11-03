@@ -36,6 +36,9 @@ across versions (08 §4):
      validation-only, shaky typify support).
   f. a string-typed node carrying `const`   -> plain {"type": "string"}.
      Version pins must trace, never reject (03 §10).
+  i. the yaml-mode [X, null] collapse (rule 4) is SKIPPED: typify
+     renders kept null branches as Option<X>, and dbt writes literal
+     nulls ("errors": null) that a collapsed non-Option field rejects.
   h. additionalProperties: {"type": "string"} -> true. env-style maps
      claim string values, but leniency means an odd value in a map the
      server never reads (env, adapter_response) must not kill the file;
@@ -91,7 +94,7 @@ def is_string_enum(node, root) -> bool:
     return isinstance(enum, list) and all(isinstance(x, str) for x in enum)
 
 
-def patch_node(node: dict) -> None:
+def patch_node(node: dict, keep_null_branches: bool = False) -> None:
     for k in ("if", "then", "else", "default"):
         node.pop(k, None)
     enum = node.get("enum")
@@ -114,6 +117,8 @@ def patch_node(node: dict) -> None:
                 by_ident[i] = keep
             else:
                 by_ident[i] = k
+    if keep_null_branches:
+        return
     for key in ("oneOf", "anyOf"):
         branches = node.get(key)
         if not isinstance(branches, list) or len(branches) != 2:
@@ -194,7 +199,12 @@ def walk(node, root, artifact: bool) -> None:
     if isinstance(node, dict):
         if artifact:
             patch_artifact_node(node, root)
-        patch_node(node)
+        # artifact mode keeps [X, null] branches: typify renders them as
+        # proper Option<X>, and dbt WRITES nulls ("errors": null) that a
+        # bare #[serde(default)] Vec would reject. The collapse exists
+        # for dbt-jsonschema's duplicate-type-name quirk, a YAML-side
+        # problem only.
+        patch_node(node, keep_null_branches=artifact)
         for v in node.values():
             walk(v, root, artifact)
     elif isinstance(node, list):

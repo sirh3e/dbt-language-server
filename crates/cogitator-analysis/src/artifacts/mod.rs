@@ -7,6 +7,7 @@
 //! mismatches trace, never reject; artifacts must degrade feature-off,
 //! never break core diagnostics.
 
+pub mod catalog;
 pub mod freshness;
 pub mod manifest;
 pub mod run_results;
@@ -22,6 +23,7 @@ pub struct ArtifactPaths {
     pub run_results: PathBuf,
     pub manifest: PathBuf,
     pub sources: PathBuf,
+    pub catalog: PathBuf,
 }
 
 impl ArtifactPaths {
@@ -31,6 +33,7 @@ impl ArtifactPaths {
             run_results: target.join("run_results.json"),
             manifest: target.join("manifest.json"),
             sources: target.join("sources.json"),
+            catalog: target.join("catalog.json"),
         }
     }
 }
@@ -42,6 +45,7 @@ pub struct ArtifactSet {
     pub run_results: Option<std::sync::Arc<run_results::RunResults>>,
     pub manifest: Option<std::sync::Arc<manifest::ManifestIndex>>,
     pub freshness: Option<std::sync::Arc<freshness::SourcesFreshness>>,
+    pub catalog: Option<std::sync::Arc<catalog::CatalogIndex>>,
 }
 
 /// Version mismatch is a TRACE, never a rejection and never a user-

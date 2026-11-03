@@ -197,6 +197,11 @@ fn doctor_reports_the_whole_picture() {
     )
     .unwrap();
     std::fs::write(root.join("cogitator.yml"), "lint:\n  select_star: true\n").unwrap();
+    std::fs::write(
+        target.join("catalog.json"),
+        r#"{"nodes": {}, "sources": {}}"#,
+    )
+    .unwrap();
 
     let (mut lsp, _uri) = booted_in(&root, &[]);
     let mut report = serde_json::Value::Null;
@@ -215,6 +220,7 @@ fn doctor_reports_the_whole_picture() {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+    assert!(report["artifacts"]["catalogAgeS"].is_u64(), "{report}");
     assert_eq!(report["projectName"], "jaffle_shop", "{report}");
     assert_eq!(report["dialect"], "duckdb", "{report}");
     assert!(report["graph"]["nodes"].as_u64().unwrap() > 5, "{report}");
@@ -231,6 +237,83 @@ fn doctor_reports_the_whole_picture() {
         report["runningJobs"].as_array().map(Vec::len),
         Some(0),
         "{report}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}
+
+/// catalog.json (dbt docs generate) backs source-column completion for
+/// tables the YAML leaves undeclared — adapter-agnostic, always on,
+/// landing with the next context refresh (03 §10).
+#[test]
+fn catalog_backs_source_columns() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-catalog-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let target = root.join("target");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(
+        target.join("catalog.json"),
+        r#"{"nodes": {}, "sources": {"source.jaffle_shop.stripe.payments": {
+            "metadata": {"type": "BASE TABLE", "schema": "main", "name": "payments"},
+            "columns": {"amount": {"type": "INTEGER", "index": 2, "name": "amount"},
+                        "payment_id": {"type": "BIGINT", "index": 1, "name": "payment_id"}},
+            "stats": {}}}}"#,
+    )
+    .unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    // a probe selecting from the undeclared-in-YAML source table
+    let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/catalog_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
+            "text": "select p. from {{ source('stripe', 'payments') }} p\n"}}),
+    );
+    // enrichment lands on a refresh; poll completion after the dot
+    let mut labels: Vec<String> = Vec::new();
+    for _ in 0..100 {
+        let completion = lsp.request(
+            "textDocument/completion",
+            serde_json::json!({"textDocument": {"uri": probe_uri},
+                               "position": {"line": 0, "character": 9}}),
+        );
+        labels = completion["result"]
+            .as_array()
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|i| i["label"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if labels.iter().any(|l| l == "amount") {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(labels.iter().any(|l| l == "amount"), "{labels:?}");
+    assert!(labels.iter().any(|l| l == "payment_id"), "{labels:?}");
+
+    // and hover on a catalog-backed column names the warehouse type
+    lsp.notify(
+        "textDocument/didChange",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "version": 2},
+            "contentChanges": [{"text": "select p.amount from {{ source('stripe', 'payments') }} p\n"}]}),
+    );
+    let hover = lsp.request(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": probe_uri},
+                           "position": {"line": 0, "character": 11}}),
+    );
+    assert!(
+        hover["result"]["contents"]
+            .as_str()
+            .is_some_and(|c| c.contains("INTEGER (from catalog)")),
+        "{hover}"
     );
 
     let _ = lsp.request("shutdown", serde_json::json!({}));

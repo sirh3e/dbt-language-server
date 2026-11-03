@@ -148,6 +148,7 @@ fn artifact_lenses_render_status_and_freshness() {
             .unwrap(),
         )),
         manifest: None,
+        catalog: None,
         freshness: Some(Arc::new(
             cogitator_analysis::artifacts::freshness::parse(
                 r#"{"results": [{"unique_id": "source.jaffle_shop.stripe.payments",

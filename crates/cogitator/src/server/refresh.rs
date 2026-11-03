@@ -65,7 +65,9 @@ impl RefreshTask {
                 let builder = builder.clone();
                 let cfg = cfg.clone();
                 #[cfg(feature = "duckdb-parser")]
-                let warehouse = (refresh_toggles.clone(), refresh_derived.clone());
+                let warehouse_toggles = refresh_toggles.clone();
+                let enrich_derived = refresh_derived.clone();
+                let enrich_limits = refresh_limits.clone();
                 move || {
                     let span = tracing::info_span!("context_refresh", root = %root);
                     let _enter = span.enter();
@@ -89,8 +91,20 @@ impl RefreshTask {
                     let stats = builder.cache_stats();
                     tracing::debug!(hits = stats.0, misses = stats.1, "scan cache totals");
                     #[cfg(feature = "duckdb-parser")]
-                    if warehouse.0.warehouse_columns.load(Ordering::Relaxed) {
-                        enrich_warehouse_columns(&mut ctx, &root, &cfg, &warehouse.1);
+                    if warehouse_toggles.warehouse_columns.load(Ordering::Relaxed) {
+                        enrich_warehouse_columns(&mut ctx, &root, &cfg, &enrich_derived);
+                    }
+                    // catalog.json columns fill whatever is still empty —
+                    // always on: one stamp-cached local file the user made
+                    // with `dbt docs generate`, adapter-agnostic (03 §10)
+                    if let Some(project_root) = ctx.project_root.clone() {
+                        let cap = enrich_limits
+                            .artifact_cap_bytes
+                            .load(std::sync::atomic::Ordering::Relaxed);
+                        let set = enrich_derived.artifacts(&project_root, cap);
+                        if let Some(catalog) = &set.catalog {
+                            enrich_catalog_columns(&mut ctx, catalog);
+                        }
                     }
                     if let Some(project_root) = ctx.project_root.as_deref() {
                         cache_persist::save(project_root, builder.export_scan());
@@ -328,4 +342,35 @@ fn server_cache_load(
     project_root: &std::path::Path,
 ) -> Option<cogitator_analysis::context::persist::PersistedScan> {
     cache_persist::load(project_root)
+}
+
+/// Source tables whose YAML declares no columns get them from
+/// target/catalog.json (dbt docs generate) — the adapter-agnostic
+/// sibling of the warehouse pass; a live warehouse wins, the catalog
+/// fills the rest. Model columns stay YAML-only on purpose: filling
+/// them here would mute the undocumented_columns lint.
+fn enrich_catalog_columns(
+    ctx: &mut DbtContext,
+    catalog: &cogitator_analysis::artifacts::catalog::CatalogIndex,
+) {
+    for source in ctx.source_detail_map.values_mut() {
+        for table in source.tables.values_mut() {
+            if !table.columns.is_empty() {
+                continue;
+            }
+            let key = (source.name.clone(), table.name.clone());
+            let Some(entry) = catalog.sources.get(&key) else {
+                continue;
+            };
+            table.columns = entry
+                .columns
+                .iter()
+                .map(|column| cogitator_schemas::ColumnEntry {
+                    name: column.name.clone(),
+                    description: format!("{} (from catalog)", column.data_type),
+                    name_pos: Default::default(),
+                })
+                .collect();
+        }
+    }
 }

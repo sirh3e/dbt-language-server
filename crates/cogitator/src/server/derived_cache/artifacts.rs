@@ -16,7 +16,12 @@ impl DerivedCache {
     /// trace, never a user-facing failure — 03 §10).
     pub fn artifacts(&self, root: &Path, cap_bytes: u64) -> ArtifactSet {
         let paths = ArtifactPaths::under(root);
-        let files = [&paths.run_results, &paths.manifest, &paths.sources];
+        let files = [
+            &paths.run_results,
+            &paths.manifest,
+            &paths.sources,
+            &paths.catalog,
+        ];
         let current = files.map(|p| stamp(p));
         {
             let map = self.artifacts.lock().expect("artifacts cache lock");
@@ -58,6 +63,12 @@ impl DerivedCache {
             }),
             freshness: read(&paths.sources, &current[2]).and_then(|t| {
                 cogitator_analysis::artifacts::freshness::parse(&t, &paths.sources)
+                    .map_err(trace_err)
+                    .ok()
+                    .map(Arc::new)
+            }),
+            catalog: read(&paths.catalog, &current[3]).and_then(|t| {
+                cogitator_analysis::artifacts::catalog::parse(&t, &paths.catalog)
                     .map_err(trace_err)
                     .ok()
                     .map(Arc::new)

@@ -46,6 +46,7 @@ pub struct DoctorArtifacts {
     pub run_results_age_s: Option<u64>,
     pub manifest_age_s: Option<u64>,
     pub sources_age_s: Option<u64>,
+    pub catalog_age_s: Option<u64>,
     pub drift_count: usize,
 }
 
@@ -91,6 +92,7 @@ pub fn doctor(
                 run_results_age_s: age_of(&paths.run_results),
                 manifest_age_s: age_of(&paths.manifest),
                 sources_age_s: age_of(&paths.sources),
+                catalog_age_s: age_of(&paths.catalog),
                 drift_count: set
                     .manifest
                     .as_deref()
@@ -102,6 +104,7 @@ pub fn doctor(
             run_results_age_s: None,
             manifest_age_s: None,
             sources_age_s: None,
+            catalog_age_s: None,
             drift_count: 0,
         });
     let report = DoctorReport {

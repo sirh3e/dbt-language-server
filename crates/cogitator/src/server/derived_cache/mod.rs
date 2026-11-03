@@ -76,7 +76,7 @@ type LineageMap = HashMap<String, (u64, Arc<Option<ModelLineage>>)>;
 /// (context snapshot pointer, key → (input fingerprint, serialized result)).
 type ResultsSlot = (usize, HashMap<String, (String, Arc<str>)>);
 /// root → ([run_results, manifest, sources] stamps, the parsed set).
-type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 3], ArtifactSet)>;
+type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 4], ArtifactSet)>;
 
 #[derive(Default)]
 pub struct DerivedCache {
