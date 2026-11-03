@@ -46,6 +46,37 @@ function M.parse()
   exec("dbt.parse", false) -- project-wide; success refreshes the server context
 end
 
+--- :DbtQuery — bounded SELECT on the relation under the cursor: through
+--- vim-dadbod when a connection is configured, else into a scratch sql
+--- buffer ready for any client.
+function M.query()
+  local cfg = require("cogitator").config
+  local limit = (cfg and cfg.query_limit) or 100
+  exec("dbt.relation", true, function(err, result)
+    if err then
+      vim.notify("dbt.relation failed: " .. err.message, vim.log.levels.ERROR)
+      return
+    end
+    if not result or result == vim.NIL then
+      vim.notify("no relation here — not a dbt model, ref() or source()", vim.log.levels.WARN)
+      return
+    end
+    local statement = ("select * from %s limit %d"):format(result.relation, limit)
+    if vim.fn.exists(":DB") == 2 and (vim.b.db or vim.g.db) then
+      vim.cmd.DB(statement)
+      return
+    end
+    local buf = vim.api.nvim_create_buf(true, true)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+      ("-- %s %s — run with vim-dadbod (:DB) or your SQL client"):format(result.kind, result.name),
+      statement,
+    })
+    vim.bo[buf].filetype = "sql"
+    vim.api.nvim_set_current_buf(buf)
+    vim.notify(("query for %s (limit %d)"):format(result.relation, limit))
+  end)
+end
+
 --- dbt.relation: resolve database.schema.identifier of the source()/ref()
 --- under the cursor (else the file's model), yank it for pasting into SQL.
 function M.relation()

@@ -232,6 +232,28 @@ check(
   vim.fn.getreg('"')
 )
 
+-- :DbtQuery: no DB configured headless → the bounded SELECT lands in a
+-- scratch sql buffer
+require("cogitator.commands").query()
+local query_buf
+vim.wait(5000, function()
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(b) and vim.bo[b].filetype == "sql" then
+      local text = table.concat(vim.api.nvim_buf_get_lines(b, 0, -1, false), "\n")
+      if text:find("select %* from jaffle_shop%.main%.customers limit 100", 1, false) then
+        query_buf = b
+        return true
+      end
+    end
+  end
+  return false
+end, 50)
+check(query_buf ~= nil, "integration: :DbtQuery builds the bounded SELECT in a scratch buffer")
+vim.api.nvim_set_current_buf(bufnr)
+if query_buf then
+  vim.api.nvim_buf_delete(query_buf, { force = true })
+end
+
 -- textDocument/codeAction: the executable lens set as command-only actions
 local ca = vim.lsp.buf_request_sync(bufnr, "textDocument/codeAction", {
   textDocument = { uri = vim.uri_from_bufnr(bufnr) },
