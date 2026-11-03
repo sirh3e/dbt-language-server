@@ -1,105 +1,133 @@
-# cogitator — development recipes (`just --list` shows them all)
+# cogitator — development recipes, grouped (`just --list` shows them all)
 
 # default: show available recipes
 default:
     @just --list
 
+# ---------------------------------------------------------------- build
+
 # build the whole workspace (debug)
+[group('build')]
 build:
     cargo build --workspace
 
 # build the release binary (target/release/cogitator)
+[group('build')]
 release:
     cargo build --release -p cogitator
 
+# cross-compile the release matrix via the Zig toolchain (07 §5)
+[group('build')]
+zigbuild target:
+    cargo zigbuild --release --target {{target}} -p cogitator
+
+# ----------------------------------------------------------------- test
+
 # run the full test suite
+[group('test')]
 test:
     cargo test --workspace
 
+# type-check the feature-gated DuckDB engine (bundled C++ build — slow cold)
+[group('test')]
+duckdb-check:
+    cargo check -p cogitator --features duckdb-parser
+
+# --------------------------------------------------------------- format
+
 # format all crates in place
+[group('format')]
 fmt:
     cargo fmt --all
 
 # verify formatting without writing
+[group('format')]
 fmt-check:
     cargo fmt --all --check
 
+# Format the Neovim plugin's Lua (stylua from the nix shell)
+[group('format')]
+lua-fmt:
+    stylua editors/nvim
+
+# Check Lua formatting without writing
+[group('format')]
+lua-fmt-check:
+    stylua --check editors/nvim
+
+# ----------------------------------------------------------------- lint
+
 # lint; warnings are errors (the workspace stays at zero)
+[group('lint')]
 lint:
     cargo clippy --workspace --all-targets -- -D warnings
 
+# Lint our own shell scripts (the testdata fixture is third-party)
+[group('lint')]
+lint-shell:
+    git ls-files '*.sh' '*.bash' | grep -v '^testdata/' | xargs -r shellcheck
+
+# Lint the Neovim plugin's Lua (luacheck from the nix shell)
+[group('lint')]
+lua-lint:
+    luacheck editors/nvim
+
+# Byte-compile the Emacs integration with warnings as errors
+[group('lint')]
+elisp-lint:
+    emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" -L editors/emacs -f batch-byte-compile editors/emacs/cogitator.el editors/emacs/cogitator-graph.el
+    rm -f editors/emacs/*.elc
+
+# ------------------------------------------------------------------- ci
+
 # everything CI checks: formatting, lints, tests, schema freshness
+[group('ci')]
 check: fmt-check lint test gen-schemas-check
 
-# type-check the feature-gated DuckDB engine (bundled C++ build — slow cold)
-duckdb-check:
-    cargo check -p cogitator --features duckdb-parser
+# -------------------------------------------------------------- schemas
 
 # regenerate the preprocessed dbt schemas (specs/rust-port/08 §2.2)
+[group('schemas')]
 gen-schemas:
     for f in dbt_project dbt_yml_files packages selectors; do \
         python3 schemas/dbt/preprocess.py "schemas/dbt/$f-latest.json" "schemas/dbt/processed/$f.json"; \
     done
 
 # fail if the preprocessed schemas are stale (CI job, 09 §5)
+[group('schemas')]
 gen-schemas-check: gen-schemas
     git diff --exit-code -- schemas/dbt/processed
 
-# cross-compile the release matrix via the Zig toolchain (07 §5)
-zigbuild target:
-    cargo zigbuild --release --target {{target}} -p cogitator
-
-# remove build artifacts
-clean:
-    cargo clean
+# -------------------------------------------------------------- editors
 
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
+[group('editors')]
 nvim-test:
     cargo build -p cogitator
     nvim --headless -l editors/nvim/tests/run.lua
 
 # Batch Emacs integration tests (needs emacs >= 29 and a debug server build)
+[group('editors')]
 emacs-test:
     cargo build -p cogitator
     emacs -Q --batch -L editors/emacs -l editors/emacs/tests/run.el
 
-# Format the Neovim plugin's Lua (stylua from the nix shell)
-lua-fmt:
-    stylua editors/nvim
-
-# Check Lua formatting without writing
-lua-fmt-check:
-    stylua --check editors/nvim
-
-# Lint the Neovim plugin's Lua (luacheck from the nix shell)
-lua-lint:
-    luacheck editors/nvim
-
-# Byte-compile the Emacs integration with warnings as errors
-elisp-lint:
-    emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" -L editors/emacs -f batch-byte-compile editors/emacs/cogitator.el editors/emacs/cogitator-graph.el
-    rm -f editors/emacs/*.elc
-
 # Compile the Zed extension to WebAssembly the way Zed does
+[group('editors')]
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1
 
-# Regenerate CHANGELOG.md from the conventional commit history (git-cliff).
-# The range starts at the fork point: upstream Go commits and tags stay out.
+# -------------------------------------------------------------- release
+
+# (range starts at the fork point: upstream Go commits and tags stay out)
+# Regenerate CHANGELOG.md from the conventional commit history (git-cliff)
+[group('release')]
 changelog:
     git cliff 724b0f2..HEAD -o CHANGELOG.md
 
-# Install the git hooks via prek (the Rust pre-commit runner)
-hooks:
-    prek install
-
-# Lint our own shell scripts (the testdata fixture is third-party)
-lint-shell:
-    git ls-files '*.sh' '*.bash' | grep -v '^testdata/' | xargs -r shellcheck
-
-# Prepare a release: guards, version bump, check, changelog section,
-# release commit and annotated tag. Review, then:
-#   git push origin main v<version>
+# (review the tagged commit, then: git push origin main v<version>)
+# Prepare a release: guards, bump, check, changelog, commit + annotated tag
+[group('release')]
 release-prep version:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -117,3 +145,15 @@ release-prep version:
     git commit -m "chore(release): v$v"
     git tag -a "v$v" -m "cogitator v$v"
     echo "tagged v$v — review the commit, then: git push origin main v$v"
+
+# ---------------------------------------------------------- maintenance
+
+# remove build artifacts
+[group('maintenance')]
+clean:
+    cargo clean
+
+# Install the git hooks via prek (the Rust pre-commit runner)
+[group('maintenance')]
+hooks:
+    prek install
