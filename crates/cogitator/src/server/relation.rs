@@ -3,8 +3,8 @@
 //! warning), leaving the actual relation assembly to the pure feature.
 
 use cogitator_analysis::features::TargetRelation;
-use cogitator_analysis::profiles::{load_inventory, ProfileScope};
 
+use super::derived_cache::DerivedCache;
 use super::ProfilesConfig;
 
 /// "Switch target" code-action choices when `uri` IS the active
@@ -15,6 +15,7 @@ pub fn profiles_target_choices(
     root: &str,
     project_profile: &str,
     uri: &str,
+    derived: &DerivedCache,
 ) -> Option<Vec<cogitator_analysis::features::TargetChoice>> {
     let path = cogitator_lsp::uri_to_fs_path(uri)?;
     let active_file = cogitator_analysis::util::profiles_candidates(&cfg.dir_override, root)
@@ -24,11 +25,7 @@ pub fn profiles_target_choices(
     if active_file.as_path() != std::path::Path::new(path.as_str()) {
         return None;
     }
-    let scope = ProfileScope::Allowed {
-        project: project_profile,
-        extra: &cfg.allow,
-    };
-    let inventory = load_inventory(&active_file, &scope);
+    let inventory = derived.profiles_inventory(&active_file, project_profile, &cfg.allow);
     let active_profile = if cfg.profile.is_empty() {
         project_profile.to_string()
     } else {
@@ -66,6 +63,7 @@ pub fn active_target_relation(
     cfg: &ProfilesConfig,
     root: &str,
     project_profile: &str,
+    derived: &DerivedCache,
 ) -> Option<TargetRelation> {
     if project_profile.is_empty() && cfg.profile.is_empty() {
         return None;
@@ -73,11 +71,7 @@ pub fn active_target_relation(
     let path = cogitator_analysis::util::profiles_candidates(&cfg.dir_override, root)
         .into_iter()
         .find(|p| p.is_file())?;
-    let scope = ProfileScope::Allowed {
-        project: project_profile,
-        extra: &cfg.allow,
-    };
-    let inventory = load_inventory(&path, &scope);
+    let inventory = derived.profiles_inventory(&path, project_profile, &cfg.allow);
     let profile_name = if cfg.profile.is_empty() {
         project_profile
     } else {

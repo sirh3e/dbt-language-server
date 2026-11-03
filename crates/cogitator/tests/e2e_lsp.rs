@@ -643,6 +643,26 @@ fn full_session() {
     assert!(s["project"]["models"].as_u64().unwrap() > 0, "{s}");
     assert!(s["refresh"]["count"].as_u64().unwrap() >= 1, "{s}");
 
+    // 6d². derived caches: status carries the counters, dbt.cache reports
+    // and clears them (dbt.profiles above populated the profiles surface)
+    assert!(s["caches"]["profiles"]["entries"].is_u64(), "{s}");
+    let cache_stats = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.cache", "arguments": [{ "action": "stats" }] }),
+    );
+    assert!(
+        cache_stats["result"]["profiles"]["entries"]
+            .as_u64()
+            .is_some_and(|n| n >= 1),
+        "{cache_stats}"
+    );
+    let cleared = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.cache", "arguments": [{ "action": "clear" }] }),
+    );
+    assert_eq!(cleared["result"]["profiles"]["entries"], 0, "{cleared}");
+    assert_eq!(cleared["result"]["lineage"]["entries"], 0, "{cleared}");
+
     let unknown = lsp.request("textDocument/typeDefinition", serde_json::json!({}));
     assert_eq!(unknown["error"]["code"], -32601);
     let bad = lsp.request("textDocument/rename", serde_json::json!({}));

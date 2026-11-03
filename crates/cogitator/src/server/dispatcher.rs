@@ -39,6 +39,8 @@ pub struct Dispatcher {
     progress_supported: Arc<AtomicBool>,
     /// What the server has been doing, for dbt.status.
     status: Arc<std::sync::Mutex<super::StatusInfo>>,
+    /// Shared derived-data caches (profiles inventory, lineage, results).
+    derived: Arc<super::derived_cache::DerivedCache>,
 }
 
 impl Dispatcher {
@@ -56,6 +58,7 @@ impl Dispatcher {
         progress_supported: Arc<AtomicBool>,
         status: Arc<std::sync::Mutex<super::StatusInfo>>,
         server_request_ids: Arc<std::sync::atomic::AtomicI64>,
+        derived: Arc<super::derived_cache::DerivedCache>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -71,6 +74,7 @@ impl Dispatcher {
             profiles,
             progress_supported,
             status,
+            derived,
         }
     }
 
@@ -379,8 +383,18 @@ impl Dispatcher {
             }
             "dbt.modelTests" => {
                 let ctx = self.snapshot();
-                let result = features::model_tests_json(&ctx, &uri);
-                self.send(&ResultResponse::new(req.id, result));
+                let compute =
+                    || serde_json::to_string(&features::model_tests_json(&ctx, &uri)).ok();
+                let json = match schema_fingerprint(&ctx, &uri, None) {
+                    Some(fp) => self.derived.result(
+                        Arc::as_ptr(&ctx) as usize,
+                        &format!("modelTests:{uri}"),
+                        fp,
+                        compute,
+                    ),
+                    None => compute().map(|s| std::sync::Arc::from(s.as_str())),
+                };
+                self.respond_raw(req.id, json);
                 return;
             }
             "dbt.goToTests" => {
@@ -414,6 +428,22 @@ impl Dispatcher {
                 self.set_target(req.id, target, profile);
                 return;
             }
+            "dbt.cache" => {
+                let action = arg
+                    .get("action")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("stats");
+                if action == "clear" {
+                    self.derived.clear();
+                    let _ = self.refresh_tx.send(self.root_path.clone());
+                    self.show_message(
+                        cogitator_lsp::message_type::INFO,
+                        "Derived caches cleared; the project context is refreshing.",
+                    );
+                }
+                self.send(&ResultResponse::new(req.id, self.derived.report()));
+                return;
+            }
             "dbt.setProfilesDir" => {
                 let dir = arg
                     .get("dir")
@@ -433,8 +463,18 @@ impl Dispatcher {
             "dbt.modelInfo" => {
                 let model = arg.get("model").and_then(|m| m.as_str());
                 let ctx = self.snapshot();
-                let result = features::model_info(&ctx, &uri, model);
-                self.send(&ResultResponse::new(req.id, result));
+                let compute =
+                    || serde_json::to_string(&features::model_info(&ctx, &uri, model)).ok();
+                let json = match schema_fingerprint(&ctx, &uri, model) {
+                    Some(fp) => self.derived.result(
+                        Arc::as_ptr(&ctx) as usize,
+                        &format!("modelInfo:{uri}:{}", model.unwrap_or_default()),
+                        fp,
+                        compute,
+                    ),
+                    None => compute().map(|s| std::sync::Arc::from(s.as_str())),
+                };
+                self.respond_raw(req.id, json);
                 return;
             }
             "dbt.openModel" => {
@@ -485,6 +525,7 @@ impl Dispatcher {
                     &cfg,
                     &self.root_path,
                     &ctx.project.profile,
+                    &self.derived,
                 );
                 let result = features::relation_info(
                     &ctx,
@@ -511,6 +552,18 @@ impl Dispatcher {
         let ctx = self.snapshot();
         let result = features::go_to_schema(&ctx, self.documents.get(&uri), &uri, pos);
         self.send(&ResultResponse::new(req.id, result));
+    }
+
+    /// Send a result the derived cache already serialized; `None` means
+    /// the uncached path produced nothing → null, same as before.
+    fn respond_raw(&mut self, id: i64, json: Option<std::sync::Arc<str>>) {
+        match json
+            .as_deref()
+            .and_then(|j| serde_json::from_str::<Box<serde_json::value::RawValue>>(j).ok())
+        {
+            Some(raw) => self.send(&ResultResponse::new(id, &raw)),
+            None => self.send(&ResultResponse::new(id, serde_json::Value::Null)),
+        }
     }
 
     fn shutdown(&mut self, content: &[u8]) {
@@ -654,6 +707,7 @@ impl Dispatcher {
                 &self.root_path,
                 &ctx.project.profile,
                 &uri,
+                &self.derived,
             )
         };
         let actions = features::code_actions(
@@ -728,18 +782,8 @@ impl Dispatcher {
     /// disk when the editor has not opened it.
     fn column_lineage(&mut self, id: i64, uri: &str) {
         let ctx = self.snapshot();
-        let result = match self.documents.get(uri) {
-            Some(doc) => features_lineage(&doc.parsed, &ctx),
-            None => {
-                let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-                std::fs::read_to_string(path).ok().and_then(|text| {
-                    cogitator_parser::pipeline::parse_document(&text, &ctx.dialect)
-                        .ok()
-                        .and_then(|parsed| features_lineage(&parsed, &ctx))
-                })
-            }
-        };
-        self.send(&ResultResponse::new(id, result));
+        let result = self.lineage_for(uri, &ctx);
+        self.send(&ResultResponse::new(id, result.as_ref()));
     }
 
     /// `dbt.openSchema` (lens entry point): resolve like goToSchema, then
@@ -773,7 +817,7 @@ impl Dispatcher {
     fn show_lineage(&mut self, id: i64, uri: &str) {
         let ctx = self.snapshot();
         let lineage = self.lineage_for(uri, &ctx);
-        match lineage {
+        match lineage.as_ref() {
             Some(lineage) if !lineage.columns.is_empty() => {
                 let mut lines: Vec<String> = lineage
                     .columns
@@ -890,7 +934,7 @@ impl Dispatcher {
     fn extract_model_yaml(&mut self, id: i64, uri: &str) {
         let ctx = self.snapshot();
         let lineage = self.lineage_for(uri, &ctx);
-        match features::extract_model_yaml(&ctx, uri, lineage.as_ref()) {
+        match features::extract_model_yaml(&ctx, uri, (*lineage).as_ref()) {
             None => self.show_message(
                 cogitator_lsp::message_type::WARNING,
                 "Cannot extract a schema YAML here.\n\
@@ -1055,6 +1099,7 @@ impl Dispatcher {
             &ctx,
             fusion,
             self.progress_supported.load(Ordering::Relaxed),
+            self.derived.report(),
         );
         self.send(&ResultResponse::new(id, report));
     }
@@ -1062,8 +1107,6 @@ impl Dispatcher {
     /// `dbt.profiles`: the redacted inventory within the allowed scope, the
     /// winning candidate file, and the active profile/target.
     fn profiles_report(&mut self, id: i64) {
-        use cogitator_analysis::profiles::{load_inventory, ProfileScope};
-
         let ctx = self.snapshot();
         let cfg = self.profiles.lock().expect("profiles config lock").clone();
         let candidates =
@@ -1086,11 +1129,9 @@ impl Dispatcher {
             ));
             return;
         };
-        let scope = ProfileScope::Allowed {
-            project: &ctx.project.profile,
-            extra: &cfg.allow,
-        };
-        let inventory = load_inventory(&path, &scope);
+        let inventory = self
+            .derived
+            .profiles_inventory(&path, &ctx.project.profile, &cfg.allow);
         let active_profile = if cfg.profile.is_empty() {
             ctx.project.profile.clone()
         } else {
@@ -1144,8 +1185,6 @@ impl Dispatcher {
     }
 
     fn set_target(&mut self, id: i64, target: String, profile: Option<String>) {
-        use cogitator_analysis::profiles::{load_inventory, ProfileScope};
-
         let respond_null = |me: &mut Self| {
             me.send(&ResultResponse::new(id, serde_json::Value::Null));
         };
@@ -1175,11 +1214,9 @@ impl Dispatcher {
             respond_null(self);
             return;
         };
-        let scope = ProfileScope::Allowed {
-            project: &ctx.project.profile,
-            extra: &cfg.allow,
-        };
-        let inventory = load_inventory(&path, &scope);
+        let inventory = self
+            .derived
+            .profiles_inventory(&path, &ctx.project.profile, &cfg.allow);
         let profile_given = profile.as_deref().is_some_and(|p| !p.is_empty());
         let profile_name = profile.filter(|p| !p.is_empty()).unwrap_or_else(|| {
             if cfg.profile.is_empty() {
@@ -1259,19 +1296,27 @@ impl Dispatcher {
         ));
     }
 
+    /// Column lineage for `uri`: cached per document generation for open
+    /// documents; disk files (unopened) are computed per call.
     fn lineage_for(
         &self,
         uri: &str,
         ctx: &DbtContext,
-    ) -> Option<cogitator_analysis::lineage::ModelLineage> {
+    ) -> std::sync::Arc<Option<cogitator_analysis::lineage::ModelLineage>> {
         match self.documents.get(uri) {
-            Some(doc) => cogitator_analysis::lineage::column_lineage(&doc.parsed, &ctx.dialect),
+            Some(doc) => self.derived.lineage(uri, doc.generation, || {
+                cogitator_analysis::lineage::column_lineage(&doc.parsed, &ctx.dialect)
+            }),
             None => {
-                let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-                let text = std::fs::read_to_string(path).ok()?;
-                let parsed =
-                    cogitator_parser::pipeline::parse_document(&text, &ctx.dialect).ok()?;
-                cogitator_analysis::lineage::column_lineage(&parsed, &ctx.dialect)
+                let compute = || {
+                    let path =
+                        cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+                    let text = std::fs::read_to_string(path).ok()?;
+                    let parsed =
+                        cogitator_parser::pipeline::parse_document(&text, &ctx.dialect).ok()?;
+                    cogitator_analysis::lineage::column_lineage(&parsed, &ctx.dialect)
+                };
+                std::sync::Arc::new(compute())
             }
         }
     }
@@ -1299,11 +1344,28 @@ impl Dispatcher {
     }
 }
 
-fn features_lineage(
-    parsed: &cogitator_parser::ParsedDocument,
-    ctx: &DbtContext,
-) -> Option<cogitator_analysis::lineage::ModelLineage> {
-    cogitator_analysis::lineage::column_lineage(parsed, &ctx.dialect)
+/// Input fingerprint for the modelInfo/modelTests result cache: the
+/// model's schema-YAML stamp plus its compiled-file stamp. `None` when
+/// the model cannot be resolved cheaply (versioned indirections) —
+/// those calls skip the cache rather than risk a stale answer.
+fn schema_fingerprint(ctx: &DbtContext, uri: &str, model: Option<&str>) -> Option<String> {
+    let requested = match model {
+        Some(m) if !m.is_empty() => m.to_string(),
+        _ => cogitator_analysis::features::model_name_from_uri(uri)?,
+    };
+    let details = ctx.model_detail_map.get(&requested)?;
+    let schema = details
+        .schema_uri
+        .as_deref()
+        .and_then(super::derived_cache::stamp);
+    let compiled = ctx.project_root.as_deref().map(|root| {
+        super::derived_cache::stamp(&cogitator_analysis::features::compiled_sql_path(
+            root,
+            &ctx.project.name,
+            &details.uri,
+        ))
+    });
+    Some(format!("{schema:?}|{compiled:?}"))
 }
 
 /// The optional `position` member of a command argument object.

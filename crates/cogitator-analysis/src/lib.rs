@@ -27,6 +27,9 @@ pub use context::{
 pub struct Document {
     pub text: Arc<str>,
     pub parsed: ParsedDocument,
+    /// Monotonic per-store counter value at the last open/change: the
+    /// key derived caches use to spot edits without hashing text.
+    pub generation: u64,
 }
 
 /// Open-document store owned by the dispatcher (05 §6.2 — single owner, no
@@ -36,6 +39,7 @@ pub struct Document {
 pub struct Documents {
     parser: Box<dyn DocumentParser + Send>,
     docs: HashMap<String, Document>,
+    generations: u64,
 }
 
 impl Default for Documents {
@@ -49,6 +53,7 @@ impl Documents {
         Documents {
             parser,
             docs: HashMap::new(),
+            generations: 0,
         }
     }
 
@@ -63,11 +68,13 @@ impl Documents {
 
     pub fn open(&mut self, uri: String, text: &str, dialect: &Dialect) {
         let parsed = self.parse_or_last_good(None, text, dialect);
+        self.generations += 1;
         self.docs.insert(
             uri,
             Document {
                 text: Arc::from(text),
                 parsed,
+                generation: self.generations,
             },
         );
     }
@@ -87,11 +94,13 @@ impl Documents {
         });
         let previous = self.docs.remove(uri).map(|d| d.parsed);
         let parsed = self.parse_or_last_good(previous, &text, dialect);
+        self.generations += 1;
         self.docs.insert(
             uri.to_string(),
             Document {
                 text: Arc::from(text.as_str()),
                 parsed,
+                generation: self.generations,
             },
         );
     }
@@ -121,11 +130,13 @@ impl Documents {
             let text = doc.text.to_string();
             let previous = self.docs.remove(&uri).map(|d| d.parsed);
             let parsed = self.parse_or_last_good(previous, &text, dialect);
+            self.generations += 1;
             self.docs.insert(
                 uri,
                 Document {
                     text: Arc::from(text.as_str()),
                     parsed,
+                    generation: self.generations,
                 },
             );
         }

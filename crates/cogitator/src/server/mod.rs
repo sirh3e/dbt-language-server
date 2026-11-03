@@ -5,6 +5,7 @@
 mod client_link;
 mod commands;
 mod compiled;
+mod derived_cache;
 mod diagnostics;
 mod dispatcher;
 mod fusion;
@@ -47,20 +48,19 @@ pub struct ProfilesConfig {
 }
 
 /// Auth problems of the *active* target, as one Reason/Solution warning.
-fn auth_warning(cfg: &ProfilesConfig, root: &str, ctx: &DbtContext) -> Option<String> {
-    use cogitator_analysis::profiles::{load_inventory, ProfileScope};
-
+fn auth_warning(
+    cfg: &ProfilesConfig,
+    root: &str,
+    ctx: &DbtContext,
+    derived: &derived_cache::DerivedCache,
+) -> Option<String> {
     if ctx.project.profile.is_empty() {
         return None;
     }
     let path = cogitator_analysis::util::profiles_candidates(&cfg.dir_override, root)
         .into_iter()
         .find(|p| p.is_file())?;
-    let scope = ProfileScope::Allowed {
-        project: &ctx.project.profile,
-        extra: &cfg.allow,
-    };
-    let inventory = load_inventory(&path, &scope);
+    let inventory = derived.profiles_inventory(&path, &ctx.project.profile, &cfg.allow);
     let profile_name = if cfg.profile.is_empty() {
         ctx.project.profile.as_str()
     } else {
@@ -169,6 +169,8 @@ pub async fn run(
     // launch flags; initializationOptions and dbt.setTarget replace fields
     let profiles = Arc::new(std::sync::Mutex::new(profiles));
     let refresh_profiles = profiles.clone();
+    let derived = Arc::new(derived_cache::DerivedCache::default());
+    let refresh_derived = derived.clone();
     let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
         request_ids.clone(),
@@ -263,7 +265,7 @@ pub async fn run(
                         ))
                     } else {
                         // dialect fine: check the active target's auth next
-                        auth_warning(&cfg, &root, &ctx)
+                        auth_warning(&cfg, &root, &ctx, &refresh_derived)
                     };
                     if warning != warned {
                         if let Some(text) = &warning {
@@ -296,6 +298,7 @@ pub async fn run(
         // the ONE server→client request-id counter: the refresh/fusion
         // ClientLinks share it, so dispatcher-issued ids cannot collide
         request_ids,
+        derived,
     );
 
     let mut stdin = tokio::io::stdin();

@@ -4,6 +4,7 @@
 use cogitator_analysis::DbtContext;
 use serde::Serialize;
 
+use super::derived_cache::CacheReport;
 use super::{ProfilesConfig, StatusInfo};
 
 #[derive(Debug, Serialize)]
@@ -12,6 +13,8 @@ pub struct StatusReport {
     pub project: ProjectStatus,
     pub profiles: ProfilesStatus,
     pub refresh: RefreshStatus,
+    /// Derived-data cache counters (also the dbt.cache report shape).
+    pub caches: CacheReport,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,6 +77,7 @@ pub fn status_report(
     ctx: &DbtContext,
     fusion: &'static str,
     progress_supported: bool,
+    caches: CacheReport,
 ) -> StatusReport {
     let active_profile = if cfg.profile.is_empty() {
         ctx.project.profile.clone()
@@ -114,5 +118,6 @@ pub fn status_report(
             cache_hits: info.cache_hits,
             cache_misses: info.cache_misses,
         },
+        caches,
     }
 }
