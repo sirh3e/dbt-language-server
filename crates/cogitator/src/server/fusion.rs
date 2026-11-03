@@ -12,6 +12,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
 /// `<fusion> --version` must report a dbt-fusion binary (04 §1.3).
+#[tracing::instrument(skip_all)]
 pub async fn validate_fusion(path: &str) -> bool {
     match tokio::process::Command::new(path)
         .arg("--version")
@@ -40,7 +41,7 @@ pub struct FusionJob {
 }
 
 impl FusionJob {
-    #[tracing::instrument(skip_all, fields(uri = %self.uri))]
+    #[tracing::instrument(skip_all, fields(uri = %self.uri, diagnostics = tracing::field::Empty))]
     pub async fn run(self) {
         let Some(artifacts) = fusion_artifact_path(&self.project_name) else {
             tracing::warn!("cannot create fusion artifact dirs");
@@ -107,6 +108,7 @@ impl FusionJob {
         if let Err(err) = child.wait().await {
             tracing::warn!(%err, "fusion compile failed");
         }
+        tracing::Span::current().record("diagnostics", diagnostics.len());
         publish(&diagnostics); // final (possibly empty) publish clears stale diagnostics
     }
 }

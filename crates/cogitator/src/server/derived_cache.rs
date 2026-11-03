@@ -36,10 +36,12 @@ struct Counters {
 }
 
 impl Counters {
-    fn hit(&self) {
+    fn hit(&self, surface: &'static str) {
+        tracing::trace!(surface, "derived cache hit");
         self.hits.fetch_add(1, Ordering::Relaxed);
     }
-    fn miss(&self) {
+    fn miss(&self, surface: &'static str) {
+        tracing::trace!(surface, "derived cache miss");
         self.misses.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -99,12 +101,12 @@ impl DerivedCache {
             let map = self.profiles.lock().expect("profiles cache lock");
             if let Some((cached, inventory)) = map.get(&key) {
                 if *cached == current {
-                    self.profiles_stats.hit();
+                    self.profiles_stats.hit("profiles");
                     return inventory.clone();
                 }
             }
         }
-        self.profiles_stats.miss();
+        self.profiles_stats.miss("profiles");
         let inventory = Arc::new(load_inventory(
             path,
             &ProfileScope::Allowed {
@@ -134,12 +136,12 @@ impl DerivedCache {
             let map = self.lineage.lock().expect("lineage cache lock");
             if let Some((cached, lineage)) = map.get(uri) {
                 if *cached == generation {
-                    self.lineage_stats.hit();
+                    self.lineage_stats.hit("lineage");
                     return lineage.clone();
                 }
             }
         }
-        self.lineage_stats.miss();
+        self.lineage_stats.miss("lineage");
         let lineage = Arc::new(compute());
         self.lineage
             .lock()
@@ -165,12 +167,12 @@ impl DerivedCache {
                 slot.1.clear();
             } else if let Some((cached, json)) = slot.1.get(key) {
                 if *cached == fingerprint {
-                    self.results_stats.hit();
+                    self.results_stats.hit("results");
                     return Some(json.clone());
                 }
             }
         }
-        self.results_stats.miss();
+        self.results_stats.miss("results");
         let json: Arc<str> = Arc::from(compute()?.as_str());
         self.results
             .lock()

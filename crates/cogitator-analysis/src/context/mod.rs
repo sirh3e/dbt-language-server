@@ -165,6 +165,7 @@ pub fn build_context(workspace_root: &str) -> DbtContext {
 
 impl ContextBuilder {
     /// Build the full context from the LSP client root path (03 §1.2).
+    #[tracing::instrument(skip_all, fields(root = %workspace_root))]
     pub fn build(&mut self, workspace_root: &str) -> DbtContext {
         let start = if workspace_root.is_empty() {
             std::env::current_dir().unwrap_or_default()
@@ -207,8 +208,12 @@ impl ContextBuilder {
             &mut self.edges,
             &mut self.sql_tags,
         );
+        // scoped threads lose the span context: hand each builder the
+        // parent explicitly so per-builder child spans nest (05 §6.3)
+        let parent = tracing::Span::current();
         std::thread::scope(|scope| {
             let models_sources = scope.spawn(|| {
+                let _span = tracing::info_span!(parent: &parent, "build_models_sources").entered();
                 build_model_details(
                     &root,
                     &project,
@@ -218,10 +223,18 @@ impl ContextBuilder {
                     sql_tags_cache,
                 )
             });
-            let macros_handle = scope.spawn(|| build_macro_details(&process_list, macros_cache));
-            let vars_handle = scope.spawn(|| build_variables(&root, &project));
-            let graph_handle =
-                scope.spawn(|| ProjectGraph::build(&root, &project, &dialect, edges_cache));
+            let macros_handle = scope.spawn(|| {
+                let _span = tracing::info_span!(parent: &parent, "build_macros").entered();
+                build_macro_details(&process_list, macros_cache)
+            });
+            let vars_handle = scope.spawn(|| {
+                let _span = tracing::info_span!(parent: &parent, "build_variables").entered();
+                build_variables(&root, &project)
+            });
+            let graph_handle = scope.spawn(|| {
+                let _span = tracing::info_span!(parent: &parent, "build_graph").entered();
+                ProjectGraph::build(&root, &project, &dialect, edges_cache)
+            });
             (models, sources) = models_sources.join().unwrap_or_default();
             macros = macros_handle.join().unwrap_or_default();
             variables = vars_handle.join().unwrap_or_default();

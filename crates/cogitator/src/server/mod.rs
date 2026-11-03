@@ -158,6 +158,7 @@ pub async fn run(
     let writer = tokio::spawn(async move {
         let mut stdout = tokio::io::stdout();
         while let Some(frame) = write_rx.recv().await {
+            tracing::trace!(bytes = frame.len(), "frame write");
             if stdout.write_all(&frame).await.is_err() {
                 break;
             }

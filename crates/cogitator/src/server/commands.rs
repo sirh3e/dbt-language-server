@@ -63,116 +63,129 @@ fn dbt_args(
 /// successful compile opens the compiled SQL in the editor, a successful
 /// parse triggers a context refresh.
 pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
-    tokio::spawn(async move {
-        let DbtInvocation {
-            kind,
-            binary,
-            project_root,
-            project_name,
-            selector,
-            model_path,
-            target,
-            profiles_dir,
-            profile,
-            refresh,
-        } = invocation;
-        // what the messages call the invocation: the model selector, or the
-        // project for selector-less kinds (parse)
-        let label = selector.clone().unwrap_or_else(|| project_name.clone());
-        let target_suffix = target
-            .as_deref()
-            .map(|t| format!(" (target {t})"))
-            .unwrap_or_default();
-        // progress-capable clients watch $/progress; others get messages
-        let progress = link.progress_begin(format!("dbt {kind}: {label}{target_suffix}"));
-        if !progress.active() {
-            link.show_message(
-                message_type::INFO,
-                format!("dbt {kind} started for '{label}'{target_suffix}…"),
-            );
-        }
-        let args = dbt_args(
-            kind,
-            selector.as_deref(),
-            target.as_deref(),
-            profiles_dir.as_deref(),
-            profile.as_deref(),
-        );
-        let mut command = tokio::process::Command::new(&binary);
-        command.args(&args).current_dir(&project_root);
-        let result = command.output().await;
-
-        let output = match result {
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-                progress.end(format!("dbt {kind} failed: '{binary}' not found"));
+    let span = tracing::info_span!(
+        "dbt_invocation",
+        kind = invocation.kind,
+        selector = invocation.selector.as_deref().unwrap_or("*"),
+        exit = tracing::field::Empty,
+    );
+    use tracing::Instrument as _;
+    tokio::spawn(
+        async move {
+            let DbtInvocation {
+                kind,
+                binary,
+                project_root,
+                project_name,
+                selector,
+                model_path,
+                target,
+                profiles_dir,
+                profile,
+                refresh,
+            } = invocation;
+            // what the messages call the invocation: the model selector, or the
+            // project for selector-less kinds (parse)
+            let label = selector.clone().unwrap_or_else(|| project_name.clone());
+            let target_suffix = target
+                .as_deref()
+                .map(|t| format!(" (target {t})"))
+                .unwrap_or_default();
+            // progress-capable clients watch $/progress; others get messages
+            let progress = link.progress_begin(format!("dbt {kind}: {label}{target_suffix}"));
+            if !progress.active() {
                 link.show_message(
-                    message_type::ERROR,
-                    format!(
-                        "Failed to launch '{binary}'.\n\
+                    message_type::INFO,
+                    format!("dbt {kind} started for '{label}'{target_suffix}…"),
+                );
+            }
+            let args = dbt_args(
+                kind,
+                selector.as_deref(),
+                target.as_deref(),
+                profiles_dir.as_deref(),
+                profile.as_deref(),
+            );
+            let mut command = tokio::process::Command::new(&binary);
+            command.args(&args).current_dir(&project_root);
+            tracing::debug!(%binary, ?args, "dbt subprocess starting");
+            let result = command.output().await;
+
+            let output = match result {
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    progress.end(format!("dbt {kind} failed: '{binary}' not found"));
+                    link.show_message(
+                        message_type::ERROR,
+                        format!(
+                            "Failed to launch '{binary}'.\n\
                          Reason: the executable was not found on PATH.\n\
                          Solution: install dbt, or start cogitator with \
                          --fusion <path-to-dbt-binary>."
-                    ),
+                        ),
+                    );
+                    return;
+                }
+                Err(err) => {
+                    progress.end(format!("dbt {kind} failed to launch"));
+                    link.show_message(
+                        message_type::ERROR,
+                        format!(
+                            "Failed to launch '{binary}': {err}.\n\
+                         Solution: check that the binary is executable and \
+                         the project directory is readable."
+                        ),
+                    );
+                    return;
+                }
+                Ok(output) => output,
+            };
+
+            tracing::Span::current().record("exit", output.status.code().unwrap_or(-1));
+            if !output.status.success() {
+                tracing::warn!(code = output.status.code(), "dbt subprocess failed");
+                progress.end(format!("dbt {kind} failed for '{label}'"));
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let detail = tail(
+                    if stderr.trim().is_empty() {
+                        &stdout
+                    } else {
+                        &stderr
+                    },
+                    400,
                 );
-                return;
-            }
-            Err(err) => {
-                progress.end(format!("dbt {kind} failed to launch"));
+                let retry = format!("{binary} {}", args.join(" "));
                 link.show_message(
                     message_type::ERROR,
                     format!(
-                        "Failed to launch '{binary}': {err}.\n\
-                         Solution: check that the binary is executable and \
-                         the project directory is readable."
+                        "dbt {kind} failed for '{label}' (exit {}).\n\
+                     {detail}\n\
+                     Solution: run `{retry}` in {} for the full output.",
+                        output.status.code().unwrap_or(-1),
+                        project_root.display(),
                     ),
                 );
                 return;
             }
-            Ok(output) => output,
-        };
 
-        if !output.status.success() {
-            progress.end(format!("dbt {kind} failed for '{label}'"));
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            let detail = tail(
-                if stderr.trim().is_empty() {
-                    &stdout
-                } else {
-                    &stderr
-                },
-                400,
-            );
-            let retry = format!("{binary} {}", args.join(" "));
-            link.show_message(
-                message_type::ERROR,
-                format!(
-                    "dbt {kind} failed for '{label}' (exit {}).\n\
-                     {detail}\n\
-                     Solution: run `{retry}` in {} for the full output.",
-                    output.status.code().unwrap_or(-1),
-                    project_root.display(),
-                ),
-            );
-            return;
-        }
+            if progress.active() {
+                progress.end(format!("dbt {kind} succeeded for '{label}'"));
+            } else {
+                link.show_message(
+                    message_type::INFO,
+                    format!("dbt {kind} succeeded for '{label}'."),
+                );
+            }
 
-        if progress.active() {
-            progress.end(format!("dbt {kind} succeeded for '{label}'"));
-        } else {
-            link.show_message(
-                message_type::INFO,
-                format!("dbt {kind} succeeded for '{label}'."),
-            );
+            if let Some((refresh_tx, root)) = refresh {
+                let _ = refresh_tx.send(root);
+            }
+            if kind == "compile" {
+                open_compiled(&link, &project_root, &project_name, &model_path);
+            }
         }
-
-        if let Some((refresh_tx, root)) = refresh {
-            let _ = refresh_tx.send(root);
-        }
-        if kind == "compile" {
-            open_compiled(&link, &project_root, &project_name, &model_path);
-        }
-    });
+        .instrument(span),
+    );
 }
 
 /// After a successful compile: locate target/compiled/<project>/<model path>
