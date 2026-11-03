@@ -527,6 +527,31 @@ fn full_session() {
         "{versioned}"
     );
 
+    // 6c¹. compiledSql: content over the wire while the fake file exists;
+    // a model dbt never compiled answers nulls
+    let compiled = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.compiledSql",
+                            "arguments": [{ "model": "customers" }] }),
+    );
+    let c = &compiled["result"];
+    assert_eq!(c["model"], "customers", "{c}");
+    assert_eq!(c["content"], "select 1 as id\n", "{c}");
+    assert!(
+        c["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("target/compiled/jaffle_shop/models/customers.sql")),
+        "{c}"
+    );
+    let uncompiled = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.compiledSql",
+                            "arguments": [{ "model": "orders" }] }),
+    );
+    let u = &uncompiled["result"];
+    assert_eq!(u["uri"], serde_json::Value::Null, "{u}");
+    assert_eq!(u["content"], serde_json::Value::Null, "{u}");
+
     // 6c². relation: the fixture's duckdb target (path jaffle_shop.duckdb,
     // schema default main) frames the model's relation
     let relation = lsp.request(

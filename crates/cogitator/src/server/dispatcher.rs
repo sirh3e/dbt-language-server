@@ -425,6 +425,16 @@ impl Dispatcher {
                 self.send(&ResultResponse::new(req.id, result));
                 return;
             }
+            "dbt.compiledSql" => {
+                let model = arg.get("model").and_then(|m| m.as_str());
+                let ctx = self.snapshot();
+                let (result, warning) = super::compiled::compiled_sql(&ctx, &uri, model);
+                if let Some(text) = warning {
+                    self.show_message(cogitator_lsp::message_type::WARNING, text);
+                }
+                self.send(&ResultResponse::new(req.id, result));
+                return;
+            }
             "dbt.relation" => {
                 let ctx = self.snapshot();
                 let cfg = self.profiles.lock().expect("profiles config lock").clone();

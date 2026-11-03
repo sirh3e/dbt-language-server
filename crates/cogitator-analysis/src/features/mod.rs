@@ -2,6 +2,7 @@
 //! context snapshot and a parsed document — the dispatcher serializes
 //! (functional core / imperative shell, 05 §3).
 
+mod compiled;
 mod completion;
 mod definition;
 mod diagnostics;
@@ -17,6 +18,7 @@ mod signature;
 mod structure;
 mod tests_nav;
 
+pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};
 pub use definition::{definition, go_to_schema};
 pub use diagnostics::dangling_ref_diagnostics;

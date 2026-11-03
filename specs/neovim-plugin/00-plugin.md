@@ -103,6 +103,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
 | `dbt.modelInfo` | `{model, uri, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
 | `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
+| `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the 2 MiB wire cap |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt
@@ -113,6 +114,12 @@ Custom `generate_schema_name`/`generate_database_name` macros and
 `models:` config trees (`+schema`/`+database`/`+alias` in
 dbt_project.yml) are **not** evaluated. Unresolvable parts are `null` and
 left out of the dot-joined `relation` string.
+
+`dbt.compiledSql` takes `{uri?, model?}` (`model` wins, like
+`dbt.modelInfo`) and serves the compiled file's text so clients need no
+filesystem path math; `uri`/`content` are `null` when dbt has not written
+`target/compiled/…` yet, and `content` alone is `null` (with a WARNING
+message) past the 2 MiB cap — open the `uri` directly then.
 
 `workspace/symbol` additionally understands `tag:x` (models carrying tag
 x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`) and

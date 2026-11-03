@@ -3,6 +3,7 @@
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
 mod commands;
+mod compiled;
 mod diagnostics;
 mod dispatcher;
 mod fusion;
