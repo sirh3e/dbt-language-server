@@ -20,6 +20,10 @@ use super::{file_uri, model_name_from_uri, DbtContext};
 pub struct ModelInfo {
     pub model: String,
     pub uri: String,
+    /// YAML description ("" when undocumented) and tags — for the
+    /// explorer's info tab, so no extra round trips are needed.
+    pub description: String,
+    pub tags: Vec<String>,
     pub upstream: Vec<GraphEntry>,
     pub downstream: Vec<GraphEntry>,
     pub versions: Option<ModelVersions>,
@@ -72,6 +76,8 @@ pub fn model_info(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Optio
 
     Some(ModelInfo {
         uri: file_uri(&details.uri),
+        description: details.description.clone(),
+        tags: details.tags.clone(),
         upstream: upstream.into_iter().map(|n| graph_entry(ctx, n)).collect(),
         downstream: downstream
             .into_iter()

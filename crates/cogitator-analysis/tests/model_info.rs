@@ -139,3 +139,17 @@ fn compiled_path_math_is_pure() {
         Path::new("/work/proj/target/compiled/jaffle/elsewhere/m.sql")
     );
 }
+
+#[test]
+fn info_carries_description_and_tags() {
+    let ctx = ctx();
+    let info =
+        serde_json::to_value(model_info(&ctx, "", Some("customers")).expect("info")).unwrap();
+    assert!(
+        info["tags"]
+            .as_array()
+            .is_some_and(|t| t.iter().any(|tag| tag == "nightly")),
+        "{info}"
+    );
+    assert!(info["description"].is_string(), "{info}");
+}

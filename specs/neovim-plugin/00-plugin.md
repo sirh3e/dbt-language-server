@@ -121,7 +121,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.goToTests` | `null` | showDocument to the first test + INFO list |
 | `dbt.status` | server/project/profiles/refresh snapshot | none |
 | `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
-| `dbt.modelInfo` | `{model, uri, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
+| `dbt.modelInfo` | `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
 | `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the 2 MiB wire cap |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
@@ -192,6 +192,7 @@ everything the browser's preview needs in one round trip:
 
 ```json
 { "model": "customer_orders", "uri": "file:///…/customer_orders.sql",
+  "description": "", "tags": [],
   "upstream":   [{ "name": "orders", "kind": "model", "uri": "file:///…" }],
   "downstream": [],
   "versions": { "latestVersion": 2,
