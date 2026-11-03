@@ -617,6 +617,7 @@ dependencies = [
  "cc",
  "cogitator-dialects",
  "cogitator-error",
+ "cogitator-lsp",
  "cogitator-parser",
  "pretty_assertions",
  "rstest",

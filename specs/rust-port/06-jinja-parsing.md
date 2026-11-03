@@ -237,3 +237,16 @@ src/analysis/parser/ts/             # phase 2: ffi.rs, parser.rs, queries/*.scm
 third_party/                        # phase 2: vendored grammar C sources, pinned
 build.rs                            # phase 2: cc compilation of grammar sources
 ```
+
+## Addendum: §3.4 incremental reparse (resolved)
+
+The `DocumentParser` trait gains a default-implemented
+`parse_incremental(uri, text, dialect, edits)` + `forget(uri)` seam;
+`Documents::change` folds each ranged didChange into an `AppliedEdit`
+(byte offsets + (row, byte-column) points — exactly tree-sitter's
+InputEdit shape). The tree-sitter backend keeps the last `Tree` per
+open uri and feeds it back through `tree.edit()` for documents past a
+32 KiB gate; smaller documents, full-text changes and unresolvable
+positions take the full-parse path unchanged. Equivalence is pinned by
+a scripted-edit test: the incremental token stream must equal a fresh
+full parse of the same final text.

@@ -329,3 +329,48 @@ pub fn apply_incremental_change(text: &str, range: cogitator_lsp::Range, new_tex
     }
     result
 }
+
+/// Byte offset of a (line, byte-column) position; None when the
+/// position does not sit on a char boundary inside the text.
+fn byte_offset(text: &str, line: u32, character: u32) -> Option<usize> {
+    let mut offset = 0usize;
+    for (i, l) in text.split('\n').enumerate() {
+        if i as u32 == line {
+            let character = character as usize;
+            return (character <= l.len() && l.is_char_boundary(character))
+                .then_some(offset + character);
+        }
+        offset += l.len() + 1;
+    }
+    None
+}
+
+/// The tree-sitter-shaped edit record for one ranged didChange applied
+/// to `before` (06 §3.4). None (→ full reparse) when positions do not
+/// resolve cleanly.
+pub fn edit_for_change(
+    before: &str,
+    range: cogitator_lsp::Range,
+    new_text: &str,
+) -> Option<cogitator_parser::AppliedEdit> {
+    let start_byte = byte_offset(before, range.start.line, range.start.character)?;
+    let old_end_byte = byte_offset(before, range.end.line, range.end.character)?;
+    if old_end_byte < start_byte {
+        return None;
+    }
+    let newlines = new_text.matches('\n').count() as u32;
+    let last_len = new_text.rsplit('\n').next().unwrap_or("").len() as u32;
+    let new_end_point = if newlines == 0 {
+        (range.start.line, range.start.character + last_len)
+    } else {
+        (range.start.line + newlines, last_len)
+    };
+    Some(cogitator_parser::AppliedEdit {
+        start_byte,
+        old_end_byte,
+        new_end_byte: start_byte + new_text.len(),
+        start_point: (range.start.line, range.start.character),
+        old_end_point: (range.end.line, range.end.character),
+        new_end_point,
+    })
+}

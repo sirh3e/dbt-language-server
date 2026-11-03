@@ -110,8 +110,8 @@ names what already exists in the codebase.
       vendored dbt-labs jinja2 grammar segments documents error-tolerantly —
       broken constructs degrade locally instead of staling the whole document
       — and is the default `DocumentParser` (fallback: `--no-tree-sitter`).
-      Still open from 06 §3.4: incremental `tree.edit()` reparse (today each
-      parse is a full, µs-scale reparse). The grammar's deliberate
+      06 §3.4 incremental `tree.edit()` reparse: DONE for documents past a
+      32 KiB gate (equivalence-tested against full reparse). The grammar's deliberate
       incompleteness (dbt-extractor subset) is documented in
       third_party/tree-sitter-jinja2/README — no regen script exists;
       regenerating parser.c needs the tree-sitter CLI (ABI 14).

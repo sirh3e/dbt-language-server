@@ -70,13 +70,15 @@ impl Documents {
         self.docs.get(uri).cloned()
     }
 
-    /// textDocument/didClose (P1): forget the document.
+    /// textDocument/didClose (P1): forget the document (and whatever
+    /// per-document state the parser backend keeps).
     pub fn close(&mut self, uri: &str) {
         self.docs.remove(uri);
+        self.parser.forget(uri);
     }
 
     pub fn open(&mut self, uri: String, text: &str, dialect: &Dialect) {
-        let parsed = self.parse_or_last_good(None, text, dialect);
+        let parsed = self.parse_or_last_good(&uri, None, text, dialect, &[]);
         self.generations += 1;
         self.docs.insert(
             uri,
@@ -94,10 +96,18 @@ impl Documents {
         let Some(doc) = self.docs.get(uri) else {
             return;
         };
+        // fold the edits, collecting tree-sitter-shaped records while
+        // every change stays ranged (a full-text change resets them)
+        let mut edits: Vec<cogitator_parser::AppliedEdit> = Vec::new();
         let text = changes.iter().fold(doc.text.to_string(), |text, change| {
             if change.range.is_zero() {
+                edits.clear();
                 change.text.to_string()
             } else {
+                match util::edit_for_change(&text, change.range, &change.text) {
+                    Some(edit) => edits.push(edit),
+                    None => edits.clear(),
+                }
                 util::apply_incremental_change(&text, change.range, &change.text)
             }
         });
@@ -108,7 +118,7 @@ impl Documents {
             Ok(owned) => owned.parsed,
             Err(shared) => shared.parsed.clone(),
         });
-        let parsed = self.parse_or_last_good(previous, &text, dialect);
+        let parsed = self.parse_or_last_good(uri, previous, &text, dialect, &edits);
         self.generations += 1;
         self.docs.insert(
             uri.to_string(),
@@ -122,11 +132,13 @@ impl Documents {
 
     fn parse_or_last_good(
         &self,
+        uri: &str,
         previous: Option<ParsedDocument>,
         text: &str,
         dialect: &Dialect,
+        edits: &[cogitator_parser::AppliedEdit],
     ) -> ParsedDocument {
-        match self.parser.parse(text, dialect) {
+        match self.parser.parse_incremental(uri, text, dialect, edits) {
             Ok(parsed) => parsed,
             Err(err) => {
                 tracing::trace!(%err, "parse failed; serving last good document");
@@ -147,7 +159,7 @@ impl Documents {
                 Ok(owned) => owned.parsed,
                 Err(shared) => shared.parsed.clone(),
             });
-            let parsed = self.parse_or_last_good(previous, &text, dialect);
+            let parsed = self.parse_or_last_good(&uri, previous, &text, dialect, &[]);
             self.generations += 1;
             self.docs.insert(
                 uri,

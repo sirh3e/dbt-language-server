@@ -12,11 +12,16 @@
 mod ffi;
 mod sql_structure;
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use cogitator_dialects::Dialect;
 use cogitator_error::Result;
-use cogitator_parser::{backend, DocumentParser, LineTable, ParsedDocument, Token};
+use cogitator_parser::{backend, AppliedEdit, DocumentParser, LineTable, ParsedDocument, Token};
+
+/// Below this size a full reparse is µs-scale anyway; the incremental
+/// path (06 §3.4) only engages past it — risk stays bounded.
+const INCREMENTAL_MIN_BYTES: usize = 32 * 1024;
 
 /// Phase-2 `DocumentParser` (06 §3.5). Unlike `JinjaSqlParser`, `parse`
 /// practically never fails: malformed regions contribute no tokens instead
@@ -26,6 +31,9 @@ pub struct TreeSitterParser {
     /// tree-sitter-sequel for SQL *structure* only (06 §3.6); `None`
     /// (grammar failed to load) just means token-based fallbacks.
     sql_parser: Option<Mutex<tree_sitter::Parser>>,
+    /// Last tree per open document (06 §3.4) — fed back as the old
+    /// tree on big ranged edits, dropped on didClose via `forget`.
+    trees: Mutex<HashMap<String, tree_sitter::Tree>>,
 }
 
 impl TreeSitterParser {
@@ -40,7 +48,24 @@ impl TreeSitterParser {
         Ok(TreeSitterParser {
             parser: Mutex::new(parser),
             sql_parser: sql_structure::new_sql_parser(),
+            trees: Mutex::new(HashMap::new()),
         })
+    }
+}
+
+impl TreeSitterParser {
+    /// The shared tail of every parse: tokens from the tree, SQL
+    /// structure from tree-sitter-sequel.
+    fn document_from(
+        &self,
+        tree: &tree_sitter::Tree,
+        text: &str,
+        dialect: &Dialect,
+    ) -> ParsedDocument {
+        let mut doc = parse_with_tree(tree, text, dialect);
+        let regions = collect_regions(tree.root_node(), text);
+        doc.sql_structure = sql_structure::collect(&self.sql_parser, text, &regions);
+        doc
     }
 }
 
@@ -52,16 +77,73 @@ impl DocumentParser for TreeSitterParser {
             .ok()
             .and_then(|mut parser| parser.parse(text, None));
         match tree {
-            Some(tree) => {
-                let mut doc = parse_with_tree(&tree, text, dialect);
-                let regions = collect_regions(tree.root_node(), text);
-                doc.sql_structure = sql_structure::collect(&self.sql_parser, text, &regions);
-                Ok(doc)
-            }
+            Some(tree) => Ok(self.document_from(&tree, text, dialect)),
             // parse() returns None only on cancellation/timeout; fall back to
             // the phase-1 pipeline rather than dropping the request.
             None => backend_parse(text, dialect),
         }
+    }
+
+    /// 06 §3.4: feed the previous tree + InputEdits back into
+    /// tree-sitter for documents past the size gate; everything else is
+    /// a full parse. Either way the fresh tree is remembered per uri.
+    fn parse_incremental(
+        &self,
+        uri: &str,
+        text: &str,
+        dialect: &Dialect,
+        edits: &[AppliedEdit],
+    ) -> Result<ParsedDocument> {
+        let old_tree = if !edits.is_empty() && text.len() > INCREMENTAL_MIN_BYTES {
+            self.trees
+                .lock()
+                .ok()
+                .and_then(|trees| trees.get(uri).cloned())
+                .map(|mut tree| {
+                    for edit in edits {
+                        tree.edit(&input_edit(edit));
+                    }
+                    tree
+                })
+        } else {
+            None
+        };
+        let tree = self
+            .parser
+            .lock()
+            .ok()
+            .and_then(|mut parser| parser.parse(text, old_tree.as_ref()));
+        match tree {
+            Some(tree) => {
+                let doc = self.document_from(&tree, text, dialect);
+                if let Ok(mut trees) = self.trees.lock() {
+                    trees.insert(uri.to_string(), tree);
+                }
+                Ok(doc)
+            }
+            None => backend_parse(text, dialect),
+        }
+    }
+
+    fn forget(&self, uri: &str) {
+        if let Ok(mut trees) = self.trees.lock() {
+            trees.remove(uri);
+        }
+    }
+}
+
+fn input_edit(edit: &AppliedEdit) -> tree_sitter::InputEdit {
+    let point = |(row, column): (u32, u32)| tree_sitter::Point {
+        row: row as usize,
+        column: column as usize,
+    };
+    tree_sitter::InputEdit {
+        start_byte: edit.start_byte,
+        old_end_byte: edit.old_end_byte,
+        new_end_byte: edit.new_end_byte,
+        start_position: point(edit.start_point),
+        old_end_position: point(edit.old_end_point),
+        new_end_position: point(edit.new_end_point),
     }
 }
 

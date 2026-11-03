@@ -191,6 +191,37 @@ pub trait DocumentParser {
     /// Full parse. Errors mean "malformed mid-edit input" — the caller keeps
     /// serving the previous good `ParsedDocument` (05 §4 step 1).
     fn parse(&self, text: &str, dialect: &Dialect) -> Result<ParsedDocument>;
+
+    /// The incremental seam (06 §3.4): a backend MAY reuse per-document
+    /// state keyed by `uri` and the edits that produced `text`. The
+    /// default ignores both — full reparse, identical behavior.
+    fn parse_incremental(
+        &self,
+        uri: &str,
+        text: &str,
+        dialect: &Dialect,
+        edits: &[AppliedEdit],
+    ) -> Result<ParsedDocument> {
+        let _ = (uri, edits);
+        self.parse(text, dialect)
+    }
+
+    /// Drop any per-document state for `uri` (didClose).
+    fn forget(&self, uri: &str) {
+        let _ = uri;
+    }
+}
+
+/// One applied didChange edit in byte + (row, byte-column) coordinates —
+/// exactly what tree-sitter's InputEdit wants (06 §3.4).
+#[derive(Debug, Clone, Copy)]
+pub struct AppliedEdit {
+    pub start_byte: usize,
+    pub old_end_byte: usize,
+    pub new_end_byte: usize,
+    pub start_point: (u32, u32),
+    pub old_end_point: (u32, u32),
+    pub new_end_point: (u32, u32),
 }
 
 pub use pipeline::JinjaSqlParser;

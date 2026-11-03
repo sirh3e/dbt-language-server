@@ -17,5 +17,6 @@ tree-sitter-sequel = "0.3"
 cc = { workspace = true }
 
 [dev-dependencies]
+cogitator-lsp = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
