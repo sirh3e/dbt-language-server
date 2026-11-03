@@ -131,11 +131,17 @@ properties the live side lacks:
 
 - Crate `tree-sitter` — Rust bindings over the C runtime (`libtree-sitter`),
   already FFI-based; the runtime's C sources build via the crate.
-- Grammars are **vendored C sources** in-repo (e.g. `third_party/tree-sitter-jinja2/`,
-  `third_party/tree-sitter-sql/`): `src/parser.c` (+ `scanner.c` where the grammar
-  has one), compiled in `build.rs` with the `cc` crate — which, like all C/C++ in
-  this project, runs through the Zig toolchain (`CC="zig cc"`, 07 §5) — and linked
-  through the C ABI:
+- Grammars are **vendored C sources** in-repo (e.g. `third_party/tree-sitter-jinja2/`):
+  `src/parser.c` (+ `scanner.c` where the grammar has one), compiled in `build.rs`
+  with the `cc` crate — which, like all C/C++ in this project, runs through the
+  Zig toolchain (`CC="zig cc"`, 07 §5) — and linked through the C ABI.
+  **Amendment:** a grammar whose generated `parser.c` is disproportionately large
+  (tree-sitter-sql's is ~40 MB) comes from crates.io instead of `third_party/`
+  (the `tree-sitter-sequel` crate — same C source, built by cargo through the
+  same `cc` path); vendoring stays the rule for small grammars. Each vendored
+  grammar's `third_party/<name>/README` records provenance AND its known
+  limitations (tree-sitter-jinja2 is a deliberate dbt-extractor subset —
+  acceptable because the tree only segments; minijinja tokenizes every region).
 
 ```rust
 unsafe extern "C" { fn tree_sitter_jinja2() -> *const (); }
