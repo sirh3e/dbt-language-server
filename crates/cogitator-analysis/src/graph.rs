@@ -43,6 +43,9 @@ pub enum EdgeKind {
 pub struct ProjectGraph {
     graph: StableDiGraph<NodeData, EdgeKind>,
     by_name: HashMap<(NodeKind, String), NodeIndex>,
+    /// Memoized DAG depths: the graph is immutable after build, and
+    /// dbt.projectGraph used to recompute every layer on every call.
+    depths: std::sync::OnceLock<HashMap<NodeIndex, usize>>,
 }
 
 impl ProjectGraph {
@@ -197,15 +200,20 @@ impl ProjectGraph {
             best
         }
 
-        let mut memo = HashMap::new();
+        let depths = self.depths.get_or_init(|| {
+            let mut memo = HashMap::new();
+            for i in self.graph.node_indices() {
+                if self.graph[i].kind != NodeKind::Macro {
+                    depth(&self.graph, i, &mut memo, &mut Vec::new());
+                }
+            }
+            memo
+        });
         let mut nodes: Vec<(&NodeData, usize)> = self
             .graph
             .node_indices()
             .filter(|&i| self.graph[i].kind != NodeKind::Macro)
-            .map(|i| {
-                let d = depth(&self.graph, i, &mut memo, &mut Vec::new());
-                (&self.graph[i], d)
-            })
+            .map(|i| (&self.graph[i], depths.get(&i).copied().unwrap_or(0)))
             .collect();
         nodes.sort_by(|a, b| (a.1, &a.0.name).cmp(&(b.1, &b.0.name)));
 

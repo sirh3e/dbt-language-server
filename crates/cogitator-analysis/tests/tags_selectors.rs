@@ -102,3 +102,13 @@ fn project_graph_layers_columns_edges() {
         "{edges:?}"
     );
 }
+
+#[test]
+fn dag_memo_is_stable_across_calls() {
+    let ctx = ctx();
+    let first =
+        serde_json::to_value(cogitator_analysis::features::project_graph_json(&ctx)).unwrap();
+    let second =
+        serde_json::to_value(cogitator_analysis::features::project_graph_json(&ctx)).unwrap();
+    assert_eq!(first, second);
+}
