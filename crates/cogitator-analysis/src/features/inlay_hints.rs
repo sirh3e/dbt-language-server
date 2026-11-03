@@ -76,6 +76,7 @@ fn macro_param_hints(
     let mut depth = 0usize;
     let mut arg = 0usize;
     let mut at_arg_start = true;
+    let mut arg_named = false;
     let mut out = Vec::new();
     while let Some(t) = tokens.get(j) {
         match t.kind {
@@ -85,32 +86,40 @@ fn macro_param_hints(
             TokenKind::Symbol(',') if depth == 0 => {
                 arg += 1;
                 at_arg_start = true;
-            }
-            TokenKind::Symbol('=') => {
-                // named argument: drop the hint we just placed for it
-                if let Some(last) = out.last() {
-                    let _: &InlayHint = last;
-                    out.pop();
-                }
+                arg_named = false;
             }
             TokenKind::JinjaClose(_) => break,
             _ if at_arg_start => {
                 at_arg_start = false;
-                if let Some(param) = params.get(arg) {
-                    out.push(InlayHint {
-                        position: Position {
-                            line: t.line,
-                            character: t.column.saturating_sub(if t.kind == TokenKind::StringLit {
-                                1
-                            } else {
-                                0
-                            }),
-                        },
-                        label: format!("{}:", param.name),
-                        kind: Some(inlay_hint_kind::PARAMETER),
-                        padding_left: false,
-                        padding_right: true,
-                    });
+                // named arguments (`last_name='b'`) carry their own name:
+                // `=` never tokenizes, so read the raw text to the next
+                // argument boundary instead
+                let boundary = tokens[j..]
+                    .iter()
+                    .find(|n| {
+                        matches!(n.kind, TokenKind::Symbol(',') | TokenKind::Symbol(')'))
+                            || matches!(n.kind, TokenKind::JinjaClose(_))
+                    })
+                    .map(|n| n.start as usize)
+                    .unwrap_or(doc.parsed.text.len());
+                if doc.parsed.text[t.start as usize..boundary].contains('=') {
+                    arg_named = true;
+                }
+                if !arg_named {
+                    if let Some(param) = params.get(arg) {
+                        out.push(InlayHint {
+                            position: Position {
+                                line: t.line,
+                                character: t.column.saturating_sub(
+                                    if t.kind == TokenKind::StringLit { 1 } else { 0 },
+                                ),
+                            },
+                            label: format!("{}:", param.name),
+                            kind: Some(inlay_hint_kind::PARAMETER),
+                            padding_left: false,
+                            padding_right: true,
+                        });
+                    }
                 }
             }
             _ => {}

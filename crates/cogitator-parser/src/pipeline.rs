@@ -234,7 +234,12 @@ pub fn collect_ctes(text: &str, tokens: &[Token]) -> std::collections::HashMap<B
         match tokens[i].kind {
             TokenKind::Word(Keyword::WITH) => {
                 if let Some(next) = tokens.get(i + 1) {
-                    if next.kind == TokenKind::Word(Keyword::NoKeyword) {
+                    // ANY word can name a CTE — plenty of natural names
+                    // (totals, final, …) are keywords in some dialect;
+                    // the `with NAME as (` position disambiguates
+                    if matches!(next.kind, TokenKind::Word(_))
+                        && next.kind != TokenKind::Word(Keyword::AS)
+                    {
                         active = true;
                         map.insert(Box::from(lit(next)), *next);
                         let mut j = i + 1;
@@ -259,7 +264,9 @@ pub fn collect_ctes(text: &str, tokens: &[Token]) -> std::collections::HashMap<B
                 if paren_count == 0 {
                     if matches!(kind_at(tokens, i + 1), Some(TokenKind::Symbol(','))) {
                         if let Some(next) = tokens.get(i + 2) {
-                            if next.kind == TokenKind::Word(Keyword::NoKeyword) {
+                            if matches!(next.kind, TokenKind::Word(_))
+                                && next.kind != TokenKind::Word(Keyword::AS)
+                            {
                                 map.insert(Box::from(lit(next)), *next);
                                 // `name as (` after the comma re-opens.
                                 let mut j = i + 2;

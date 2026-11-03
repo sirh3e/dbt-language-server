@@ -98,3 +98,71 @@ fn macro_markers(tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
 pub(crate) fn kind_at(tokens: &[Token], i: usize) -> Option<TokenKind> {
     tokens.get(i).map(|t| t.kind)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::pipeline::parse_document;
+    use crate::TokenKind;
+    use cogitator_dialects::Dialect;
+
+    fn kinds(text: &str) -> Vec<(TokenKind, String)> {
+        let doc = parse_document(text, &Dialect::default()).unwrap();
+        doc.tokens
+            .iter()
+            .map(|t| (t.kind, doc.literal(t).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn one_arg_ref_marks_the_model() {
+        let tokens = kinds("select 1 from {{ ref('customers') }}");
+        assert!(
+            tokens.contains(&(TokenKind::Ref, "customers".into())),
+            "{tokens:?}"
+        );
+    }
+
+    #[test]
+    fn two_arg_ref_marks_package_then_model() {
+        let tokens = kinds("select 1 from {{ ref('pkg', 'customers') }}");
+        assert!(
+            tokens.contains(&(TokenKind::Package, "pkg".into())),
+            "{tokens:?}"
+        );
+        assert!(
+            tokens.contains(&(TokenKind::Ref, "customers".into())),
+            "{tokens:?}"
+        );
+        // the package string must NOT be the Ref (the pre-fix bug)
+        assert!(
+            !tokens.contains(&(TokenKind::Ref, "pkg".into())),
+            "{tokens:?}"
+        );
+    }
+
+    #[test]
+    fn source_marks_name_then_table() {
+        let tokens = kinds("select 1 from {{ source('stripe', 'payments') }}");
+        assert!(
+            tokens.contains(&(TokenKind::SourceName, "stripe".into())),
+            "{tokens:?}"
+        );
+        assert!(
+            tokens.contains(&(TokenKind::SourceTable, "payments".into())),
+            "{tokens:?}"
+        );
+    }
+
+    #[test]
+    fn qualified_macro_marks_package_and_macro() {
+        let tokens = kinds("{{ dbt_utils.star(ref('x')) }}");
+        assert!(
+            tokens.contains(&(TokenKind::Package, "dbt_utils".into())),
+            "{tokens:?}"
+        );
+        assert!(
+            tokens.contains(&(TokenKind::Macro, "star".into())),
+            "{tokens:?}"
+        );
+    }
+}

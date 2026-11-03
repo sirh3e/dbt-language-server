@@ -83,3 +83,58 @@ impl CodeAction {
             .any(|k| k.is_empty() || kind.starts_with(k.as_str()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn quickfix() -> CodeAction {
+        CodeAction::quickfix(
+            "Change".into(),
+            Diagnostic::plain(
+                Range::default(),
+                "x".into(),
+                super::super::results::diagnostic_severity::WARNING,
+                "c",
+                "s",
+            ),
+            WorkspaceEdit {
+                document_changes: Vec::new(),
+            },
+        )
+    }
+
+    #[test]
+    fn kind_filtering_matrix() {
+        let command = CodeAction::command_only(
+            "dbt run".into(),
+            Command {
+                title: "dbt run".into(),
+                command: "dbt.run".into(),
+                arguments: Vec::new(),
+            },
+        );
+        let fix = quickfix();
+        // no filter: everything passes
+        assert!(command.allowed_by(None));
+        assert!(fix.allowed_by(None));
+        // empty filter list = no filter
+        assert!(command.allowed_by(Some(&[])));
+        // kind filter: kind-less commands drop, quickfixes prefix-match
+        let only = vec!["quickfix".to_string()];
+        assert!(!command.allowed_by(Some(&only)));
+        assert!(fix.allowed_by(Some(&only)));
+        let refactor = vec!["refactor".to_string()];
+        assert!(!fix.allowed_by(Some(&refactor)));
+        let everything = vec![String::new()];
+        assert!(fix.allowed_by(Some(&everything)));
+    }
+
+    #[test]
+    fn wire_shape_omits_unset_members() {
+        let json = serde_json::to_value(quickfix()).unwrap();
+        assert_eq!(json["kind"], "quickfix");
+        assert!(json.get("command").is_none(), "{json}");
+        assert!(json["diagnostics"].is_array(), "{json}");
+    }
+}
