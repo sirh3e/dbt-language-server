@@ -982,11 +982,7 @@ impl Dispatcher {
             );
             self.send(&ResultResponse::new(
                 id,
-                serde_json::json!({
-                    "path": serde_json::Value::Null,
-                    "searched": searched,
-                    "profiles": [],
-                }),
+                cogitator_analysis::profiles::ProfilesReport::not_found(searched),
             ));
             return;
         };
@@ -1008,11 +1004,11 @@ impl Dispatcher {
         } else {
             cfg.target.clone()
         };
-        let mut result = inventory.to_json();
-        result["searched"] = serde_json::json!(searched);
-        result["activeProfile"] = serde_json::json!(active_profile);
-        result["activeTarget"] = serde_json::json!(active_target);
-        self.send(&ResultResponse::new(id, result));
+        let mut report = inventory.report();
+        report.searched = searched;
+        report.active_profile = Some(active_profile);
+        report.active_target = Some(active_target);
+        self.send(&ResultResponse::new(id, report));
     }
 
     /// `dbt.setTarget`: switch the active profile/target (allowlist-checked),

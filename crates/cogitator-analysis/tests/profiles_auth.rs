@@ -149,7 +149,7 @@ fn report_json_never_contains_secret_values() {
         "      account: acc\n      user: u\n      password: hunter2-super-secret\n      token: tok-abc123\n",
     );
     let inv = inventory(Path::new(PATH), &yaml, &ProfileScope::All);
-    let rendered = inv.to_json().to_string();
+    let rendered = serde_json::to_string(&inv.report()).unwrap();
     assert!(!rendered.contains("hunter2-super-secret"), "{rendered}");
     assert!(!rendered.contains("tok-abc123"), "{rendered}");
     assert!(rendered.contains("\"method\":\"password\""), "{rendered}");
