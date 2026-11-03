@@ -789,16 +789,25 @@ impl Dispatcher {
                 let new_uri = cogitator_lsp::fs_path_to_uri(&path);
                 self.send_request(
                     "workspace/applyEdit",
-                    serde_json::json!({
-                        "label": "Extract model YAML",
-                        "edit": { "documentChanges": [
-                            { "kind": "create", "uri": new_uri },
-                            {
-                                "textDocument": { "uri": new_uri, "version": serde_json::Value::Null },
-                                "edits": [ { "range": cogitator_lsp::Range::default(), "newText": content } ],
-                            },
-                        ]},
-                    }),
+                    cogitator_lsp::ApplyWorkspaceEditParams {
+                        label: "Extract model YAML".to_string(),
+                        edit: cogitator_lsp::WorkspaceEdit {
+                            document_changes: vec![
+                                cogitator_lsp::DocumentChange::Create(
+                                    cogitator_lsp::CreateFile::new(new_uri.clone()),
+                                ),
+                                cogitator_lsp::DocumentChange::Edit(
+                                    cogitator_lsp::TextDocumentEdit::new(
+                                        new_uri.clone(),
+                                        vec![cogitator_lsp::TextEdit {
+                                            range: cogitator_lsp::Range::default(),
+                                            new_text: content,
+                                        }],
+                                    ),
+                                ),
+                            ],
+                        },
+                    },
                 );
                 self.send_request(
                     "window/showDocument",
@@ -824,19 +833,26 @@ impl Dispatcher {
             }) => {
                 let schema_uri = cogitator_lsp::fs_path_to_uri(&schema_path);
                 let selection = edits.first().map(|(range, _)| *range);
-                let edits_json: Vec<serde_json::Value> = edits
+                let text_edits: Vec<cogitator_lsp::TextEdit> = edits
                     .iter()
-                    .map(|(range, text)| serde_json::json!({ "range": range, "newText": text }))
+                    .map(|(range, text)| cogitator_lsp::TextEdit {
+                        range: *range,
+                        new_text: text.clone(),
+                    })
                     .collect();
                 self.send_request(
                     "workspace/applyEdit",
-                    serde_json::json!({
-                        "label": format!("Add model version {next}"),
-                        "edit": { "documentChanges": [{
-                            "textDocument": { "uri": schema_uri, "version": serde_json::Value::Null },
-                            "edits": edits_json,
-                        }]},
-                    }),
+                    cogitator_lsp::ApplyWorkspaceEditParams {
+                        label: format!("Add model version {next}"),
+                        edit: cogitator_lsp::WorkspaceEdit {
+                            document_changes: vec![cogitator_lsp::DocumentChange::Edit(
+                                cogitator_lsp::TextDocumentEdit::new(
+                                    schema_uri.clone(),
+                                    text_edits,
+                                ),
+                            )],
+                        },
+                    },
                 );
                 self.send_request(
                     "window/showDocument",
@@ -920,43 +936,14 @@ impl Dispatcher {
         } else {
             "configured (validating or invalid)"
         };
-        let active_profile = if cfg.profile.is_empty() {
-            ctx.project.profile.clone()
-        } else {
-            cfg.profile.clone()
-        };
-        let dialect = ctx.dialect.as_str();
-        let result = serde_json::json!({
-            "server": {
-                "name": "cogitator",
-                "version": crate::VERSION,
-                "backend": info.backend,
-                "fusion": fusion,
-                "progressSupported": self.progress_supported.load(Ordering::Relaxed),
-            },
-            "project": {
-                "root": ctx.project_root.as_ref().map(|p| p.display().to_string()),
-                "name": ctx.project.name,
-                "dialect": if dialect.is_empty() { "generic (unresolved)" } else { dialect },
-                "models": ctx.model_detail_map.len(),
-                "sources": ctx.source_detail_map.len(),
-                "macroPackages": ctx.macro_detail_map.len(),
-                "graphNodes": ctx.graph.node_count(),
-                "graphEdges": ctx.graph.edge_count(),
-            },
-            "profiles": {
-                "activeProfile": active_profile,
-                "activeTarget": cfg.target,
-                "dirOverride": cfg.dir_override,
-            },
-            "refresh": {
-                "count": info.refreshes,
-                "lastMs": info.last_refresh_ms,
-                "cacheHits": info.cache_hits,
-                "cacheMisses": info.cache_misses,
-            },
-        });
-        self.send(&ResultResponse::new(id, result));
+        let report = super::status::status_report(
+            &info,
+            &cfg,
+            &ctx,
+            fusion,
+            self.progress_supported.load(Ordering::Relaxed),
+        );
+        self.send(&ResultResponse::new(id, report));
     }
 
     /// `dbt.profiles`: the redacted inventory within the allowed scope, the
@@ -1122,7 +1109,10 @@ impl Dispatcher {
         self.show_message(level, message);
         self.send(&ResultResponse::new(
             id,
-            serde_json::json!({ "profile": profile_name, "target": target }),
+            super::status::SetTargetResult {
+                profile: profile_name,
+                target,
+            },
         ));
     }
 

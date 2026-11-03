@@ -37,7 +37,9 @@ impl Progress {
         if let Some(link) = &self.link {
             link.progress_value(
                 &self.token,
-                serde_json::json!({ "kind": "end", "message": message.into() }),
+                cogitator_lsp::ProgressValue::End {
+                    message: message.into(),
+                },
             );
         }
     }
@@ -71,11 +73,15 @@ impl ClientLink {
             jsonrpc: "2.0",
             id,
             method: "window/workDoneProgress/create",
-            params: serde_json::json!({ "token": token }),
+            params: cogitator_lsp::WorkDoneProgressCreateParams {
+                token: token.clone(),
+            },
         });
         self.progress_value(
             &token,
-            serde_json::json!({ "kind": "begin", "title": title.into() }),
+            cogitator_lsp::ProgressValue::Begin {
+                title: title.into(),
+            },
         );
         Progress {
             link: Some(self.clone()),
@@ -83,12 +89,15 @@ impl ClientLink {
         }
     }
 
-    fn progress_value(&self, token: &str, value: serde_json::Value) {
-        self.send(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": "$/progress",
-            "params": { "token": token, "value": value },
-        }));
+    fn progress_value(&self, token: &str, value: cogitator_lsp::ProgressValue) {
+        self.send(&cogitator_lsp::Notification {
+            jsonrpc: "2.0",
+            method: "$/progress",
+            params: cogitator_lsp::ProgressParams {
+                token: token.to_string(),
+                value,
+            },
+        });
     }
 
     pub fn show_message(&self, message_type: i32, message: impl Into<String>) {

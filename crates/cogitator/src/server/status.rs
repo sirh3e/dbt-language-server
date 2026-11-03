@@ -1,0 +1,112 @@
+//! The dbt.status and dbt.setTarget wire payloads: pure assembly over the
+//! dispatcher's snapshots, so the report shape lives in one typed place.
+
+use cogitator_analysis::DbtContext;
+use serde::Serialize;
+
+use super::{ProfilesConfig, StatusInfo};
+
+#[derive(Debug, Serialize)]
+pub struct StatusReport {
+    pub server: ServerStatus,
+    pub project: ProjectStatus,
+    pub profiles: ProfilesStatus,
+    pub refresh: RefreshStatus,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerStatus {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub backend: &'static str,
+    pub fusion: &'static str,
+    pub progress_supported: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStatus {
+    /// `None` → `"root": null` (no dbt_project.yml found).
+    pub root: Option<String>,
+    pub name: String,
+    pub dialect: String,
+    pub models: usize,
+    pub sources: usize,
+    pub macro_packages: usize,
+    pub graph_nodes: usize,
+    pub graph_edges: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfilesStatus {
+    pub active_profile: String,
+    pub active_target: String,
+    pub dir_override: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshStatus {
+    pub count: u64,
+    pub last_ms: u64,
+    pub cache_hits: u64,
+    pub cache_misses: u64,
+}
+
+/// The dbt.setTarget confirmation.
+#[derive(Debug, Serialize)]
+pub struct SetTargetResult {
+    pub profile: String,
+    pub target: String,
+}
+
+pub fn status_report(
+    info: &StatusInfo,
+    cfg: &ProfilesConfig,
+    ctx: &DbtContext,
+    fusion: &'static str,
+    progress_supported: bool,
+) -> StatusReport {
+    let active_profile = if cfg.profile.is_empty() {
+        ctx.project.profile.clone()
+    } else {
+        cfg.profile.clone()
+    };
+    let dialect = ctx.dialect.as_str();
+    StatusReport {
+        server: ServerStatus {
+            name: "cogitator",
+            version: crate::VERSION,
+            backend: info.backend,
+            fusion,
+            progress_supported,
+        },
+        project: ProjectStatus {
+            root: ctx.project_root.as_ref().map(|p| p.display().to_string()),
+            name: ctx.project.name.clone(),
+            dialect: if dialect.is_empty() {
+                "generic (unresolved)".to_string()
+            } else {
+                dialect.to_string()
+            },
+            models: ctx.model_detail_map.len(),
+            sources: ctx.source_detail_map.len(),
+            macro_packages: ctx.macro_detail_map.len(),
+            graph_nodes: ctx.graph.node_count(),
+            graph_edges: ctx.graph.edge_count(),
+        },
+        profiles: ProfilesStatus {
+            active_profile,
+            active_target: cfg.target.clone(),
+            dir_override: cfg.dir_override.clone(),
+        },
+        refresh: RefreshStatus {
+            count: info.refreshes,
+            last_ms: info.last_refresh_ms,
+            cache_hits: info.cache_hits,
+            cache_misses: info.cache_misses,
+        },
+    }
+}
