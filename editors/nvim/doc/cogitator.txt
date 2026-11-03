@@ -54,6 +54,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtRun        dbt run for the current model       <leader>dr
   :DbtTest       dbt test for the current model      <leader>dt
   :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
+  :DbtParse      dbt parse; refreshes the context
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
@@ -113,13 +114,18 @@ the selected model in three tabs. Keys inside it:
   <Esc>          clear the filter first, close second
   q              close the browser
 
-The compiled tab reads `target/compiled/<project>/…` from disk and
-never runs dbt — when nothing is there it shows a hint to run
-|:DbtCompile| instead.
+The compiled tab fetches `dbt.compiledSql` from the server (which reads
+`target/compiled/<project>/…`) and never runs dbt — when nothing is
+there it shows a hint to run |:DbtCompile| instead.
 
 Code lenses on each model: "N downstream", "N upstream", "Go to schema",
 "Column lineage", "dbt run", "dbt test", "dbt compile"; macros get an
 informational "N call sites" lens (not executable).
+
+The same command set is served as code actions
+(|vim.lsp.buf.code_action|): on a `ref('x')` an "Open schema of 'x'"
+action is added, and inside a schema YAML the model entry under the
+cursor offers "Open model" and "Go to tests".
 
 dbt run/test/compile are asynchronous; progress and results arrive as
 notifications (`:messages` keeps them).

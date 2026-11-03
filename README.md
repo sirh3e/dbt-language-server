@@ -68,6 +68,12 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Model rename** (`textDocument/rename`): rewrites every dependent's
   `ref()`, updates the schema-YAML entry and renames the model file — one
   WorkspaceEdit over the project graph
+- **Code actions** (`textDocument/codeAction`): the executable lens set
+  at the cursor as command-only actions, so every stock LSP editor —
+  eglot, lsp-mode, Zed, plain Neovim — gets dbt workflows through its
+  native code-action UI with zero client wiring; on a `ref('x')` an
+  "Open schema of 'x'" action, and in schema YAML "Open model" / "Go to
+  tests" for the entry under the cursor
 - **Code lenses** per model: `N downstream` / `N upstream`, go to schema,
   column lineage, dbt run/test/compile, `N tests` (documented) or
   `Extract schema YAML` (undocumented); per macro: `N call sites`
@@ -95,16 +101,25 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   float over the whole project — every model in a searchable center
   list (`/` filters as you type), direct upstream/downstream in the
   side panes, and a preview below with the raw SQL, the compiled SQL
-  from `target/compiled/` and the model's versions + tests. Backed by
-  the editor-neutral `dbt.modelInfo` command (neighbors, versions,
-  tests and the compiled-SQL location in one round trip); the UI ships
-  only in the Neovim plugin.
+  (served by `dbt.compiledSql`) and the model's versions + tests.
+  Backed by the editor-neutral `dbt.modelInfo` command (neighbors,
+  versions, tests and the compiled-SQL location in one round trip);
+  the UI ships only in the Neovim plugin.
 
 **dbt workflow**
 
 - **dbt execution** from the editor (`dbt.run` / `dbt.test` /
-  `dbt.compile` with `--select` on the current model); a successful
-  compile opens the compiled SQL
+  `dbt.compile` with `--select` on the current model, plus project-wide
+  `dbt.parse`, `:DbtParse`); a successful compile opens the compiled
+  SQL, a successful parse refreshes the server's project context
+- **Compiled SQL over the wire** (`dbt.compiledSql`): the server reads
+  `target/compiled/…` itself and answers the text (2 MiB cap), so
+  editors need no filesystem path math
+- **Relation resolution** (`dbt.relation`): the
+  `database.schema.identifier` of the `source()` table, `ref()` target
+  or model under the cursor — source YAML coordinates with dbt's
+  defaults, plus database/schema from the active profiles target — the
+  building block for query-this-relation editor workflows
 - **dbt profiles from anywhere**: `--profiles-dir`,
   `initializationOptions.profilesDir`, `$DBT_PROFILES_DIR`,
   `<root>/profiles.yml`, `<root>/.dbt/profiles.yml`, `~/.dbt/profiles.yml`

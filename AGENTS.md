@@ -83,8 +83,15 @@ editor integrations live under `editors/`.
   dbt.modelGraph, dbt.profiles, dbt.setTarget, dbt.extractModelYaml,
   dbt.modelTests, dbt.goToTests, dbt.status, dbt.projectGraph,
   dbt.modelInfo (neighbors + versions + tests + compiledUri for the
-  Neovim-only :DbtBrowse). Every command takes one argument object
-  (`{uri, position?, …}`).
+  Neovim-only :DbtBrowse), dbt.relation (database.schema.identifier of
+  the source/ref/model under the cursor, dbt defaults only),
+  dbt.compiledSql (compiled SQL content, 2 MiB cap), dbt.parse
+  (project-wide, refreshes the context on success), dbt.openModel
+  (showDocument navigation for the YAML-side code actions). Every
+  command takes one argument object (`{uri, position?, …}`).
+- `textDocument/codeAction` serves the executable lens set as
+  command-only actions (shared truth: `lenses::model_commands`); the
+  completion capability advertises `triggerCharacters`.
 - `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
 - `$/progress` reports context refreshes and dbt runs when the client
   advertises window.workDoneProgress.

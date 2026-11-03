@@ -68,7 +68,11 @@ error.
 - `codeLensProvider: { resolveProvider: false }`
 - `executeCommandProvider.commands`:
   `dbt.goToSchema`, `dbt.columnLineage`, `dbt.openSchema`, `dbt.showLineage`,
-  `dbt.run`, `dbt.test`, `dbt.compile`, `dbt.modelGraph`
+  `dbt.run`, `dbt.test`, `dbt.compile`, `dbt.modelGraph`, `dbt.profiles`,
+  `dbt.setTarget`, `dbt.extractModelYaml`, `dbt.modelTests`,
+  `dbt.goToTests`, `dbt.status`, `dbt.projectGraph`, `dbt.modelInfo`,
+  `dbt.relation`, `dbt.compiledSql`, `dbt.parse`, `dbt.openModel`
+  (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
 ### 1.5 Server→client traffic the plugin must handle
@@ -133,6 +137,13 @@ message) past the 2 MiB cap — open the `uri` directly then.
 `workspace/symbol` additionally understands `tag:x` (models carrying tag
 x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`) and
 `selector:x` (selectors.yml entries) queries.
+
+Deliberate non-goals of this surface: no `manifest.json` /
+`run_results.json` fallback (the server's own analysis is always live;
+manifest parsing is a specs/rust-port/00 non-goal), no full Jinja render
+command (minijinja only tokenizes — 05 §4), no call hierarchy
+(`dbt.columnLineage` covers column flows), no `dbt.syntaxTree`, and no
+custom `generate_schema_name`-style macro evaluation in `dbt.relation`.
 
 ### 5.3b Project DAG view (`:DbtDag`) — **Neovim only**
 
