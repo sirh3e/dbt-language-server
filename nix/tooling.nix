@@ -32,6 +32,9 @@ with pkgs;
       # editor integration test suites (just nvim-test / emacs-test)
       neovim
       emacs-nox
+
+      # Lua formatting for the Neovim plugin (just lua-fmt / lua-fmt-check)
+      stylua
     ]
     # .cargo/config.toml selects clang + mold as the dev linker on Linux
     ++ lib.optionals stdenv.isLinux [

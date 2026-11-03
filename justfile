@@ -63,6 +63,14 @@ emacs-test:
     cargo build -p cogitator
     emacs -Q --batch -L editors/emacs -l editors/emacs/tests/run.el
 
+# Format the Neovim plugin's Lua (stylua from the nix shell)
+lua-fmt:
+    stylua editors/nvim
+
+# Check Lua formatting without writing
+lua-fmt-check:
+    stylua --check editors/nvim
+
 # Compile the Zed extension to WebAssembly the way Zed does
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1
