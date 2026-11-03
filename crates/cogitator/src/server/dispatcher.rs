@@ -579,6 +579,52 @@ impl Dispatcher {
                 self.status_report(req.id);
                 return;
             }
+            "dbt.impact" => {
+                let model = arg
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string)
+                    .or_else(|| features::model_name_from_uri(&uri));
+                let column = arg
+                    .get("column")
+                    .and_then(|c| c.as_str())
+                    .map(str::to_string);
+                let Some(model) = model else {
+                    let guidance =
+                        cogitator_error::guidance::Guidance::new("dbt.impact needs a model.")
+                            .because("neither a model argument nor a model-file uri was given.")
+                            .fix("pass {\"model\": \"customers\"} or call it from a model buffer.");
+                    let response = ErrorResponse::new(
+                        req.id,
+                        error_codes::INVALID_PARAMS,
+                        guidance.to_message(),
+                    );
+                    self.send(&response);
+                    return;
+                };
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.impact", move || {
+                    // lineage per downstream model, capped — unopened
+                    // files are read+parsed through the derived wrapper
+                    let mut lineages = std::collections::HashMap::new();
+                    for (name, path) in features::impact_targets(&snap.ctx, &model) {
+                        let uri = cogitator_lsp::fs_path_to_uri(&path);
+                        let lineage =
+                            super::handlers::commands::lineage_for(&derived, &snap.ctx, None, &uri);
+                        if let Some(lineage) = (*lineage).clone() {
+                            lineages.insert(name, lineage);
+                        }
+                    }
+                    super::reply::Reply::result(&features::impact(
+                        &snap.ctx,
+                        &model,
+                        column.as_deref(),
+                        &lineages,
+                    ))
+                });
+                return;
+            }
             "dbt.deadModels" => {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.deadModels", move || {

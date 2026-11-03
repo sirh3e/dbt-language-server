@@ -52,6 +52,43 @@ function M.source_freshness()
   exec("dbt.sourceFreshness", false) -- project-wide; sources.json feeds the lenses
 end
 
+--- :DbtImpact [column] — downstream closure of this model, with
+--- column-level hits when a column is given; quickfix list + summary.
+function M.impact(opts)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local column = opts and opts.args ~= "" and opts.args or nil
+  client:exec_cmd({
+    command = "dbt.impact",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr), column = column } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.impact failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    vim.notify(result.summary, vim.log.levels.INFO)
+    local items = {}
+    for _, node in ipairs(result.models) do
+      items[#items + 1] = {
+        filename = node.uri and node.uri ~= vim.NIL and vim.uri_to_fname(node.uri) or "",
+        lnum = 1,
+        col = 1,
+        text = ("depth %d — %s"):format(node.depth, node.name),
+      }
+    end
+    for _, hit in ipairs(result.columnHits or {}) do
+      items[#items + 1] = { text = ("column hit: %s.%s"):format(hit.model, hit.column) }
+    end
+    if #items > 0 then
+      vim.fn.setqflist({}, " ", { title = "dbt impact: " .. result.summary, items = items })
+      vim.cmd.copen()
+    end
+  end)
+end
+
 --- :DbtDeadModels — models nothing uses, as a quickfix list.
 function M.dead_models()
   local bufnr = vim.api.nvim_get_current_buf()

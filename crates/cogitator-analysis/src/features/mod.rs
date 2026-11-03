@@ -12,6 +12,7 @@ mod diagnostics;
 mod extract;
 mod graph_nav;
 mod hover;
+mod impact;
 mod lenses;
 pub mod lint;
 mod model_info;
@@ -34,6 +35,7 @@ pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };
 pub use hover::hover;
+pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
 pub use lenses::code_lenses;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
 pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};

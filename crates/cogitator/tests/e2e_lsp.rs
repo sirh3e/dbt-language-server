@@ -1497,6 +1497,39 @@ fn exposures_join_the_graph() {
         "{dangling}"
     );
 
+    // impact: stg_customers feeds customers (and through it the
+    // exposure); the column closure traces customer_id into customers
+    let impact = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.impact",
+                           "arguments": [{"model": "stg_customers", "column": "customer_id"}]}),
+    );
+    let report = &impact["result"];
+    assert!(
+        report["models"].as_array().is_some_and(|m| m
+            .iter()
+            .any(|n| n["name"] == "customers" && n["depth"] == 1)),
+        "{report}"
+    );
+    assert!(
+        report["exposures"]
+            .as_array()
+            .is_some_and(|e| e.iter().any(|x| x == "weekly_kpis")),
+        "{report}"
+    );
+    assert!(
+        report["summary"]
+            .as_str()
+            .is_some_and(|t| t.starts_with("stg_customers.customer_id feeds")),
+        "{report}"
+    );
+    assert!(
+        report["columnHits"].as_array().is_some_and(|h| h
+            .iter()
+            .any(|x| x["model"] == "customers" && x["column"] == "customer_id")),
+        "{report}"
+    );
+
     // dead models: the exposure keeps 'customers' alive; customer_orders
     // has no dependents and no selector naming it
     let dead = lsp.request(
