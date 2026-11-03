@@ -1,8 +1,11 @@
-//! dbt artifact readers (03 §10): target/run_results.json, a minimal
-//! manifest.json index and sources.json, parsed LENIENTLY — every
-//! field optional, unknown fields ignored, no schema-version gating.
-//! dbt reshapes these files across versions; artifacts must degrade
-//! feature-off, never break core diagnostics.
+//! dbt artifact readers (03 §10, 08 §4): target/run_results.json, a
+//! minimal manifest.json index and sources.json, deserialized through
+//! the types generated from the vendored schemas.getdbt.com
+//! definitions — with the leniency manufactured by the preprocess
+//! artifact mode (every field optional, unknown fields ignored,
+//! statuses plain strings) plus adapter-side row dropping. Version
+//! mismatches trace, never reject; artifacts must degrade feature-off,
+//! never break core diagnostics.
 
 pub mod freshness;
 pub mod manifest;
@@ -39,4 +42,23 @@ pub struct ArtifactSet {
     pub run_results: Option<std::sync::Arc<run_results::RunResults>>,
     pub manifest: Option<std::sync::Arc<manifest::ManifestIndex>>,
     pub freshness: Option<std::sync::Arc<freshness::SourcesFreshness>>,
+}
+
+/// Version mismatch is a TRACE, never a rejection and never a user-
+/// facing message (03 §10: read, trace, never reject).
+pub(crate) fn trace_schema_version(
+    path: &std::path::Path,
+    found: Option<&str>,
+    expected: &'static str,
+) {
+    if let Some(found) = found {
+        if found != expected {
+            tracing::debug!(
+                path = %path.display(),
+                found,
+                expected,
+                "artifact schema version differs; reading leniently"
+            );
+        }
+    }
 }

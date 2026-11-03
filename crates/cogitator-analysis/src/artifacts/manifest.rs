@@ -1,13 +1,12 @@
 //! manifest.json, reduced to the two lookups the features need: model
-//! name → node, and test unique_id → the model it attaches to. The
-//! rest of the (huge) manifest is never materialized.
+//! name → node, and test unique_id → the model it attaches to —
+//! deserialized through the generated PROJECTION of the official v12
+//! schema (08 §4); the rest of the 946 KB manifest never materializes.
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use cogitator_error::guidance::Guidance;
-use serde::Deserialize;
-
 #[derive(Debug, Default)]
 pub struct ManifestIndex {
     pub models: HashMap<String, ManifestNode>,
@@ -28,35 +27,25 @@ pub struct TestNode {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct RawManifest {
-    #[serde(default)]
-    nodes: HashMap<String, RawNode>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RawNode {
-    #[serde(default)]
-    resource_type: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    original_file_path: Option<String>,
-    #[serde(default)]
-    attached_node: Option<String>,
-}
-
 pub fn parse(text: &str, path: &Path) -> Result<ManifestIndex, Guidance> {
-    let raw: RawManifest = serde_json::from_str(text).map_err(|err| {
+    use cogitator_schemas::artifacts::manifest as gen;
+    let raw: gen::ManifestProjection = serde_json::from_str(text).map_err(|err| {
         Guidance::new("could not read manifest.json.")
             .at(path.display().to_string())
             .because(err.to_string())
             .fix("re-run dbt to regenerate target/; manifest cross-checks stay off until then.")
     })?;
+    super::trace_schema_version(
+        path,
+        raw.metadata
+            .as_ref()
+            .and_then(|m| m.dbt_schema_version.as_deref()),
+        cogitator_schemas::artifacts::MANIFEST_SCHEMA_V12,
+    );
     let mut index = ManifestIndex::default();
     for (unique_id, node) in raw.nodes {
-        match node.resource_type.as_str() {
-            "model" => {
+        match node.resource_type.as_deref() {
+            Some("model") => {
                 let name = node.name.unwrap_or_else(|| {
                     unique_id.rsplit('.').next().unwrap_or_default().to_string()
                 });
@@ -68,7 +57,7 @@ pub fn parse(text: &str, path: &Path) -> Result<ManifestIndex, Guidance> {
                     },
                 );
             }
-            "test" => {
+            Some("test") => {
                 index.tests.insert(
                     unique_id,
                     TestNode {
@@ -77,6 +66,7 @@ pub fn parse(text: &str, path: &Path) -> Result<ManifestIndex, Guidance> {
                     },
                 );
             }
+            // other resource kinds — and nodes without one — are not ours
             _ => {}
         }
     }
@@ -108,5 +98,19 @@ mod tests {
                 .as_deref(),
             Some("model.jaffle_shop.customers")
         );
+    }
+
+    #[test]
+    fn nodes_without_resource_type_are_skipped() {
+        let index = parse(
+            r#"{"nodes": {
+                "mystery.p.x": {"name": "x"},
+                "model.p.m": {"resource_type": "model", "name": "m"}
+            }}"#,
+            Path::new("m"),
+        )
+        .unwrap();
+        assert_eq!(index.models.len(), 1);
+        assert!(index.tests.is_empty());
     }
 }

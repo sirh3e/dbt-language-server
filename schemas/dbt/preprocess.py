@@ -36,6 +36,10 @@ across versions (08 §4):
      validation-only, shaky typify support).
   f. a string-typed node carrying `const`   -> plain {"type": "string"}.
      Version pins must trace, never reject (03 §10).
+  h. additionalProperties: {"type": "string"} -> true. env-style maps
+     claim string values, but leniency means an odd value in a map the
+     server never reads (env, adapter_response) must not kill the file;
+     typed maps of real objects (catalog nodes) keep their schema.
   g. anyOf/oneOf whose branches are ALL objects -> ONE merged open
      object (union of the branches' properties; a key defined by more
      than one branch becomes {"type": "string"} when every definition
@@ -139,6 +143,9 @@ def patch_artifact_node(node: dict, root: dict) -> None:
     # rule (a): only the literal `false` — typed maps keep theirs
     if node.get("additionalProperties") is False:
         node.pop("additionalProperties")
+    # rule (h): string-valued open maps relax to any-valued
+    if node.get("additionalProperties") == {"type": "string"}:
+        node["additionalProperties"] = True
     # rule (b)
     node.pop("required", None)
     # rule (c): all-string-enum unions collapse to a plain string

@@ -3,45 +3,69 @@
 use std::path::Path;
 
 use cogitator_error::guidance::Guidance;
-use serde::Deserialize;
-
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default)]
 pub struct RunResults {
-    #[serde(default)]
     pub metadata: ArtifactMeta,
-    #[serde(default)]
     pub results: Vec<RunResult>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default)]
 pub struct ArtifactMeta {
-    #[serde(default)]
     pub generated_at: Option<String>,
-    #[serde(default)]
     pub dbt_version: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug)]
 pub struct RunResult {
     /// The only hard requirement: "model.<project>.<name>",
     /// "test.<project>.<name>.<hash>", "seed.…", "source.…".
     pub unique_id: String,
     /// "success" | "error" | "fail" | "skipped" | "pass" | "warn" — or
     /// whatever a future dbt says; consumers match loosely.
-    #[serde(default)]
     pub status: String,
-    #[serde(default)]
     pub execution_time: f64,
-    #[serde(default)]
     pub message: Option<String>,
 }
 
 pub fn parse(text: &str, path: &Path) -> Result<RunResults, Guidance> {
-    serde_json::from_str(text).map_err(|err| {
+    use cogitator_schemas::artifacts::run_results as gen;
+    let raw: gen::RunResultsArtifact = serde_json::from_str(text).map_err(|err| {
         Guidance::new("could not read run_results.json.")
             .at(path.display().to_string())
             .because(err.to_string())
             .fix("re-run dbt to regenerate target/; run-status features stay off until then.")
+    })?;
+    super::trace_schema_version(
+        path,
+        raw.metadata
+            .as_ref()
+            .and_then(|m| m.dbt_schema_version.as_deref()),
+        cogitator_schemas::artifacts::RUN_RESULTS_SCHEMA_V6,
+    );
+    let metadata = raw.metadata.unwrap_or_default();
+    Ok(RunResults {
+        metadata: ArtifactMeta {
+            generated_at: metadata.generated_at,
+            dbt_version: metadata.dbt_version,
+        },
+        results: raw
+            .results
+            .into_iter()
+            .filter_map(|result| {
+                // the ONE hard requirement, re-imposed per ROW: a result
+                // without a unique_id drops, its siblings survive
+                let Some(unique_id) = result.unique_id else {
+                    tracing::debug!("run result without unique_id skipped");
+                    return None;
+                };
+                Some(RunResult {
+                    unique_id,
+                    status: result.status.unwrap_or_default(),
+                    execution_time: result.execution_time.unwrap_or_default(),
+                    message: result.message,
+                })
+            })
+            .collect(),
     })
 }
 
@@ -75,5 +99,42 @@ mod tests {
         let message = err.to_message();
         assert!(message.contains("run_results.json"), "{message}");
         assert!(message.contains("re-run dbt"), "{message}");
+    }
+
+    #[test]
+    fn rows_without_unique_id_drop_while_siblings_survive() {
+        let rr = parse(
+            r#"{"results": [
+                {"status": "success"},
+                {"unique_id": "model.p.kept", "status": "success"}
+            ]}"#,
+            Path::new("x"),
+        )
+        .unwrap();
+        assert_eq!(rr.results.len(), 1);
+        assert_eq!(rr.results[0].unique_id, "model.p.kept");
+    }
+
+    #[test]
+    fn older_versions_and_foreign_statuses_read_leniently() {
+        // a v5-flavored payload: old version string, fields v6 lacks,
+        // a status outside every v6 enum set — all must parse
+        let rr = parse(
+            r#"{"metadata": {"dbt_schema_version": "https://schemas.getdbt.com/dbt/run-results/v5.json",
+                             "mystery": true},
+                "results": [{"unique_id": "model.p.m", "status": "partial success"},
+                            {"unique_id": "model.p.n", "status": "flaked"}]}"#,
+            Path::new("x"),
+        )
+        .unwrap();
+        assert_eq!(rr.results[0].status, "partial success");
+        assert_eq!(rr.results[1].status, "flaked");
+        // and a result with no status at all defaults to empty
+        let sparse = parse(
+            r#"{"results": [{"unique_id": "model.p.m"}]}"#,
+            Path::new("x"),
+        )
+        .unwrap();
+        assert_eq!(sparse.results[0].status, "");
     }
 }
