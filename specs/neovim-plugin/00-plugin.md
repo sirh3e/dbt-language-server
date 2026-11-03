@@ -141,6 +141,11 @@ Every command takes **one argument object**, not positional values:
 | `dbt.deadModels` | `{models: [{name, uri, reasons}]}` | none (conservative: seeds/package models never flagged; selector mentions keep a model alive) |
 | `dbt.impact` | `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}` | none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models) |
 
+Two-argument `ref('package', 'model')` resolves like plain `ref()`
+everywhere (hover, definition, completion, dangling checks): the first
+string refines as the package, the second as the model. packages.yml /
+dependencies.yml buffers warn per declared-but-not-installed package.
+
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt
 defaults only**: a source without `schema:` uses the source name, a table

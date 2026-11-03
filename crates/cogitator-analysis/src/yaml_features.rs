@@ -16,6 +16,21 @@ pub fn yaml_diagnostics(uri: &str, text: &str) -> Vec<Diagnostic> {
     if path.file_name().is_some_and(|f| f == "profiles.yml") {
         return profiles_diagnostics(path, text);
     }
+    // packages.yml has its own schema: syntax check only here — the
+    // declared-vs-installed pass rides in from the context layer
+    if path
+        .file_name()
+        .is_some_and(|f| f == "packages.yml" || f == "dependencies.yml")
+    {
+        return match cogitator_schemas::yaml::syntax_error(text) {
+            Some((line, character, message)) => vec![diag(
+                Range::zero_width(Position { line, character }),
+                format!("yaml syntax error: {message}"),
+                diagnostic_severity::ERROR,
+            )],
+            None => Vec::new(),
+        };
+    }
     let is_project = path.file_name().is_some_and(|f| f == "dbt_project.yml");
 
     if let Some((line, character, message)) = cogitator_schemas::yaml::syntax_error(text) {

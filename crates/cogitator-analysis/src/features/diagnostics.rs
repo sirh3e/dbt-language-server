@@ -149,3 +149,41 @@ pub fn citizen_diagnostics(ctx: &DbtContext, uri: &str) -> Vec<Diagnostic> {
     }
     out
 }
+
+/// packages.yml / dependencies.yml: declared packages whose install
+/// directory is missing — everything that depends on them is degraded
+/// until `dbt deps` runs.
+pub fn packages_diagnostics(ctx: &DbtContext, uri: &str) -> Vec<Diagnostic> {
+    let is_packages_file = std::path::Path::new(uri)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n == "packages.yml" || n == "dependencies.yml");
+    if !is_packages_file {
+        return Vec::new();
+    }
+    // installed = every project name the scan saw besides our own
+    let own = ctx.project.name.as_str();
+    let installed: std::collections::HashSet<&str> = ctx
+        .model_detail_map
+        .values()
+        .map(|m| m.project_name.as_str())
+        .chain(ctx.macro_detail_map.keys().map(String::as_str))
+        .filter(|name| *name != own && !name.is_empty())
+        .collect();
+    ctx.declared_packages
+        .iter()
+        .filter(|declared| !installed.contains(declared.as_str()))
+        .map(|declared| {
+            Diagnostic::plain(
+                cogitator_lsp::Range::default(),
+                Guidance::new(format!(
+                    "package '{declared}' is declared but not installed — run `dbt deps`"
+                ))
+                .to_diagnostic(),
+                diagnostic_severity::WARNING,
+                "package-not-installed",
+                "cogitator",
+            )
+        })
+        .collect()
+}

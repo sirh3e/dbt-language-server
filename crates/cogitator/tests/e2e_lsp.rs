@@ -1548,3 +1548,80 @@ fn exposures_join_the_graph() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Package awareness (03 §10): two-arg ref('pkg','model') resolves to
+/// the package model (and never false-flags the package name), and a
+/// declared-but-not-installed package warns in packages.yml.
+#[test]
+fn package_awareness_two_arg_ref_and_deps() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-packages-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let packages_yml = root.join("packages.yml");
+    std::fs::write(
+        &packages_yml,
+        "packages:\n  - package: dbt-labs/dbt_utils\n    version: 1.3.0\n  - local: dbt_packages/jaffle_package\n",
+    )
+    .unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+
+    // a probe model using the two-arg form
+    let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/pkg_probe.sql"));
+    let text = "select * from {{ ref('jaffle_package', 'stg_customer_status') }}\n";
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql",
+            "version": 1, "text": text}}),
+    );
+    // no dangling-ref false positive on the package name
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": probe_uri}}),
+    );
+    assert!(
+        pulled["result"]["items"]
+            .as_array()
+            .is_some_and(|i| i.iter().all(|d| d["code"] != "dangling-ref")),
+        "{pulled}"
+    );
+    // definition on the MODEL argument jumps into the package
+    let character = text.find("stg_customer_status").unwrap() as u32 + 2;
+    let definition = lsp.request(
+        "textDocument/definition",
+        serde_json::json!({"textDocument": {"uri": probe_uri},
+                           "position": {"line": 0, "character": character}}),
+    );
+    assert!(
+        definition["result"]["uri"].as_str().is_some_and(
+            |u| u.ends_with("dbt_packages/jaffle_package/models/stg_customer_status.sql")
+        ),
+        "{definition}"
+    );
+
+    // packages.yml: the uninstalled hub package warns, the local one not
+    let packages_uri = cogitator_lsp::fs_path_to_uri(&packages_yml);
+    let text = std::fs::read_to_string(&packages_yml).unwrap();
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": packages_uri, "languageId": "yaml",
+            "version": 1, "text": text}}),
+    );
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": packages_uri}}),
+    );
+    let items = pulled["result"]["items"].as_array().expect("items");
+    assert_eq!(items.len(), 1, "{items:?}");
+    assert!(
+        items[0]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("'dbt_utils'") && m.contains("dbt deps")),
+        "{items:?}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

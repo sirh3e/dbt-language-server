@@ -238,7 +238,7 @@ pub fn refine(text: &str, tokens: &mut [Token]) {
 fn refine_at(text: &str, tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
     let lit = &text[tokens[i].start as usize..tokens[i].end as usize];
     match lit {
-        "ref" => call_string_arg(tokens, i, TokenKind::Ref),
+        "ref" => ref_args(tokens, i),
         "var" => call_string_arg(tokens, i, TokenKind::Var),
         "source" => source_args(tokens, i),
         "config" => config_marker(tokens, i),
@@ -252,6 +252,21 @@ fn call_string_arg(tokens: &[Token], i: usize, kind: TokenKind) -> Vec<(usize, T
         (Some(TokenKind::Symbol('(')), Some(TokenKind::StringLit)) => vec![(i + 2, kind)],
         _ => Vec::new(),
     }
+}
+
+/// `ref('model')` / `ref('package', 'model')`: the MODEL argument is
+/// the Ref; a two-arg call's first string is the Package (02 §3.3).
+fn ref_args(tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
+    let one = call_string_arg(tokens, i, TokenKind::Ref);
+    if one.is_empty() {
+        return one;
+    }
+    if matches!(kind_at(tokens, i + 3), Some(TokenKind::Symbol(',')))
+        && matches!(kind_at(tokens, i + 4), Some(TokenKind::StringLit))
+    {
+        return vec![(i + 2, TokenKind::Package), (i + 4, TokenKind::Ref)];
+    }
+    one
 }
 
 /// `source('a', 'b')`: first arg SourceName, second SourceTable.

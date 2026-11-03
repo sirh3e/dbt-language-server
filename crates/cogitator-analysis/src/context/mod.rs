@@ -155,6 +155,8 @@ pub struct DbtContext {
     pub macro_detail_map: HashMap<String, HashMap<String, MacroDetails>>,
     pub variable_detail_map: HashMap<String, VariableDetails>,
     pub selector_detail_map: HashMap<String, SelectorDetails>,
+    /// packages.yml/dependencies.yml declarations, by installable name.
+    pub declared_packages: Vec<String>,
     pub exposure_detail_map: HashMap<String, exposures::CitizenDetails>,
     pub metric_detail_map: HashMap<String, exposures::CitizenDetails>,
     pub semantic_model_detail_map: HashMap<String, exposures::CitizenDetails>,
@@ -250,6 +252,7 @@ impl ContextBuilder {
         });
 
         let selector_detail_map = load_selectors(&root);
+        let declared_packages = packages::declared_packages(&root);
 
         // exposures/metrics/semantic models: a marked-YAML pass over the
         // own project's properties files (03 §10), then into the graph
@@ -291,6 +294,7 @@ impl ContextBuilder {
             macro_detail_map: macros,
             variable_detail_map: variables,
             selector_detail_map,
+            declared_packages,
             exposure_detail_map,
             metric_detail_map,
             semantic_model_detail_map,

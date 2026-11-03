@@ -23,6 +23,7 @@ pub fn static_diagnostics(
     } else if is_yaml(uri) {
         let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
         items.extend(features::citizen_diagnostics(ctx, uri));
+        items.extend(features::packages_diagnostics(ctx, uri));
         items
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);
