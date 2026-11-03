@@ -229,3 +229,38 @@ fn yaml_completion_offers_schema_keys() {
     let root = yaml_features::yaml_completion("file:///m/schema.yml", "", Position::default());
     assert!(root.iter().any(|i| i.label == "sources"));
 }
+
+#[test]
+fn dangling_diagnostics_suggest_and_cover_sources_and_vars() {
+    let ctx = ctx();
+    let uri = "file:///tmp/dangling.sql".to_string();
+    let text = concat!(
+        "select * from {{ ref('stg_ordrs') }}\n",
+        "join {{ source('stripee', 'payments') }} using (id)\n",
+        "where x > {{ var('no_such_var_q7') }}\n",
+        "  and y > {{ var('also_missing', 5) }}\n",
+    );
+    let mut docs = Documents::default();
+    docs.open(uri.clone(), text, &ctx.dialect);
+    let diags = features::dangling_ref_diagnostics(&ctx, docs.get(&uri).unwrap());
+
+    let by_code = |code: &str| diags.iter().find(|d| d.code == code);
+    let dangling_ref = by_code("dangling-ref").expect("ref diagnostic");
+    assert!(
+        dangling_ref.message.contains("did you mean 'stg_orders'"),
+        "{}",
+        dangling_ref.message
+    );
+    let dangling_source = by_code("dangling-source").expect("source diagnostic");
+    assert!(
+        dangling_source.message.contains("did you mean 'stripe'"),
+        "{}",
+        dangling_source.message
+    );
+    assert!(by_code("unknown-var").is_some(), "{diags:?}");
+    // var() with a default is legitimate dbt: never flagged
+    assert!(
+        !diags.iter().any(|d| d.message.contains("also_missing")),
+        "{diags:?}"
+    );
+}

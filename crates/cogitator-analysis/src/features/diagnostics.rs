@@ -1,27 +1,81 @@
-//! Dangling-ref diagnostics (FEATURE_REQUESTS P1, graph-adjacent).
+//! Dangling-reference diagnostics (FEATURE_REQUESTS P1, graph-adjacent):
+//! unknown `ref()` models, unknown `source()` names and unknown `var()`s,
+//! each with a did-you-mean suggestion when a near miss exists.
 
+use cogitator_error::guidance::{closest_matches, Guidance};
 use cogitator_lsp::{diagnostic_severity, Diagnostic};
 use cogitator_parser::TokenKind;
 
 use super::{token_range, DbtContext, Document};
 
-/// Dangling-ref warnings (P1). Suppressed while the first context refresh is
-/// still pending (an empty model map would flag everything).
+/// Dangling ref/source/var warnings. Each kind is suppressed while its
+/// collection is still empty (the first context refresh pending would
+/// flag everything).
 pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnostic> {
-    if ctx.model_detail_map.is_empty() {
-        return Vec::new();
+    let mut out = Vec::new();
+    for t in &doc.parsed.tokens {
+        let literal = doc.parsed.literal(t);
+        let diagnostic = match t.kind {
+            TokenKind::Ref if !ctx.model_detail_map.is_empty() => (!ctx
+                .model_detail_map
+                .contains_key(literal))
+            .then(|| {
+                entry(
+                    t,
+                    "dangling-ref",
+                    Guidance::new(format!("model '{literal}' not found in the project")).suggest(
+                        closest_matches(literal, ctx.model_detail_map.keys().map(String::as_str)),
+                    ),
+                )
+            }),
+            TokenKind::SourceName if !ctx.source_detail_map.is_empty() => {
+                (!ctx.source_detail_map.contains_key(literal)).then(|| {
+                    entry(
+                        t,
+                        "dangling-source",
+                        Guidance::new(format!("source '{literal}' is not declared in any YAML"))
+                            .suggest(closest_matches(
+                                literal,
+                                ctx.source_detail_map.keys().map(String::as_str),
+                            )),
+                    )
+                })
+            }
+            // var('name', default) is legitimate without a project var —
+            // only defaultless lookups can dangle
+            TokenKind::Var if !ctx.variable_detail_map.is_empty() && !has_default(doc, t) => {
+                (!ctx.variable_detail_map.contains_key(literal)).then(|| {
+                    entry(
+                        t,
+                        "unknown-var",
+                        Guidance::new(format!("var '{literal}' is not defined in dbt_project.yml"))
+                            .suggest(closest_matches(
+                                literal,
+                                ctx.variable_detail_map.keys().map(String::as_str),
+                            )),
+                    )
+                })
+            }
+            _ => None,
+        };
+        out.extend(diagnostic.flatten());
     }
-    doc.parsed
-        .tokens
-        .iter()
-        .filter(|t| t.kind == TokenKind::Ref)
-        .filter(|t| !ctx.model_detail_map.contains_key(doc.parsed.literal(t)))
-        .map(|t| Diagnostic {
-            range: token_range(t),
-            message: format!("model '{}' not found in the project", doc.parsed.literal(t)),
-            severity: diagnostic_severity::WARNING,
-            code: "dangling-ref".to_string(),
-            source: "cogitator".to_string(),
-        })
-        .collect()
+    out
+}
+
+/// Does this `var()` call carry a second (default) argument?
+fn has_default(doc: &Document, token: &cogitator_parser::Token) -> bool {
+    let rest = &doc.parsed.text[token.end as usize..];
+    let close = rest.find(')').unwrap_or(0);
+    rest[..close].contains(',')
+}
+
+fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Option<Diagnostic> {
+    Some(Diagnostic {
+        range: token_range(token),
+        message: guidance.to_diagnostic(),
+        severity: diagnostic_severity::WARNING,
+        code: code.to_string(),
+        source: "cogitator".to_string(),
+    })
 }

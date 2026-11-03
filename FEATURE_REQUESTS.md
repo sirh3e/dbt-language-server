@@ -151,3 +151,9 @@ Still open, with reasons:
 - workspace folders / multi-root (only the deprecated
   `rootPath` is read), `workspace/didChangeConfiguration`,
   `workspace/applyEdit`, file-operation notifications, `$/progress`
+
+- [ ] **Quickfix code actions from did-you-mean suggestions** — purely
+      additive on top of the Guidance diagnostics: needs Diagnostic.data +
+      relatedInformation wire fields and a diagnostics-context codeAction
+      path; the suggestions already ride every dangling-ref/-source/
+      unknown-var message.
