@@ -208,6 +208,26 @@
 (cogitator-graph-quit)
 (check (null cogitator-graph--state) "integration: graph browser closes cleanly")
 
+;; live profiles-dir switch (last: it changes the session's dialect state)
+(let ((other-dir (expand-file-name (format "cogitator-el-profiles-%d" (emacs-pid))
+                                   temporary-file-directory)))
+  (make-directory other-dir t)
+  (with-temp-file (expand-file-name "profiles.yml" other-dir)
+    (insert "jaffle_shop:\n  target: dev\n  outputs:\n    dev:\n      type: snowflake\n"))
+  (let ((switched (run--exec "dbt.setProfilesDir" (list :dir other-dir))))
+    (check (equal (plist-get switched :dir) other-dir)
+           "integration: dbt.setProfilesDir answers the new dir" switched))
+  (let ((report nil))
+    (cl-loop repeat 50
+             do (setq report (ignore-errors
+                               (run--exec "dbt.profiles" (cogitator--command-argument))))
+             until (and report
+                        (string-prefix-p other-dir (or (plist-get report :path) "")))
+             do (sleep-for 0.2))
+    (check (and report (string-prefix-p other-dir (or (plist-get report :path) "")))
+           "integration: dbt.profiles follows the live dir switch"
+           (and report (plist-get report :path)))))
+
 (princ (if (zerop run--failures) "ALL PASSED\n"
          (format "%d failure(s)\n" run--failures)))
 (kill-emacs (if (zerop run--failures) 0 1))

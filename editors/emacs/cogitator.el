@@ -172,6 +172,20 @@ CALLBACK as plists whichever client is in charge."
   (cogitator--execute "dbt.parse" (cogitator--command-argument) #'ignore))
 
 ;;;###autoload
+(defun cogitator-set-profiles-dir (dir)
+  "Switch the running server's profiles directory to DIR — no restart.
+The server resets its profile/target overrides and refreshes.  For a
+persistent per-project setting use dir-locals on
+`cogitator-profiles-dir' instead."
+  (interactive "DProfiles directory: ")
+  (cogitator--execute
+   "dbt.setProfilesDir" (list :dir (expand-file-name dir))
+   (lambda (result)
+     (if (null result)
+         (message "cogitator: profiles directory not switched (see the server message)")
+       (message "cogitator: profiles directory now %s" (plist-get result :dir))))))
+
+;;;###autoload
 (defun cogitator-relation ()
   "Resolve the relation under point and put it on the kill ring.
 dbt.relation answers database.schema.identifier for the source() table
