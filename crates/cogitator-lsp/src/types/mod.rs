@@ -7,9 +7,11 @@ mod init;
 mod messages;
 mod params;
 mod results;
+mod workspace;
 
 pub use core::*;
 pub use init::*;
 pub use messages::*;
 pub use params::*;
 pub use results::*;
+pub use workspace::*;

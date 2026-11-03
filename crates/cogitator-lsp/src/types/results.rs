@@ -44,6 +44,42 @@ pub struct CompletionItem {
     pub data: Option<serde_json::Value>,
 }
 
+/// The typed shape inside `CompletionItem.data` (the field itself stays an
+/// opaque `Value`, as the protocol round-trips it through the client).
+/// `kind` is the tag; variant payloads name what `completionItem/resolve`
+/// needs to find the documentation again.
+#[derive(Debug, Clone, serde::Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum CompletionData {
+    Model {
+        name: String,
+    },
+    Source {
+        name: String,
+        table: String,
+    },
+    Variable {
+        name: String,
+    },
+    Macro {
+        name: String,
+        /// Tolerates clients echoing data without the package (the
+        /// resolver falls back to the project package).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        package: Option<String>,
+    },
+    Function {
+        name: String,
+    },
+}
+
+impl CompletionData {
+    /// Into the opaque `CompletionItem.data` payload.
+    pub fn into_value(self) -> serde_json::Value {
+        serde_json::to_value(self).expect("completion data serializes")
+    }
+}
+
 /// LSP CompletionItemKind values used by the server (01 §2.3).
 pub mod completion_kind {
     pub const TEXT: i32 = 1;

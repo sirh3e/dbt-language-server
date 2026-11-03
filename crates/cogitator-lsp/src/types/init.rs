@@ -25,7 +25,7 @@ pub struct ServerCapabilities {
     #[serde(rename = "definitionProvider")]
     pub definition_provider: bool,
     #[serde(rename = "completionProvider")]
-    pub completion_provider: serde_json::Map<String, serde_json::Value>,
+    pub completion_provider: CompletionOptions,
     #[serde(rename = "executeCommandProvider")]
     pub execute_command_provider: ExecuteCommandOptions,
     // Post-parity additive capabilities (FEATURE_REQUESTS.md, 01 §3.1 note).
@@ -42,15 +42,55 @@ pub struct ServerCapabilities {
     #[serde(rename = "selectionRangeProvider")]
     pub selection_range_provider: bool,
     #[serde(rename = "semanticTokensProvider")]
-    pub semantic_tokens_provider: serde_json::Value,
+    pub semantic_tokens_provider: SemanticTokensOptions,
     #[serde(rename = "signatureHelpProvider")]
-    pub signature_help_provider: serde_json::Value,
+    pub signature_help_provider: SignatureHelpOptions,
     #[serde(rename = "diagnosticProvider")]
-    pub diagnostic_provider: serde_json::Value,
+    pub diagnostic_provider: DiagnosticOptions,
     #[serde(rename = "renameProvider")]
     pub rename_provider: bool,
     #[serde(rename = "codeLensProvider")]
-    pub code_lens_provider: serde_json::Value,
+    pub code_lens_provider: CodeLensOptions,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompletionOptions {
+    #[serde(rename = "resolveProvider")]
+    pub resolve_provider: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SemanticTokensOptions {
+    pub legend: SemanticTokensLegend,
+    pub full: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SemanticTokensLegend {
+    #[serde(rename = "tokenTypes")]
+    pub token_types: &'static [&'static str],
+    #[serde(rename = "tokenModifiers")]
+    pub token_modifiers: &'static [&'static str],
+}
+
+#[derive(Debug, Serialize)]
+pub struct SignatureHelpOptions {
+    #[serde(rename = "triggerCharacters")]
+    pub trigger_characters: &'static [&'static str],
+}
+
+#[derive(Debug, Serialize)]
+pub struct DiagnosticOptions {
+    #[serde(rename = "interFileDependencies")]
+    pub inter_file_dependencies: bool,
+    #[serde(rename = "workspaceDiagnostics")]
+    pub workspace_diagnostics: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CodeLensOptions {
+    #[serde(rename = "resolveProvider")]
+    pub resolve_provider: bool,
 }
 
 /// Semantic token legend (order defines the type indices in the encoding).
@@ -84,10 +124,8 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 text_document_sync: 2,
                 hover_provider: true,
                 definition_provider: true,
-                completion_provider: {
-                    let mut map = serde_json::Map::new();
-                    map.insert("resolveProvider".into(), serde_json::Value::Bool(true));
-                    map
+                completion_provider: CompletionOptions {
+                    resolve_provider: true,
                 },
                 execute_command_provider: ExecuteCommandOptions {
                     commands: vec![
@@ -115,19 +153,24 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 document_highlight_provider: true,
                 folding_range_provider: true,
                 selection_range_provider: true,
-                semantic_tokens_provider: serde_json::json!({
-                    "legend": { "tokenTypes": SEMANTIC_TOKEN_TYPES, "tokenModifiers": [] },
-                    "full": true,
-                }),
-                signature_help_provider: serde_json::json!({
-                    "triggerCharacters": ["(", ","],
-                }),
-                diagnostic_provider: serde_json::json!({
-                    "interFileDependencies": false,
-                    "workspaceDiagnostics": false,
-                }),
+                semantic_tokens_provider: SemanticTokensOptions {
+                    legend: SemanticTokensLegend {
+                        token_types: SEMANTIC_TOKEN_TYPES,
+                        token_modifiers: &[],
+                    },
+                    full: true,
+                },
+                signature_help_provider: SignatureHelpOptions {
+                    trigger_characters: &["(", ","],
+                },
+                diagnostic_provider: DiagnosticOptions {
+                    inter_file_dependencies: false,
+                    workspace_diagnostics: false,
+                },
                 rename_provider: true,
-                code_lens_provider: serde_json::json!({ "resolveProvider": false }),
+                code_lens_provider: CodeLensOptions {
+                    resolve_provider: false,
+                },
             },
             server_info: ServerInfo {
                 name: "cogitator",
