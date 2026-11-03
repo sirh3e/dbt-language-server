@@ -737,8 +737,22 @@ impl Dispatcher {
     }
 
     fn code_lens(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/codeLens", |ctx, _, uri, _| {
-            features::code_lenses(ctx, uri)
+        // offloaded since the artifact batch: the run-status lens stats
+        // target/ files (05 §6.1 keeps fs off this task)
+        let Some((id, uri, _)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/codeLens");
+            return;
+        };
+        let snap = self.snapshot_for(&uri);
+        let derived = self.derived.clone();
+        let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        self.offload_blocking(id, "textDocument/codeLens", move || {
+            let mut lenses = features::code_lenses(&snap.ctx, &uri);
+            if let Some(root) = snap.ctx.project_root.as_deref() {
+                let set = derived.artifacts(root, cap);
+                lenses.extend(features::run_lens(&snap.ctx, &uri, &set));
+            }
+            super::reply::Reply::result(&lenses)
         });
     }
 
@@ -804,6 +818,7 @@ impl Dispatcher {
         let lints =
             features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
         let derived = self.derived.clone();
+        let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         self.offload_blocking(id, "textDocument/diagnostic", move || {
             // the pull path affords lineage (cached per generation), so
             // the undocumented-columns check runs here, not on push
@@ -815,13 +830,17 @@ impl Dispatcher {
                     &uri,
                 )
             });
-            let items = super::diagnostics::static_diagnostics(
+            let mut items = super::diagnostics::static_diagnostics(
                 &snap.ctx,
                 snap.doc.as_deref(),
                 &uri,
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
             );
+            if let Some(root) = snap.ctx.project_root.as_deref() {
+                let set = derived.artifacts(root, artifact_cap);
+                items.extend(features::artifact_diagnostics(&snap.ctx, &uri, &set));
+            }
             super::reply::Reply::result(&FullDocumentDiagnosticReport {
                 kind: "full",
                 items,
@@ -835,13 +854,16 @@ impl Dispatcher {
             features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
         // push stays inline and lineage-free; the pull path adds the
         // lineage-backed check
-        super::diagnostics::static_diagnostics(
-            &self.snapshot(),
-            self.documents.get(uri),
-            uri,
-            lints,
-            None,
-        )
+        let ctx = self.snapshot();
+        let mut items =
+            super::diagnostics::static_diagnostics(&ctx, self.documents.get(uri), uri, lints, None);
+        // artifacts come from the LAST loaded set — no fs on this task
+        // (the offloaded lens/pull paths keep it warm)
+        if let Some(root) = ctx.project_root.as_deref() {
+            let set = self.derived.artifacts_cached(root);
+            items.extend(features::artifact_diagnostics(&ctx, uri, &set));
+        }
+        items
     }
 
     /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled

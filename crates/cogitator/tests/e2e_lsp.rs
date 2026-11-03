@@ -1180,3 +1180,142 @@ fn lint_toggles_hot_through_cogitator_yml() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// dbt artifacts end to end: fake target/ JSONs feed the last-run
+/// lens, run/test-failure diagnostics, the drift hint, and the stamp
+/// check picks up a rewrite without restart (03 §10).
+#[test]
+fn artifact_backed_lenses_and_diagnostics() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-artifacts-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let target = root.join("target");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(
+        target.join("run_results.json"),
+        r#"{"metadata": {"generated_at": "2026-11-03T10:00:00Z"},
+            "results": [
+              {"unique_id": "model.jaffle_shop.customers", "status": "success", "execution_time": 3.2},
+              {"unique_id": "model.jaffle_shop.orders", "status": "error", "message": "boom"},
+              {"unique_id": "test.jaffle_shop.not_null_customers_customer_id.abc",
+               "status": "fail", "message": "Got 3 results"}
+            ]}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        target.join("manifest.json"),
+        r#"{"nodes": {
+            "model.jaffle_shop.customers": {"resource_type": "model", "name": "customers"},
+            "model.jaffle_shop.orders": {"resource_type": "model", "name": "orders"},
+            "test.jaffle_shop.not_null_customers_customer_id.abc":
+                {"resource_type": "test", "attached_node": "model.jaffle_shop.customers"}
+        }}"#,
+    )
+    .unwrap();
+
+    let (mut lsp, customers_uri) = booted_in(&root, &[]);
+
+    // 1. the last-run lens on a green model
+    let lenses = lsp.request(
+        "textDocument/codeLens",
+        serde_json::json!({"textDocument": {"uri": customers_uri}}),
+    );
+    let titles: Vec<&str> = lenses["result"]
+        .as_array()
+        .expect("lenses")
+        .iter()
+        .filter_map(|l| l["command"]["title"].as_str())
+        .collect();
+    assert!(
+        titles.iter().any(|t| t.starts_with("last run: OK in 3.2")),
+        "{titles:?}"
+    );
+
+    // 2. failed run → warning with the adapter message
+    let orders_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/orders.sql"));
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": orders_uri}}),
+    );
+    let items = pulled["result"]["items"].as_array().expect("items");
+    assert!(
+        items.iter().any(|d| d["code"] == "artifact-run-failed"
+            && d["message"].as_str().is_some_and(|m| m.contains("boom"))),
+        "{items:?}"
+    );
+
+    // 3. failed test lands on the model file AND the schema entry
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": customers_uri}}),
+    );
+    assert!(
+        pulled["result"]["items"]
+            .as_array()
+            .is_some_and(|i| i.iter().any(|d| d["code"] == "artifact-test-failed")),
+        "{pulled}"
+    );
+    let schema_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/schema.yml"));
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": schema_uri}}),
+    );
+    let schema_item = pulled["result"]["items"]
+        .as_array()
+        .and_then(|i| {
+            i.iter()
+                .find(|d| d["code"] == "artifact-test-failed")
+                .cloned()
+        })
+        .expect("schema test-failure diagnostic");
+    assert!(
+        schema_item["range"]["start"]["line"].as_u64().unwrap() > 0,
+        "anchored at the model's entry: {schema_item}"
+    );
+
+    // 4. a model the manifest misses gets the drift hint
+    let drift_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/customer_orders.sql"));
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": drift_uri}}),
+    );
+    let drift = pulled["result"]["items"]
+        .as_array()
+        .and_then(|i| i.iter().find(|d| d["code"] == "artifact-drift").cloned())
+        .expect("drift hint");
+    assert!(
+        drift["relatedInformation"][0]["location"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("manifest.json")),
+        "{drift}"
+    );
+
+    // 5. the stamp check sees a rewrite — no restart, no reload command
+    std::fs::write(
+        target.join("run_results.json"),
+        r#"{"results": [{"unique_id": "model.jaffle_shop.customers", "status": "error",
+                         "message": "late failure"}]}"#,
+    )
+    .unwrap();
+    let mut changed = false;
+    for _ in 0..100 {
+        let lenses = lsp.request(
+            "textDocument/codeLens",
+            serde_json::json!({"textDocument": {"uri": customers_uri}}),
+        );
+        if lenses["result"]
+            .as_array()
+            .is_some_and(|l| l.iter().any(|x| x["command"]["title"] == "last run: ERROR"))
+        {
+            changed = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(changed, "stamp refresh never surfaced the rewrite");
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

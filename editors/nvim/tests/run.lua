@@ -700,6 +700,13 @@ check(
   "status: dbt.status carries the config section (no cogitator.yml here)",
   type(status_result) == "table" and vim.inspect(status_result.config) or status_result
 )
+check(
+  type(status_result) == "table"
+    and type(status_result.caches) == "table"
+    and type(status_result.caches.artifacts) == "table",
+  "status: the caches section reports the artifacts surface",
+  type(status_result) == "table" and vim.inspect(status_result.caches) or status_result
+)
 
 -- the project DAG (Neovim-only): wire shape, boxes, edges, columns
 local dag_result

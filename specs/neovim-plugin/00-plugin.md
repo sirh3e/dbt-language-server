@@ -133,7 +133,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the wire cap (2 MiB default; `limits.compiled_sql_mib`) |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
-| `dbt.cache` | `{profiles, lineage, results}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
+| `dbt.cache` | `{profiles, lineage, results, artifacts}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 | `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`

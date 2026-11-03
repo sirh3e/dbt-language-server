@@ -2,6 +2,7 @@
 //! context snapshot and a parsed document — the dispatcher serializes
 //! (functional core / imperative shell, 05 §3).
 
+mod artifact_status;
 mod code_actions;
 mod compiled;
 mod completion;
@@ -20,6 +21,7 @@ mod signature;
 mod structure;
 mod tests_nav;
 
+pub use artifact_status::{artifact_diagnostics, run_lens};
 pub use code_actions::{code_actions, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};
