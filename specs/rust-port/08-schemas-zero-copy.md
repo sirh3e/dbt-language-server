@@ -198,10 +198,29 @@ documented as a required dev tool next to Zig (07 §5) in the README.
 - `prune_for_server` widens to keep `exposures`, `metrics`,
   `semantic_models`, `saved_queries` and `groups` (the generated types
   already exist); `packages` gets its first consumer (packages.yml).
-- dbt ARTIFACTS (manifest/run_results/sources.json) are deliberately
-  NOT vendored as schemas: dbt changes them across versions, so the
-  readers are hand-written lenient serde structs (03 §10) that tolerate
-  unknown and missing fields.
+- dbt ARTIFACTS (SUPERSEDED): the artifact schemas ARE now vendored —
+  pristine copies of schemas.getdbt.com dbt/{run-results/v6, sources/v3,
+  catalog/v1, manifest/v12}.json under `schemas/dbt/artifacts/`
+  (upstream commit pinned in `schemas/dbt/README`). The official
+  schemas are strict (`additionalProperties: false`, long `required`
+  lists, versioned status enums) in ways dbt itself never honors across
+  versions, so `preprocess.py --mode=artifact` manufactures the 03 §10
+  leniency before typify: strip the strictness and every `required`
+  (adapters re-impose unique_id by dropping the ROW, not the file),
+  collapse all-string-enum unions to plain strings, merge all-object
+  unions into one open shape (sources' RuntimeError|Output rows),
+  relax string-valued open maps (env) to any-valued, keep [X, null]
+  branches (typify renders Option; dbt writes literal nulls), and drop
+  format/propertyNames/const pins. The manifest compiles a documented
+  PROJECTION only (`--mode=manifest-projection`): typifying the 946 KB
+  schema would cost thousands of types for two lookups; the projected
+  field names are asserted against the pristine text so an upstream
+  rename fails `just gen-schemas`, never runtime.
+  `cogitator_schemas::artifacts` is the sanctioned re-export of these
+  generated modules — artifacts carry no YAML positions, so the
+  side-table discipline behind the "nothing imports `generated::`"
+  invariant does not apply; cogitator-analysis maps them into its lean
+  public indexes immediately.
 - Cached scan payloads (`PropertiesFile` and nested entries, RawMacro,
   RawDocsBlock, graph NodeKind/EdgeKind) gain serde derives so the scan
   cache can persist; wire zero-copy rules (§1) are unaffected — the

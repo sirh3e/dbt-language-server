@@ -84,6 +84,12 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Generated schemas are fresh
+        run: just gen-schemas-check
+
 
   shellcheck:
     needs: changes

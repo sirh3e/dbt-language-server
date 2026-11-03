@@ -476,17 +476,31 @@ source item's middle quotes.)
 
 ## 10. Feature-batch additions (binding)
 
-- **dbt artifacts** (`cogitator-analysis/src/artifacts/`): hand-written
-  LENIENT serde readers for `target/run_results.json`, a minimal
-  `manifest.json` index (model name → unique_id/path; test unique_id →
-  attached_node) and `sources.json`. Every field is `Option` /
-  `#[serde(default)]`, no `deny_unknown_fields`, `unique_id` the only
-  hard requirement, no schema-version gating (read, trace, never
-  reject). Parse failures degrade the artifact features off with a
-  Guidance trace — artifacts must never break core diagnostics. Pure
-  joins in `artifacts/status.rs` (run status per model, test failures,
-  manifest drift, source freshness); the shell stamp-caches per file
-  and skips files over `limits.artifact_mib`.
+- **dbt artifacts** (`cogitator-analysis/src/artifacts/`): readers for
+  `target/run_results.json`, a minimal `manifest.json` index (model
+  name → unique_id/path; test unique_id → attached_node),
+  `sources.json` and `catalog.json`, deserialized through the types
+  GENERATED from the vendored schemas.getdbt.com definitions (08 §4)
+  behind the same lean public structs. Leniency is MANUFACTURED in the
+  preprocess artifact mode plus the adapters: every field `Option`,
+  unknown fields ignored, statuses plain strings, a row missing
+  `unique_id` drops while its siblings survive, and schema-version
+  mismatches trace (shared `trace_schema_version`) — read, trace,
+  never reject. Parse failures degrade the artifact features off with
+  a Guidance trace — artifacts must never break core diagnostics.
+  Pure joins in `artifacts/status.rs` (run status per model, test
+  failures, manifest drift, source freshness); the shell stamp-caches
+  per file and skips files over `limits.artifact_mib`.
+- **catalog.json** (`artifacts/catalog.rs`): `dbt docs generate`
+  output as a `CatalogIndex` keyed by unique_id segments, columns
+  ordinal-sorted with warehouse types/comments. Source tables whose
+  YAML declares no columns are enriched from it during the context
+  refresh — ALWAYS on (one stamp-cached local file, adapter-agnostic;
+  the duckdb warehouse pass wins where both run), shown as
+  "<TYPE> (from catalog)" in completion/hover. Model columns stay
+  YAML-only so the `undocumented_columns` lint keeps meaning (filling
+  them from the catalog is a recorded possible follow-up).
+  `dbt.doctor` reports the catalog age.
 - **Graph**: `graph/` splits into `mod.rs` + `traverse.rs`; `NodeKind`
   gains `Exposure`, `Metric`, `SemanticModel`; transitive helpers
   (`transitive_downstream/upstream`, `downstream_closure_with_depth`,
