@@ -1,0 +1,144 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "type": "object",
+ "title": "FreshnessExecutionResultArtifact",
+ "properties": {
+  "metadata": {
+   "type": "object",
+   "title": "FreshnessMetadata",
+   "properties": {
+    "dbt_schema_version": {
+     "type": "string"
+    },
+    "dbt_version": {
+     "type": "string"
+    },
+    "generated_at": {
+     "type": "string"
+    },
+    "invocation_id": {
+     "type": "string"
+    },
+    "invocation_started_at": {
+     "type": "string"
+    },
+    "env": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "results": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "properties": {
+     "unique_id": {
+      "type": "string"
+     },
+     "error": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "status": {
+      "type": "string"
+     },
+     "max_loaded_at": {
+      "type": "string"
+     },
+     "snapshotted_at": {
+      "type": "string"
+     },
+     "max_loaded_at_time_ago_in_s": {
+      "type": "number"
+     },
+     "criteria": {
+      "type": "object",
+      "title": "FreshnessThreshold",
+      "properties": {
+       "warn_after": {
+        "type": "object",
+        "title": "Time",
+        "properties": {
+         "count": {
+          "type": "integer"
+         },
+         "period": {
+          "enum": [
+           "minute",
+           "hour",
+           "day"
+          ]
+         }
+        },
+        "additionalProperties": false
+       },
+       "error_after": {
+        "type": "object",
+        "title": "Time",
+        "properties": {
+         "count": {
+          "type": "integer"
+         },
+         "period": {
+          "enum": [
+           "minute",
+           "hour",
+           "day"
+          ]
+         }
+        },
+        "additionalProperties": false
+       },
+       "filter": {
+        "type": "string"
+       }
+      }
+     },
+     "adapter_response": {
+      "type": "object"
+     },
+     "timing": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "title": "TimingInfo",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "started_at": {
+         "type": "string"
+        },
+        "completed_at": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "thread_id": {
+      "type": "string"
+     },
+     "execution_time": {
+      "type": "number"
+     }
+    }
+   }
+  },
+  "elapsed_time": {
+   "type": "number"
+  }
+ },
+ "$id": "https://schemas.getdbt.com/dbt/sources/v3.json"
+}

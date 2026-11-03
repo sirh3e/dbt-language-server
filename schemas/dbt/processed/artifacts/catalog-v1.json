@@ -1,0 +1,230 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "type": "object",
+ "title": "CatalogArtifact",
+ "properties": {
+  "metadata": {
+   "type": "object",
+   "title": "CatalogMetadata",
+   "properties": {
+    "dbt_schema_version": {
+     "type": "string"
+    },
+    "dbt_version": {
+     "type": "string"
+    },
+    "generated_at": {
+     "type": "string"
+    },
+    "invocation_id": {
+     "type": "string"
+    },
+    "invocation_started_at": {
+     "type": "string"
+    },
+    "env": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "nodes": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "title": "CatalogTable",
+    "properties": {
+     "metadata": {
+      "type": "object",
+      "title": "TableMetadata",
+      "properties": {
+       "type": {
+        "type": "string"
+       },
+       "schema": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "database": {
+        "type": "string"
+       },
+       "comment": {
+        "type": "string"
+       },
+       "owner": {
+        "type": "string"
+       }
+      }
+     },
+     "columns": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "title": "ColumnMetadata",
+       "properties": {
+        "type": {
+         "type": "string"
+        },
+        "index": {
+         "type": "integer"
+        },
+        "name": {
+         "type": "string"
+        },
+        "comment": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "stats": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "title": "StatsItem",
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "label": {
+         "type": "string"
+        },
+        "value": {
+         "anyOf": [
+          {
+           "type": "boolean"
+          },
+          {
+           "type": "string"
+          },
+          {
+           "type": "number"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "include": {
+         "type": "boolean"
+        },
+        "description": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "unique_id": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "sources": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "title": "CatalogTable",
+    "properties": {
+     "metadata": {
+      "type": "object",
+      "title": "TableMetadata",
+      "properties": {
+       "type": {
+        "type": "string"
+       },
+       "schema": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "database": {
+        "type": "string"
+       },
+       "comment": {
+        "type": "string"
+       },
+       "owner": {
+        "type": "string"
+       }
+      }
+     },
+     "columns": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "title": "ColumnMetadata",
+       "properties": {
+        "type": {
+         "type": "string"
+        },
+        "index": {
+         "type": "integer"
+        },
+        "name": {
+         "type": "string"
+        },
+        "comment": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "stats": {
+      "type": "object",
+      "additionalProperties": {
+       "type": "object",
+       "title": "StatsItem",
+       "properties": {
+        "id": {
+         "type": "string"
+        },
+        "label": {
+         "type": "string"
+        },
+        "value": {
+         "anyOf": [
+          {
+           "type": "boolean"
+          },
+          {
+           "type": "string"
+          },
+          {
+           "type": "number"
+          },
+          {
+           "type": "null"
+          }
+         ]
+        },
+        "include": {
+         "type": "boolean"
+        },
+        "description": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "unique_id": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "errors": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "_compile_results": {}
+ },
+ "$id": "https://schemas.getdbt.com/dbt/catalog/v1.json"
+}

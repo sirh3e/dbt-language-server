@@ -92,6 +92,10 @@ gen-schemas:
     for f in dbt_project dbt_yml_files packages selectors; do \
         python3 schemas/dbt/preprocess.py "schemas/dbt/$f-latest.json" "schemas/dbt/processed/$f.json"; \
     done
+    for f in run-results-v6 sources-v3 catalog-v1; do \
+        python3 schemas/dbt/preprocess.py --mode=artifact "schemas/dbt/artifacts/$f.json" "schemas/dbt/processed/artifacts/$f.json"; \
+    done
+    python3 schemas/dbt/preprocess.py --mode=manifest-projection "schemas/dbt/artifacts/manifest-v12.json" "schemas/dbt/processed/artifacts/manifest-v12-projection.json" 
 
 # fail if the preprocessed schemas are stale (CI job, 09 §5)
 [group('schemas')]

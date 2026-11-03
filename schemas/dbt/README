@@ -11,3 +11,22 @@ Regenerate processed/ after updating the vendored files:
   for f in dbt_project dbt_yml_files packages selectors; do
     python3 schemas/dbt/preprocess.py schemas/dbt/${f}-latest.json schemas/dbt/processed/${f}.json
   done
+
+Artifact schemas vendored from https://github.com/dbt-labs/schemas.getdbt.com
+commit: d63e174a73312504393e8e1c21c0ef560d474860
+files: dbt/{run-results/v6,sources/v3,catalog/v1,manifest/v12}.json
+
+  artifacts/*.json        pristine upstream copies (never edited)
+  processed/artifacts/    preprocess.py --mode=artifact output; the
+                          manifest goes through --mode=manifest-projection
+                          (a documented subset — typifying the 946 KB
+                          schema would cost thousands of types for two
+                          lookups; the projection's field names are
+                          asserted against the pristine text, so an
+                          upstream rename fails `just gen-schemas`).
+
+dbt/freshness/v0.json (the newer freshness artifact) is deliberately
+not vendored; `dbt source freshness` writes sources.json (sources/v3).
+
+Regenerate everything:   just gen-schemas
+Check it is committed:   just gen-schemas-check

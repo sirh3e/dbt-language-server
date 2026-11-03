@@ -1,0 +1,137 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "type": "object",
+ "title": "RunResultsArtifact",
+ "properties": {
+  "metadata": {
+   "type": "object",
+   "title": "BaseArtifactMetadata",
+   "properties": {
+    "dbt_schema_version": {
+     "type": "string"
+    },
+    "dbt_version": {
+     "type": "string"
+    },
+    "generated_at": {
+     "type": "string"
+    },
+    "invocation_id": {
+     "type": "string"
+    },
+    "invocation_started_at": {
+     "type": "string"
+    },
+    "env": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "results": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "title": "RunResultOutput",
+    "properties": {
+     "status": {
+      "type": "string"
+     },
+     "timing": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "title": "TimingInfo",
+       "properties": {
+        "name": {
+         "type": "string"
+        },
+        "started_at": {
+         "type": "string"
+        },
+        "completed_at": {
+         "type": "string"
+        }
+       }
+      }
+     },
+     "thread_id": {
+      "type": "string"
+     },
+     "execution_time": {
+      "type": "number"
+     },
+     "adapter_response": {
+      "type": "object"
+     },
+     "message": {
+      "type": "string"
+     },
+     "failures": {
+      "type": "integer"
+     },
+     "unique_id": {
+      "type": "string"
+     },
+     "compiled": {
+      "type": "boolean"
+     },
+     "compiled_code": {
+      "type": "string"
+     },
+     "relation_name": {
+      "type": "string"
+     },
+     "batch_results": {
+      "type": "object",
+      "title": "BatchResults",
+      "properties": {
+       "successful": {
+        "type": "array",
+        "items": {
+         "type": "array",
+         "prefixItems": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "string"
+          }
+         ],
+         "maxItems": 2,
+         "minItems": 2
+        }
+       },
+       "failed": {
+        "type": "array",
+        "items": {
+         "type": "array",
+         "prefixItems": [
+          {
+           "type": "string"
+          },
+          {
+           "type": "string"
+          }
+         ],
+         "maxItems": 2,
+         "minItems": 2
+        }
+       }
+      },
+      "additionalProperties": false
+     }
+    }
+   }
+  },
+  "elapsed_time": {
+   "type": "number"
+  },
+  "args": {
+   "type": "object"
+  }
+ },
+ "$id": "https://schemas.getdbt.com/dbt/run-results/v6.json"
+}

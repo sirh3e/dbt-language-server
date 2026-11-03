@@ -5,6 +5,7 @@
 //! in 08 §2.2. Positions come from a saphyr marker side-table (08 §2.4) built
 //! from the same single parse; nothing outside this crate imports `generated`.
 
+pub mod artifacts;
 pub mod generated;
 pub mod project;
 pub mod properties;

@@ -1,0 +1,47 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://schemas.getdbt.com/dbt/manifest/v12.json#cogitator-projection",
+ "title": "ManifestProjection",
+ "type": "object",
+ "properties": {
+  "metadata": {
+   "title": "ManifestProjectionMetadata",
+   "type": "object",
+   "properties": {
+    "dbt_schema_version": {
+     "type": "string"
+    },
+    "dbt_version": {
+     "type": "string"
+    },
+    "generated_at": {
+     "type": "string"
+    }
+   }
+  },
+  "nodes": {
+   "type": "object",
+   "additionalProperties": {
+    "title": "ManifestProjectionNode",
+    "type": "object",
+    "properties": {
+     "resource_type": {
+      "type": "string"
+     },
+     "name": {
+      "type": "string"
+     },
+     "original_file_path": {
+      "type": "string"
+     },
+     "attached_node": {
+      "type": "string"
+     },
+     "patch_path": {
+      "type": "string"
+     }
+    }
+   }
+  }
+ }
+}

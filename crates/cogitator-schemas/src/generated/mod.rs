@@ -33,3 +33,35 @@ pub mod selectors {
         unknown_crates = Allow,
     );
 }
+
+// ---- JSON artifacts (schemas.getdbt.com, 08 §4): read through the
+// ---- preprocess --mode=artifact leniency rules; `manifest` compiles
+// ---- the documented projection only, never the 946 KB schema.
+
+pub mod run_results {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/artifacts/run-results-v6.json",
+        unknown_crates = Allow,
+    );
+}
+
+pub mod sources {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/artifacts/sources-v3.json",
+        unknown_crates = Allow,
+    );
+}
+
+pub mod catalog {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/artifacts/catalog-v1.json",
+        unknown_crates = Allow,
+    );
+}
+
+pub mod manifest {
+    typify::import_types!(
+        schema = "../../schemas/dbt/processed/artifacts/manifest-v12-projection.json",
+        unknown_crates = Allow,
+    );
+}
