@@ -298,9 +298,11 @@ pub async fn run(
     });
 
     // reader loop feeding the dispatcher (same task: ordering preserved)
+    let dispatcher_link =
+        client_link::ClientLink::new(write_tx, request_ids, progress_supported.clone());
     let mut dispatcher = dispatcher::Dispatcher::new(
         documents,
-        write_tx,
+        dispatcher_link,
         ctx_rx,
         refresh_tx,
         fusion_path,
@@ -308,9 +310,6 @@ pub async fn run(
         profiles,
         progress_supported,
         status,
-        // the ONE server→client request-id counter: the refresh/fusion
-        // ClientLinks share it, so dispatcher-issued ids cannot collide
-        request_ids,
         derived,
     );
 

@@ -22,16 +22,14 @@ use super::fusion;
 
 pub struct Dispatcher {
     documents: Documents,
-    write_tx: mpsc::UnboundedSender<Vec<u8>>,
+    /// THE send boundary (clone it for offloaded/background work).
+    link: super::client_link::ClientLink,
     ctx_rx: watch::Receiver<Arc<DbtContext>>,
     refresh_tx: mpsc::UnboundedSender<String>,
     root_path: String,
     fusion_path: String,
     fusion_enabled: Arc<AtomicBool>,
     fusion_jobs: HashMap<String, AbortHandle>,
-    scratch: Vec<u8>,
-    /// id source for server→client requests (responses are ignored).
-    server_request_ids: Arc<std::sync::atomic::AtomicI64>,
     /// Shared with the refresh task: initializationOptions and
     /// dbt.setTarget replace the launch-flag values here.
     profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
@@ -49,7 +47,7 @@ impl Dispatcher {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         documents: Documents,
-        write_tx: mpsc::UnboundedSender<Vec<u8>>,
+        link: super::client_link::ClientLink,
         ctx_rx: watch::Receiver<Arc<DbtContext>>,
         refresh_tx: mpsc::UnboundedSender<String>,
         fusion_path: String,
@@ -57,20 +55,17 @@ impl Dispatcher {
         profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
         progress_supported: Arc<AtomicBool>,
         status: Arc<std::sync::Mutex<super::StatusInfo>>,
-        server_request_ids: Arc<std::sync::atomic::AtomicI64>,
         derived: Arc<super::derived_cache::DerivedCache>,
     ) -> Self {
         Dispatcher {
             documents,
-            write_tx,
+            link,
             ctx_rx,
             refresh_tx,
             root_path: String::new(),
             fusion_path,
             fusion_enabled,
             fusion_jobs: HashMap::new(),
-            scratch: Vec::new(),
-            server_request_ids,
             profiles,
             progress_supported,
             status,
@@ -83,26 +78,15 @@ impl Dispatcher {
     }
 
     fn show_message(&mut self, message_type: i32, message: impl Into<String>) {
-        let note = cogitator_lsp::show_message(message_type, message);
-        self.send(&note);
+        self.link.show_message(message_type, message);
     }
 
     fn send_request<T: Serialize>(&mut self, method: &'static str, params: T) {
-        let id = self.server_request_ids.fetch_add(1, Ordering::Relaxed);
-        let request = cogitator_lsp::ServerRequest {
-            jsonrpc: "2.0",
-            id,
-            method,
-            params,
-        };
-        self.send(&request);
+        self.link.send_request(method, params);
     }
 
     fn send<T: Serialize>(&mut self, msg: &T) {
-        let mut out = Vec::new();
-        if rpc::encode_frame(msg, &mut self.scratch, &mut out).is_ok() {
-            let _ = self.write_tx.send(out);
-        }
+        self.link.send(msg);
     }
 
     pub async fn handle(&mut self, content: &[u8]) {
@@ -901,11 +885,7 @@ impl Dispatcher {
         } else {
             self.fusion_path.clone()
         };
-        let link = super::client_link::ClientLink::new(
-            self.write_tx.clone(),
-            self.server_request_ids.clone(),
-            self.progress_supported.clone(),
-        );
+        let link = self.link.clone();
         let (target, profiles_dir, profile) = {
             let cfg = self.profiles.lock().expect("profiles config lock");
             (
@@ -1347,7 +1327,7 @@ impl Dispatcher {
             fusion_path: self.fusion_path.clone(),
             project_name: ctx.project.name.clone(),
             uri: uri.clone(),
-            write_tx: self.write_tx.clone(),
+            write_tx: self.link.writer(),
         };
         let handle = tokio::spawn(job.run());
         self.fusion_jobs.insert(uri, handle.abort_handle());
