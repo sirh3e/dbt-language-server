@@ -1,7 +1,7 @@
 --- The :DbtBrowse bottom pane: renders one of three tabs for the selected
---- model — [1] the raw SQL, [2] the compiled SQL from target/compiled/ (a
---- hint when dbt has not written one), [3] versions and tests. Pure render
---- over the browser's state; browse.lua owns that state.
+--- model — [1] the raw SQL, [2] the compiled SQL served by dbt.compiledSql
+--- (a hint when dbt has not written one), [3] versions and tests. Pure
+--- render over the browser's state; browse.lua owns that state.
 
 local M = {}
 
@@ -85,9 +85,17 @@ function M.render(s)
       lines = read_uri_lines(s.info.uri) or { "· no file on disk ·" }
       filetype = "sql"
     elseif s.tab == 2 then
-      lines = read_uri_lines(s.info.compiledUri)
-        or { "not compiled — run :DbtCompile (dbt writes target/compiled/…)" }
       filetype = "sql"
+      local c = s.compiled
+      if c == nil then
+        lines = { "· loading compiled SQL ·" }
+      elseif type(c) == "table" and c.content and c.content ~= vim.NIL then
+        lines = vim.split(c.content, "\n")
+      elseif type(c) == "table" and c.uri and c.uri ~= vim.NIL then
+        lines = { "compiled file too large for the preview — open it directly:", vim.uri_to_fname(c.uri) }
+      else
+        lines = { "not compiled — run :DbtCompile (dbt writes target/compiled/…)" }
+      end
     else
       lines = versions_and_tests(s.info)
     end

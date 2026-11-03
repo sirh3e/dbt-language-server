@@ -294,10 +294,15 @@ if browse_ok then
       return st and st.info and st.info.model == "customers"
     end, 50)
     vim.api.nvim_feedkeys("2", "x", false)
+    -- the compiled tab is a dbt.compiledSql round trip now: wait for it
+    vim.wait(5000, function()
+      local p = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
+      return p:find("compiled_marker") ~= nil
+    end, 50)
     prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
     check(
       prev:find("compiled_marker") ~= nil,
-      "integration: browser compiled tab reads target/compiled/",
+      "integration: browser compiled tab serves dbt.compiledSql",
       prev
     )
   end

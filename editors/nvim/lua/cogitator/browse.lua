@@ -130,6 +130,32 @@ local function fetch_info(name)
   end)
 end
 
+--- dbt.compiledSql for the selected model (fetched lazily: on entering the
+--- compiled tab, and on selection changes while it is open). `false` marks
+--- "answered, nothing compiled" so the pane stops saying loading.
+local function fetch_compiled(name)
+  local s = M._state
+  if not s or not s.client or s.client:is_stopped() then
+    return
+  end
+  local gen = s.info_gen
+  s.client:exec_cmd({
+    command = "dbt.compiledSql",
+    arguments = { { uri = "", model = name } },
+  }, { bufnr = s.src_buf }, function(err, result)
+    s = M._state
+    if not s or gen ~= s.info_gen or s.selected ~= name then
+      return
+    end
+    if err then
+      vim.notify("dbt.compiledSql failed: " .. err.message, vim.log.levels.ERROR)
+      return
+    end
+    s.compiled = (result ~= vim.NIL) and result or false
+    preview.render(s)
+  end)
+end
+
 local function selected_node()
   local s = M._state
   if #s.filtered == 0 then
@@ -146,7 +172,7 @@ local function select_current()
   end
   local node = selected_node()
   if not node then
-    s.selected, s.info = nil, nil
+    s.selected, s.info, s.compiled = nil, nil, nil
     render_sides(s)
     preview.render(s)
     return
@@ -156,6 +182,7 @@ local function select_current()
   end
   s.selected = node.name
   s.info = nil
+  s.compiled = nil
   s.timer:stop()
   s.timer:start(
     DEBOUNCE_MS,
@@ -164,6 +191,9 @@ local function select_current()
       local st = M._state
       if st and st.selected == node.name then
         fetch_info(node.name)
+        if st.tab == 2 then
+          fetch_compiled(node.name)
+        end
       end
     end)
   )
@@ -269,6 +299,9 @@ end
 local function set_tab(tab)
   local s = M._state
   s.tab = tab
+  if tab == 2 and s.selected and s.compiled == nil then
+    fetch_compiled(s.selected)
+  end
   preview.render(s)
 end
 
@@ -378,6 +411,7 @@ function M.open()
     filter = "",
     selected = nil,
     info = nil,
+    compiled = nil,
     info_gen = 0,
     tab = 1,
     timer = vim.uv.new_timer(),

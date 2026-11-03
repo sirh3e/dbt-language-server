@@ -174,7 +174,9 @@ the `dbt.modelTests` shape. `versions` is `null` for an unversioned
 model; a version's `uri` follows dbt's file convention
 (`<model>_v<N>.sql`, the latest version may live in `<model>.sql`).
 `compiledUri` is non-null only when
-`target/compiled/<project>/<model path>` exists on disk.
+`target/compiled/<project>/<model path>` exists on disk (kept for
+display/back-compat). The browser's compiled tab fetches the text
+through `dbt.compiledSql` instead of reading that file itself.
 
 When the client advertises `window.workDoneProgress`, context refreshes
 and dbt run/test/compile report through `window/workDoneProgress/create`
