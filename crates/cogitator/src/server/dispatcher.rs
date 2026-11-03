@@ -55,6 +55,7 @@ impl Dispatcher {
         profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
         progress_supported: Arc<AtomicBool>,
         status: Arc<std::sync::Mutex<super::StatusInfo>>,
+        server_request_ids: Arc<std::sync::atomic::AtomicI64>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -66,7 +67,7 @@ impl Dispatcher {
             fusion_enabled,
             fusion_jobs: HashMap::new(),
             scratch: Vec::new(),
-            server_request_ids: Arc::new(std::sync::atomic::AtomicI64::new(1)),
+            server_request_ids,
             profiles,
             progress_supported,
             status,

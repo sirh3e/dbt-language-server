@@ -293,6 +293,9 @@ pub async fn run(
         profiles,
         progress_supported,
         status,
+        // the ONE server→client request-id counter: the refresh/fusion
+        // ClientLinks share it, so dispatcher-issued ids cannot collide
+        request_ids,
     );
 
     let mut stdin = tokio::io::stdin();
