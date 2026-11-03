@@ -228,6 +228,7 @@ impl Dispatcher {
 
     fn initialize(&mut self, content: &[u8]) {
         let Ok(req) = serde_json::from_slice::<Envelope<InitializeParams>>(content) else {
+            self.invalid_params(content, "initialize");
             return;
         };
         let params = req.params.unwrap_or_default();
@@ -377,11 +378,26 @@ impl Dispatcher {
 
     fn execute_command(&mut self, content: &[u8]) {
         let Ok(req) = serde_json::from_slice::<Envelope<ExecuteCommandParams>>(content) else {
+            self.invalid_params(content, "workspace/executeCommand");
             return;
         };
-        let Some(params) = req.params else { return };
-        // untyped arguments (01 §3.4); malformed → request dropped like Go
+        let Some(params) = req.params else {
+            self.invalid_params(content, "workspace/executeCommand");
+            return;
+        };
+        // a malformed argument used to hang the client on a silent drop
         let Some(arg) = params.arguments.first().and_then(|a| a.as_object()) else {
+            let guidance = cogitator_error::guidance::Guidance::new(format!(
+                "'{}' got no usable argument.",
+                params.command
+            ))
+            .because("every dbt.* command takes exactly one argument OBJECT.")
+            .fix("send arguments: [{\"uri\": \"file://…\", …}] (spec §1.6).");
+            self.send(&ErrorResponse::new(
+                req.id,
+                error_codes::INVALID_PARAMS,
+                guidance.to_message(),
+            ));
             return;
         };
         let uri = arg
@@ -545,6 +561,7 @@ impl Dispatcher {
 
     fn shutdown(&mut self, content: &[u8]) {
         let Ok(req) = serde_json::from_slice::<RequestId>(content) else {
+            self.invalid_params(content, "shutdown");
             return;
         };
         tracing::info!("shutdown request");
@@ -557,10 +574,12 @@ impl Dispatcher {
 
     fn resolve_completion(&mut self, content: &[u8]) {
         let Ok(req) = serde_json::from_slice::<MaybeId>(content) else {
+            self.invalid_params(content, "completionItem/resolve");
             return;
         };
         let Some(id) = req.id else { return };
         let Ok(item) = serde_json::from_slice::<serde_json::Value>(content) else {
+            self.invalid_params(content, "completionItem/resolve");
             return;
         };
         let mut item = item.get("params").cloned().unwrap_or(item);

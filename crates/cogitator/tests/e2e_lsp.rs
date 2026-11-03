@@ -852,3 +852,23 @@ fn cancel_request_aborts_in_flight_work() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Silent drops are gone: a command with a non-object argument answers
+/// InvalidParams (this request used to hang the client forever).
+#[test]
+fn malformed_command_argument_answers_invalid_params() {
+    let (mut lsp, _uri) = booted(&[]);
+    let bad = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.modelInfo", "arguments": [42]}),
+    );
+    assert_eq!(bad["error"]["code"], -32602, "{bad}");
+    assert!(
+        bad["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("argument OBJECT")),
+        "{bad}"
+    );
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}
