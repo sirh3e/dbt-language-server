@@ -57,6 +57,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
+  :DbtBrowse     project-wide model browser          <leader>db
   :DbtProfiles   show/switch the profiles directory
   :DbtTarget     pick the active profile/target      <leader>dT
   :DbtExtract    model → schema YAML / add version   <leader>dy
@@ -93,6 +94,28 @@ downstream models on the right. Keys inside it:
 
 Sources appear in the upstream pane tagged `[source]`; they have no
 further lineage behind them.
+
+`:DbtBrowse` (a *Neovim-only* feature) is the project-wide browser:
+the center pane lists every model, the side panes follow the selection
+with its direct upstream and downstream, and the preview below shows
+the selected model in three tabs. Keys inside it:
+
+  j / k          select a model (the panes follow, debounced)
+  /              filter the list live (smart-case substring);
+                 <BS> edits, <CR> accepts, <Esc> clears
+  h / l          move focus between the top panes
+  p              focus the preview pane (h returns)
+  1 / 2 / 3      preview tab: raw SQL / compiled SQL / versions+tests
+  <Tab>          cycle the preview tabs
+  <CR>           side pane: re-select that model in the center
+                 center: open the model file and close
+  o              open the selected entry's file
+  <Esc>          clear the filter first, close second
+  q              close the browser
+
+The compiled tab reads `target/compiled/<project>/…` from disk and
+never runs dbt — when nothing is there it shows a hint to run
+|:DbtCompile| instead.
 
 Code lenses on each model: "N downstream", "N upstream", "Go to schema",
 "Column lineage", "dbt run", "dbt test", "dbt compile"; macros get an
