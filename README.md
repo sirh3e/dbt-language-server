@@ -120,6 +120,8 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   or model under the cursor — source YAML coordinates with dbt's
   defaults, plus database/schema from the active profiles target — the
   building block for query-this-relation editor workflows
+  (`:DbtRelation` yanks it in Neovim, `M-x cogitator-relation` copies
+  it in Emacs)
 - **dbt profiles from anywhere**: `--profiles-dir`,
   `initializationOptions.profilesDir`, `$DBT_PROFILES_DIR`,
   `<root>/profiles.yml`, `<root>/.dbt/profiles.yml`, `~/.dbt/profiles.yml`

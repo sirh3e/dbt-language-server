@@ -46,6 +46,24 @@ function M.parse()
   exec("dbt.parse", false) -- project-wide; success refreshes the server context
 end
 
+--- dbt.relation: resolve database.schema.identifier of the source()/ref()
+--- under the cursor (else the file's model), yank it for pasting into SQL.
+function M.relation()
+  exec("dbt.relation", true, function(err, result)
+    if err then
+      vim.notify("dbt.relation failed: " .. err.message, vim.log.levels.ERROR)
+      return
+    end
+    if not result or result == vim.NIL then
+      vim.notify("no relation here — not a dbt model, ref() or source()", vim.log.levels.WARN)
+      return
+    end
+    vim.fn.setreg('"', result.relation)
+    pcall(vim.fn.setreg, "+", result.relation)
+    vim.notify(("%s %s → %s (yanked)"):format(result.kind, result.name, result.relation))
+  end)
+end
+
 function M.lineage()
   exec("dbt.showLineage", false) -- result arrives as a window/showMessage
 end

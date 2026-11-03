@@ -172,6 +172,23 @@ CALLBACK as plists whichever client is in charge."
   (cogitator--execute "dbt.parse" (cogitator--command-argument) #'ignore))
 
 ;;;###autoload
+(defun cogitator-relation ()
+  "Resolve the relation under point and put it on the kill ring.
+dbt.relation answers database.schema.identifier for the source() table
+or ref() at point, otherwise for the file's own model (dbt defaults
+only — see the spec)."
+  (interactive)
+  (cogitator--execute
+   "dbt.relation" (cogitator--command-argument t)
+   (lambda (r)
+     (if (null r)
+         (message "cogitator: no relation here — not a dbt model, ref() or source()")
+       (let ((relation (plist-get r :relation)))
+         (kill-new relation)
+         (message "cogitator: %s %s → %s (copied)"
+                  (plist-get r :kind) (plist-get r :name) relation))))))
+
+;;;###autoload
 (defun cogitator-lineage ()
   "Show column lineage for the current model (arrives as a message)."
   (interactive)

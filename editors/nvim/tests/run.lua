@@ -204,6 +204,19 @@ check(
   vim.inspect(relation_result):sub(1, 200)
 )
 
+-- :DbtRelation: yanks the relation into the unnamed register
+vim.api.nvim_set_current_buf(bufnr)
+vim.fn.setreg('"', "")
+require("cogitator.commands").relation()
+vim.wait(5000, function()
+  return vim.fn.getreg('"') ~= ""
+end, 50)
+check(
+  vim.fn.getreg('"') == "jaffle_shop.main.customers",
+  "integration: :DbtRelation yanks database.schema.identifier",
+  vim.fn.getreg('"')
+)
+
 -- textDocument/codeAction: the executable lens set as command-only actions
 local ca = vim.lsp.buf_request_sync(bufnr, "textDocument/codeAction", {
   textDocument = { uri = vim.uri_from_bufnr(bufnr) },

@@ -109,6 +109,16 @@
   (check (and location (string-suffix-p ".yml" (plist-get location :uri)))
          "integration: dbt.goToSchema returns a schema-YAML Location" location))
 
+;; integration: cogitator-relation copies database.schema.identifier
+(goto-char (point-min))
+(kill-new "run--sentinel")
+(cogitator-relation)
+(cl-loop repeat 50
+         until (not (equal (current-kill 0) "run--sentinel"))
+         do (accept-process-output nil 0.1))
+(check (equal (current-kill 0) "jaffle_shop.main.customers")
+       "integration: cogitator-relation copies the relation" (current-kill 0))
+
 ;; integration: code actions are the executable lens set, command-only
 (let* ((zero '(:line 0 :character 0))
        (actions (append

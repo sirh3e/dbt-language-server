@@ -55,6 +55,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtTest       dbt test for the current model      <leader>dt
   :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
   :DbtParse      dbt parse; refreshes the context
+  :DbtRelation   yank database.schema.identifier     <leader>dR
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg

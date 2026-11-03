@@ -325,6 +325,7 @@ vim.lsp.enable("cogitator")
 | `:DbtTest` | `dbt.test` | |
 | `:DbtCompile` | `dbt.compile` | compiled SQL opens via showDocument |
 | `:DbtParse` | `dbt.parse` | project-wide; refreshes artifacts + server context |
+| `:DbtRelation` | `dbt.relation` | yanks the resolved relation into `"` (and `+` when a clipboard exists), `<leader>dR` |
 | `:DbtSchema` | `dbt.goToSchema` | uri + cursor position; jump to the returned `Location` with `vim.lsp.util.show_document` |
 | `:DbtLineage` | `dbt.showLineage` | result arrives as a showMessage |
 
@@ -364,9 +365,9 @@ through the originating buffer's client.
 A `<leader>d` prefix, deliberately clear of Neovim 0.11's built-in `gr*`
 LSP maps: `<leader>ds` → `:DbtSchema`, `<leader>dl` → `:DbtLineage`,
 `<leader>dr` → `:DbtRun`, `<leader>dt` → `:DbtTest`, `<leader>dc` →
-`:DbtCompile`, `<leader>dg` → `:DbtGraph`, `<leader>dL` →
-`vim.lsp.codelens.run`. All with `desc` set, all buffer-local on attach
-only.
+`:DbtCompile`, `<leader>dg` → `:DbtGraph`, `<leader>dR` →
+`:DbtRelation`, `<leader>dL` → `vim.lsp.codelens.run`. All with `desc`
+set, all buffer-local on attach only.
 
 ---
 
