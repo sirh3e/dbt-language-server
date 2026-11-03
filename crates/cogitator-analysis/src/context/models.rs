@@ -167,6 +167,8 @@ fn source_details(
                     description: expand(&t.description),
                     uri: path.to_path_buf(),
                     range: Range::zero_width(t.name_pos),
+                    identifier: resolve_opt(t.identifier.as_deref()),
+                    loader: resolve_opt(t.loader.as_deref()),
                     columns: t.columns.clone(),
                 },
             )
@@ -177,8 +179,16 @@ fn source_details(
         description: expand(&source.description),
         uri: path.to_path_buf(),
         range: Range::zero_width(source.name_pos),
+        database: resolve_opt(source.database.as_deref()),
+        schema: resolve_opt(source.schema.as_deref()),
+        loader: resolve_opt(source.loader.as_deref()),
         tables,
     }
+}
+
+/// `env_var()`-resolve an optional raw YAML string from the schemas layer.
+fn resolve_opt(raw: Option<&str>) -> Option<String> {
+    raw.map(crate::util::resolve_env_vars)
 }
 
 /// `{% docs %}` blocks from the docs paths (03 §6.4; Q4 fixed), cached.

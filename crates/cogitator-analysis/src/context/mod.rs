@@ -100,6 +100,10 @@ pub struct SourceDetails {
     pub description: String,
     pub uri: PathBuf,
     pub range: Range,
+    /// Relation coordinates from the sources YAML, `env_var()`-resolved.
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub loader: Option<String>,
     pub tables: HashMap<String, SourceTableDetails>,
 }
 
@@ -109,6 +113,9 @@ pub struct SourceTableDetails {
     pub description: String,
     pub uri: PathBuf,
     pub range: Range,
+    /// `identifier:` override from the sources YAML, `env_var()`-resolved.
+    pub identifier: Option<String>,
+    pub loader: Option<String>,
     pub columns: Vec<cogitator_schemas::ColumnEntry>,
 }
 

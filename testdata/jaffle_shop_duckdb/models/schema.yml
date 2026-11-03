@@ -86,6 +86,7 @@ sources:
   - name: jaffle_shop
     database: raw
     schema: jaffle_shop
+    loader: raw_ingest
     tables:
       - name: orders
       - name: customers

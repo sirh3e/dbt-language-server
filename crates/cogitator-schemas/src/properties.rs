@@ -43,6 +43,11 @@ pub struct SourceEntry {
     pub name: String,
     pub name_pos: Position,
     pub description: String,
+    /// Relation coordinates, raw YAML strings — `env_var()` text is kept
+    /// verbatim here and resolved downstream (analysis layer).
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub loader: Option<String>,
     pub tables: Vec<TableEntry>,
 }
 
@@ -51,6 +56,9 @@ pub struct TableEntry {
     pub name: String,
     pub name_pos: Position,
     pub description: String,
+    /// Raw, unresolved — see `SourceEntry`.
+    pub identifier: Option<String>,
+    pub loader: Option<String>,
     pub columns: Vec<ColumnEntry>,
 }
 
@@ -132,6 +140,9 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                 name: s.name.clone(),
                 name_pos: source_pos,
                 description: s.description.clone().unwrap_or_default(),
+                database: s.database.clone(),
+                schema: s.schema.clone(),
+                loader: s.loader.clone(),
                 tables: s
                     .tables
                     .iter()
@@ -143,6 +154,8 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                             name: t.name.clone(),
                             name_pos,
                             description: t.description.clone().unwrap_or_default(),
+                            identifier: t.identifier.clone(),
+                            loader: t.loader.clone(),
                             columns: columns_of(&t.columns, &column_pos),
                         }
                     })
@@ -197,14 +210,17 @@ fn prune_for_server(value: &mut serde_json::Value) {
                 map.retain(|k, _| {
                     matches!(
                         k.as_str(),
-                        "name" | "description" | "database" | "schema" | "tables"
+                        "name" | "description" | "database" | "schema" | "loader" | "tables"
                     )
                 });
                 if let Some(Value::Array(tables)) = map.get_mut("tables") {
                     for t in tables {
                         if let Value::Object(tmap) = t {
                             tmap.retain(|k, _| {
-                                matches!(k.as_str(), "name" | "description" | "columns")
+                                matches!(
+                                    k.as_str(),
+                                    "name" | "description" | "identifier" | "loader" | "columns"
+                                )
                             });
                             prune_columns(tmap);
                         }

@@ -179,3 +179,23 @@ fn incremental_change_reparses_and_malformed_keeps_last_good() {
         .iter()
         .any(|t| t.kind == cogitator_parser::TokenKind::Ref));
 }
+
+#[test]
+fn source_relation_coordinates_resolved() {
+    let ctx = ctx();
+    let jaffle = ctx
+        .source_detail_map
+        .get("jaffle_shop")
+        .expect("jaffle_shop source");
+    assert_eq!(jaffle.database.as_deref(), Some("raw"));
+    assert_eq!(jaffle.schema.as_deref(), Some("jaffle_shop"));
+    assert_eq!(jaffle.loader.as_deref(), Some("raw_ingest"));
+
+    // stripe declares none of the coordinates: all stay None
+    let stripe = ctx.source_detail_map.get("stripe").expect("stripe source");
+    assert_eq!(stripe.database, None);
+    assert_eq!(stripe.schema, None);
+    assert_eq!(stripe.loader, None);
+    let payments = stripe.tables.get("payments").expect("payments table");
+    assert_eq!(payments.identifier, None);
+}
