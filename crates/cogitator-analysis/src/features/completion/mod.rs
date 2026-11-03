@@ -5,6 +5,7 @@
 //! tiered ranking.
 
 mod context;
+mod dbt_calls;
 mod providers;
 pub(crate) mod scope;
 
