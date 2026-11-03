@@ -15,6 +15,8 @@ use petgraph::stable_graph::{NodeIndex, StableDiGraph};
 use crate::cache::FileCache;
 use crate::util;
 
+mod traverse;
+
 /// Cached per-model edge extraction result: (target kind, edge, target name).
 pub type EdgeSeed = (NodeKind, EdgeKind, String);
 
@@ -23,6 +25,23 @@ pub enum NodeKind {
     Model,
     Source,
     Macro,
+    Exposure,
+    Metric,
+    SemanticModel,
+}
+
+impl NodeKind {
+    /// Wire/debug name, stable across the dag payloads.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NodeKind::Model => "model",
+            NodeKind::Source => "source",
+            NodeKind::Macro => "macro",
+            NodeKind::Exposure => "exposure",
+            NodeKind::Metric => "metric",
+            NodeKind::SemanticModel => "semantic_model",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
