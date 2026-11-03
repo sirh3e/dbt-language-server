@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-use cogitator_lsp::{completion_kind, CompletionItem};
+use cogitator_lsp::{completion_kind, CompletionData, CompletionItem};
 
 static SNOWFLAKE: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../data/snowflake.json"))
@@ -55,7 +55,7 @@ impl Dialect {
                 kind: completion_kind::FUNCTION,
                 insert_text: name.clone(),
                 sort_text: name.clone(),
-                data: Some(serde_json::json!({"kind": "function", "name": name})),
+                data: Some(CompletionData::Function { name: name.clone() }.into_value()),
             })
             .collect()
     }

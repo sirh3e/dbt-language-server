@@ -2,7 +2,7 @@
 //! `0` context-exact · `a` CTEs/locals/columns of refs · `b` buffer idents ·
 //! `c` relations · `m` functions · `z` keywords.
 
-use cogitator_lsp::{completion_kind, CompletionItem, Position};
+use cogitator_lsp::{completion_kind, CompletionData, CompletionItem, Position};
 use cogitator_parser::{Keyword, TokenKind};
 use regex::Regex;
 
@@ -78,7 +78,7 @@ pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
             format!("{{{{ ref('{name}') }}}}"),
             'c',
         );
-        relation.data = Some(serde_json::json!({"kind": "model", "name": name}));
+        relation.data = Some(CompletionData::Model { name: name.clone() }.into_value());
         items.push(relation);
     }
     for source in ctx.source_detail_map.values() {
@@ -92,7 +92,11 @@ pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
                 'c',
             );
             relation.data = Some(
-                serde_json::json!({"kind": "source", "name": source.name, "table": table.name}),
+                CompletionData::Source {
+                    name: source.name.clone(),
+                    table: table.name.clone(),
+                }
+                .into_value(),
             );
             items.push(relation);
         }
@@ -352,7 +356,7 @@ pub fn ref_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
             kind: completion_kind::REFERENCE,
             insert_text: format!("{name}{suffix}"),
             sort_text: name.clone(),
-            data: Some(serde_json::json!({"kind": "model", "name": name})),
+            data: Some(CompletionData::Model { name: name.clone() }.into_value()),
         })
         .collect()
 }
@@ -369,7 +373,11 @@ pub fn source_items(ctx: &DbtContext, suffix: &str, quote: &str) -> Vec<Completi
                 insert_text: format!("{}{quote}, {quote}{}{suffix}", source.name, table.name),
                 sort_text: key.clone(),
                 data: Some(
-                    serde_json::json!({"kind": "source", "name": source.name, "table": table.name}),
+                    CompletionData::Source {
+                        name: source.name.clone(),
+                        table: table.name.clone(),
+                    }
+                    .into_value(),
                 ),
             })
         })
@@ -386,7 +394,7 @@ pub fn var_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
             kind: completion_kind::VARIABLE,
             insert_text: format!("{name}{suffix}"),
             sort_text: name.clone(),
-            data: Some(serde_json::json!({"kind": "variable", "name": name})),
+            data: Some(CompletionData::Variable { name: name.clone() }.into_value()),
         })
         .collect()
 }
@@ -408,9 +416,13 @@ pub fn macro_items(ctx: &DbtContext) -> Vec<CompletionItem> {
                 kind: completion_kind::SNIPPET,
                 insert_text,
                 sort_text: m.name.clone(),
-                data: Some(serde_json::json!({
-                    "kind": "macro", "name": m.name, "package": m.project_name,
-                })),
+                data: Some(
+                    CompletionData::Macro {
+                        name: m.name.clone(),
+                        package: Some(m.project_name.clone()),
+                    }
+                    .into_value(),
+                ),
             }
         })
         .collect()

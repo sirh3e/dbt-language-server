@@ -78,41 +78,37 @@ pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<Comple
 }
 
 /// completionItem/resolve (P2): fill documentation lazily from the maps.
+/// Unknown or malformed `data` (clients echo it opaquely) resolves to None.
 pub fn resolve_completion_documentation(
     ctx: &DbtContext,
     data: &serde_json::Value,
 ) -> Option<String> {
-    let kind = data.get("kind")?.as_str()?;
-    let name = data.get("name")?.as_str()?;
-    match kind {
-        "model" => ctx
+    match serde_json::from_value::<cogitator_lsp::CompletionData>(data.clone()).ok()? {
+        cogitator_lsp::CompletionData::Model { name } => ctx
             .model_detail_map
-            .get(name)
+            .get(&name)
             .map(|m| m.description.clone()),
-        "source" => {
-            let table = data.get("table")?.as_str()?;
-            let source = ctx.source_detail_map.get(name)?;
-            let t = source.tables.get(table)?;
+        cogitator_lsp::CompletionData::Source { name, table } => {
+            let source = ctx.source_detail_map.get(&name)?;
+            let t = source.tables.get(&table)?;
             Some(format!(
                 "{}\n\nTable: {}\n{}",
                 source.description, t.name, t.description
             ))
         }
-        "variable" => ctx
+        cogitator_lsp::CompletionData::Variable { name } => ctx
             .variable_detail_map
-            .get(name)
+            .get(&name)
             .map(|v| display_value(&v.value)),
-        "macro" => {
-            let package = data
-                .get("package")
-                .and_then(|p| p.as_str())
-                .unwrap_or(&ctx.project.name);
+        cogitator_lsp::CompletionData::Macro { name, package } => {
+            let package = package.as_deref().unwrap_or(&ctx.project.name);
             ctx.macro_detail_map
                 .get(package)?
-                .get(name)
+                .get(&name)
                 .map(|m| m.description.clone())
         }
-        "function" => ctx.dialect.function_docs().get(name).cloned(),
-        _ => None,
+        cogitator_lsp::CompletionData::Function { name } => {
+            ctx.dialect.function_docs().get(&name).cloned()
+        }
     }
 }
