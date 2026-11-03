@@ -95,3 +95,38 @@ fn broken_head_keeps_later_tokens() {
     let doc = parse(text);
     assert_eq!(kind_of_literal(&doc, "stg_orders"), Some(TokenKind::Ref));
 }
+
+/// Regression: the grammar hides the comment-body token, so a sibling
+/// walk could make a WELL-FORMED comment swallow everything after it.
+#[test]
+fn sql_after_a_comment_survives() {
+    let doc = parse("select 1 {# just a note #} from t");
+    assert_eq!(
+        kind_of_literal(&doc, "from"),
+        Some(TokenKind::Word(cogitator_parser::Keyword::FROM))
+    );
+}
+
+#[test]
+fn ref_after_a_comment_keeps_its_kind() {
+    let doc = parse("select * {# note #} from {{ ref('stg_orders') }}");
+    assert_eq!(kind_of_literal(&doc, "stg_orders"), Some(TokenKind::Ref));
+}
+
+#[test]
+fn whitespace_control_comment_variant() {
+    let doc = parse("select 1 {#- trimmed note -#} from t");
+    assert_eq!(kind_of_literal(&doc, "trimmed"), None);
+    assert_eq!(
+        kind_of_literal(&doc, "from"),
+        Some(TokenKind::Word(cogitator_parser::Keyword::FROM))
+    );
+}
+
+/// `{{- -}}` whitespace control is outside the grammar's expression rule
+/// but must still resolve through error recovery + minijinja.
+#[test]
+fn whitespace_control_expression() {
+    let doc = parse("select * from {{- ref('stg_orders') -}}\n");
+    assert_eq!(kind_of_literal(&doc, "stg_orders"), Some(TokenKind::Ref));
+}

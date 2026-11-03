@@ -98,17 +98,24 @@ pub async fn run(
     profiles: ProfilesConfig,
 ) -> Result<()> {
     // Backend selection (06 §3.5): tree-sitter is the default; phase-1 stays
-    // compiled as the fallback and behind --no-tree-sitter.
-    let documents = if use_tree_sitter {
+    // compiled as the fallback and behind --no-tree-sitter. The status
+    // backend string reports what actually loaded, not what was asked for.
+    let (documents, backend) = if use_tree_sitter {
         match cogitator_treesitter::TreeSitterParser::new() {
-            Ok(parser) => dbt_ls_documents(Box::new(parser)),
+            Ok(parser) => (dbt_ls_documents(Box::new(parser)), "tree-sitter"),
             Err(err) => {
                 tracing::warn!(%err, "tree-sitter unavailable; using phase-1 pipeline");
-                dbt_ls_documents(Box::new(cogitator_parser::JinjaSqlParser))
+                (
+                    dbt_ls_documents(Box::new(cogitator_parser::JinjaSqlParser)),
+                    "minijinja+sqlparser",
+                )
             }
         }
     } else {
-        dbt_ls_documents(Box::new(cogitator_parser::JinjaSqlParser))
+        (
+            dbt_ls_documents(Box::new(cogitator_parser::JinjaSqlParser)),
+            "minijinja+sqlparser",
+        )
     };
 
     // writer task: sole owner of stdout (05 §6.2 / 01 §4)
@@ -117,11 +124,7 @@ pub async fn run(
     // set at initialize from the client's window.workDoneProgress capability
     let progress_supported = Arc::new(AtomicBool::new(false));
     let status = Arc::new(std::sync::Mutex::new(StatusInfo {
-        backend: if use_tree_sitter {
-            "tree-sitter"
-        } else {
-            "minijinja+sqlparser"
-        },
+        backend,
         ..StatusInfo::default()
     }));
 

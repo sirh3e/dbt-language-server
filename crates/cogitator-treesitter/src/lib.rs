@@ -172,16 +172,16 @@ fn collect_regions(root: tree_sitter::Node<'_>, text: &str) -> Vec<Region> {
                 });
             }
             "{#" => {
-                // the comment body (+ closing `#}`) is the next sibling token
+                // The grammar marks the comment-body token HIDDEN, so the
+                // sibling walk can land on a later construct and swallow
+                // it (a well-formed comment then ate the rest of the
+                // document). Find the real `#}` in the text instead; an
+                // unterminated comment still runs to the end.
                 let start = node.start_byte();
-                let mut end = node.end_byte();
-                if let Some(sibling) = root.child(i + 1) {
-                    end = sibling.end_byte();
-                    i += 1;
-                }
-                if end == start + 2 {
-                    end = text.len(); // unterminated comment swallows the rest
-                }
+                let end = text[start + 2..]
+                    .find("#}")
+                    .map(|off| start + 2 + off + 2)
+                    .unwrap_or(text.len());
                 regions.push(Region {
                     kind: RegionKind::Comment,
                     start,
