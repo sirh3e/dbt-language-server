@@ -228,3 +228,48 @@ fusion compile runs on a background thread (deviation), wrap stdout in
 Rust: implemented as the `tracing` fmt layer described in 05 §6.3 (same `--debug`
 file semantics; stderr is just another optional layer; OTLP export is opt-in and
 separate). Keep the flag semantics.
+
+## 6. Feature-batch wire extensions (binding)
+
+Amendments for the spec.md feature batch; these supersede the narrower
+shapes above where they overlap.
+
+### 6.1 Diagnostic
+
+`Diagnostic` gains three optional fields (omitted from the wire when
+`None`): `tags: Option<Vec<u8>>` (1 = Unnecessary, 2 = Deprecated),
+`relatedInformation: Option<Vec<DiagnosticRelatedInformation>>`, and
+`data: Option<DiagnosticData>`. `DiagnosticData` is a TYPED payload —
+`{ fix: "replace_token" | "insert_text", tokenRange: Range,
+suggestions: [String] }` — that rides did-you-mean suggestions to the
+client and back (clients must preserve `data` per LSP). `Diagnostic`
+therefore derives Deserialize as well; the struct is constructed
+through `Diagnostic::plain(..)` where no extras apply.
+
+### 6.2 Code actions
+
+`CodeAction` becomes `{ title, kind?, diagnostics?, edit?:
+WorkspaceEdit, command? }`. Quickfixes carry `kind: "quickfix"` plus
+the `edit`; the executable-lens actions stay command-only with no
+kind. `CodeActionContext.diagnostics` is now deserialized; a non-empty
+`only` filters by kind prefix instead of returning nothing.
+**`codeActionProvider` stays a plain `true`** — `codeActionKinds` is
+optional in LSP and clients request fine without it.
+
+### 6.3 New server capabilities
+
+`inlayHintProvider: true`, `documentLinkProvider: { resolveProvider:
+false }`, `linkedEditingRangeProvider: true`,
+`documentFormattingProvider: true`, and `diagnosticProvider.
+workspaceDiagnostics: true`. **`interFileDependencies` stays `false`**:
+setting it true invites clients to re-pull every open document on every
+change; cross-file truth travels through `workspace/diagnostic`.
+
+### 6.4 workspace/diagnostic result ids
+
+One global `context_revision` counter (bumped on every context rebuild)
+is the `resultId` for every item. A `previousResultId` equal to the
+current revision answers `kind: "unchanged"`; anything else answers a
+full report. Stateless and always correct — a full report is a legal
+response at any time. Per-file stamps were rejected: graph-derived
+diagnostics for file B change when file A changes.

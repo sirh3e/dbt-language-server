@@ -473,3 +473,40 @@ as themselves, which is what makes this work.)
 First match of `['"]` in the line, or `""` if none. (Go comment claims "last";
 `FindString` returns the first — **[Q3]**, keep or fix consciously; used only for the
 source item's middle quotes.)
+
+## 10. Feature-batch additions (binding)
+
+- **dbt artifacts** (`cogitator-analysis/src/artifacts/`): hand-written
+  LENIENT serde readers for `target/run_results.json`, a minimal
+  `manifest.json` index (model name → unique_id/path; test unique_id →
+  attached_node) and `sources.json`. Every field is `Option` /
+  `#[serde(default)]`, no `deny_unknown_fields`, `unique_id` the only
+  hard requirement, no schema-version gating (read, trace, never
+  reject). Parse failures degrade the artifact features off with a
+  Guidance trace — artifacts must never break core diagnostics. Pure
+  joins in `artifacts/status.rs` (run status per model, test failures,
+  manifest drift, source freshness); the shell stamp-caches per file
+  and skips files over `limits.artifact_mib`.
+- **Graph**: `graph/` splits into `mod.rs` + `traverse.rs`; `NodeKind`
+  gains `Exposure`, `Metric`, `SemanticModel`; transitive helpers
+  (`transitive_downstream/upstream`, `downstream_closure_with_depth`,
+  petgraph Bfs, deduped, excluding self) power dead-model detection and
+  `dbt.impact`.
+- **Exposures/metrics/semantic models**: `prune_for_server` keeps their
+  properties-YAML sections; `context/exposures.rs` builds detail maps
+  with positions; they join the graph with Ref edges; dangling targets
+  warn on the YAML range.
+- **Packages**: `packages.yml` parses through the generated schema type;
+  `dbt_packages/<pkg>` contributes macros (full) and model NAMES only
+  (no SQL parse, file-count capped) so two-arg `ref('pkg','model')`
+  resolves and dangling-ref checks consult package models.
+- **Lint** (`features/lint/`): opt-in, flag-per-check (cogitator.yml
+  `lint:`), each check a module ≤ ~100 lines over the token stream /
+  lineage; staging models exempt from `select_star`.
+- **Config schema** (`config_schema.rs`): the single `KeyDoc` table that
+  cogitator.yml parsing, diagnostics, completion and hover all consume.
+- **Scan-cache persistence**: the FileCache (mtime,size) index plus
+  payloads serialize to `<target-path>/.cogitator-cache` (JSON, versioned
+  header, ignore-on-any-error, atomic same-dir rename). This supersedes
+  the earlier "no on-disk persistence by design" note — scope is the
+  SCAN cache only; the derived cache stays memory-only.

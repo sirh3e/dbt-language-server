@@ -192,3 +192,17 @@ src/analysis/dbt_schema/
 
 Manifest: no new runtime deps (generated code uses `serde` only); `cargo-typify`
 documented as a required dev tool next to Zig (07 §5) in the README.
+
+## 4. Feature-batch schema deltas (binding)
+
+- `prune_for_server` widens to keep `exposures`, `metrics`,
+  `semantic_models`, `saved_queries` and `groups` (the generated types
+  already exist); `packages` gets its first consumer (packages.yml).
+- dbt ARTIFACTS (manifest/run_results/sources.json) are deliberately
+  NOT vendored as schemas: dbt changes them across versions, so the
+  readers are hand-written lenient serde structs (03 §10) that tolerate
+  unknown and missing fields.
+- Cached scan payloads (`PropertiesFile` and nested entries, RawMacro,
+  RawDocsBlock, graph NodeKind/EdgeKind) gain serde derives so the scan
+  cache can persist; wire zero-copy rules (§1) are unaffected — the
+  persistence path serializes owned snapshot data off the hot path.

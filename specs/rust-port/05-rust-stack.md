@@ -483,3 +483,28 @@ tests/
 
 Everything else in 00–04 (types, algorithms, regexes, quirks, acceptance checklist)
 stands as written.
+
+## 9. Feature-batch stack deltas (binding)
+
+- **New runtime deps**: `sqlformat` (SQL formatting; pure Rust) in
+  cogitator-analysis; `minijinja` (already a workspace dep) now also in
+  cogitator-analysis with rendering enabled for `dbt.expandJinja`.
+  Formatting is segment-based: full-line `{% %}`/`{# #}` statements are
+  emitted verbatim, `{{ }}` expressions become `COGITATOR_JINJA_<n>`
+  sentinel identifiers, restored in order with an exactly-once check —
+  on any doubt (inline `{% %}`, sentinel mismatch) the feature DECLINES
+  with no edits rather than corrupt.
+- **dbt job registry** (`server/jobs.rs`): every dbt invocation
+  registers an AbortHandle under a `u64` token (returned to the client
+  as `JobStarted`), `kill_on_drop(true)` on the child so `dbt.cancel
+  {token}` actually kills it. LSP progress-cancel is deliberately not
+  used (ProgressValue stays Begin/End).
+- **Persisted scan cache** (`server/cache_persist.rs`): JSON with
+  `{format: 1, server: <version>}` header at
+  `<target-path>/.cogitator-cache`; loaded at startup (any error →
+  ignored, trace only), saved after each successful context build off
+  the async workers.
+- **Warehouse catalog** (duckdb builds only): read-only
+  `information_schema` prefetch, NEVER on a request path; doubly gated
+  behind the `duckdb-parser` cargo feature and the `warehouse.columns`
+  config flag.
