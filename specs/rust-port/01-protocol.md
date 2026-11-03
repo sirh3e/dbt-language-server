@@ -148,7 +148,11 @@ would change them):
 
 Single loop: read frame → `decode_message` → `match method`. Unknown methods are
 silently ignored. JSON parse errors per message are logged and the message dropped
-(no error response). **No request ever gets a JSON-RPC error object** — keep that.
+- Error objects exist, narrowly: `MethodNotFound` (-32601) for unknown
+  requests, `InvalidParams` (-32602) for undecodable request params, and
+  `RequestCancelled` (-32800) for `$/cancelRequest`-aborted in-flight work.
+  Notifications never get responses. (The original "no error objects" rule
+  predated these.)
 
 ### 3.1 `initialize`
 

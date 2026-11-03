@@ -92,7 +92,7 @@ names what already exists in the codebase.
 
 - [x] **`completionItem/resolve`** — send lean completion items, resolve
       documentation lazily (today every item carries full docs).
-- [x] **`$/cancelRequest`** *(accepted & acknowledged; nothing to cancel while handlers are sub-ms)* — ignored today; matters once any request gets
+- [x] **`$/cancelRequest`** *(REAL since the offload batch: aborts in-flight work, answers -32800)* — ignored today; matters once any request gets
       slower than the current sub-millisecond handlers.
 - [x] **`textDocument/signatureHelp`** for macros *(parameters split from the signature text)* — feasible once the
       minijinja-parsed macro parameters land (spec 06 §2.2 enrichment:
