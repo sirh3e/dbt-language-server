@@ -474,6 +474,10 @@ impl Dispatcher {
                 self.show_lineage(req.id, &uri);
                 return;
             }
+            "dbt.sourceFreshness" => {
+                self.run_dbt(req.id, "source freshness", &uri);
+                return;
+            }
             "dbt.run" | "dbt.test" | "dbt.compile" | "dbt.parse" => {
                 let kind = params.command.trim_start_matches("dbt.");
                 let kind: &'static str = match kind {
@@ -751,6 +755,7 @@ impl Dispatcher {
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, cap);
                 lenses.extend(features::run_lens(&snap.ctx, &uri, &set));
+                lenses.extend(features::freshness_lenses(&snap.ctx, &uri, &set));
             }
             super::reply::Reply::result(&lenses)
         });
@@ -952,9 +957,10 @@ impl Dispatcher {
                 (!cfg.profile.is_empty()).then(|| cfg.profile.clone()),
             )
         };
-        // parse is project-wide (no --select) and the only kind whose
-        // success refreshes the context: its whole point is fresh artifacts
-        let selector = (kind != "parse").then(|| super::fusion::model_selector_from_uri(uri));
+        // parse and source freshness are project-wide (no --select);
+        // parse additionally refreshes the context on success
+        let project_wide = kind == "parse" || kind == "source freshness";
+        let selector = (!project_wide).then(|| super::fusion::model_selector_from_uri(uri));
         let refresh = (kind == "parse").then(|| (self.refresh_tx.clone(), self.root_path.clone()));
         super::commands::spawn_dbt(
             link,

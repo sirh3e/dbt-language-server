@@ -16,6 +16,11 @@ cmd("DbtRun", "run", "dbt run for the current model")
 cmd("DbtTest", "test", "dbt test for the current model")
 cmd("DbtCompile", "compile", "dbt compile for the current model (opens compiled SQL)")
 cmd("DbtParse", "parse", "dbt parse for the whole project (refreshes artifacts + context)")
+cmd(
+  "DbtSourceFreshness",
+  "source_freshness",
+  "dbt source freshness for the project (feeds the freshness lenses)"
+)
 cmd("DbtRelation", "relation", "resolve database.schema.identifier under the cursor (yanks it)")
 cmd("DbtQuery", "query", "bounded SELECT on the relation under the cursor (dadbod or scratch)")
 cmd("DbtSchema", "schema", "jump to the model's properties-YAML entry")

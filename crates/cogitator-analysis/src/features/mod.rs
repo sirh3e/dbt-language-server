@@ -21,7 +21,7 @@ mod signature;
 mod structure;
 mod tests_nav;
 
-pub use artifact_status::{artifact_diagnostics, run_lens};
+pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
 pub use code_actions::{code_actions, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};

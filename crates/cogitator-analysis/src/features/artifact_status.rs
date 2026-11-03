@@ -47,6 +47,42 @@ pub fn run_lens(ctx: &DbtContext, uri: &str, set: &ArtifactSet) -> Option<CodeLe
     })
 }
 
+/// "freshness: pass · 2026-11-03T09:00:00Z" on each source table's
+/// entry in THIS properties YAML (informational lenses).
+pub fn freshness_lenses(ctx: &DbtContext, uri: &str, set: &ArtifactSet) -> Vec<CodeLens> {
+    let Some(freshness) = &set.freshness else {
+        return Vec::new();
+    };
+    let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+    let path = std::path::Path::new(&path);
+    let verdicts = crate::artifacts::status::freshness_by_source(freshness);
+    let mut out = Vec::new();
+    for source in ctx.source_detail_map.values() {
+        for table in source.tables.values() {
+            if table.uri.as_path() != path {
+                continue;
+            }
+            let Some(verdict) = verdicts.get(&(source.name.clone(), table.name.clone())) else {
+                continue;
+            };
+            let title = match &verdict.snapshotted_at {
+                Some(at) => format!("freshness: {} · {at}", verdict.status),
+                None => format!("freshness: {}", verdict.status),
+            };
+            out.push(CodeLens {
+                range: table.range,
+                command: Command {
+                    title,
+                    command: String::new(),
+                    arguments: Vec::new(),
+                },
+            });
+        }
+    }
+    out.sort_by_key(|l| (l.range.start.line, l.range.start.character));
+    out
+}
+
 /// Run failures, failed tests and manifest drift for one URI: a model
 /// file gets its own run/test/drift findings at the file head; a
 /// properties YAML gets each failing model's findings at its entry.

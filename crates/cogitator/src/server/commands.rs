@@ -39,7 +39,8 @@ fn dbt_args(
     profiles_dir: Option<&str>,
     profile: Option<&str>,
 ) -> Vec<String> {
-    let mut args = vec![kind.to_string()];
+    // "source freshness" is one kind, two argv words
+    let mut args: Vec<String> = kind.split_whitespace().map(str::to_string).collect();
     if let Some(selector) = selector {
         args.push("--select".to_string());
         args.push(selector.to_string());

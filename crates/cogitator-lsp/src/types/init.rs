@@ -149,6 +149,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.setProfilesDir",
     "dbt.cache",
     "dbt.reloadConfig",
+    "dbt.sourceFreshness",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

@@ -1292,6 +1292,42 @@ fn artifact_backed_lenses_and_diagnostics() {
         "{drift}"
     );
 
+    // 4b. freshness verdicts become lenses on the source YAML entries
+    std::fs::write(
+        target.join("sources.json"),
+        r#"{"results": [{"unique_id": "source.jaffle_shop.stripe.payments",
+                         "status": "pass", "snapshotted_at": "2026-11-03T09:00:00Z"}]}"#,
+    )
+    .unwrap();
+    let mut fresh_titles: Vec<String> = Vec::new();
+    for _ in 0..100 {
+        let lenses = lsp.request(
+            "textDocument/codeLens",
+            serde_json::json!({"textDocument": {"uri": schema_uri}}),
+        );
+        fresh_titles = lenses["result"]
+            .as_array()
+            .map(|l| {
+                l.iter()
+                    .filter_map(|x| x["command"]["title"].as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if fresh_titles
+            .iter()
+            .any(|t| t.starts_with("freshness: pass"))
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        fresh_titles
+            .iter()
+            .any(|t| t == "freshness: pass · 2026-11-03T09:00:00Z"),
+        "{fresh_titles:?}"
+    );
+
     // 5. the stamp check sees a rewrite — no restart, no reload command
     std::fs::write(
         target.join("run_results.json"),

@@ -48,6 +48,10 @@ function M.parse()
   exec("dbt.parse", false) -- project-wide; success refreshes the server context
 end
 
+function M.source_freshness()
+  exec("dbt.sourceFreshness", false) -- project-wide; sources.json feeds the lenses
+end
+
 --- :DbtCache [clear] — derived-cache counters, or clear + refresh.
 function M.cache(action)
   local bufnr = vim.api.nvim_get_current_buf()
