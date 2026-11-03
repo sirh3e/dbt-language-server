@@ -130,3 +130,43 @@ fn whitespace_control_expression() {
     let doc = parse("select * from {{- ref('stg_orders') -}}\n");
     assert_eq!(kind_of_literal(&doc, "stg_orders"), Some(TokenKind::Ref));
 }
+
+/// 06 §3.6 delivered: the sequel grammar attaches document-accurate SQL
+/// node ranges for folding/selection; Jinja is masked, so positions of
+/// the surrounding SQL stay true.
+#[test]
+fn sql_structure_spans_nested_selects() {
+    let doc = parse(concat!(
+        "with orders as (\n",
+        "    select *\n",
+        "    from {{ ref('stg_orders') }}\n",
+        ")\n",
+        "select count(*)\n",
+        "from orders\n",
+    ));
+    let structure = doc.sql_structure.as_ref().expect("structure attached");
+    assert!(
+        structure
+            .nodes
+            .iter()
+            .any(|n| n.start_line == 0 && n.end_line >= 5),
+        "a statement-level node spans the document: {:?}",
+        structure.nodes
+    );
+    assert!(
+        structure
+            .nodes
+            .iter()
+            .any(|n| n.start_line >= 1 && n.end_line >= 2 && n.end_line < 5),
+        "a nested node covers the CTE body: {:?}",
+        structure.nodes
+    );
+}
+
+#[test]
+fn phase1_documents_carry_no_sql_structure() {
+    let doc = cogitator_parser::JinjaSqlParser
+        .parse("select 1", &Dialect::new("duckdb"))
+        .expect("parses");
+    assert!(doc.sql_structure.is_none());
+}

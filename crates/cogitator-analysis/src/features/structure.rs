@@ -7,8 +7,10 @@ use cogitator_parser::{Keyword, TokenKind};
 
 use super::{token_range, Document};
 
-/// textDocument/foldingRange: multi-line paren pairs (CTE bodies) — token-
-/// based v1; the tree-sitter phase upgrades this (06 §3.6).
+/// textDocument/foldingRange: multi-line paren pairs (CTE bodies) from
+/// tokens, UNIONED with real SQL statement/clause nodes when the
+/// tree-sitter backend attached an `SqlStructure` (06 §3.6 delivered;
+/// the phase-1 pipeline still gets the token folds alone).
 pub fn folding_ranges(doc: &Document) -> Vec<FoldingRange> {
     let mut stack: Vec<u32> = Vec::new();
     let mut out = Vec::new();
@@ -28,12 +30,23 @@ pub fn folding_ranges(doc: &Document) -> Vec<FoldingRange> {
             _ => {}
         }
     }
+    if let Some(structure) = &doc.parsed.sql_structure {
+        for node in &structure.nodes {
+            if node.end_line > node.start_line {
+                out.push(FoldingRange {
+                    start_line: node.start_line,
+                    end_line: node.end_line,
+                });
+            }
+        }
+    }
     out.sort_by_key(|r| (r.start_line, r.end_line));
     out.dedup_by_key(|r| (r.start_line, r.end_line));
     out
 }
 
-/// textDocument/selectionRange: token → line → document chain per position.
+/// textDocument/selectionRange: token → SQL nodes (smallest→largest,
+/// when the tree-sitter backend attached structure) → line → document.
 pub fn selection_ranges(doc: &Document, positions: &[Position]) -> Vec<SelectionRange> {
     let line_count = doc.text.split('\n').count() as u32;
     positions
@@ -68,12 +81,37 @@ pub fn selection_ranges(doc: &Document, positions: &[Position]) -> Vec<Selection
                 },
                 parent: Some(Box::new(document)),
             };
+            // SQL node containment chain, largest first onto `line`
+            let mut parent = line;
+            if let Some(structure) = &doc.parsed.sql_structure {
+                let mut containing: Vec<_> = structure
+                    .nodes
+                    .iter()
+                    .filter(|n| n.contains(pos.line, pos.character))
+                    .collect();
+                containing.sort_by_key(|n| std::cmp::Reverse(n.weight()));
+                for node in containing {
+                    parent = SelectionRange {
+                        range: Range {
+                            start: Position {
+                                line: node.start_line,
+                                character: node.start_character,
+                            },
+                            end: Position {
+                                line: node.end_line,
+                                character: node.end_character,
+                            },
+                        },
+                        parent: Some(Box::new(parent)),
+                    };
+                }
+            }
             match doc.parsed.find_token_at_cursor(pos.line, pos.character) {
                 Some(idx) => SelectionRange {
                     range: token_range(&doc.parsed.tokens[idx]),
-                    parent: Some(Box::new(line)),
+                    parent: Some(Box::new(parent)),
                 },
-                None => line,
+                None => parent,
             }
         })
         .collect()

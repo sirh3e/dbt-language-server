@@ -10,6 +10,7 @@
 //! to the phase-1 pipeline. SQL stays on sqlparser per 06 §3.3.
 
 mod ffi;
+mod sql_structure;
 
 use std::sync::Mutex;
 
@@ -22,6 +23,9 @@ use cogitator_parser::{backend, DocumentParser, LineTable, ParsedDocument, Token
 /// of staling the whole document.
 pub struct TreeSitterParser {
     parser: Mutex<tree_sitter::Parser>,
+    /// tree-sitter-sequel for SQL *structure* only (06 §3.6); `None`
+    /// (grammar failed to load) just means token-based fallbacks.
+    sql_parser: Option<Mutex<tree_sitter::Parser>>,
 }
 
 impl TreeSitterParser {
@@ -35,6 +39,7 @@ impl TreeSitterParser {
             })?;
         Ok(TreeSitterParser {
             parser: Mutex::new(parser),
+            sql_parser: sql_structure::new_sql_parser(),
         })
     }
 }
@@ -47,7 +52,12 @@ impl DocumentParser for TreeSitterParser {
             .ok()
             .and_then(|mut parser| parser.parse(text, None));
         match tree {
-            Some(tree) => Ok(parse_with_tree(&tree, text, dialect)),
+            Some(tree) => {
+                let mut doc = parse_with_tree(&tree, text, dialect);
+                let regions = collect_regions(tree.root_node(), text);
+                doc.sql_structure = sql_structure::collect(&self.sql_parser, text, &regions);
+                Ok(doc)
+            }
             // parse() returns None only on cancellation/timeout; fall back to
             // the phase-1 pipeline rather than dropping the request.
             None => backend_parse(text, dialect),
@@ -67,10 +77,10 @@ enum RegionKind {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Region {
+pub(crate) struct Region {
     kind: RegionKind,
-    start: usize,
-    end: usize,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
 }
 
 fn parse_with_tree(tree: &tree_sitter::Tree, text: &str, dialect: &Dialect) -> ParsedDocument {

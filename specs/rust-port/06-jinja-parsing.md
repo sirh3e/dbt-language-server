@@ -209,11 +209,17 @@ tree-sitter becomes the default once it passes the full 02-derived behavior
 suite; keep `JinjaSqlParser` compiled as the fallback (and for
 `--no-tree-sitter` style debugging) for at least one release.
 
-### 3.6 Later features unlocked (post-adoption, out of scope here)
+### 3.6 Later features unlocked (partially delivered)
 
 Semantic tokens, folding ranges, document symbols, and selection ranges all fall
-out of the same trees/queries — each would be specced as its own addition to 01's
-capability table when picked up.
+out of the same trees/queries. **Delivered:** the tree-sitter backend parses the
+Jinja-masked document once with the SQL grammar (`tree-sitter-sequel`, crate-
+sourced per the §3.2 amendment) and attaches plain `SqlStructure` node ranges to
+`ParsedDocument`; `folding_ranges` unions them with the token folds and
+`selection_ranges` inserts the containment chain between token and line. SQL
+tokens stay on sqlparser (05 §4). The phase-1 pipeline attaches nothing and the
+token-based fallbacks remain. Semantic tokens and document symbols from trees
+stay future additions.
 
 ## 4. Layout & manifest deltas (amends 05 §1/§8)
 

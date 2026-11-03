@@ -103,6 +103,47 @@ pub struct ParsedDocument {
     line_index: HashMap<u32, Vec<u32>>,
     /// CTE name → definition token (02 §3.4; last definition wins).
     pub def_tokens: HashMap<Box<str>, Token>,
+    /// SQL node structure from the tree-sitter backend (06 §3.6) —
+    /// plain data so this crate stays free of tree-sitter; the phase-1
+    /// pipeline leaves it `None` and features fall back to tokens.
+    pub sql_structure: Option<SqlStructure>,
+}
+
+/// Named-SQL-node ranges in line/character space, document-wide.
+#[derive(Debug, Clone, Default)]
+pub struct SqlStructure {
+    pub nodes: Vec<NodeRange>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NodeRange {
+    pub start_line: u32,
+    pub start_character: u32,
+    pub end_line: u32,
+    pub end_character: u32,
+}
+
+impl NodeRange {
+    /// Containment check in line/character space.
+    pub fn contains(&self, line: u32, character: u32) -> bool {
+        let after_start = line > self.start_line
+            || (line == self.start_line && character >= self.start_character);
+        let before_end =
+            line < self.end_line || (line == self.end_line && character <= self.end_character);
+        after_start && before_end
+    }
+
+    /// A coarse size metric for sorting containment chains: line span
+    /// dominates; same-line ranges compare by character span.
+    pub fn weight(&self) -> u64 {
+        let line_span = u64::from(self.end_line.saturating_sub(self.start_line));
+        let char_span = if self.start_line == self.end_line {
+            u64::from(self.end_character.saturating_sub(self.start_character))
+        } else {
+            u64::from(self.end_character)
+        };
+        (line_span << 32) + char_span
+    }
 }
 
 impl ParsedDocument {
