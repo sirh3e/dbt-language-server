@@ -124,6 +124,11 @@ the selected model in three tabs. Keys inside it:
   <Esc>          clear the filter first, close second
   q              close the browser
 
+The preview has four tabs (1 raw / 2 compiled / 3 versions+tests /
+4 info — description, tags, relation name, documented columns, and
+tests whose <CR> jumps to their YAML entry). `:DbtExplorer` is an
+alias of |:DbtBrowse|.
+
 The compiled tab fetches `dbt.compiledSql` from the server (which reads
 `target/compiled/<project>/…`) and never runs dbt — when nothing is
 there it shows a hint to run |:DbtCompile| instead.

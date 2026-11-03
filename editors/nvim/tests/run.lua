@@ -412,6 +412,53 @@ if browse_ok then
   vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
   check(browse._state ~= nil and browse._state.filter == "", "integration: <Esc> clears the filter first")
 end
+-- info tab: description/tags/relation + test jump (closes the browser)
+browse._apply_filter("customers")
+local info_row
+for i, n in ipairs(browse._state.filtered) do
+  if n.name == "customers" then
+    info_row = i
+  end
+end
+if info_row then
+  vim.api.nvim_win_set_cursor(bst.wins.center, { info_row, 0 })
+  vim.api.nvim_exec_autocmds("CursorMoved", { buffer = bst.bufs.center })
+  vim.wait(5000, function()
+    local st = browse._state
+    return st and st.info and st.info.model == "customers"
+  end, 50)
+  vim.api.nvim_set_current_win(bst.wins.center)
+  vim.api.nvim_feedkeys("4", "x", false)
+  vim.wait(5000, function()
+    local p = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
+    return p:find("relation: jaffle_shop%.main%.customers") ~= nil
+  end, 50)
+  local prev_info = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
+  check(
+    prev_info:find("#nightly") ~= nil and prev_info:find("relation: jaffle_shop%.main%.customers") ~= nil,
+    "integration: browser info tab shows tags and relation",
+    prev_info:sub(1, 200)
+  )
+  local jump_line
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false)) do
+    if l:find("unique on customer_id") then
+      jump_line = i
+    end
+  end
+  check(jump_line ~= nil, "integration: info tab lists the model's tests", prev_info:sub(1, 200))
+  if jump_line then
+    vim.api.nvim_set_current_win(bst.wins.preview)
+    vim.api.nvim_win_set_cursor(bst.wins.preview, { jump_line, 0 })
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "x", false)
+    check(
+      vim.api.nvim_buf_get_name(0):find("schema%.yml$") ~= nil,
+      "integration: info tab test jump opens the schema entry",
+      vim.api.nvim_buf_get_name(0)
+    )
+  end
+  vim.api.nvim_set_current_buf(bufnr)
+end
+
 browse.close()
 check(browse._state == nil, "integration: browser closes cleanly")
 vim.fn.delete(vim.fs.joinpath(fixture, "target"), "rf")

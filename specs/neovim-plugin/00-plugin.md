@@ -182,8 +182,15 @@ switches between `[1]` the raw SQL, `[2]` the compiled SQL from
 model — the browser never runs dbt itself) and `[3]` versions + tests.
 Keys: `j`/`k` move, `h`/`l` switch panes, `p` focus the preview, `<CR>`
 on a side entry re-selects it in the center, `<CR>`/`o` on the center
-opens the file, `1`/`2`/`3`/`<Tab>` switch the preview tab, `<Esc>`
-clears the filter first and closes second, `q` closes. The server
+opens the file, `1`/`2`/`3`/`4`/`<Tab>` switch the preview tab (raw /
+compiled / versions+tests / info), `<Esc>` clears the filter first and
+closes second, `q` closes. The info tab shows description, tags, the
+dbt.relation name, documented columns from the project graph, and the
+model's tests — `<CR>` on a test line jumps to its YAML entry. The
+implementation is the `cogitator.explorer` package (init/render/
+filter/keys/preview/info) with `cogitator.browse` as a facade and
+`:DbtExplorer` as a command alias; the DAG's canvas + barycenter
+layout engine is the pure `cogitator.layout` module. The server
 command is editor-neutral; this UI is deliberately implemented only in
 the Neovim plugin.
 

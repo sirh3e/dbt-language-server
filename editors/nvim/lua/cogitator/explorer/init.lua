@@ -26,6 +26,8 @@ local M = {}
 ---@field selected string? the selected model's name
 ---@field info table? the dbt.modelInfo payload for the selection
 ---@field compiled table|false|nil dbt.compiledSql (false = none, nil = loading)
+---@field relation table|false|nil dbt.relation (false = unresolved, nil = loading)
+---@field info_jumps table<integer, {uri: string, range?: table}>? info-tab jump targets
 ---@field info_gen integer staleness guard for in-flight fetches
 ---@field tab integer active preview tab (1-based)
 ---@field timer uv.uv_timer_t selection debounce
@@ -65,6 +67,9 @@ local function fetch_info(name)
     s.info = (result ~= vim.NIL) and result or nil
     erender.sides(s)
     preview.render(s)
+    if s.tab == 4 and s.relation == nil then
+      M._fetch_relation()
+    end
   end)
 end
 
@@ -92,6 +97,47 @@ function M._fetch_compiled(name)
   end)
 end
 
+--- dbt.relation for the selected model's file (needs s.info.uri, so it
+--- runs after modelInfo lands). `false` marks "answered, unresolved".
+function M._fetch_relation()
+  local s = M._state
+  if not s or not s.client or s.client:is_stopped() or not s.info then
+    return
+  end
+  local gen = s.info_gen
+  local name = s.selected
+  actions.exec_with(s.client, s.src_buf, "dbt.relation", { uri = s.info.uri }, function(err, result)
+    s = M._state
+    if not s or gen ~= s.info_gen or s.selected ~= name then
+      return
+    end
+    if err then
+      vim.notify("dbt.relation failed: " .. err.message, vim.log.levels.ERROR)
+      return
+    end
+    s.relation = (result ~= vim.NIL) and result or false
+    preview.render(s)
+  end)
+end
+
+--- <CR> on an info-tab test line: close and jump to its YAML entry.
+function M._info_jump()
+  local s = M._state
+  if not s or s.tab ~= 4 or not s.info_jumps then
+    return
+  end
+  local line = vim.api.nvim_win_get_cursor(s.wins.preview)[1]
+  local target = s.info_jumps[line]
+  if not target or not target.uri or target.uri == vim.NIL then
+    return
+  end
+  M.close()
+  if actions.open_uri(target.uri) and target.range and target.range ~= vim.NIL then
+    local start = target.range.start
+    pcall(vim.api.nvim_win_set_cursor, 0, { start.line + 1, start.character })
+  end
+end
+
 --- The model under the center cursor, or nil with an empty filter hit.
 ---@return cogitator.GraphEntry?
 function M._selected_node()
@@ -110,7 +156,7 @@ function M._select_current()
   end
   local node = M._selected_node()
   if not node then
-    s.selected, s.info, s.compiled = nil, nil, nil
+    s.selected, s.info, s.compiled, s.relation = nil, nil, nil, nil
     erender.sides(s)
     preview.render(s)
     return
@@ -121,6 +167,7 @@ function M._select_current()
   s.selected = node.name
   s.info = nil
   s.compiled = nil
+  s.relation = nil
   s.timer:stop()
   s.timer:start(
     DEBOUNCE_MS,
@@ -137,13 +184,16 @@ function M._select_current()
   )
 end
 
---- Switch the preview tab (1=raw, 2=compiled, 3=versions/tests).
+--- Switch the preview tab (1=raw, 2=compiled, 3=versions/tests, 4=info).
 ---@param tab integer
 function M._set_tab(tab)
   local s = M._state
   s.tab = tab
   if tab == 2 and s.selected and s.compiled == nil then
     M._fetch_compiled(s.selected)
+  end
+  if tab == 4 and s.relation == nil then
+    M._fetch_relation()
   end
   preview.render(s)
 end

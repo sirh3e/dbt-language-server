@@ -75,16 +75,17 @@ function M.attach(explorer, pane, buf)
     vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true })
   end
   map("q", explorer.close)
-  for i = 1, 3 do
+  for i = 1, 4 do
     map(tostring(i), function()
       explorer._set_tab(i)
     end)
   end
   map("<Tab>", function()
-    explorer._set_tab(explorer._state.tab % 3 + 1)
+    explorer._set_tab(explorer._state.tab % 4 + 1)
   end)
   if pane == "preview" then
     map("<Esc>", explorer.close)
+    map("<CR>", explorer._info_jump)
     map("h", function()
       vim.api.nvim_set_current_win(s.wins.center)
     end)

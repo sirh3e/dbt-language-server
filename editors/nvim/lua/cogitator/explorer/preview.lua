@@ -1,8 +1,8 @@
 --- The explorer's bottom pane: renders one of three tabs for the
 --- selected model — [1] the raw SQL, [2] the compiled SQL served by
 --- dbt.compiledSql (a hint when dbt has not written one), [3] versions
---- and tests. Pure render over the explorer state (explorer/init.lua
---- owns it).
+--- and tests, [4] the info view (description/tags/relation/columns/
+--- tests with jumps). Pure render over the explorer state.
 
 local render_lib = require("cogitator.render")
 local ui = require("cogitator.ui")
@@ -10,7 +10,7 @@ local ui = require("cogitator.ui")
 local M = {}
 
 local function tab_title(tab)
-  local names = { "raw", "compiled", "versions/tests" }
+  local names = { "raw", "compiled", "versions/tests", "info" }
   local parts = {}
   for i, name in ipairs(names) do
     local label = ("%d %s"):format(i, name)
@@ -90,8 +90,12 @@ function M.render(s)
       else
         lines = { "not compiled — run :DbtCompile (dbt writes target/compiled/…)" }
       end
-    else
+    elseif s.tab == 3 then
       lines = versions_and_tests(s.info)
+    else
+      local view = require("cogitator.explorer.info").view(s)
+      lines = view.lines
+      s.info_jumps = view.jumps
     end
   end
   ui.set_lines(buf, lines)

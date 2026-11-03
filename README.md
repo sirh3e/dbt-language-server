@@ -101,7 +101,9 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   float over the whole project — every model in a searchable center
   list (`/` filters as you type), direct upstream/downstream in the
   side panes, and a preview below with the raw SQL, the compiled SQL
-  (served by `dbt.compiledSql`) and the model's versions + tests.
+  (served by `dbt.compiledSql`), the model's versions + tests, and an
+  info tab (description, tags, relation name, documented columns,
+  tests with jumps).
   Backed by the editor-neutral `dbt.modelInfo` command (neighbors,
   versions, tests and the compiled-SQL location in one round trip);
   the UI ships only in the Neovim plugin.
