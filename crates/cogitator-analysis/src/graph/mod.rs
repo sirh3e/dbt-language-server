@@ -111,6 +111,31 @@ impl ProjectGraph {
         }
     }
 
+    /// Exposures/metrics/semantic models join after the model build
+    /// (03 §10): one node each plus Ref/Source edges to their targets.
+    pub fn add_citizens<'a>(
+        &mut self,
+        citizens: impl Iterator<Item = (NodeKind, &'a crate::context::exposures::CitizenDetails)>,
+    ) {
+        use crate::context::exposures::RefTarget;
+        for (kind, citizen) in citizens {
+            let from = self.ensure_node(kind, citizen.name.clone(), citizen.uri.clone());
+            for target in &citizen.depends {
+                let (to, edge) = match target {
+                    RefTarget::Model(model) => (
+                        self.ensure_node(NodeKind::Model, model.clone(), PathBuf::new()),
+                        EdgeKind::Ref,
+                    ),
+                    RefTarget::Source(source, _table) => (
+                        self.ensure_node(NodeKind::Source, source.clone(), PathBuf::new()),
+                        EdgeKind::Source,
+                    ),
+                };
+                self.graph.update_edge(from, to, edge);
+            }
+        }
+    }
+
     /// Models whose refs point at nothing on disk (05 §5 use 2).
     pub fn dangling_refs(&self) -> impl Iterator<Item = (&NodeData, &NodeData)> {
         self.graph.edge_indices().filter_map(move |e| {

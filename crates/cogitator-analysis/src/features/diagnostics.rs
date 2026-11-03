@@ -90,3 +90,62 @@ fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Opt
     }
     Some(diagnostic)
 }
+
+/// Dangling exposure/metric/semantic-model targets in THIS properties
+/// file: a depends entry pointing at no model/source warns at the
+/// citizen's own entry, with did-you-mean over the model names.
+pub fn citizen_diagnostics(ctx: &DbtContext, uri: &str) -> Vec<Diagnostic> {
+    use crate::context::exposures::RefTarget;
+
+    let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+    let path = std::path::Path::new(&path);
+    let mut out = Vec::new();
+    let citizens = ctx
+        .exposure_detail_map
+        .values()
+        .map(|c| ("exposure", c))
+        .chain(ctx.metric_detail_map.values().map(|c| ("metric", c)))
+        .chain(
+            ctx.semantic_model_detail_map
+                .values()
+                .map(|c| ("semantic model", c)),
+        );
+    for (what, citizen) in citizens {
+        if citizen.uri.as_path() != path {
+            continue;
+        }
+        for target in &citizen.depends {
+            let guidance = match target {
+                RefTarget::Model(model) if !ctx.model_detail_map.contains_key(model) => {
+                    Guidance::new(format!(
+                        "{what} '{}' depends on unknown model '{model}'",
+                        citizen.name
+                    ))
+                    .suggest(closest_matches(
+                        model,
+                        ctx.model_detail_map.keys().map(String::as_str),
+                    ))
+                }
+                RefTarget::Source(source, _) if !ctx.source_detail_map.contains_key(source) => {
+                    Guidance::new(format!(
+                        "{what} '{}' depends on unknown source '{source}'",
+                        citizen.name
+                    ))
+                    .suggest(closest_matches(
+                        source,
+                        ctx.source_detail_map.keys().map(String::as_str),
+                    ))
+                }
+                _ => continue,
+            };
+            out.push(Diagnostic::plain(
+                citizen.range,
+                guidance.to_diagnostic(),
+                diagnostic_severity::WARNING,
+                "dangling-exposure-ref",
+                "cogitator",
+            ));
+        }
+    }
+    out
+}

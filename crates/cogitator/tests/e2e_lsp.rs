@@ -1422,3 +1422,81 @@ fn dbt_jobs_start_and_cancel_by_token() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Exposures as graph citizens (03 §10): symbol search, the project
+/// DAG, and dangling-target warnings on the YAML entry.
+#[test]
+fn exposures_join_the_graph() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-exposures-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let exposures_yml = root.join("models/exposures.yml");
+    std::fs::write(
+        &exposures_yml,
+        "version: 2\nexposures:\n  - name: weekly_kpis\n    type: dashboard\n    depends_on:\n      - ref('customers')\n      - ref('customrs')\n",
+    )
+    .unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+
+    // workspace/symbol with the exposure: prefix
+    let symbols = lsp.request(
+        "workspace/symbol",
+        serde_json::json!({"query": "exposure:"}),
+    );
+    assert!(
+        symbols["result"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|x| x["name"] == "weekly_kpis")),
+        "{symbols}"
+    );
+
+    // the DAG carries the exposure node and its edge
+    let dag = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.projectGraph", "arguments": [{}]}),
+    );
+    let node = dag["result"]["nodes"]
+        .as_array()
+        .and_then(|n| n.iter().find(|x| x["name"] == "weekly_kpis").cloned())
+        .expect("exposure node");
+    assert_eq!(node["kind"], "exposure", "{node}");
+    assert!(
+        dag["result"]["edges"].as_array().is_some_and(|e| e
+            .iter()
+            .any(|x| x["from"] == "model:customers" && x["to"] == "exposure:weekly_kpis")),
+        "{dag}"
+    );
+
+    // the dangling target warns at the exposure's entry, with a hint
+    let exposures_uri = cogitator_lsp::fs_path_to_uri(&exposures_yml);
+    let text = std::fs::read_to_string(&exposures_yml).unwrap();
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": exposures_uri, "languageId": "yaml",
+            "version": 1, "text": text}}),
+    );
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": exposures_uri}}),
+    );
+    let dangling = pulled["result"]["items"]
+        .as_array()
+        .and_then(|i| {
+            i.iter()
+                .find(|d| d["code"] == "dangling-exposure-ref")
+                .cloned()
+        })
+        .expect("dangling exposure warning");
+    assert!(
+        dangling["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("'customrs'") && m.contains("customers")),
+        "{dangling}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

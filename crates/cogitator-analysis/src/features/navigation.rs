@@ -132,6 +132,27 @@ pub fn workspace_symbols(ctx: &DbtContext, query: &str) -> Vec<SymbolInformation
         return out;
     }
 
+    if let Some(exposure) = query.strip_prefix("exposure:") {
+        let exposure = exposure.trim();
+        let mut out: Vec<SymbolInformation> = ctx
+            .exposure_detail_map
+            .iter()
+            .chain(&ctx.metric_detail_map)
+            .chain(&ctx.semantic_model_detail_map)
+            .filter(|(name, _)| exposure.is_empty() || name.to_lowercase().contains(exposure))
+            .map(|(name, c)| SymbolInformation {
+                name: name.clone(),
+                kind: symbol_kind::EVENT,
+                location: Location {
+                    uri: file_uri(&c.uri),
+                    range: c.range,
+                },
+            })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        return out;
+    }
+
     let matches = |name: &str| query.is_empty() || name.to_lowercase().contains(&query);
     let mut out = Vec::new();
     for (name, s) in &ctx.selector_detail_map {

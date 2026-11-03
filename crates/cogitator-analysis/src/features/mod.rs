@@ -26,7 +26,7 @@ pub use code_actions::{code_actions, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};
 pub use definition::{definition, go_to_schema};
-pub use diagnostics::dangling_ref_diagnostics;
+pub use diagnostics::{citizen_diagnostics, dangling_ref_diagnostics};
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,

@@ -10,18 +10,23 @@ use crate::graph::{NodeData, NodeKind};
 use super::{file_uri, model_name_from_uri, DbtContext};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum GraphNodeKind {
     Model,
     Source,
+    Exposure,
+    Metric,
+    SemanticModel,
 }
 
 impl GraphNodeKind {
     fn of(kind: NodeKind) -> Self {
-        if kind == NodeKind::Source {
-            GraphNodeKind::Source
-        } else {
-            GraphNodeKind::Model
+        match kind {
+            NodeKind::Source => GraphNodeKind::Source,
+            NodeKind::Exposure => GraphNodeKind::Exposure,
+            NodeKind::Metric => GraphNodeKind::Metric,
+            NodeKind::SemanticModel => GraphNodeKind::SemanticModel,
+            NodeKind::Model | NodeKind::Macro => GraphNodeKind::Model,
         }
     }
 }
@@ -110,14 +115,7 @@ pub fn model_graph(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Opti
 }
 
 fn node_id(kind: NodeKind, name: &str) -> String {
-    format!(
-        "{}:{name}",
-        if kind == NodeKind::Source {
-            "source"
-        } else {
-            "model"
-        }
-    )
+    format!("{}:{name}", kind.as_str())
 }
 
 /// The whole model/source DAG with layers, tags and documented columns.

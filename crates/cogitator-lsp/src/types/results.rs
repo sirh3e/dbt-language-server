@@ -182,6 +182,8 @@ pub mod symbol_kind {
     pub const VARIABLE: i32 = 13;
     /// Used for selectors.yml entries (selector search).
     pub const KEY: i32 = 20;
+    /// Used for exposures/metrics/semantic models (exposure search).
+    pub const EVENT: i32 = 24;
 }
 
 #[derive(Debug, Clone, Serialize)]

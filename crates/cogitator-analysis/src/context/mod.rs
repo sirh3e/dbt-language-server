@@ -1,6 +1,7 @@
 //! dbt project context building (specs/rust-port/03 §1.2): the snapshot
 //! types, the build orchestrator, and one submodule per detail-map builder.
 
+pub mod exposures;
 mod macros;
 mod models;
 mod packages;
@@ -13,7 +14,7 @@ use cogitator_dialects::Dialect;
 use cogitator_lsp::Range;
 use cogitator_schemas::project::{apply_defaults, parse_dbt_project, ProjectFile};
 
-use crate::graph::ProjectGraph;
+use crate::graph::{NodeKind, ProjectGraph};
 use crate::util;
 
 use cogitator_parser::jinja_scan::{RawDocsBlock, RawMacro};
@@ -31,6 +32,7 @@ use variables::build_variables;
 #[derive(Default)]
 pub struct ContextBuilder {
     props: FileCache<PropertiesFile>,
+    citizens: FileCache<exposures::CitizenFile>,
     macros: FileCache<Vec<RawMacro>>,
     docs: FileCache<Vec<RawDocsBlock>>,
     edges: FileCache<Vec<EdgeSeed>>,
@@ -150,6 +152,9 @@ pub struct DbtContext {
     pub macro_detail_map: HashMap<String, HashMap<String, MacroDetails>>,
     pub variable_detail_map: HashMap<String, VariableDetails>,
     pub selector_detail_map: HashMap<String, SelectorDetails>,
+    pub exposure_detail_map: HashMap<String, exposures::CitizenDetails>,
+    pub metric_detail_map: HashMap<String, exposures::CitizenDetails>,
+    pub semantic_model_detail_map: HashMap<String, exposures::CitizenDetails>,
     pub graph: ProjectGraph,
 }
 
@@ -243,6 +248,37 @@ impl ContextBuilder {
 
         let selector_detail_map = load_selectors(&root);
 
+        // exposures/metrics/semantic models: a marked-YAML pass over the
+        // own project's properties files (03 §10), then into the graph
+        let mut citizen_files = Vec::new();
+        for rel in &project.model_paths {
+            let dir = root.join(rel);
+            if std::fs::read_dir(&dir).is_err() {
+                continue;
+            }
+            for file in util::walk_filepath(&dir, ".yml") {
+                if let Some(parsed) = self.citizens.get_or_parse(&file, |text, path| {
+                    Some(exposures::extract_citizens(text, path))
+                }) {
+                    citizen_files.push((*parsed).clone());
+                }
+            }
+        }
+        self.citizens.sweep();
+        let (exposure_detail_map, metric_detail_map, semantic_model_detail_map) =
+            exposures::into_maps(citizen_files);
+        graph.add_citizens(
+            exposure_detail_map
+                .values()
+                .map(|c| (NodeKind::Exposure, c)),
+        );
+        graph.add_citizens(metric_detail_map.values().map(|c| (NodeKind::Metric, c)));
+        graph.add_citizens(
+            semantic_model_detail_map
+                .values()
+                .map(|c| (NodeKind::SemanticModel, c)),
+        );
+
         DbtContext {
             project_root: Some(root),
             project,
@@ -252,6 +288,9 @@ impl ContextBuilder {
             macro_detail_map: macros,
             variable_detail_map: variables,
             selector_detail_map,
+            exposure_detail_map,
+            metric_detail_map,
+            semantic_model_detail_map,
             graph,
         }
     }

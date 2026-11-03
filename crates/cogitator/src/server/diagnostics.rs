@@ -21,7 +21,9 @@ pub fn static_diagnostics(
         // the server's own config file — never the dbt-properties pass
         cogitator_analysis::yaml_cogitator::cogitator_diagnostics(&doc.text)
     } else if is_yaml(uri) {
-        yaml_features::yaml_diagnostics(uri, &doc.text)
+        let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
+        items.extend(features::citizen_diagnostics(ctx, uri));
+        items
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);
         if lints.any() {

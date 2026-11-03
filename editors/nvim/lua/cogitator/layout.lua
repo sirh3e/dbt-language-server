@@ -10,7 +10,7 @@ M.MAX_COLUMNS = 8
 ---@class cogitator.layout.Node
 ---@field id string
 ---@field name string
----@field kind "model"|"source"
+---@field kind "model"|"source"|"exposure"|"metric"|"semantic_model"
 ---@field layer integer 0-based layer from the server
 ---@field tags string[]
 ---@field columns {name: string, description: string}[]
@@ -89,7 +89,11 @@ end
 ---@param expanded boolean
 ---@return string[]
 function M.node_lines(node, expanded)
-  local title = node.name .. (node.kind == "source" and "  [source]" or "")
+  local badge = ""
+  if node.kind ~= "model" then
+    badge = "  [" .. node.kind:gsub("_", " ") .. "]"
+  end
+  local title = node.name .. badge
   local lines = { title }
   if node.tags and #node.tags > 0 then
     local tags = {}
