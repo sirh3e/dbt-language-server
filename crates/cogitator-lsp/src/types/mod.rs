@@ -2,6 +2,7 @@
 //! core geometry, message envelopes, incoming params, outgoing results,
 //! and the initialize response.
 
+mod actions;
 mod core;
 mod init;
 mod messages;
@@ -9,6 +10,7 @@ mod params;
 mod results;
 mod workspace;
 
+pub use actions::*;
 pub use core::*;
 pub use init::*;
 pub use messages::*;

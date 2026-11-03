@@ -51,6 +51,9 @@ pub struct ServerCapabilities {
     pub rename_provider: bool,
     #[serde(rename = "codeLensProvider")]
     pub code_lens_provider: CodeLensOptions,
+    /// Plain bool: command-only actions, no kinds, no resolve.
+    #[serde(rename = "codeActionProvider")]
+    pub code_action_provider: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -153,6 +156,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.relation",
                         "dbt.compiledSql",
                         "dbt.parse",
+                        "dbt.openModel",
                     ],
                 },
                 references_provider: true,
@@ -179,6 +183,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 code_lens_provider: CodeLensOptions {
                     resolve_provider: false,
                 },
+                code_action_provider: true,
             },
             server_info: ServerInfo {
                 name: "cogitator",

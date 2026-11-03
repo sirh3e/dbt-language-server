@@ -137,6 +137,7 @@ impl Dispatcher {
             "textDocument/signatureHelp" => self.signature_help(content),
             "textDocument/rename" => self.rename(content),
             "textDocument/codeLens" => self.code_lens(content),
+            "textDocument/codeAction" => self.code_action(content),
             "textDocument/diagnostic" => self.pull_diagnostics(content),
             "workspace/symbol" => self.workspace_symbol(content),
             "workspace/didChangeWatchedFiles" => {
@@ -426,6 +427,37 @@ impl Dispatcher {
                 self.send(&ResultResponse::new(req.id, result));
                 return;
             }
+            "dbt.openModel" => {
+                let target = if !uri.is_empty() {
+                    Some(uri.clone())
+                } else {
+                    let ctx = self.snapshot();
+                    arg.get("model")
+                        .and_then(|m| m.as_str())
+                        .and_then(|m| ctx.model_detail_map.get(m))
+                        .filter(|d| !d.uri.as_os_str().is_empty())
+                        .map(|d| cogitator_lsp::fs_path_to_uri(&d.uri))
+                };
+                match target {
+                    Some(target) => self.send_request(
+                        "window/showDocument",
+                        cogitator_lsp::ShowDocumentParams {
+                            uri: target,
+                            take_focus: true,
+                            selection: None,
+                        },
+                    ),
+                    None => self.show_message(
+                        cogitator_lsp::message_type::WARNING,
+                        "Cannot open the model.\n\
+                         Reason: no uri was given and the model name is not \
+                         in the project.\n\
+                         Solution: pass {uri} or {model: <known model>}.",
+                    ),
+                }
+                self.send(&ResultResponse::new(req.id, serde_json::Value::Null));
+                return;
+            }
             "dbt.compiledSql" => {
                 let model = arg.get("model").and_then(|m| m.as_str());
                 let ctx = self.snapshot();
@@ -586,6 +618,32 @@ impl Dispatcher {
         self.respond_position(content, "textDocument/codeLens", |ctx, _, uri, _| {
             features::code_lenses(ctx, uri)
         });
+    }
+
+    fn code_action(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::CodeActionParams>>(content)
+        else {
+            self.invalid_params(content, "textDocument/codeAction");
+            return;
+        };
+        let Some(params) = req.params else {
+            self.invalid_params(content, "textDocument/codeAction");
+            return;
+        };
+        let uri = params.text_document.uri.into_owned();
+        let only: Option<Vec<String>> = params
+            .context
+            .and_then(|c| c.only)
+            .map(|kinds| kinds.into_iter().map(|k| k.into_owned()).collect());
+        let ctx = self.snapshot();
+        let actions = features::code_actions(
+            &ctx,
+            self.documents.get(&uri),
+            &uri,
+            params.range,
+            only.as_deref(),
+        );
+        self.send(&ResultResponse::new(req.id, actions));
     }
 
     fn signature_help(&mut self, content: &[u8]) {

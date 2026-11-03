@@ -204,6 +204,24 @@ check(
   vim.inspect(relation_result):sub(1, 200)
 )
 
+-- textDocument/codeAction: the executable lens set as command-only actions
+local ca = vim.lsp.buf_request_sync(bufnr, "textDocument/codeAction", {
+  textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+  range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+  context = { diagnostics = {} },
+}, 5000)
+local ca_titles = {}
+for _, resp in pairs(ca or {}) do
+  for _, a in ipairs(resp.result or {}) do
+    ca_titles[#ca_titles + 1] = a.title
+  end
+end
+check(
+  vim.tbl_contains(ca_titles, "dbt run") and vim.tbl_contains(ca_titles, "Go to schema"),
+  "integration: code actions offer the dbt command set",
+  vim.inspect(ca_titles)
+)
+
 -- the yazi-style browser: three panes, upstream pane lists neighbors
 local graph = require("cogitator.graph")
 graph.open()

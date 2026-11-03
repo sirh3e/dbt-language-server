@@ -131,6 +131,7 @@ fn full_session() {
     assert!(caps["completionProvider"]["triggerCharacters"]
         .as_array()
         .is_some_and(|chars| chars.iter().any(|c| c == "'")));
+    assert_eq!(caps["codeActionProvider"], true);
     assert_eq!(init["result"]["serverInfo"]["name"], "cogitator");
 
     // 2. didOpen, then give the background refresh a moment
@@ -311,6 +312,35 @@ fn full_session() {
         "{lens_titles:?}"
     );
 
+    // 6a4b. code actions: the executable lens set at the cursor, as
+    // command-only actions
+    let actions = lsp.request(
+        "textDocument/codeAction",
+        serde_json::json!({"textDocument": {"uri": uri},
+                           "range": {"start": {"line": 0, "character": 0},
+                                     "end": {"line": 0, "character": 0}},
+                           "context": {"diagnostics": []}}),
+    );
+    let action_commands: Vec<String> = actions["result"]
+        .as_array()
+        .expect("actions")
+        .iter()
+        .map(|a| {
+            a["command"]["command"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect();
+    assert!(
+        action_commands.contains(&"dbt.run".to_string()),
+        "{action_commands:?}"
+    );
+    assert!(
+        action_commands.contains(&"dbt.goToTests".to_string()),
+        "{action_commands:?}"
+    );
+
     let _ = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.openSchema", "arguments": [{"uri": uri}]}),
@@ -377,6 +407,23 @@ fn full_session() {
                 .as_str()
                 .is_some_and(|s| s.contains("models"))),
         "refresh reported via $/progress"
+    );
+
+    // 6a5b. dbt.openModel navigates via window/showDocument
+    lsp.stash.clear();
+    let _ = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.openModel", "arguments": [{"model": "customers"}]}),
+    );
+    assert!(
+        lsp.stash
+            .iter()
+            .any(|m| m["method"] == "window/showDocument"
+                && m["params"]["uri"]
+                    .as_str()
+                    .is_some_and(|u| u.ends_with("customers.sql"))),
+        "dbt.openModel sent showDocument: {:?}",
+        lsp.stash
     );
 
     // 6a6. yaml workflow: tests navigation + extract-to-version

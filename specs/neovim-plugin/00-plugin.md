@@ -53,6 +53,13 @@ error.
 - `completionProvider: { resolveProvider: true, triggerCharacters:
   [".", "'", "\"", " ", "("] }`; see §6.3
 - `signatureHelpProvider: { triggerCharacters: ["(", ","] }`
+- `codeActionProvider: true` — **command-only** actions (no edits, no
+  kinds, no resolve): the executable lens set at the cursor, so every
+  stock LSP editor gets dbt workflows without client wiring. A non-empty
+  `context.only` filter answers `[]` (the actions are kind-less). On a
+  `ref('x')` token, "Open schema of 'x'" is prepended; in a properties
+  YAML, the entry at/above the cursor offers "Open model" (via
+  `dbt.openModel`) and "Go to tests".
 - `semanticTokensProvider`: `full: true`, legend token types (in index
   order): `keyword, function, macro, variable, string, number, operator,
   namespace`; no modifiers
@@ -105,6 +112,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.modelInfo` | `{model, uri, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
 | `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the 2 MiB wire cap |
+| `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt

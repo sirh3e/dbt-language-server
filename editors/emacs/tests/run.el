@@ -109,6 +109,19 @@
   (check (and location (string-suffix-p ".yml" (plist-get location :uri)))
          "integration: dbt.goToSchema returns a schema-YAML Location" location))
 
+;; integration: code actions are the executable lens set, command-only
+(let* ((zero '(:line 0 :character 0))
+       (actions (append
+                 (jsonrpc-request (eglot--current-server-or-lose)
+                                  :textDocument/codeAction
+                                  (list :textDocument (list :uri (concat "file://" (buffer-file-name)))
+                                        :range (list :start zero :end zero)
+                                        :context '(:diagnostics [])))
+                 nil))
+       (titles (mapcar (lambda (a) (plist-get a :title)) actions)))
+  (check (and (member "dbt run" titles) (member "Go to schema" titles))
+         "integration: code actions offer the dbt command set" titles))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")

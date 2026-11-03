@@ -7,10 +7,46 @@ use serde::Serialize;
 
 use super::{model_name_from_uri, DbtContext};
 
-/// The single argument object every executable lens carries.
+/// The single argument object every executable lens and code action
+/// carries.
 #[derive(Debug, Serialize)]
-struct CodeLensArgument {
-    uri: String,
+pub(crate) struct CommandArgument {
+    pub(crate) uri: String,
+}
+
+/// The executable per-model command set — one truth shared by the code
+/// lenses and textDocument/codeAction (schema/lineage entry points, dbt
+/// execution, and the schema-gated tests/extract tail).
+pub(crate) fn model_commands(ctx: &DbtContext, uri: &str) -> Vec<(String, &'static str)> {
+    let Some(model) = model_name_from_uri(uri) else {
+        return Vec::new();
+    };
+    if !ctx.model_detail_map.contains_key(&model) {
+        return Vec::new();
+    }
+    let mut commands = vec![
+        ("Go to schema".to_string(), "dbt.openSchema"),
+        ("Column lineage".to_string(), "dbt.showLineage"),
+        ("dbt run".to_string(), "dbt.run"),
+        ("dbt test".to_string(), "dbt.test"),
+        ("dbt compile".to_string(), "dbt.compile"),
+    ];
+    match ctx
+        .model_detail_map
+        .get(&model)
+        .and_then(|d| d.schema_uri.as_ref())
+    {
+        // no entry yet: offer the scaffold instead of a test count
+        None => commands.push(("Extract schema YAML".to_string(), "dbt.extractModelYaml")),
+        Some(_) => {
+            if let Some((_, tests)) = super::model_tests(ctx, uri) {
+                if !tests.is_empty() {
+                    commands.push((plural(tests.len(), "test"), "dbt.goToTests"));
+                }
+            }
+        }
+    }
+    commands
 }
 
 pub fn code_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
@@ -20,54 +56,29 @@ pub fn code_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> 
 }
 
 fn model_lenses(ctx: &DbtContext, uri: &str) -> Vec<cogitator_lsp::CodeLens> {
+    let commands = model_commands(ctx, uri);
+    if commands.is_empty() {
+        return Vec::new();
+    }
     let Some(model) = model_name_from_uri(uri) else {
         return Vec::new();
     };
-    if !ctx.model_detail_map.contains_key(&model) {
-        return Vec::new();
-    }
     let downstream = ctx.graph.downstream_of(&model).count();
     let upstream = ctx.graph.upstream_of(&model).count();
-    let arg = serde_json::to_value(CodeLensArgument {
+    let arg = serde_json::to_value(CommandArgument {
         uri: uri.to_string(),
     })
     .expect("lens argument serializes");
 
-    let display = |title: String| lens(title, "", Vec::new());
-    let command =
-        |title: &str, command: &'static str| lens(title.to_string(), command, vec![arg.clone()]);
-
     let mut lenses = vec![
-        display(plural(downstream, "downstream")),
-        display(plural(upstream, "upstream")),
-        command("Go to schema", "dbt.openSchema"),
-        command("Column lineage", "dbt.showLineage"),
-        command("dbt run", "dbt.run"),
-        command("dbt test", "dbt.test"),
-        command("dbt compile", "dbt.compile"),
+        lens(plural(downstream, "downstream"), "", Vec::new()),
+        lens(plural(upstream, "upstream"), "", Vec::new()),
     ];
-    match ctx
-        .model_detail_map
-        .get(&model)
-        .and_then(|d| d.schema_uri.as_ref())
-    {
-        // no entry yet: offer the scaffold instead of a test count
-        None => lenses.push(command("Extract schema YAML", "dbt.extractModelYaml")),
-        Some(_) => {
-            if let Some((_, tests)) = super::model_tests(ctx, uri) {
-                if !tests.is_empty() {
-                    lenses.push(command(
-                        &format!(
-                            "{} test{}",
-                            tests.len(),
-                            if tests.len() == 1 { "" } else { "s" }
-                        ),
-                        "dbt.goToTests",
-                    ));
-                }
-            }
-        }
-    }
+    lenses.extend(
+        commands
+            .into_iter()
+            .map(|(title, command)| lens(title, command, vec![arg.clone()])),
+    );
     lenses
 }
 
