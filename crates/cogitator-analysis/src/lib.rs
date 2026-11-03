@@ -38,7 +38,7 @@ pub struct Document {
 /// backend when the binary selects it.
 pub struct Documents {
     parser: Box<dyn DocumentParser + Send>,
-    docs: HashMap<String, Document>,
+    docs: HashMap<String, Arc<Document>>,
     generations: u64,
 }
 
@@ -58,7 +58,13 @@ impl Documents {
     }
 
     pub fn get(&self, uri: &str) -> Option<&Document> {
-        self.docs.get(uri)
+        self.docs.get(uri).map(|doc| doc.as_ref())
+    }
+
+    /// A shareable handle for offloaded work: the document outlives any
+    /// later didChange (which replaces the Arc, never mutates it).
+    pub fn get_arc(&self, uri: &str) -> Option<Arc<Document>> {
+        self.docs.get(uri).cloned()
     }
 
     /// textDocument/didClose (P1): forget the document.
@@ -71,11 +77,11 @@ impl Documents {
         self.generations += 1;
         self.docs.insert(
             uri,
-            Document {
+            Arc::new(Document {
                 text: Arc::from(text),
                 parsed,
                 generation: self.generations,
-            },
+            }),
         );
     }
 
@@ -92,16 +98,22 @@ impl Documents {
                 util::apply_incremental_change(&text, change.range, &change.text)
             }
         });
-        let previous = self.docs.remove(uri).map(|d| d.parsed);
+        // last-good reuse is move-out when nobody else holds the Arc; an
+        // offloaded task still reading the old snapshot forces one deep
+        // clone (the owner boundary that clone feeds, 08 §1.5)
+        let previous = self.docs.remove(uri).map(|d| match Arc::try_unwrap(d) {
+            Ok(owned) => owned.parsed,
+            Err(shared) => shared.parsed.clone(),
+        });
         let parsed = self.parse_or_last_good(previous, &text, dialect);
         self.generations += 1;
         self.docs.insert(
             uri.to_string(),
-            Document {
+            Arc::new(Document {
                 text: Arc::from(text.as_str()),
                 parsed,
                 generation: self.generations,
-            },
+            }),
         );
     }
 
@@ -128,16 +140,19 @@ impl Documents {
                 continue;
             };
             let text = doc.text.to_string();
-            let previous = self.docs.remove(&uri).map(|d| d.parsed);
+            let previous = self.docs.remove(&uri).map(|d| match Arc::try_unwrap(d) {
+                Ok(owned) => owned.parsed,
+                Err(shared) => shared.parsed.clone(),
+            });
             let parsed = self.parse_or_last_good(previous, &text, dialect);
             self.generations += 1;
             self.docs.insert(
                 uri,
-                Document {
+                Arc::new(Document {
                     text: Arc::from(text.as_str()),
                     parsed,
                     generation: self.generations,
-                },
+                }),
             );
         }
     }
