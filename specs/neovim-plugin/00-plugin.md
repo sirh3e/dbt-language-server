@@ -63,6 +63,10 @@ writer wins).
 - `completionProvider: { resolveProvider: true, triggerCharacters:
   [".", "'", "\"", " ", "("] }`; see §6.3
 - `signatureHelpProvider: { triggerCharacters: ["(", ","] }`
+- `inlayHintProvider: true` (relation after ref()/source(), macro
+  parameter names), `documentLinkProvider: { resolveProvider: false }`
+  (ref/source → definition targets), `linkedEditingRangeProvider:
+  true` (CTE names only)
 - `codeActionProvider: true` — **command-only** actions (no edits, no
   kinds, no resolve): the executable lens set at the cursor, so every
   stock LSP editor gets dbt workflows without client wiring. A non-empty

@@ -215,14 +215,8 @@ pub fn document_highlights(doc: &Document, pos: Position) -> Vec<DocumentHighlig
         return Vec::new();
     };
     let target = &doc.parsed.tokens[idx];
-    let literal = doc.parsed.literal(target);
-    doc.parsed
-        .tokens
-        .iter()
-        .filter(|t| t.kind == target.kind && doc.parsed.literal(t) == literal)
-        .map(|t| DocumentHighlight {
-            range: token_range(t),
-            kind: 1,
-        })
+    super::same_literal_ranges(doc, target)
+        .into_iter()
+        .map(|range| DocumentHighlight { range, kind: 1 })
         .collect()
 }

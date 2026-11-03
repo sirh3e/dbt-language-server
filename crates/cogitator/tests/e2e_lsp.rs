@@ -1625,3 +1625,95 @@ fn package_awareness_two_arg_ref_and_deps() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Inlay hints, document links and linked editing (01 §6.3) over the
+/// shared fixture — read-only requests, no fixture mutation.
+#[test]
+fn inlay_links_and_linked_editing() {
+    let (mut lsp, customers_uri) = booted(&[]);
+
+    // document links: every ref in customers.sql targets its model file
+    let links = lsp.request(
+        "textDocument/documentLink",
+        serde_json::json!({"textDocument": {"uri": customers_uri}}),
+    );
+    let targets: Vec<&str> = links["result"]
+        .as_array()
+        .expect("links")
+        .iter()
+        .filter_map(|l| l["target"].as_str())
+        .collect();
+    assert!(
+        targets
+            .iter()
+            .any(|t| t.ends_with("staging/stg_customers.sql")),
+        "{targets:?}"
+    );
+
+    // inlay hints: the ref resolves to its warehouse relation, and a
+    // macro call site names its positional parameters
+    let probe_uri = cogitator_lsp::fs_path_to_uri(
+        &fixture_root()
+            .canonicalize()
+            .unwrap()
+            .join("models/inlay_probe.sql"),
+    );
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
+            "text": "select {{ full_name('a', 'b') }} from {{ ref('stg_customers') }}\n"}}),
+    );
+    let hints = lsp.request(
+        "textDocument/inlayHint",
+        serde_json::json!({"textDocument": {"uri": probe_uri},
+                           "range": {"start": {"line": 0, "character": 0},
+                                     "end": {"line": 2, "character": 0}}}),
+    );
+    let labels: Vec<&str> = hints["result"]
+        .as_array()
+        .expect("hints")
+        .iter()
+        .filter_map(|h| h["label"].as_str())
+        .collect();
+    assert!(
+        labels
+            .iter()
+            .any(|l| l.starts_with("→ jaffle_shop.main.stg_customers")),
+        "{labels:?}"
+    );
+    assert!(labels.contains(&"first_name:"), "{labels:?}");
+    assert!(labels.contains(&"last_name:"), "{labels:?}");
+
+    // linked editing: a CTE name edits together with its uses
+    let le_uri = cogitator_lsp::fs_path_to_uri(
+        &fixture_root()
+            .canonicalize()
+            .unwrap()
+            .join("models/le_probe.sql"),
+    );
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": le_uri, "languageId": "sql", "version": 1,
+            "text": "with t as (select 1 as x) select * from t\n"}}),
+    );
+    let linked = lsp.request(
+        "textDocument/linkedEditingRange",
+        serde_json::json!({"textDocument": {"uri": le_uri},
+                           "position": {"line": 0, "character": 5}}),
+    );
+    assert_eq!(
+        linked["result"]["ranges"].as_array().map(|r| r.len()),
+        Some(2),
+        "{linked}"
+    );
+    // a plain column is NOT linked-editable
+    let not_linked = lsp.request(
+        "textDocument/linkedEditingRange",
+        serde_json::json!({"textDocument": {"uri": le_uri},
+                           "position": {"line": 0, "character": 23}}),
+    );
+    assert!(not_linked["result"].is_null(), "{not_linked}");
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

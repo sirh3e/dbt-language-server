@@ -197,6 +197,9 @@ impl Dispatcher {
             "textDocument/rename" => self.rename(content),
             "textDocument/codeLens" => self.code_lens(content),
             "textDocument/codeAction" => self.code_action(content),
+            "textDocument/inlayHint" => self.inlay_hint(content),
+            "textDocument/documentLink" => self.document_link(content),
+            "textDocument/linkedEditingRange" => self.linked_editing(content),
             "textDocument/diagnostic" => self.pull_diagnostics(content),
             "workspace/symbol" => self.workspace_symbol(content),
             "workspace/didChangeWatchedFiles" => {
@@ -884,6 +887,46 @@ impl Dispatcher {
             }
             super::reply::Reply::result(&lenses)
         });
+    }
+
+    fn inlay_hint(&mut self, content: &[u8]) {
+        let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::InlayHintParams>>(content)
+        else {
+            self.invalid_params(content, "textDocument/inlayHint");
+            return;
+        };
+        let Some(params) = req.params else {
+            self.invalid_params(content, "textDocument/inlayHint");
+            return;
+        };
+        let uri = params.text_document.uri.into_owned();
+        let range = params.range;
+        let snap = self.snapshot_for(&uri);
+        let derived = self.derived.clone();
+        // offloaded: the relation labels read the profiles inventory
+        self.offload_blocking(req.id, "textDocument/inlayHint", move || {
+            let target = super::handlers::profiles::active_target_relation(&snap, &derived);
+            let hints = match snap.doc.as_deref() {
+                Some(doc) => features::inlay_hints(&snap.ctx, doc, &uri, range, target.as_ref()),
+                None => Vec::new(),
+            };
+            super::reply::Reply::result(&hints)
+        });
+    }
+
+    fn document_link(&mut self, content: &[u8]) {
+        self.respond_position(content, "textDocument/documentLink", |ctx, doc, _, _| {
+            doc.map(|d| features::document_links(ctx, d))
+                .unwrap_or_default()
+        });
+    }
+
+    fn linked_editing(&mut self, content: &[u8]) {
+        self.respond_position(
+            content,
+            "textDocument/linkedEditingRange",
+            |_, doc, _, pos| doc.and_then(|d| features::linked_editing(d, pos)),
+        );
     }
 
     fn code_action(&mut self, content: &[u8]) {

@@ -9,11 +9,14 @@ mod completion;
 mod dead_models;
 mod definition;
 mod diagnostics;
+mod document_links;
 mod extract;
 mod graph_nav;
 mod hover;
 mod impact;
+mod inlay_hints;
 mod lenses;
+mod linked_editing;
 pub mod lint;
 mod model_info;
 mod navigation;
@@ -30,13 +33,16 @@ pub use completion::{completion, resolve_completion_documentation};
 pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use definition::{definition, go_to_schema};
 pub use diagnostics::{citizen_diagnostics, dangling_ref_diagnostics, packages_diagnostics};
+pub use document_links::document_links;
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };
 pub use hover::hover;
 pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
+pub use inlay_hints::inlay_hints;
 pub use lenses::code_lenses;
+pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
 pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
@@ -85,4 +91,19 @@ pub(crate) fn display_value(value: &serde_json::Value) -> String {
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
     }
+}
+
+/// Every same-kind, same-literal occurrence of `token` as ranges —
+/// shared by documentHighlight and linkedEditingRange.
+pub(crate) fn same_literal_ranges(
+    doc: &Document,
+    token: &cogitator_parser::Token,
+) -> Vec<cogitator_lsp::Range> {
+    let literal = doc.parsed.literal(token);
+    doc.parsed
+        .tokens
+        .iter()
+        .filter(|t| t.kind == token.kind && doc.parsed.literal(t) == literal)
+        .map(token_range)
+        .collect()
 }

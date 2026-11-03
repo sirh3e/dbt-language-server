@@ -54,6 +54,12 @@ pub struct ServerCapabilities {
     /// Plain bool: command-only actions, no kinds, no resolve.
     #[serde(rename = "codeActionProvider")]
     pub code_action_provider: bool,
+    #[serde(rename = "inlayHintProvider")]
+    pub inlay_hint_provider: bool,
+    #[serde(rename = "documentLinkProvider")]
+    pub document_link_provider: super::links::DocumentLinkOptions,
+    #[serde(rename = "linkedEditingRangeProvider")]
+    pub linked_editing_range_provider: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -196,6 +202,11 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     resolve_provider: false,
                 },
                 code_action_provider: true,
+                inlay_hint_provider: true,
+                document_link_provider: super::links::DocumentLinkOptions {
+                    resolve_provider: false,
+                },
+                linked_editing_range_provider: true,
             },
             server_info: ServerInfo {
                 name: "cogitator",

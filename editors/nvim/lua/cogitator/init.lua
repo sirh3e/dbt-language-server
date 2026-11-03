@@ -65,6 +65,9 @@ local function on_attach(client, bufnr, config)
   if not config.semantic_tokens then
     pcall(vim.lsp.semantic_tokens.stop, bufnr, client.id)
   end
+  if config.inlay_hints then
+    pcall(vim.lsp.inlay_hint.enable, true, { bufnr = bufnr })
+  end
   if config.keymaps then
     keymaps(bufnr)
   end

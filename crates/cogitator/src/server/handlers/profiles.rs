@@ -261,8 +261,9 @@ pub fn relation(
     Reply::result(&result)
 }
 
-/// The active target's database/schema for dbt.relation.
-fn active_target_relation(
+/// The active target's database/schema for dbt.relation (and inlay
+/// hints).
+pub fn active_target_relation(
     snap: &Snapshot,
     derived: &DerivedCache,
 ) -> Option<features::TargetRelation> {

@@ -17,6 +17,7 @@ M.defaults = {
   lens = { enabled = true, events = { "BufEnter", "CursorHold", "InsertLeave" } },
   keymaps = true,
   semantic_tokens = true,
+  inlay_hints = false, -- true → vim.lsp.inlay_hint on attach
 }
 
 local function check_known_keys(opts)
