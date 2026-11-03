@@ -77,12 +77,28 @@ impl Dispatcher {
         self.ctx_rx.borrow().clone()
     }
 
-    fn show_message(&mut self, message_type: i32, message: impl Into<String>) {
-        self.link.show_message(message_type, message);
+    /// The per-message snapshot handed to pure handlers (and, from the
+    /// offload commit, to spawned tasks): Arc clones + a tight cfg lock.
+    fn snapshot_for(&self, uri: &str) -> super::snapshot::Snapshot {
+        super::snapshot::Snapshot {
+            ctx: self.snapshot(),
+            doc: (!uri.is_empty())
+                .then(|| self.documents.get_arc(uri))
+                .flatten(),
+            root_path: self.root_path.clone(),
+            profiles: self.profiles.lock().expect("profiles config lock").clone(),
+            fusion_path: self.fusion_path.clone(),
+            fusion_enabled: self.fusion_enabled.load(Ordering::Relaxed),
+        }
     }
 
-    fn send_request<T: Serialize>(&mut self, method: &'static str, params: T) {
-        self.link.send_request(method, params);
+    /// Ship a handler's reply: effects in order, response last.
+    fn transmit(&self, id: Option<i64>, reply: super::reply::Reply) {
+        super::reply::transmit(&self.link, &self.refresh_tx, &self.root_path, id, reply);
+    }
+
+    fn show_message(&mut self, message_type: i32, message: impl Into<String>) {
+        self.link.show_message(message_type, message);
     }
 
     fn send<T: Serialize>(&mut self, msg: &T) {
@@ -376,19 +392,9 @@ impl Dispatcher {
                 return;
             }
             "dbt.modelTests" => {
-                let ctx = self.snapshot();
-                let compute =
-                    || serde_json::to_string(&features::model_tests_json(&ctx, &uri)).ok();
-                let json = match schema_fingerprint(&ctx, &uri, None) {
-                    Some(fp) => self.derived.result(
-                        Arc::as_ptr(&ctx) as usize,
-                        &format!("modelTests:{uri}"),
-                        fp,
-                        compute,
-                    ),
-                    None => compute().map(|s| std::sync::Arc::from(s.as_str())),
-                };
-                self.respond_raw(req.id, json);
+                let snap = self.snapshot_for(&uri);
+                let reply = super::handlers::commands::model_tests(&snap, &self.derived, &uri);
+                self.transmit(Some(req.id), reply);
                 return;
             }
             "dbt.goToTests" => {
@@ -427,15 +433,8 @@ impl Dispatcher {
                     .get("action")
                     .and_then(|a| a.as_str())
                     .unwrap_or("stats");
-                if action == "clear" {
-                    self.derived.clear();
-                    let _ = self.refresh_tx.send(self.root_path.clone());
-                    self.show_message(
-                        cogitator_lsp::message_type::INFO,
-                        "Derived caches cleared; the project context is refreshing.",
-                    );
-                }
-                self.send(&ResultResponse::new(req.id, self.derived.report()));
+                let reply = super::handlers::commands::cache(&self.derived, action);
+                self.transmit(Some(req.id), reply);
                 return;
             }
             "dbt.setProfilesDir" => {
@@ -456,79 +455,31 @@ impl Dispatcher {
             }
             "dbt.modelInfo" => {
                 let model = arg.get("model").and_then(|m| m.as_str());
-                let ctx = self.snapshot();
-                let compute =
-                    || serde_json::to_string(&features::model_info(&ctx, &uri, model)).ok();
-                let json = match schema_fingerprint(&ctx, &uri, model) {
-                    Some(fp) => self.derived.result(
-                        Arc::as_ptr(&ctx) as usize,
-                        &format!("modelInfo:{uri}:{}", model.unwrap_or_default()),
-                        fp,
-                        compute,
-                    ),
-                    None => compute().map(|s| std::sync::Arc::from(s.as_str())),
-                };
-                self.respond_raw(req.id, json);
+                let snap = self.snapshot_for(&uri);
+                let reply =
+                    super::handlers::commands::model_info(&snap, &self.derived, &uri, model);
+                self.transmit(Some(req.id), reply);
                 return;
             }
             "dbt.openModel" => {
-                let target = if !uri.is_empty() {
-                    Some(uri.clone())
-                } else {
-                    let ctx = self.snapshot();
-                    arg.get("model")
-                        .and_then(|m| m.as_str())
-                        .and_then(|m| ctx.model_detail_map.get(m))
-                        .filter(|d| !d.uri.as_os_str().is_empty())
-                        .map(|d| cogitator_lsp::fs_path_to_uri(&d.uri))
-                };
-                match target {
-                    Some(target) => self.send_request(
-                        "window/showDocument",
-                        cogitator_lsp::ShowDocumentParams {
-                            uri: target,
-                            take_focus: true,
-                            selection: None,
-                        },
-                    ),
-                    None => self.show_message(
-                        cogitator_lsp::message_type::WARNING,
-                        "Cannot open the model.\n\
-                         Reason: no uri was given and the model name is not \
-                         in the project.\n\
-                         Solution: pass {uri} or {model: <known model>}.",
-                    ),
-                }
-                self.send(&ResultResponse::new(req.id, serde_json::Value::Null));
+                let model = arg.get("model").and_then(|m| m.as_str());
+                let snap = self.snapshot_for(&uri);
+                let reply = super::handlers::navigation::open_model(&snap, &uri, model);
+                self.transmit(Some(req.id), reply);
                 return;
             }
             "dbt.compiledSql" => {
                 let model = arg.get("model").and_then(|m| m.as_str());
-                let ctx = self.snapshot();
-                let (result, warning) = super::compiled::compiled_sql(&ctx, &uri, model);
-                if let Some(text) = warning {
-                    self.show_message(cogitator_lsp::message_type::WARNING, text);
-                }
-                self.send(&ResultResponse::new(req.id, result));
+                let snap = self.snapshot_for(&uri);
+                let reply = super::handlers::commands::compiled_sql(&snap, &uri, model);
+                self.transmit(Some(req.id), reply);
                 return;
             }
             "dbt.relation" => {
-                let ctx = self.snapshot();
-                let cfg = self.profiles.lock().expect("profiles config lock").clone();
-                let target = super::relation::active_target_relation(
-                    &cfg,
-                    &self.root_path,
-                    &ctx.project.profile,
-                    &self.derived,
-                );
-                let result = features::relation_info(
-                    &ctx,
-                    self.documents.get(&uri),
-                    &uri,
-                    arg_position(arg),
-                    target.as_ref(),
-                );
-                self.send(&ResultResponse::new(req.id, result));
+                let pos = arg_position(arg);
+                let snap = self.snapshot_for(&uri);
+                let reply = super::handlers::profiles::relation(&snap, &self.derived, &uri, pos);
+                self.transmit(Some(req.id), reply);
                 return;
             }
             "dbt.goToSchema" => {}
@@ -546,18 +497,6 @@ impl Dispatcher {
         let ctx = self.snapshot();
         let result = features::go_to_schema(&ctx, self.documents.get(&uri), &uri, pos);
         self.send(&ResultResponse::new(req.id, result));
-    }
-
-    /// Send a result the derived cache already serialized; `None` means
-    /// the uncached path produced nothing → null, same as before.
-    fn respond_raw(&mut self, id: i64, json: Option<std::sync::Arc<str>>) {
-        match json
-            .as_deref()
-            .and_then(|j| serde_json::from_str::<Box<serde_json::value::RawValue>>(j).ok())
-        {
-            Some(raw) => self.send(&ResultResponse::new(id, &raw)),
-            None => self.send(&ResultResponse::new(id, serde_json::Value::Null)),
-        }
     }
 
     fn shutdown(&mut self, content: &[u8]) {
@@ -692,21 +631,12 @@ impl Dispatcher {
             .context
             .and_then(|c| c.only)
             .map(|kinds| kinds.into_iter().map(|k| k.into_owned()).collect());
-        let ctx = self.snapshot();
+        let snap = self.snapshot_for(&uri);
         // profiles.yml buffers offer "Switch target" actions instead
-        let targets = {
-            let cfg = self.profiles.lock().expect("profiles config lock").clone();
-            super::relation::profiles_target_choices(
-                &cfg,
-                &self.root_path,
-                &ctx.project.profile,
-                &uri,
-                &self.derived,
-            )
-        };
+        let targets = super::handlers::profiles::target_choices(&snap, &self.derived, &uri);
         let actions = features::code_actions(
-            &ctx,
-            self.documents.get(&uri),
+            &snap.ctx,
+            snap.doc.as_deref(),
             &uri,
             params.range,
             only.as_deref(),
@@ -772,93 +702,24 @@ impl Dispatcher {
         self.send(&note);
     }
 
-    /// `dbt.columnLineage`: lineage for an open document, or for the file on
-    /// disk when the editor has not opened it.
     fn column_lineage(&mut self, id: i64, uri: &str) {
         let ctx = self.snapshot();
-        let result = self.lineage_for(uri, &ctx);
-        self.send(&ResultResponse::new(id, result.as_ref()));
+        let lineage = self.lineage_for(uri, &ctx);
+        let reply = super::handlers::commands::column_lineage(&lineage);
+        self.transmit(Some(id), reply);
     }
 
-    /// `dbt.openSchema` (lens entry point): resolve like goToSchema, then
-    /// navigate the editor via window/showDocument.
     fn open_schema(&mut self, id: i64, uri: &str) {
-        let ctx = self.snapshot();
-        match features::go_to_schema(&ctx, self.documents.get(uri), uri, Position::default()) {
-            Some(location) => {
-                self.send_request(
-                    "window/showDocument",
-                    cogitator_lsp::ShowDocumentParams {
-                        uri: location.uri,
-                        take_focus: true,
-                        selection: Some(location.range),
-                    },
-                );
-            }
-            None => self.show_message(
-                cogitator_lsp::message_type::WARNING,
-                "No schema entry found for this model.\n\
-                 Reason: the model has no entry in a properties YAML file.\n\
-                 Solution: add it under `models:` in a schema.yml inside your \
-                 model-paths.",
-            ),
-        }
-        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+        let snap = self.snapshot_for(uri);
+        let reply = super::handlers::navigation::open_schema(&snap, uri);
+        self.transmit(Some(id), reply);
     }
 
-    /// `dbt.showLineage` (lens entry point): format the lineage into a
-    /// window message instead of returning raw JSON.
     fn show_lineage(&mut self, id: i64, uri: &str) {
         let ctx = self.snapshot();
         let lineage = self.lineage_for(uri, &ctx);
-        match lineage.as_ref() {
-            Some(lineage) if !lineage.columns.is_empty() => {
-                let mut lines: Vec<String> = lineage
-                    .columns
-                    .iter()
-                    .take(20)
-                    .map(|c| {
-                        let sources: Vec<String> = c
-                            .sources
-                            .iter()
-                            .map(|s| match s {
-                                cogitator_analysis::lineage::SourceRef::Model { name, column } => {
-                                    format!("{name}.{column}")
-                                }
-                                cogitator_analysis::lineage::SourceRef::Source {
-                                    source,
-                                    table,
-                                    column,
-                                } => format!("{source}.{table}.{column}"),
-                                cogitator_analysis::lineage::SourceRef::Unknown {
-                                    name,
-                                    column,
-                                } => format!("{name}.{column}"),
-                            })
-                            .collect();
-                        format!("{} ← {}", c.name, sources.join(", "))
-                    })
-                    .collect();
-                if lineage.columns.len() > 20 {
-                    lines.push(format!("… and {} more columns", lineage.columns.len() - 20));
-                }
-                self.show_message(
-                    cogitator_lsp::message_type::INFO,
-                    format!("Column lineage:\n{}", lines.join("\n")),
-                );
-            }
-            _ => self.show_message(
-                cogitator_lsp::message_type::WARNING,
-                "Could not derive column lineage for this model.\n\
-                 Reason: the template contains Jinja control blocks \
-                 ({% if %}/{% for %}) or the SQL did not parse as a single \
-                 SELECT.\n\
-                 Solution: lineage works on models whose rendered SQL is one \
-                 SELECT statement; check for unclosed expressions or control \
-                 flow.",
-            ),
-        }
-        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+        let reply = super::handlers::navigation::show_lineage((*lineage).as_ref());
+        self.transmit(Some(id), reply);
     }
 
     /// `dbt.run` / `dbt.test` / `dbt.compile` for one model, asynchronously.
@@ -918,156 +779,19 @@ impl Dispatcher {
         self.send(&ResultResponse::new(id, serde_json::Value::Null));
     }
 
-    /// `dbt.extractModelYaml` (lens entry point): scaffold the schema YAML
-    /// for an undocumented model, or add the next `versions:` entry to an
-    /// existing one — applied in the editor via workspace/applyEdit.
     fn extract_model_yaml(&mut self, id: i64, uri: &str) {
         let ctx = self.snapshot();
         let lineage = self.lineage_for(uri, &ctx);
-        match features::extract_model_yaml(&ctx, uri, (*lineage).as_ref()) {
-            None => self.show_message(
-                cogitator_lsp::message_type::WARNING,
-                "Cannot extract a schema YAML here.\n\
-                 Reason: this is not a known model, a <model>.yml already \
-                 exists without an entry, or the schema file did not parse.\n\
-                 Solution: open the model's .sql file and check its YAML.",
-            ),
-            Some(features::ExtractEdit::CreateFile { path, content }) => {
-                let new_uri = cogitator_lsp::fs_path_to_uri(&path);
-                self.send_request(
-                    "workspace/applyEdit",
-                    cogitator_lsp::ApplyWorkspaceEditParams {
-                        label: "Extract model YAML".to_string(),
-                        edit: cogitator_lsp::WorkspaceEdit {
-                            document_changes: vec![
-                                cogitator_lsp::DocumentChange::Create(
-                                    cogitator_lsp::CreateFile::new(new_uri.clone()),
-                                ),
-                                cogitator_lsp::DocumentChange::Edit(
-                                    cogitator_lsp::TextDocumentEdit::new(
-                                        new_uri.clone(),
-                                        vec![cogitator_lsp::TextEdit {
-                                            range: cogitator_lsp::Range::default(),
-                                            new_text: content,
-                                        }],
-                                    ),
-                                ),
-                            ],
-                        },
-                    },
-                );
-                self.send_request(
-                    "window/showDocument",
-                    cogitator_lsp::ShowDocumentParams {
-                        uri: new_uri,
-                        take_focus: true,
-                        selection: None,
-                    },
-                );
-                self.show_message(
-                    cogitator_lsp::message_type::INFO,
-                    format!(
-                        "Created {} with the model's columns — fill in the \
-                         descriptions and add data_tests.",
-                        path.display()
-                    ),
-                );
-            }
-            Some(features::ExtractEdit::AddVersion {
-                schema_path,
-                edits,
-                next,
-            }) => {
-                let schema_uri = cogitator_lsp::fs_path_to_uri(&schema_path);
-                let selection = edits.first().map(|(range, _)| *range);
-                let text_edits: Vec<cogitator_lsp::TextEdit> = edits
-                    .iter()
-                    .map(|(range, text)| cogitator_lsp::TextEdit {
-                        range: *range,
-                        new_text: text.clone(),
-                    })
-                    .collect();
-                self.send_request(
-                    "workspace/applyEdit",
-                    cogitator_lsp::ApplyWorkspaceEditParams {
-                        label: format!("Add model version {next}"),
-                        edit: cogitator_lsp::WorkspaceEdit {
-                            document_changes: vec![cogitator_lsp::DocumentChange::Edit(
-                                cogitator_lsp::TextDocumentEdit::new(
-                                    schema_uri.clone(),
-                                    text_edits,
-                                ),
-                            )],
-                        },
-                    },
-                );
-                self.send_request(
-                    "window/showDocument",
-                    cogitator_lsp::ShowDocumentParams {
-                        uri: schema_uri,
-                        take_focus: true,
-                        selection,
-                    },
-                );
-                self.show_message(
-                    cogitator_lsp::message_type::INFO,
-                    format!(
-                        "Added version {next} to {}.\n\
-                         Next: create the versioned model file \
-                         (<model>_v{next}.sql) or set `defined_in` on the \
-                         version entry.",
-                        schema_path.display()
-                    ),
-                );
-            }
-        }
-        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+        let snap = self.snapshot_for(uri);
+        let reply =
+            super::handlers::navigation::extract_model_yaml(&snap, uri, (*lineage).as_ref());
+        self.transmit(Some(id), reply);
     }
 
-    /// `dbt.goToTests` (lens entry point): jump to the first test defined
-    /// for this model/version and list the rest.
     fn go_to_tests(&mut self, id: i64, uri: &str) {
-        let ctx = self.snapshot();
-        match features::model_tests(&ctx, uri) {
-            Some((model, tests)) if !tests.is_empty() => {
-                let first = &tests[0];
-                self.send_request(
-                    "window/showDocument",
-                    cogitator_lsp::ShowDocumentParams {
-                        uri: first.uri.clone(),
-                        take_focus: true,
-                        selection: Some(first.range),
-                    },
-                );
-                if tests.len() > 1 {
-                    let lines: Vec<String> = tests
-                        .iter()
-                        .map(|t| {
-                            let mut line = format!("• {}", t.name);
-                            if let Some(column) = &t.column {
-                                line.push_str(&format!(" on {column}"));
-                            }
-                            if let Some(v) = t.version {
-                                line.push_str(&format!(" (v{v})"));
-                            }
-                            line
-                        })
-                        .collect();
-                    self.show_message(
-                        cogitator_lsp::message_type::INFO,
-                        format!("Tests for {model}:\n{}", lines.join("\n")),
-                    );
-                }
-            }
-            _ => self.show_message(
-                cogitator_lsp::message_type::WARNING,
-                "No tests defined for this model.\n\
-                 Reason: its schema YAML has no data_tests/tests entries.\n\
-                 Solution: add them under the model or its columns — \
-                 dbt.extractModelYaml scaffolds the entry if it is missing.",
-            ),
-        }
-        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+        let snap = self.snapshot_for(uri);
+        let reply = super::handlers::navigation::go_to_tests(&snap, uri);
+        self.transmit(Some(id), reply);
     }
 
     /// `dbt.status`: what the server knows and has been doing — project,
@@ -1094,196 +818,34 @@ impl Dispatcher {
         self.send(&ResultResponse::new(id, report));
     }
 
-    /// `dbt.profiles`: the redacted inventory within the allowed scope, the
-    /// winning candidate file, and the active profile/target.
     fn profiles_report(&mut self, id: i64) {
-        let ctx = self.snapshot();
-        let cfg = self.profiles.lock().expect("profiles config lock").clone();
-        let candidates =
-            cogitator_analysis::util::profiles_candidates(&cfg.dir_override, &self.root_path);
-        let searched: Vec<String> = candidates.iter().map(|p| p.display().to_string()).collect();
-        let Some(path) = candidates.into_iter().find(|p| p.is_file()) else {
-            self.show_message(
-                cogitator_lsp::message_type::WARNING,
-                format!(
-                    "No profiles.yml found.\n\
-                     Searched: {}.\n\
-                     Solution: create one, or point --profiles-dir, \
-                     initializationOptions.profilesDir or DBT_PROFILES_DIR at it.",
-                    searched.join(", ")
-                ),
-            );
-            self.send(&ResultResponse::new(
-                id,
-                cogitator_analysis::profiles::ProfilesReport::not_found(searched),
-            ));
-            return;
-        };
-        let inventory = self
-            .derived
-            .profiles_inventory(&path, &ctx.project.profile, &cfg.allow);
-        let active_profile = if cfg.profile.is_empty() {
-            ctx.project.profile.clone()
-        } else {
-            cfg.profile.clone()
-        };
-        let active_target = if cfg.target.is_empty() {
-            inventory
-                .profile(&active_profile)
-                .map(|p| p.default_target.clone())
-                .unwrap_or_default()
-        } else {
-            cfg.target.clone()
-        };
-        let mut report = inventory.report();
-        report.searched = searched;
-        report.active_profile = Some(active_profile);
-        report.active_target = Some(active_target);
-        self.send(&ResultResponse::new(id, report));
+        let snap = self.snapshot_for("");
+        let reply = super::handlers::profiles::report(&snap, &self.derived);
+        self.transmit(Some(id), reply);
     }
 
-    /// `dbt.setTarget`: switch the active profile/target (allowlist-checked),
-    /// trigger a context refresh, and confirm with the target's auth status.
-    /// `dbt.setProfilesDir`: point the live session at another profiles.yml
-    /// directory — no client restart. Profile/target overrides reset: a
-    /// stale target from the old file would stop the dialect resolving.
     fn set_profiles_dir(&mut self, id: i64, dir: String) {
-        if dir.is_empty() {
-            self.show_message(
-                cogitator_lsp::message_type::ERROR,
-                "No profiles directory given.\n\
-                 Solution: call dbt.setProfilesDir with {\"dir\": \"/path/to/directory\"}.",
-            );
-            self.send(&ResultResponse::new(id, serde_json::Value::Null));
-            return;
-        }
-        {
+        let outcome = super::handlers::profiles::set_profiles_dir(dir);
+        if let Some(dir) = outcome.apply {
             let mut cfg = self.profiles.lock().expect("profiles config lock");
-            cfg.dir_override = dir.clone();
+            cfg.dir_override = dir;
             cfg.profile.clear();
             cfg.target.clear();
         }
-        let _ = self.refresh_tx.send(self.root_path.clone());
-        self.show_message(
-            cogitator_lsp::message_type::INFO,
-            format!("Profiles directory: {dir} (profile/target overrides reset)."),
-        );
-        self.send(&ResultResponse::new(
-            id,
-            super::status::SetProfilesDirResult { dir },
-        ));
+        self.transmit(Some(id), outcome.reply);
     }
 
     fn set_target(&mut self, id: i64, target: String, profile: Option<String>) {
-        let respond_null = |me: &mut Self| {
-            me.send(&ResultResponse::new(id, serde_json::Value::Null));
-        };
-        if target.is_empty() {
-            self.show_message(
-                cogitator_lsp::message_type::ERROR,
-                "dbt.setTarget needs a target name.\n\
-                 Solution: pass arguments: [{ \"target\": \"dev\" }], optionally \
-                 with \"profile\".",
-            );
-            respond_null(self);
-            return;
-        }
-        let ctx = self.snapshot();
-        let cfg = self.profiles.lock().expect("profiles config lock").clone();
-        let Some(path) =
-            cogitator_analysis::util::profiles_candidates(&cfg.dir_override, &self.root_path)
-                .into_iter()
-                .find(|p| p.is_file())
-        else {
-            self.show_message(
-                cogitator_lsp::message_type::ERROR,
-                "Cannot switch target: no profiles.yml found.\n\
-                 Solution: create one, or point --profiles-dir / \
-                 initializationOptions.profilesDir / DBT_PROFILES_DIR at it.",
-            );
-            respond_null(self);
-            return;
-        };
-        let inventory = self
-            .derived
-            .profiles_inventory(&path, &ctx.project.profile, &cfg.allow);
-        let profile_given = profile.as_deref().is_some_and(|p| !p.is_empty());
-        let profile_name = profile.filter(|p| !p.is_empty()).unwrap_or_else(|| {
-            if cfg.profile.is_empty() {
-                ctx.project.profile.clone()
-            } else {
-                cfg.profile.clone()
-            }
-        });
-        let Some(info) = inventory.profile(&profile_name) else {
-            self.show_message(
-                cogitator_lsp::message_type::ERROR,
-                format!(
-                    "Profile '{profile_name}' not found in {}.",
-                    inventory.path.display()
-                ),
-            );
-            respond_null(self);
-            return;
-        };
-        if !info.allowed {
-            self.show_message(
-                cogitator_lsp::message_type::ERROR,
-                format!(
-                    "Profile '{profile_name}' is not readable.\n\
-                     Reason: by default only the project's own profile is; \
-                     '{profile_name}' is not on the allowlist.\n\
-                     Solution: add it via --profiles-allow {profile_name} or \
-                     initializationOptions.profilesAllow."
-                ),
-            );
-            respond_null(self);
-            return;
-        }
-        let Some(chosen) = info.targets.iter().find(|t| t.name == target) else {
-            let available: Vec<&str> = info.targets.iter().map(|t| t.name.as_str()).collect();
-            self.show_message(
-                cogitator_lsp::message_type::ERROR,
-                format!(
-                    "Target '{target}' not found in profile '{profile_name}'.\n\
-                     Available targets: {}.",
-                    available.join(", ")
-                ),
-            );
-            respond_null(self);
-            return;
-        };
-        let mut message = format!(
-            "Active target: {profile_name}/{target} ({}, auth: {}).",
-            chosen.adapter_type,
-            chosen.auth.method.as_str()
-        );
-        let level = if chosen.auth.issues.is_empty() {
-            cogitator_lsp::message_type::INFO
-        } else {
-            message.push_str("\nAuth problems:");
-            for issue in &chosen.auth.issues {
-                message.push_str("\n• ");
-                message.push_str(&issue.message);
-            }
-            cogitator_lsp::message_type::WARNING
-        };
-        {
+        let snap = self.snapshot_for("");
+        let outcome = super::handlers::profiles::set_target(&snap, &self.derived, target, profile);
+        if let Some((profile_override, target)) = outcome.apply {
             let mut live = self.profiles.lock().expect("profiles config lock");
-            live.target = target.clone();
-            if profile_given {
-                live.profile = profile_name.clone();
+            live.target = target;
+            if let Some(profile) = profile_override {
+                live.profile = profile;
             }
         }
-        let _ = self.refresh_tx.send(self.root_path.clone());
-        self.show_message(level, message);
-        self.send(&ResultResponse::new(
-            id,
-            super::status::SetTargetResult {
-                profile: profile_name,
-                target,
-            },
-        ));
+        self.transmit(Some(id), outcome.reply);
     }
 
     /// Column lineage for `uri`: cached per document generation for open
@@ -1332,30 +894,6 @@ impl Dispatcher {
         let handle = tokio::spawn(job.run());
         self.fusion_jobs.insert(uri, handle.abort_handle());
     }
-}
-
-/// Input fingerprint for the modelInfo/modelTests result cache: the
-/// model's schema-YAML stamp plus its compiled-file stamp. `None` when
-/// the model cannot be resolved cheaply (versioned indirections) —
-/// those calls skip the cache rather than risk a stale answer.
-fn schema_fingerprint(ctx: &DbtContext, uri: &str, model: Option<&str>) -> Option<String> {
-    let requested = match model {
-        Some(m) if !m.is_empty() => m.to_string(),
-        _ => cogitator_analysis::features::model_name_from_uri(uri)?,
-    };
-    let details = ctx.model_detail_map.get(&requested)?;
-    let schema = details
-        .schema_uri
-        .as_deref()
-        .and_then(super::derived_cache::stamp);
-    let compiled = ctx.project_root.as_deref().map(|root| {
-        super::derived_cache::stamp(&cogitator_analysis::features::compiled_sql_path(
-            root,
-            &ctx.project.name,
-            &details.uri,
-        ))
-    });
-    Some(format!("{schema:?}|{compiled:?}"))
 }
 
 /// The optional `position` member of a command argument object.

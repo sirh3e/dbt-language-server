@@ -9,7 +9,9 @@ mod derived_cache;
 mod diagnostics;
 mod dispatcher;
 mod fusion;
-mod relation;
+mod handlers;
+mod reply;
+mod snapshot;
 mod status;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,6 +47,31 @@ pub struct ProfilesConfig {
     pub profile: String,
     /// Active target override; empty → the profile's default target.
     pub target: String,
+}
+
+/// Input fingerprint for the modelInfo/modelTests result cache: the
+/// model's schema-YAML stamp plus its compiled-file stamp. `None` when
+/// the model cannot be resolved cheaply (versioned indirections) —
+/// those calls skip the cache rather than risk a stale answer.
+pub(crate) fn schema_fingerprint(
+    ctx: &DbtContext,
+    uri: &str,
+    model: Option<&str>,
+) -> Option<String> {
+    let requested = match model {
+        Some(m) if !m.is_empty() => m.to_string(),
+        _ => cogitator_analysis::features::model_name_from_uri(uri)?,
+    };
+    let details = ctx.model_detail_map.get(&requested)?;
+    let schema = details.schema_uri.as_deref().and_then(derived_cache::stamp);
+    let compiled = ctx.project_root.as_deref().map(|root| {
+        derived_cache::stamp(&cogitator_analysis::features::compiled_sql_path(
+            root,
+            &ctx.project.name,
+            &details.uri,
+        ))
+    });
+    Some(format!("{schema:?}|{compiled:?}"))
 }
 
 /// Auth problems of the *active* target, as one Reason/Solution warning.
