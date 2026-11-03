@@ -60,6 +60,8 @@ pub struct ServerCapabilities {
     pub document_link_provider: super::links::DocumentLinkOptions,
     #[serde(rename = "linkedEditingRangeProvider")]
     pub linked_editing_range_provider: bool,
+    #[serde(rename = "documentFormattingProvider")]
+    pub document_formatting_provider: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -209,6 +211,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     resolve_provider: false,
                 },
                 linked_editing_range_provider: true,
+                document_formatting_provider: true,
             },
             server_info: ServerInfo {
                 name: "cogitator",

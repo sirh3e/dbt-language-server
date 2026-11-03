@@ -11,6 +11,7 @@ mod definition;
 mod diagnostics;
 mod document_links;
 mod extract;
+pub mod formatting;
 mod graph_nav;
 mod hover;
 mod impact;

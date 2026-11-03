@@ -345,6 +345,25 @@ check(
 vim.api.nvim_set_current_buf(bufnr)
 vim.api.nvim_buf_delete(fix_buf, { force = true })
 
+-- formatting: reflow through the server, Jinja untouched
+vim.cmd.edit(vim.fs.joinpath(fixture, "models", "fmt_probe.sql"))
+local fmt_buf = vim.api.nvim_get_current_buf()
+vim.api.nvim_buf_set_lines(fmt_buf, 0, -1, false, {
+  "select a,b,   c from {{ ref('stg_customers') }} where a>1",
+})
+vim.wait(10000, function()
+  return #vim.lsp.get_clients({ bufnr = fmt_buf, name = "cogitator" }) > 0
+end, 50)
+vim.lsp.buf.format({ bufnr = fmt_buf, timeout_ms = 5000 })
+local fmt_text = table.concat(vim.api.nvim_buf_get_lines(fmt_buf, 0, -1, false), "\n")
+check(
+  fmt_text:find("{{ ref('stg_customers') }}", 1, true) ~= nil and fmt_text:find("\n") ~= nil,
+  "format: server reflows SQL and keeps the Jinja expression",
+  fmt_text:sub(1, 120)
+)
+vim.api.nvim_set_current_buf(bufnr)
+vim.api.nvim_buf_delete(fmt_buf, { force = true })
+
 -- the yazi-style browser: three panes, upstream pane lists neighbors
 local graph = require("cogitator.graph")
 graph.open()

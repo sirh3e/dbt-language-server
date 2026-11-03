@@ -204,6 +204,7 @@ impl Dispatcher {
             "textDocument/inlayHint" => self.inlay_hint(content),
             "textDocument/documentLink" => self.document_link(content),
             "textDocument/linkedEditingRange" => self.linked_editing(content),
+            "textDocument/formatting" => self.formatting(content),
             "textDocument/diagnostic" => self.pull_diagnostics(content),
             "workspace/diagnostic" => self.workspace_diagnostics(content),
             "workspace/symbol" => self.workspace_symbol(content),
@@ -932,6 +933,35 @@ impl Dispatcher {
             "textDocument/linkedEditingRange",
             |_, doc, _, pos| doc.and_then(|d| features::linked_editing(d, pos)),
         );
+    }
+
+    fn formatting(&mut self, content: &[u8]) {
+        let Ok(req) =
+            serde_json::from_slice::<Envelope<cogitator_lsp::DocumentFormattingParams>>(content)
+        else {
+            self.invalid_params(content, "textDocument/formatting");
+            return;
+        };
+        let Some(params) = req.params else {
+            self.invalid_params(content, "textDocument/formatting");
+            return;
+        };
+        let uri = params.text_document.uri.into_owned();
+        let options = features::formatting::FormatOptions {
+            tab_size: params.options.tab_size,
+            insert_spaces: params.options.insert_spaces,
+        };
+        let snap = self.snapshot_for(&uri);
+        self.offload_blocking(req.id, "textDocument/formatting", move || {
+            // decline-on-doubt answers an empty edit list, never an error
+            let edits = snap
+                .doc
+                .as_deref()
+                .filter(|_| !uri.ends_with(".yml") && !uri.ends_with(".yaml"))
+                .and_then(|doc| features::formatting::format_document(&doc.text, &options))
+                .unwrap_or_default();
+            super::reply::Reply::result(&edits)
+        });
     }
 
     fn code_action(&mut self, content: &[u8]) {

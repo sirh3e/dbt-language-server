@@ -1783,3 +1783,51 @@ fn workspace_diagnostics_full_then_unchanged() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Formatting (05 §9): one whole-document edit, Jinja expressions
+/// byte-identical after the reflow; a doc with inline {% %} declines
+/// with an empty edit list.
+#[test]
+fn formatting_reflows_sql_and_keeps_jinja() {
+    let (mut lsp, _uri) = booted(&[]);
+    let root = fixture_root().canonicalize().unwrap();
+    let fmt_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fmt_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": fmt_uri, "languageId": "sql", "version": 1,
+            "text": "select a,b,   c from {{ ref('stg_customers') }} where a>1\n"}}),
+    );
+    let formatted = lsp.request(
+        "textDocument/formatting",
+        serde_json::json!({"textDocument": {"uri": fmt_uri},
+                           "options": {"tabSize": 4, "insertSpaces": true}}),
+    );
+    let edits = formatted["result"].as_array().expect("edits");
+    assert_eq!(edits.len(), 1, "{formatted}");
+    let new_text = edits[0]["newText"].as_str().unwrap();
+    assert!(
+        new_text.contains("{{ ref('stg_customers') }}"),
+        "{new_text}"
+    );
+    assert!(new_text.contains('\n'), "reflowed: {new_text}");
+
+    let inline_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fmt_inline.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": inline_uri, "languageId": "sql", "version": 1,
+            "text": "select 1 {% if x %} ,2 {% endif %} from t\n"}}),
+    );
+    let declined = lsp.request(
+        "textDocument/formatting",
+        serde_json::json!({"textDocument": {"uri": inline_uri},
+                           "options": {"tabSize": 4, "insertSpaces": true}}),
+    );
+    assert_eq!(
+        declined["result"].as_array().map(Vec::len),
+        Some(0),
+        "{declined}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

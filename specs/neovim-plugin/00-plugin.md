@@ -67,6 +67,10 @@ writer wins).
   parameter names), `documentLinkProvider: { resolveProvider: false }`
   (ref/source → definition targets), `linkedEditingRangeProvider:
   true` (CTE names only)
+- `documentFormattingProvider: true` — sqlformat over Jinja-segmented
+  SQL; full-line `{% %}` lines pass verbatim, `{{ }}` expressions are
+  sentinel-masked, and ANY doubt (inline statements, sentinel
+  miscount) declines with zero edits
 - `codeActionProvider: true` — **command-only** actions (no edits, no
   kinds, no resolve): the executable lens set at the cursor, so every
   stock LSP editor gets dbt workflows without client wiring. A non-empty

@@ -5,6 +5,7 @@
 mod actions;
 mod core;
 mod diagnostics;
+mod formatting;
 mod init;
 mod inlay;
 mod linked_editing;
@@ -18,6 +19,7 @@ mod workspace_diag;
 pub use actions::*;
 pub use core::*;
 pub use diagnostics::*;
+pub use formatting::*;
 pub use init::*;
 pub use inlay::*;
 pub use linked_editing::*;
