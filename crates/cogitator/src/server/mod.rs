@@ -265,6 +265,8 @@ pub async fn run(
         toggles.warehouse_columns.store(on, Ordering::Relaxed);
     }
     let refresh_limits = limits.clone();
+    #[cfg(feature = "duckdb-parser")]
+    let refresh_toggles = toggles.clone();
     let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
         request_ids.clone(),
@@ -296,16 +298,23 @@ pub async fn run(
                 let root = root.clone();
                 let builder = builder.clone();
                 let cfg = cfg.clone();
+                #[cfg(feature = "duckdb-parser")]
+                let warehouse = (refresh_toggles.clone(), refresh_derived.clone());
                 move || {
                     let span = tracing::info_span!("context_refresh", root = %root);
                     let _enter = span.enter();
                     let mut builder = builder.lock().expect("context builder lock");
-                    builder.set_profiles_dir(cfg.dir_override);
-                    builder.set_profile_override(cfg.profile);
-                    builder.set_target_override(cfg.target);
-                    let ctx = builder.build(&root);
+                    builder.set_profiles_dir(cfg.dir_override.clone());
+                    builder.set_profile_override(cfg.profile.clone());
+                    builder.set_target_override(cfg.target.clone());
+                    #[allow(unused_mut)]
+                    let mut ctx = builder.build(&root);
                     let stats = builder.cache_stats();
                     tracing::debug!(hits = stats.0, misses = stats.1, "scan cache totals");
+                    #[cfg(feature = "duckdb-parser")]
+                    if warehouse.0.warehouse_columns.load(Ordering::Relaxed) {
+                        enrich_warehouse_columns(&mut ctx, &root, &cfg, &warehouse.1);
+                    }
                     (ctx, stats)
                 }
             })
@@ -490,4 +499,87 @@ fn dbt_ls_documents(
     parser: Box<dyn cogitator_parser::DocumentParser + Send>,
 ) -> cogitator_analysis::Documents {
     cogitator_analysis::Documents::with_parser(parser)
+}
+
+/// duckdb builds, `warehouse.columns: true` only (03 §10): source
+/// tables whose YAML declares no columns get them from the warehouse's
+/// information_schema, read-only, during the context refresh — never
+/// on a request path. Any open/query failure switches the pass off for
+/// this refresh with a trace.
+#[cfg(feature = "duckdb-parser")]
+fn enrich_warehouse_columns(
+    ctx: &mut DbtContext,
+    root: &str,
+    cfg: &ProfilesConfig,
+    derived: &derived_cache::DerivedCache,
+) {
+    if ctx.dialect.as_str() != "duckdb" || ctx.project.profile.is_empty() {
+        return;
+    }
+    let Some(path) = cogitator_analysis::util::profiles_candidates(&cfg.dir_override, root)
+        .into_iter()
+        .find(|p| p.is_file())
+    else {
+        return;
+    };
+    let inventory = derived.profiles_inventory(&path, &ctx.project.profile, &cfg.allow);
+    let profile_name = if cfg.profile.is_empty() {
+        ctx.project.profile.as_str()
+    } else {
+        cfg.profile.as_str()
+    };
+    let Some(profile) = inventory.profile(profile_name) else {
+        return;
+    };
+    let target_name = if cfg.target.is_empty() {
+        profile.default_target.as_str()
+    } else {
+        cfg.target.as_str()
+    };
+    let Some(target) = profile.targets.iter().find(|t| t.name == target_name) else {
+        return;
+    };
+    let Some(warehouse) = &target.warehouse_path else {
+        return;
+    };
+    let mut warehouse = std::path::PathBuf::from(warehouse);
+    if warehouse.is_relative() {
+        if let Some(project_root) = ctx.project_root.as_deref() {
+            warehouse = project_root.join(warehouse);
+        }
+    }
+    if !warehouse.is_file() {
+        return;
+    }
+    for source in ctx.source_detail_map.values_mut() {
+        let schema = source.schema.clone().unwrap_or_else(|| source.name.clone());
+        for table in source.tables.values_mut() {
+            if !table.columns.is_empty() {
+                continue;
+            }
+            let identifier = table
+                .identifier
+                .clone()
+                .unwrap_or_else(|| table.name.clone());
+            match cogitator_duckdb::catalog::table_columns(&warehouse, &schema, &identifier) {
+                Ok(columns) => {
+                    table.columns = columns
+                        .into_iter()
+                        .map(|c| cogitator_schemas::ColumnEntry {
+                            name: c.name,
+                            description: format!("{} (from warehouse)", c.data_type),
+                            name_pos: Default::default(),
+                        })
+                        .collect();
+                }
+                Err(guidance) => {
+                    tracing::debug!(
+                        error = %guidance.to_message(),
+                        "warehouse introspection off for this refresh"
+                    );
+                    return;
+                }
+            }
+        }
+    }
 }

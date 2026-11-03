@@ -63,6 +63,11 @@ pub struct TargetInfo {
     /// duckdb the `path` file stem; `schema`, defaulting to `main` on duckdb.
     pub database: Option<String>,
     pub schema: Option<String>,
+    /// duckdb only: the warehouse FILE (env-resolved, maybe relative to
+    /// the project root); `:memory:` and other adapters yield None. A
+    /// local path, not a secret — the catalog prefetch opens it
+    /// read-only.
+    pub warehouse_path: Option<String>,
     pub auth: AuthInfo,
     pub position: Position,
 }
@@ -181,11 +186,20 @@ pub fn inventory(path: &Path, text: &str, scope: &ProfileScope<'_>) -> ProfilesI
                     .map(util::resolve_env_vars)
                     .unwrap_or_default();
                 let (database, schema) = relation_coordinates(tnode, &adapter_type);
+                let warehouse_path = (adapter_type == "duckdb")
+                    .then(|| {
+                        get(tnode, "path")
+                            .and_then(as_str)
+                            .map(util::resolve_env_vars)
+                            .filter(|p| p != ":memory:")
+                    })
+                    .flatten();
                 targets.push(TargetInfo {
                     name: tname.to_string(),
                     adapter_type: adapter_type.clone(),
                     database,
                     schema,
+                    warehouse_path,
                     auth: classify_and_validate(tnode, &adapter_type, position_of(tkey)),
                     position: position_of(tkey),
                 });

@@ -183,3 +183,95 @@ mod tests {
         assert!(masked.starts_with("               \n"));
     }
 }
+
+/// Read-only warehouse introspection (03 §10): source-column
+/// completion for tables the YAML leaves undocumented. Doubly gated —
+/// this cargo feature plus cogitator.yml `warehouse.columns`.
+#[cfg(feature = "duckdb-parser")]
+pub mod catalog {
+    use std::path::Path;
+
+    use cogitator_error::guidance::Guidance;
+
+    #[derive(Debug, Clone)]
+    pub struct CatalogColumn {
+        pub name: String,
+        pub data_type: String,
+    }
+
+    /// Columns of `schema.table` from information_schema, via a
+    /// read-only connection that can never mutate the warehouse.
+    pub fn table_columns(
+        db_path: &Path,
+        schema: &str,
+        table: &str,
+    ) -> Result<Vec<CatalogColumn>, Guidance> {
+        let config = duckdb::Config::default()
+            .access_mode(duckdb::AccessMode::ReadOnly)
+            .map_err(|err| open_error(db_path, &err.to_string()))?;
+        let conn = duckdb::Connection::open_with_flags(db_path, config)
+            .map_err(|err| open_error(db_path, &err.to_string()))?;
+        let mut statement = conn
+            .prepare(
+                "select column_name, data_type from information_schema.columns \
+                 where table_schema = ? and table_name = ? order by ordinal_position",
+            )
+            .map_err(|err| open_error(db_path, &err.to_string()))?;
+        let rows = statement
+            .query_map(duckdb::params![schema, table], |row| {
+                Ok(CatalogColumn {
+                    name: row.get(0)?,
+                    data_type: row.get(1)?,
+                })
+            })
+            .map_err(|err| open_error(db_path, &err.to_string()))?;
+        Ok(rows.flatten().collect())
+    }
+
+    fn open_error(path: &Path, detail: &str) -> Guidance {
+        let mut guidance = Guidance::new("warehouse introspection failed.")
+            .at(path.display().to_string())
+            .because(detail.to_string());
+        guidance = if detail.contains("lock") {
+            guidance.fix(
+                "another process holds the warehouse — close duckdb CLI/IDE \
+                 connections, or disable warehouse.columns.",
+            )
+        } else if detail.contains("version") {
+            guidance.fix(
+                "the warehouse was written by an incompatible duckdb — re-run \
+                 dbt with a matching adapter, or disable warehouse.columns.",
+            )
+        } else {
+            guidance.fix("column completion for undeclared source columns stays off.")
+        };
+        guidance
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn reads_columns_read_only() {
+            let dir =
+                std::env::temp_dir().join(format!("cogitator-catalog-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let db = dir.join("wh.duckdb");
+            std::fs::remove_file(&db).ok();
+            {
+                let conn = duckdb::Connection::open(&db).unwrap();
+                conn.execute_batch(
+                    "create schema raw; create table raw.payments (id integer, amount decimal(10,2));",
+                )
+                .unwrap();
+            }
+            let columns = table_columns(&db, "raw", "payments").unwrap();
+            let names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
+            assert_eq!(names, vec!["id", "amount"]);
+            assert!(columns[1].data_type.to_lowercase().contains("decimal"));
+            assert!(table_columns(&db, "raw", "nope").unwrap().is_empty());
+            std::fs::remove_dir_all(&dir).ok();
+        }
+    }
+}

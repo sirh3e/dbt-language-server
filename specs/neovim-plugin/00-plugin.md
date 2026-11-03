@@ -156,6 +156,12 @@ Every command takes **one argument object**, not positional values:
 | `dbt.impact` | `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}` | none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models) |
 | `dbt.expandJinja` | `{sql}` or InvalidParams Guidance | renders the open buffer with minijinja — project macros, ref/source → relations, var(), config()/is_incremental()/target stubs; adapter calls need a real compile |
 
+On duckdb-feature builds with cogitator.yml `warehouse: {columns:
+true}`, source tables whose YAML declares no columns get them from the
+warehouse's information_schema during the context refresh (read-only,
+never on a request path); completion/hover then show them with their
+data type marked "(from warehouse)".
+
 Two-argument `ref('package', 'model')` resolves like plain `ref()`
 everywhere (hover, definition, completion, dangling checks): the first
 string refines as the package, the second as the model. packages.yml /
