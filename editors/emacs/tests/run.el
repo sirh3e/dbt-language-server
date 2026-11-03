@@ -119,6 +119,50 @@
 (check (equal (current-kill 0) "jaffle_shop.main.customers")
        "integration: cogitator-relation copies the relation" (current-kill 0))
 
+;; integration: cogitator-query builds the bounded SELECT
+(let ((orig (current-buffer)))
+  (goto-char (point-min))
+  (cogitator-query)
+  (cl-loop repeat 50
+           until (and (get-buffer "*cogitator-query*")
+                      (with-current-buffer "*cogitator-query*"
+                        (string-match-p "select \\* from jaffle_shop\\.main\\.customers limit 100"
+                                        (buffer-string))))
+           do (accept-process-output nil 0.1))
+  (check (and (get-buffer "*cogitator-query*")
+              (with-current-buffer "*cogitator-query*"
+                (string-match-p "select \\* from jaffle_shop\\.main\\.customers limit 100"
+                                (buffer-string))))
+         "integration: cogitator-query builds the bounded SELECT")
+  (pop-to-buffer orig))
+
+;; pickers + doctor parity: the data each one feeds on, plus rendering
+(let ((graph (run--exec "dbt.projectGraph" (cogitator--command-argument))))
+  (check (seq-some (lambda (n) (member "nightly" (append (plist-get n :tags) nil)))
+                   (append (plist-get graph :nodes) nil))
+         "integration: projectGraph carries tags for the tags picker"))
+(let ((symbols (append (jsonrpc-request (eglot--current-server-or-lose)
+                                        :workspace/symbol '(:query "selector:"))
+                       nil)))
+  (check (> (length symbols) 0)
+         "integration: selector: symbols exist for the selectors picker"))
+(let ((buf (cogitator--profiles-render
+            '(:path "/tmp/profiles.yml" :activeProfile "p" :activeTarget "dev"
+              :profiles [(:name "p" :allowed t
+                          :targets [(:name "dev" :type "duckdb"
+                                     :auth (:method "password" :issues []))])]))))
+  (check (with-current-buffer buf
+           (and (string-match-p "active: p/dev" (buffer-string))
+                (string-match-p "dev — duckdb, password" (buffer-string))))
+         "unit: profiles report renders profiles and targets"))
+(let ((orig (current-buffer)))
+  (cogitator-doctor)
+  (check (and (get-buffer "*cogitator-doctor*")
+              (with-current-buffer "*cogitator-doctor*"
+                (string-match-p "cogitator binary" (buffer-string))))
+         "integration: doctor reports binary and candidates")
+  (pop-to-buffer orig))
+
 ;; integration: code actions are the executable lens set, command-only
 (let* ((zero '(:line 0 :character 0))
        (actions (append

@@ -52,6 +52,10 @@ When nil the server searches its own candidate order ($DBT_PROFILES_DIR,
   "Major modes the server is registered for."
   :type '(repeat symbol))
 
+(defcustom cogitator-query-limit 100
+  "Row cap for the bounded SELECT that `cogitator-query' builds."
+  :type 'natnum)
+
 ;; ---------------------------------------------------------------------------
 ;; server contract helpers (spec §1.2, §1.3, §1.6)
 ;; ---------------------------------------------------------------------------
@@ -129,6 +133,25 @@ CALLBACK as plists whichever client is in charge."
                       (message "cogitator: %s failed: %S" command err))))
    (t (user-error "cogitator is not managing this buffer (start eglot or lsp-mode)"))))
 
+(defun cogitator--request (method-kw method-str params callback)
+  "Send an arbitrary LSP request through eglot (METHOD-KW) or lsp-mode
+\(METHOD-STR); CALLBACK gets the result as plists."
+  (cond
+   ((and (featurep 'eglot) (eglot-managed-p))
+    (jsonrpc-async-request
+     (eglot--current-server-or-lose) method-kw params
+     :success-fn callback
+     :error-fn (lambda (err)
+                 (message "cogitator: %s failed: %s" method-str
+                          (plist-get err :message)))))
+   ((bound-and-true-p lsp-mode)
+    (lsp-request-async
+     method-str params
+     (lambda (result) (funcall callback (cogitator--normalize result)))
+     :error-handler (lambda (err)
+                      (message "cogitator: %s failed: %S" method-str err))))
+   (t (user-error "cogitator is not managing this buffer (start eglot or lsp-mode)"))))
+
 (defun cogitator--visit-location (location)
   "Open the LSP LOCATION (plist with :uri and :range)."
   (let* ((file (cogitator--uri-to-path (plist-get location :uri)))
@@ -184,6 +207,166 @@ persistent per-project setting use dir-locals on
      (if (null result)
          (message "cogitator: profiles directory not switched (see the server message)")
        (message "cogitator: profiles directory now %s" (plist-get result :dir))))))
+
+;;;###autoload
+(defun cogitator-query ()
+  "Build a bounded SELECT on the relation at point in a sql-mode buffer.
+The statement is ready to send through your own `sql-connection' /
+SQL client; cogitator never talks to the warehouse itself."
+  (interactive)
+  (cogitator--execute
+   "dbt.relation" (cogitator--command-argument t)
+   (lambda (r)
+     (if (null r)
+         (message "cogitator: no relation here — not a dbt model, ref() or source()")
+       (let ((statement (format "select * from %s limit %d"
+                                (plist-get r :relation) cogitator-query-limit))
+             (buf (get-buffer-create "*cogitator-query*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (when (fboundp 'sql-mode)
+               (unless (derived-mode-p 'sql-mode)
+                 (sql-mode)))
+             (insert statement "\n")))
+         (pop-to-buffer buf)
+         (message "cogitator: query for %s (limit %d)"
+                  (plist-get r :relation) cogitator-query-limit))))))
+
+;;;###autoload
+(defun cogitator-tags ()
+  "Pick a dbt tag, then jump to a model carrying it (dbt.projectGraph)."
+  (interactive)
+  (cogitator--execute
+   "dbt.projectGraph" (cogitator--command-argument)
+   (lambda (graph)
+     (let ((by-tag (make-hash-table :test #'equal))
+           (tags nil))
+       (seq-do (lambda (node)
+                 (seq-do (lambda (tag)
+                           (push node (gethash tag by-tag)))
+                         (plist-get node :tags)))
+               (plist-get graph :nodes))
+       (maphash (lambda (tag _) (push tag tags)) by-tag)
+       (if (null tags)
+           (message "cogitator: no tags declared in this project")
+         (let* ((tag (completing-read "dbt tag: " (sort tags #'string<) nil t))
+                (nodes (gethash tag by-tag))
+                (name (completing-read
+                       (format "model with #%s: " tag)
+                       (sort (mapcar (lambda (n) (plist-get n :name)) nodes)
+                             #'string<)
+                       nil t))
+                (node (seq-find (lambda (n) (equal (plist-get n :name) name))
+                                nodes))
+                (uri (and node (plist-get node :uri))))
+           (if uri
+               (find-file (cogitator--uri-to-path uri))
+             (message "cogitator: %s has no file on disk" name))))))))
+
+;;;###autoload
+(defun cogitator-selectors ()
+  "Pick a selectors.yml entry and jump to it (workspace/symbol)."
+  (interactive)
+  (cogitator--request
+   :workspace/symbol "workspace/symbol" '(:query "selector:")
+   (lambda (symbols)
+     (let ((symbols (append symbols nil)))
+       (if (null symbols)
+           (message "cogitator: no selectors.yml entries in this project")
+         (let* ((name (completing-read
+                       "dbt selector: "
+                       (sort (mapcar (lambda (s) (plist-get s :name)) symbols)
+                             #'string<)
+                       nil t))
+                (symbol (seq-find (lambda (s) (equal (plist-get s :name) name))
+                                  symbols)))
+           (when symbol
+             (cogitator--visit-location (plist-get symbol :location)))))))))
+
+(defun cogitator--profiles-render (report)
+  "Render a redacted dbt.profiles REPORT into *cogitator-profiles*.
+Returns the buffer (separated from `cogitator-profiles' for testing)."
+  (let ((buf (get-buffer-create "*cogitator-profiles*")))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (format "profiles.yml: %s\n"
+                        (or (plist-get report :path) "(not found)")))
+        (insert (format "active: %s/%s\n\n"
+                        (or (plist-get report :activeProfile) "?")
+                        (or (plist-get report :activeTarget) "?")))
+        (seq-do
+         (lambda (profile)
+           (insert (format "%s%s\n" (plist-get profile :name)
+                           (if (eq (plist-get profile :allowed) t)
+                               ""
+                             "  (outside the allowlist)")))
+           (seq-do
+            (lambda (target)
+              (let ((auth (plist-get target :auth)))
+                (insert (format "  %s — %s, %s%s\n"
+                                (plist-get target :name)
+                                (or (plist-get target :type) "?")
+                                (or (plist-get auth :method) "?")
+                                (let ((n (length (append (plist-get auth :issues) nil))))
+                                  (if (> n 0) (format "  ⚠ %d issue(s)" n) ""))))))
+            (plist-get profile :targets)))
+         (plist-get report :profiles))
+        (special-mode)))
+    buf))
+
+;;;###autoload
+(defun cogitator-profiles ()
+  "Show the redacted dbt.profiles inventory in a buffer."
+  (interactive)
+  (cogitator--execute
+   "dbt.profiles" (cogitator--command-argument)
+   (lambda (report)
+     (pop-to-buffer (cogitator--profiles-render report)))))
+
+;;;###autoload
+(defun cogitator-doctor ()
+  "Health report: binary, project root, profiles candidates, client state.
+Emacs has no :checkhealth, so this is a plain report buffer."
+  (interactive)
+  (let* ((binary (car cogitator-server-command))
+         (found (executable-find binary))
+         (version (and found (ignore-errors
+                               (car (process-lines found "--version")))))
+         (root (cogitator--project-root))
+         (candidates
+          (delq nil
+                (list (and cogitator-profiles-dir
+                           (expand-file-name "profiles.yml" cogitator-profiles-dir))
+                      (and (getenv "DBT_PROFILES_DIR")
+                           (expand-file-name "profiles.yml" (getenv "DBT_PROFILES_DIR")))
+                      (and root (expand-file-name "profiles.yml" root))
+                      (and root (expand-file-name ".dbt/profiles.yml" root))
+                      (expand-file-name "~/.dbt/profiles.yml"))))
+         (buf (get-buffer-create "*cogitator-doctor*")))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t)
+            (seen nil))
+        (erase-buffer)
+        (insert (format "cogitator binary: %s\n"
+                        (if found (format "%s (%s)" found (or version "?"))
+                          (format "%s NOT FOUND on PATH" binary))))
+        (insert (format "project root: %s\n" (or root "(no dbt_project.yml above here)")))
+        (insert (format "managed: eglot=%s lsp-mode=%s\n\n"
+                        (and (featurep 'eglot) (eglot-managed-p) t)
+                        (bound-and-true-p lsp-mode)))
+        (insert "profiles.yml search order:\n")
+        (dolist (candidate candidates)
+          (let ((exists (file-exists-p candidate)))
+            (insert (format " %s %s\n"
+                            (if (and exists (not seen)) "✓" " ")
+                            candidate))
+            (when exists (setq seen t))))
+        (unless seen
+          (insert "no profiles.yml found — the SQL dialect stays generic\n"))
+        (special-mode)))
+    (pop-to-buffer buf)))
 
 ;;;###autoload
 (defun cogitator-relation ()
