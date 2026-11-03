@@ -151,8 +151,11 @@ Deliberate non-goals of this surface: no `manifest.json` /
 `run_results.json` fallback (the server's own analysis is always live;
 manifest parsing is a specs/rust-port/00 non-goal), no full Jinja render
 command (minijinja only tokenizes — 05 §4), no call hierarchy
-(`dbt.columnLineage` covers column flows), no `dbt.syntaxTree`, and no
-custom `generate_schema_name`-style macro evaluation in `dbt.relation`.
+(`dbt.columnLineage` covers column flows), no `dbt.syntaxTree`, no
+custom `generate_schema_name`-style macro evaluation in `dbt.relation`,
+no editor-side tree-sitter grammar builds (highlighting rides the
+server's semantic tokens), and no dedicated `cache` workflow beyond
+`dbt.status`'s cache counters and `dbt.cache` (stats/clear).
 
 ### 5.3b Project DAG view (`:DbtDag`) — **Neovim only**
 
@@ -338,6 +341,7 @@ vim.lsp.enable("cogitator")
 | `:DbtTarget` | `dbt.profiles` + `dbt.setTarget` | picker over allowed profile×target; the choice persists per project in the manager store, `<leader>dT` |
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
+| `:DbtQuery` | `dbt.relation` | `select * from <relation> limit <query_limit>` through vim-dadbod when configured, else a scratch sql buffer, `<leader>dx` |
 
 The manager store is a JSON file (default
 `stdpath("data")/cogitator/manager.json`, override via setup

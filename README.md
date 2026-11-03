@@ -179,6 +179,25 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 
 [dbt-jsonschema]: https://github.com/dbt-labs/dbt-jsonschema
 
+## What reaches which editor
+
+| Capability | Neovim | Emacs | Zed / any stock LSP editor |
+|---|---|---|---|
+| Diagnostics, completion, hover, definitions/references, symbols, folding, selection ranges, semantic tokens, signature help, rename | ✓ | ✓ | ✓ |
+| Code actions: the dbt command set at the cursor, YAML-entry jumps, profiles.yml target switching | ✓ | ✓ | ✓ |
+| Code lenses | ✓ | ✓ | editor-dependent |
+| dbt run / test / compile / parse, schema & tests navigation, extract-to-YAML | ✓ commands + keymaps | ✓ commands | via code actions |
+| Pickers: targets, tags, selectors, projects | ✓ | ✓ | — |
+| Query workflow (bounded SELECT on the relation) | ✓ `:DbtQuery` (dadbod/scratch) | ✓ `cogitator-query` (sql buffer) | — |
+| Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — |
+| Project explorer / DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — |
+| Profiles-dir live switch | ✓ persisted per project | ✓ command (dir-locals for persistence) | — |
+| Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | — |
+
+Zed's extension API cannot add commands, pickers or panels: its ceiling
+is exactly what stock LSP carries. That is why the dbt workflows are
+served as code actions and lenses rather than client-side features.
+
 ## Dialects
 
 Function hover/completion documentation is bundled for **Snowflake** and
