@@ -33,8 +33,10 @@ with pkgs;
       neovim
       emacs-nox
 
-      # Lua formatting for the Neovim plugin (just lua-fmt / lua-fmt-check)
+      # Lua formatting + linting for the Neovim plugin
+      # (just lua-fmt / lua-fmt-check / lua-lint)
       stylua
+      luaPackages.luacheck
     ]
     # .cargo/config.toml selects clang + mold as the dev linker on Linux
     ++ lib.optionals stdenv.isLinux [

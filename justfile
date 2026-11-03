@@ -71,6 +71,10 @@ lua-fmt:
 lua-fmt-check:
     stylua --check editors/nvim
 
+# Lint the Neovim plugin's Lua (luacheck from the nix shell)
+lua-lint:
+    luacheck editors/nvim
+
 # Compile the Zed extension to WebAssembly the way Zed does
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1
