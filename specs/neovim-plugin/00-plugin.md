@@ -71,7 +71,13 @@ writer wins).
   SQL; full-line `{% %}` lines pass verbatim, `{{ }}` expressions are
   sentinel-masked, and ANY doubt (inline statements, sentinel
   miscount) declines with zero edits
-- `codeActionProvider: true` — **command-only** actions (no edits, no
+- `codeActionProvider: true` — besides the executable-lens set, the
+  response now carries edit-bearing actions: did-you-mean quickfixes
+  from diagnostic data, "Convert to ref()/source()" on literal
+  relations matching known coordinates (refactor.rewrite), and — at a
+  properties-YAML model entry — key-column test scaffolds plus
+  inherit-description fixes sourced from column lineage. Historically:
+  **command-only** actions (no edits, no
   kinds, no resolve): the executable lens set at the cursor, so every
   stock LSP editor gets dbt workflows without client wiring. A non-empty
   `context.only` filter answers `[]` (the actions are kind-less). On a

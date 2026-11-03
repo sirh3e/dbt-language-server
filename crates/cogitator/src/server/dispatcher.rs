@@ -1004,19 +1004,54 @@ impl Dispatcher {
         let only: Option<Vec<String>> = context
             .only
             .map(|kinds| kinds.into_iter().map(|k| k.into_owned()).collect());
+        let diagnostics = context.diagnostics;
+        let range = params.range;
         let snap = self.snapshot_for(&uri);
-        // profiles.yml buffers offer "Switch target" actions instead
-        let targets = super::handlers::profiles::target_choices(&snap, &self.derived, &uri);
-        let actions = features::code_actions(
-            &snap.ctx,
-            snap.doc.as_deref(),
-            &uri,
-            params.range,
-            only.as_deref(),
-            targets.as_deref(),
-            &context.diagnostics,
-        );
-        self.send(&ResultResponse::new(req.id, actions));
+        let derived = self.derived.clone();
+        // offloaded since the editing-actions batch: target choices,
+        // the relation catalog and lineage all touch the filesystem
+        self.offload_blocking(req.id, "textDocument/codeAction", move || {
+            let targets = super::handlers::profiles::target_choices(&snap, &derived, &uri);
+            let mut actions = features::code_actions(
+                &snap.ctx,
+                snap.doc.as_deref(),
+                &uri,
+                range,
+                only.as_deref(),
+                targets.as_deref(),
+                &diagnostics,
+            );
+            let mut extra = Vec::new();
+            if let Some(doc) = snap.doc.as_deref() {
+                if uri.ends_with(".yml") || uri.ends_with(".yaml") {
+                    if let Some((model, details)) = features::model_entry_at(&snap.ctx, &uri, range)
+                    {
+                        let model_uri = cogitator_lsp::fs_path_to_uri(&details.uri);
+                        let tests = features::model_tests(&snap.ctx, &model_uri)
+                            .map(|(_, tests)| tests)
+                            .unwrap_or_default();
+                        extra.extend(features::scaffold_tests_action(
+                            &doc.text, &uri, model, details, &tests,
+                        ));
+                        let lineage = super::handlers::commands::lineage_for(
+                            &derived, &snap.ctx, None, &model_uri,
+                        );
+                        if let Some(lineage) = (*lineage).as_ref() {
+                            extra.extend(features::inherit_description_actions(
+                                &snap.ctx, &doc.text, &uri, details, lineage,
+                            ));
+                        }
+                    }
+                } else {
+                    let target = super::handlers::profiles::active_target_relation(&snap, &derived);
+                    let catalog = features::RelationCatalog::build(&snap.ctx, target.as_ref());
+                    extra.extend(features::convert_literal_relations(doc, &uri, &catalog));
+                }
+            }
+            extra.retain(|action| action.allowed_by(only.as_deref()));
+            actions.extend(extra);
+            super::reply::Reply::result(&actions)
+        });
     }
 
     fn signature_help(&mut self, content: &[u8]) {

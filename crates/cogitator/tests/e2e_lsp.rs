@@ -1855,3 +1855,113 @@ fn expand_jinja_renders_the_stubbed_subset() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// The editing-action trio (03 §10): convert literal relation →
+/// ref()/source(), scaffold key-column tests, inherit an upstream
+/// description — all edit-bearing, all through textDocument/codeAction.
+#[test]
+fn editing_actions_convert_scaffold_inherit() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-actions-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    std::fs::write(
+        root.join("models/probe_actions.sql"),
+        "select customer_id, order_count from {{ ref('orders') }}\n",
+    )
+    .unwrap();
+    let probe_yml = root.join("models/probe_actions.yml");
+    let yml_text = "version: 2\n\nmodels:\n  - name: probe_actions\n    columns:\n      - name: customer_id\n      - name: something_id\n";
+    std::fs::write(&probe_yml, yml_text).unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+
+    // 1. convert literal relation (duckdb target: jaffle_shop.main.*)
+    let convert_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/convert_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": convert_uri, "languageId": "sql", "version": 1,
+            "text": "select * from main.stg_customers\n"}}),
+    );
+    let actions = lsp.request(
+        "textDocument/codeAction",
+        serde_json::json!({"textDocument": {"uri": convert_uri},
+                           "range": {"start": {"line": 0, "character": 0},
+                                     "end": {"line": 0, "character": 0}},
+                           "context": {"diagnostics": []}}),
+    );
+    let convert = actions["result"]
+        .as_array()
+        .and_then(|a| a.iter().find(|x| x["kind"] == "refactor.rewrite").cloned())
+        .expect("convert action");
+    assert_eq!(
+        convert["title"], "Convert to ref('stg_customers')",
+        "{convert}"
+    );
+    assert_eq!(
+        convert["edit"]["documentChanges"][0]["edits"][0]["newText"], "{{ ref('stg_customers') }}",
+        "{convert}"
+    );
+
+    // 2+3. YAML entry: scaffold tests + inherit description
+    let yml_uri = cogitator_lsp::fs_path_to_uri(&probe_yml);
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": yml_uri, "languageId": "yaml", "version": 1,
+            "text": yml_text.replace("\\n", "\n")}}),
+    );
+    let actions = lsp.request(
+        "textDocument/codeAction",
+        serde_json::json!({"textDocument": {"uri": yml_uri},
+                           "range": {"start": {"line": 3, "character": 4},
+                                     "end": {"line": 3, "character": 4}},
+                           "context": {"diagnostics": []}}),
+    );
+    let list = actions["result"].as_array().expect("actions");
+    let scaffold = list
+        .iter()
+        .find(|a| {
+            a["title"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("Add unique + not_null"))
+        })
+        .expect("scaffold action");
+    assert!(
+        scaffold["title"]
+            .as_str()
+            .unwrap()
+            .contains("2 key column(s)"),
+        "{scaffold}"
+    );
+    let scaffold_text = scaffold["edit"]["documentChanges"][0]["edits"][0]["newText"]
+        .as_str()
+        .unwrap();
+    assert!(scaffold_text.contains("data_tests:"), "{scaffold_text}");
+    assert!(scaffold_text.contains("- unique"), "{scaffold_text}");
+
+    let inherit = list
+        .iter()
+        .find(|a| {
+            a["title"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("Inherit description"))
+        })
+        .expect("inherit action");
+    assert!(
+        inherit["title"]
+            .as_str()
+            .unwrap()
+            .contains("from orders.customer_id"),
+        "{inherit}"
+    );
+    assert!(
+        inherit["edit"]["documentChanges"][0]["edits"][0]["newText"]
+            .as_str()
+            .is_some_and(|t| t.contains("description: \"Foreign key")),
+        "{inherit}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

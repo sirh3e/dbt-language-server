@@ -30,7 +30,9 @@ mod tests_nav;
 mod workspace_diagnostics;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
-pub use code_actions::{code_actions, TargetChoice};
+pub use code_actions::convert_relation::{convert_literal_relations, RelationCatalog};
+pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_action};
+pub use code_actions::{code_actions, model_entry_at, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};
 pub use dead_models::{dead_models, is_dead, DeadModel};

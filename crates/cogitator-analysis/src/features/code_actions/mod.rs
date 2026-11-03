@@ -4,7 +4,9 @@
 //! offered — payload-returning ones (dbt.modelGraph, dbt.columnLineage…)
 //! make dishonest actions because clients drop executeCommand results.
 
+pub(crate) mod convert_relation;
 mod quickfix;
+pub(crate) mod yaml_fixes;
 
 use cogitator_lsp::{CodeAction, Command, Diagnostic, Range};
 use cogitator_parser::TokenKind;
@@ -86,17 +88,25 @@ fn ref_target_action(ctx: &DbtContext, doc: &Document, range: Range) -> Option<C
 
 /// In a properties YAML: the model entry at (or nearest above) the cursor
 /// offers jumps to its file and its tests.
-fn yaml_entry_actions(ctx: &DbtContext, uri: &str, range: Range) -> Vec<CodeAction> {
+/// The model entry at (or nearest above) the cursor in THIS
+/// properties file — shared by the jump actions and the YAML fixes.
+pub fn model_entry_at<'a>(
+    ctx: &'a DbtContext,
+    uri: &str,
+    range: Range,
+) -> Option<(&'a String, &'a crate::context::ModelDetails)> {
     let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-    let path = std::path::Path::new(&path);
-    let entry = ctx
-        .model_detail_map
+    let path = std::path::PathBuf::from(path);
+    ctx.model_detail_map
         .iter()
         // Path equality compares components, so `/` and `\` match
-        .filter(|(_, d)| d.schema_uri.as_deref() == Some(path))
+        .filter(|(_, d)| d.schema_uri.as_deref() == Some(path.as_path()))
         .filter(|(_, d)| d.schema_range.start.line <= range.start.line)
-        .max_by_key(|(name, d)| (d.schema_range.start.line, name.as_str()));
-    let Some((name, details)) = entry else {
+        .max_by_key(|(name, d)| (d.schema_range.start.line, name.as_str()))
+}
+
+fn yaml_entry_actions(ctx: &DbtContext, uri: &str, range: Range) -> Vec<CodeAction> {
+    let Some((name, details)) = model_entry_at(ctx, uri, range) else {
         return Vec::new();
     };
     if details.uri.as_os_str().is_empty() {
