@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use cogitator_analysis::features::{extract_model_yaml, model_tests, ExtractEdit};
-use cogitator_analysis::{build_context, features};
+use cogitator_analysis::{build_context, features, yaml_features};
 use cogitator_lsp::Range;
 use pretty_assertions::assert_eq;
 
@@ -172,5 +172,35 @@ fn undocumented_model_gets_a_scaffold_with_its_columns() {
             .iter()
             .any(|l| l.command.title == "Extract schema YAML"),
         "{lenses:?}"
+    );
+}
+
+#[test]
+fn unknown_schema_key_gets_position_and_suggestion() {
+    let text = concat!(
+        "version: 2\n",
+        "models:\n",
+        "  - name: customers\n",
+        "    colums:\n",
+        "      - name: id\n",
+    );
+    let diags = yaml_features::yaml_diagnostics("file:///tmp/schema.yml", text);
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    let d = &diags[0];
+    assert!(
+        d.message.contains("'colums' is not a dbt schema key"),
+        "{}",
+        d.message
+    );
+    assert!(
+        d.message.contains("did you mean 'columns'"),
+        "{}",
+        d.message
+    );
+    assert_eq!(d.range.start.line, 3, "anchored at the typo: {d:?}");
+    assert!(
+        !d.message.contains("json:"),
+        "raw serde text must not leak: {}",
+        d.message
     );
 }
