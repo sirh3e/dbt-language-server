@@ -84,7 +84,7 @@ Every command takes **one argument object**, not positional values:
                    "position": { "line": 0, "character": 0 } } ] }
 ```
 
-`position` is only read by `dbt.goToSchema`. Results:
+`position` is only read by `dbt.goToSchema` and `dbt.relation`. Results:
 
 | command | result | side effect |
 |---|---|---|
@@ -102,6 +102,17 @@ Every command takes **one argument object**, not positional values:
 | `dbt.status` | server/project/profiles/refresh snapshot | none |
 | `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
 | `dbt.modelInfo` | `{model, uri, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
+| `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
+
+`dbt.relation` resolves the `source()` table or `ref()` under `position`
+(otherwise the file's own model) to its warehouse coordinates. **dbt
+defaults only**: a source without `schema:` uses the source name, a table
+without `identifier:` its declared name, and model database/schema come
+from the active profiles target (duckdb: the `path` file stem and `main`).
+Custom `generate_schema_name`/`generate_database_name` macros and
+`models:` config trees (`+schema`/`+database`/`+alias` in
+dbt_project.yml) are **not** evaluated. Unresolvable parts are `null` and
+left out of the dot-joined `relation` string.
 
 `workspace/symbol` additionally understands `tag:x` (models carrying tag
 x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`) and

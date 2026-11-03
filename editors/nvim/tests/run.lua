@@ -185,6 +185,25 @@ check(
   vim.inspect(graph_result):sub(1, 200)
 )
 
+-- dbt.relation: the fixture's duckdb target frames the model's relation
+local relation_result
+client:exec_cmd({
+  command = "dbt.relation",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+}, { bufnr = bufnr }, function(err, result)
+  relation_result = err == nil and result or false
+end)
+vim.wait(5000, function()
+  return relation_result ~= nil
+end, 50)
+check(
+  type(relation_result) == "table"
+    and relation_result.kind == "model"
+    and relation_result.relation == "jaffle_shop.main.customers",
+  "integration: dbt.relation resolves database.schema.identifier",
+  vim.inspect(relation_result):sub(1, 200)
+)
+
 -- the yazi-style browser: three panes, upstream pane lists neighbors
 local graph = require("cogitator.graph")
 graph.open()

@@ -527,6 +527,18 @@ fn full_session() {
         "{versioned}"
     );
 
+    // 6c². relation: the fixture's duckdb target (path jaffle_shop.duckdb,
+    // schema default main) frames the model's relation
+    let relation = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.relation",
+                            "arguments": [{ "uri": uri }] }),
+    );
+    let r = &relation["result"];
+    assert_eq!(r["kind"], "model", "{r}");
+    assert_eq!(r["relation"], "jaffle_shop.main.customers", "{r}");
+    assert_eq!(r["source"], serde_json::Value::Null, "{r}");
+
     // 6d. status: dbt.status knows the project
     let status = lsp.request(
         "workspace/executeCommand",

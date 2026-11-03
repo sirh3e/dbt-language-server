@@ -6,6 +6,7 @@ mod commands;
 mod diagnostics;
 mod dispatcher;
 mod fusion;
+mod relation;
 mod status;
 
 use std::sync::atomic::{AtomicBool, Ordering};

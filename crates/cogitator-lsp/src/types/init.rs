@@ -150,6 +150,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.status",
                         "dbt.projectGraph",
                         "dbt.modelInfo",
+                        "dbt.relation",
                     ],
                 },
                 references_provider: true,

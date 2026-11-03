@@ -425,6 +425,24 @@ impl Dispatcher {
                 self.send(&ResultResponse::new(req.id, result));
                 return;
             }
+            "dbt.relation" => {
+                let ctx = self.snapshot();
+                let cfg = self.profiles.lock().expect("profiles config lock").clone();
+                let target = super::relation::active_target_relation(
+                    &cfg,
+                    &self.root_path,
+                    &ctx.project.profile,
+                );
+                let result = features::relation_info(
+                    &ctx,
+                    self.documents.get(&uri),
+                    &uri,
+                    arg_position(arg),
+                    target.as_ref(),
+                );
+                self.send(&ResultResponse::new(req.id, result));
+                return;
+            }
             "dbt.goToSchema" => {}
             other => {
                 let response = ErrorResponse::new(
@@ -436,13 +454,7 @@ impl Dispatcher {
                 return;
             }
         }
-        let pos = arg
-            .get("position")
-            .map(|p| Position {
-                line: p.get("line").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32,
-                character: p.get("character").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32,
-            })
-            .unwrap_or_default();
+        let pos = arg_position(arg).unwrap_or_default();
         let ctx = self.snapshot();
         let result = features::go_to_schema(&ctx, self.documents.get(&uri), &uri, pos);
         self.send(&ResultResponse::new(req.id, result));
@@ -1158,4 +1170,12 @@ fn features_lineage(
     ctx: &DbtContext,
 ) -> Option<cogitator_analysis::lineage::ModelLineage> {
     cogitator_analysis::lineage::column_lineage(parsed, &ctx.dialect)
+}
+
+/// The optional `position` member of a command argument object.
+fn arg_position(arg: &serde_json::Map<String, serde_json::Value>) -> Option<Position> {
+    arg.get("position").map(|p| Position {
+        line: p.get("line").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32,
+        character: p.get("character").and_then(|v| v.as_f64()).unwrap_or(0.0) as u32,
+    })
 }
