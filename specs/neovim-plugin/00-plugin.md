@@ -93,6 +93,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.columnLineage` | lineage JSON or `null` | none |
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
 | `dbt.run` / `dbt.test` / `dbt.compile` | `null` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument |
+| `dbt.parse` | `null` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -304,6 +305,7 @@ vim.lsp.enable("cogitator")
 | `:DbtRun` | `dbt.run` | current buffer's uri |
 | `:DbtTest` | `dbt.test` | |
 | `:DbtCompile` | `dbt.compile` | compiled SQL opens via showDocument |
+| `:DbtParse` | `dbt.parse` | project-wide; refreshes artifacts + server context |
 | `:DbtSchema` | `dbt.goToSchema` | uri + cursor position; jump to the returned `Location` with `vim.lsp.util.show_document` |
 | `:DbtLineage` | `dbt.showLineage` | result arrives as a showMessage |
 

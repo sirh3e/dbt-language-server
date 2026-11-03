@@ -360,11 +360,12 @@ impl Dispatcher {
                 self.show_lineage(req.id, &uri);
                 return;
             }
-            "dbt.run" | "dbt.test" | "dbt.compile" => {
+            "dbt.run" | "dbt.test" | "dbt.compile" | "dbt.parse" => {
                 let kind = params.command.trim_start_matches("dbt.");
                 let kind: &'static str = match kind {
                     "run" => "run",
                     "test" => "test",
+                    "parse" => "parse",
                     _ => "compile",
                 };
                 self.run_dbt(req.id, kind, &uri);
@@ -767,7 +768,7 @@ impl Dispatcher {
         } else {
             self.fusion_path.clone()
         };
-        let link = super::commands::ClientLink::new(
+        let link = super::client_link::ClientLink::new(
             self.write_tx.clone(),
             self.server_request_ids.clone(),
             self.progress_supported.clone(),
@@ -776,6 +777,10 @@ impl Dispatcher {
             let cfg = self.profiles.lock().expect("profiles config lock");
             (!cfg.target.is_empty()).then(|| cfg.target.clone())
         };
+        // parse is project-wide (no --select) and the only kind whose
+        // success refreshes the context: its whole point is fresh artifacts
+        let selector = (kind != "parse").then(|| super::fusion::model_selector_from_uri(uri));
+        let refresh = (kind == "parse").then(|| (self.refresh_tx.clone(), self.root_path.clone()));
         super::commands::spawn_dbt(
             link,
             super::commands::DbtInvocation {
@@ -783,11 +788,12 @@ impl Dispatcher {
                 binary,
                 project_root: root,
                 project_name: ctx.project.name.clone(),
-                selector: super::fusion::model_selector_from_uri(uri),
+                selector,
                 model_path: std::path::PathBuf::from(
                     cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string()),
                 ),
                 target,
+                refresh,
             },
         );
         self.send(&ResultResponse::new(id, serde_json::Value::Null));

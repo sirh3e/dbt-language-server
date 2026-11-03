@@ -42,6 +42,10 @@ function M.compile()
   exec("dbt.compile", false) -- success opens the compiled SQL via showDocument
 end
 
+function M.parse()
+  exec("dbt.parse", false) -- project-wide; success refreshes the server context
+end
+
 function M.lineage()
   exec("dbt.showLineage", false) -- result arrives as a window/showMessage
 end

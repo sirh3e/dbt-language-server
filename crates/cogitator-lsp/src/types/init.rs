@@ -152,6 +152,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.modelInfo",
                         "dbt.relation",
                         "dbt.compiledSql",
+                        "dbt.parse",
                     ],
                 },
                 references_provider: true,

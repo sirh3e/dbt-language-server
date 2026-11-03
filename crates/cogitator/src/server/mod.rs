@@ -2,6 +2,7 @@
 //! reader → dispatcher (owns Documents) → writer; debounced refresh task
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
+mod client_link;
 mod commands;
 mod compiled;
 mod diagnostics;
@@ -128,7 +129,7 @@ pub async fn run(
     if !fusion_path.is_empty() {
         let flag = fusion_enabled.clone();
         let path = fusion_path.clone();
-        let link = commands::ClientLink::new(
+        let link = client_link::ClientLink::new(
             write_tx.clone(),
             request_ids.clone(),
             progress_supported.clone(),
@@ -168,7 +169,7 @@ pub async fn run(
     // launch flags; initializationOptions and dbt.setTarget replace fields
     let profiles = Arc::new(std::sync::Mutex::new(profiles));
     let refresh_profiles = profiles.clone();
-    let refresh_link = commands::ClientLink::new(
+    let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
         request_ids.clone(),
         progress_supported.clone(),

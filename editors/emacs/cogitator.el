@@ -166,6 +166,12 @@ CALLBACK as plists whichever client is in charge."
   (cogitator--execute "dbt.compile" (cogitator--command-argument) #'ignore))
 
 ;;;###autoload
+(defun cogitator-parse ()
+  "dbt parse for the whole project; success refreshes the server context."
+  (interactive)
+  (cogitator--execute "dbt.parse" (cogitator--command-argument) #'ignore))
+
+;;;###autoload
 (defun cogitator-lineage ()
   "Show column lineage for the current model (arrives as a message)."
   (interactive)

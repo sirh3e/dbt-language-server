@@ -15,6 +15,7 @@ end
 cmd("DbtRun", "run", "dbt run for the current model")
 cmd("DbtTest", "test", "dbt test for the current model")
 cmd("DbtCompile", "compile", "dbt compile for the current model (opens compiled SQL)")
+cmd("DbtParse", "parse", "dbt parse for the whole project (refreshes artifacts + context)")
 cmd("DbtSchema", "schema", "jump to the model's properties-YAML entry")
 cmd("DbtLineage", "lineage", "show column lineage for the current model")
 cmd("DbtExtract", "extract", "extract the model into its schema YAML (or add a version)")
