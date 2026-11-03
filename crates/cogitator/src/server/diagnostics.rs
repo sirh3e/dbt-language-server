@@ -7,7 +7,13 @@ use cogitator_lsp::Diagnostic;
 
 /// Dangling-ref + dbt-YAML + (duckdb) parse diagnostics for one open doc
 /// (the caller resolves the document — offloaded tasks hold an Arc).
-pub fn static_diagnostics(ctx: &DbtContext, doc: Option<&Document>, uri: &str) -> Vec<Diagnostic> {
+pub fn static_diagnostics(
+    ctx: &DbtContext,
+    doc: Option<&Document>,
+    uri: &str,
+    lints: features::lint::LintOptions,
+    lineage: Option<&cogitator_analysis::lineage::ModelLineage>,
+) -> Vec<Diagnostic> {
     let Some(doc) = doc else {
         return Vec::new();
     };
@@ -17,7 +23,11 @@ pub fn static_diagnostics(ctx: &DbtContext, doc: Option<&Document>, uri: &str) -
     } else if is_yaml(uri) {
         yaml_features::yaml_diagnostics(uri, &doc.text)
     } else {
-        features::dangling_ref_diagnostics(ctx, doc)
+        let mut items = features::dangling_ref_diagnostics(ctx, doc);
+        if lints.any() {
+            items.extend(features::lint::lint(ctx, doc, uri, lints, lineage));
+        }
+        items
     };
     // rebind so the base binding stays immutable in the default build
     #[cfg(feature = "duckdb-parser")]

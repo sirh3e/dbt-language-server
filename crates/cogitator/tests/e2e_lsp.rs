@@ -1117,3 +1117,66 @@ fn cogitator_yml_gets_config_intelligence() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Opt-in lint, hot: no items while `lint:` is absent; writing
+/// cogitator.yml with select_star: true and forcing a reload makes the
+/// next pull carry the warning (with its column-list quickfix data).
+#[test]
+fn lint_toggles_hot_through_cogitator_yml() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-lint-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/mart_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
+            "text": "select * from {{ ref('stg_customers') }}\n"}}),
+    );
+    let quiet = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": probe_uri}}),
+    );
+    assert!(
+        quiet["result"]["items"]
+            .as_array()
+            .is_some_and(|i| i.iter().all(|d| d["code"] != "lint-select-star")),
+        "{quiet}"
+    );
+
+    std::fs::write(root.join("cogitator.yml"), "lint:\n  select_star: true\n").unwrap();
+    reload_config(&mut lsp);
+    let mut flagged = serde_json::Value::Null;
+    for _ in 0..100 {
+        let pulled = lsp.request(
+            "textDocument/diagnostic",
+            serde_json::json!({"textDocument": {"uri": probe_uri}}),
+        );
+        if let Some(item) = pulled["result"]["items"]
+            .as_array()
+            .and_then(|i| i.iter().find(|d| d["code"] == "lint-select-star"))
+        {
+            flagged = item.clone();
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        flagged["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("SELECT *")),
+        "lint never switched on: {flagged}"
+    );
+    assert!(
+        flagged["data"]["suggestions"][0]
+            .as_str()
+            .is_some_and(|c| c.contains("customer_id")),
+        "{flagged}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

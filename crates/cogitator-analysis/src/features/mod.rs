@@ -11,6 +11,7 @@ mod extract;
 mod graph_nav;
 mod hover;
 mod lenses;
+pub mod lint;
 mod model_info;
 mod navigation;
 mod relation;

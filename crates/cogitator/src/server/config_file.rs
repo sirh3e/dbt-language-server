@@ -56,14 +56,7 @@ pub struct LintSection {
     pub dead_models: Option<bool>,
 }
 
-/// Bit per lint check inside the shared AtomicU32.
-pub mod lint_flags {
-    pub const SELECT_STAR: u32 = 1;
-    pub const UNALIASED_COLUMNS: u32 = 1 << 1;
-    pub const TRAILING_COMMA: u32 = 1 << 2;
-    pub const UNDOCUMENTED_COLUMNS: u32 = 1 << 3;
-    pub const DEAD_MODELS: u32 = 1 << 4;
-}
+pub use cogitator_analysis::config_schema::lint_flags;
 
 impl LintSection {
     /// Resolve to bitflags; a key absent from the file keeps the bit

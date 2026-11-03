@@ -49,6 +49,8 @@ pub struct Dispatcher {
     config_poke_tx: mpsc::UnboundedSender<()>,
     /// The watcher's view, reported by dbt.status.
     config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
+    /// Hot lint/warehouse switches (cogitator.yml).
+    toggles: Arc<super::SharedToggles>,
 }
 
 impl Dispatcher {
@@ -70,6 +72,7 @@ impl Dispatcher {
         config_root_tx: watch::Sender<Option<String>>,
         config_poke_tx: mpsc::UnboundedSender<()>,
         config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
+        toggles: Arc<super::SharedToggles>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -89,6 +92,7 @@ impl Dispatcher {
             config_root_tx,
             config_poke_tx,
             config_status,
+            toggles,
         }
     }
 
@@ -797,9 +801,27 @@ impl Dispatcher {
             return;
         };
         let snap = self.snapshot_for(&uri);
+        let lints =
+            features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
+        let derived = self.derived.clone();
         self.offload_blocking(id, "textDocument/diagnostic", move || {
-            let items =
-                super::diagnostics::static_diagnostics(&snap.ctx, snap.doc.as_deref(), &uri);
+            // the pull path affords lineage (cached per generation), so
+            // the undocumented-columns check runs here, not on push
+            let lineage = (lints.undocumented_columns && !uri.ends_with(".yml")).then(|| {
+                super::handlers::commands::lineage_for(
+                    &derived,
+                    &snap.ctx,
+                    snap.doc.as_deref(),
+                    &uri,
+                )
+            });
+            let items = super::diagnostics::static_diagnostics(
+                &snap.ctx,
+                snap.doc.as_deref(),
+                &uri,
+                lints,
+                lineage.as_ref().and_then(|l| (**l).as_ref()),
+            );
             super::reply::Reply::result(&FullDocumentDiagnosticReport {
                 kind: "full",
                 items,
@@ -809,7 +831,17 @@ impl Dispatcher {
 
     /// Diagnostics for one open doc — see server::diagnostics.
     fn static_diagnostics(&self, uri: &str) -> Vec<Diagnostic> {
-        super::diagnostics::static_diagnostics(&self.snapshot(), self.documents.get(uri), uri)
+        let lints =
+            features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
+        // push stays inline and lineage-free; the pull path adds the
+        // lineage-backed check
+        super::diagnostics::static_diagnostics(
+            &self.snapshot(),
+            self.documents.get(uri),
+            uri,
+            lints,
+            None,
+        )
     }
 
     /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled

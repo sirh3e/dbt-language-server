@@ -87,6 +87,16 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     },
 ];
 
+/// Bit per lint check inside the shared AtomicU32 — one truth for the
+/// config parser and the lint feature.
+pub mod lint_flags {
+    pub const SELECT_STAR: u32 = 1;
+    pub const UNALIASED_COLUMNS: u32 = 1 << 1;
+    pub const TRAILING_COMMA: u32 = 1 << 2;
+    pub const UNDOCUMENTED_COLUMNS: u32 = 1 << 3;
+    pub const DEAD_MODELS: u32 = 1 << 4;
+}
+
 /// The section entry by name.
 pub fn section(name: &str) -> Option<&'static SectionSchema> {
     COGITATOR_SCHEMA.iter().find(|s| s.name == name)

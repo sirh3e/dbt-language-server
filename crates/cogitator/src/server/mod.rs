@@ -439,6 +439,7 @@ pub async fn run(
         config_root_tx,
         config_poke_tx,
         config_status,
+        toggles,
     );
 
     let mut stdin = tokio::io::stdin();

@@ -25,6 +25,11 @@ pub struct ScopeIndex {
 }
 
 impl ScopeIndex {
+    /// Every `alias → relation` pair found after FROM/JOIN, in order.
+    pub fn relations(&self) -> &[(String, RelationTarget)] {
+        &self.relations
+    }
+
     pub fn build(doc: &Document) -> Self {
         let tokens = &doc.parsed.tokens;
         let mut relations = Vec::new();
