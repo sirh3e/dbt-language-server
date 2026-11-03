@@ -15,12 +15,17 @@ pub fn static_diagnostics(ctx: &DbtContext, documents: &Documents, uri: &str) ->
     } else {
         features::dangling_ref_diagnostics(ctx, doc)
     };
+    // rebind so the base binding stays immutable in the default build
     #[cfg(feature = "duckdb-parser")]
-    if !is_yaml(uri) && ctx.dialect.as_str() == "duckdb" {
-        if let Some(diag) = duckdb_diagnostic(doc) {
-            items.push(diag);
+    let items = {
+        let mut items = items;
+        if !is_yaml(uri) && ctx.dialect.as_str() == "duckdb" {
+            if let Some(diag) = duckdb_diagnostic(doc) {
+                items.push(diag);
+            }
         }
-    }
+        items
+    };
     items
 }
 
