@@ -57,6 +57,10 @@ pub struct ServerCapabilities {
 pub struct CompletionOptions {
     #[serde(rename = "resolveProvider")]
     pub resolve_provider: bool,
+    /// `" "` is deliberate: dbt SQL completes after keywords (`from `,
+    /// `join `); clients that find it noisy can strip it client-side.
+    #[serde(rename = "triggerCharacters")]
+    pub trigger_characters: &'static [&'static str],
 }
 
 #[derive(Debug, Serialize)]
@@ -126,6 +130,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 definition_provider: true,
                 completion_provider: CompletionOptions {
                     resolve_provider: true,
+                    trigger_characters: &[".", "'", "\"", " ", "("],
                 },
                 execute_command_provider: ExecuteCommandOptions {
                     commands: vec![

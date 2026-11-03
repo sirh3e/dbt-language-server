@@ -128,6 +128,9 @@ fn full_session() {
         caps["executeCommandProvider"]["commands"][0],
         "dbt.goToSchema"
     );
+    assert!(caps["completionProvider"]["triggerCharacters"]
+        .as_array()
+        .is_some_and(|chars| chars.iter().any(|c| c == "'")));
     assert_eq!(init["result"]["serverInfo"]["name"], "cogitator");
 
     // 2. didOpen, then give the background refresh a moment

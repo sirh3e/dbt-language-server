@@ -50,8 +50,8 @@ error.
   `documentSymbolProvider`, `workspaceSymbolProvider`,
   `documentHighlightProvider`, `foldingRangeProvider`,
   `selectionRangeProvider`, `renameProvider`: `true`
-- `completionProvider: { resolveProvider: true }` — **no trigger characters
-  advertised**; see §6.3
+- `completionProvider: { resolveProvider: true, triggerCharacters:
+  [".", "'", "\"", " ", "("] }`; see §6.3
 - `signatureHelpProvider: { triggerCharacters: ["(", ","] }`
 - `semanticTokensProvider`: `full: true`, legend token types (in index
   order): `keyword, function, macro, variable, string, number, operator,
@@ -351,13 +351,12 @@ buffers are not seen — save before renaming.
 
 ### 6.3 Completion
 
-- No trigger characters are advertised: completion is grammar-driven
-  server-side. The plugin should set
-  `triggerCharacters = { ".", "'", '"', " ", "(" }` on the client's
-  `server_capabilities.completionProvider` **after attach** so nvim-cmp /
-  blink.cmp / native `vim.lsp.completion` fire in member-access
-  (`alias.`), `ref('`, and post-keyword positions. (Client-side override;
-  revisit if the server grows `triggerCharacters`.)
+- The server advertises `triggerCharacters = [".", "'", "\"", " ", "("]`
+  so nvim-cmp / blink.cmp / native `vim.lsp.completion` fire in
+  member-access (`alias.`), `ref('`, and post-keyword positions with no
+  client configuration. The plugin keeps a client-side fallback that sets
+  the same characters **only when the server advertised none** (older
+  server builds).
 - Ranking arrives via `sortText` tiers (`0` < `a` < `b` < `c` < `m` < `z`);
   completion engines must be left on `sortText` ordering (document that
   `cmp.config.compare.sort_text` has to stay in the comparator list).

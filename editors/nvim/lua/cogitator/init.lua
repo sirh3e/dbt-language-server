@@ -50,9 +50,9 @@ local function keymaps(bufnr)
 end
 
 local function on_attach(client, bufnr, config)
-  -- the server advertises no trigger characters; set client-side ones so
-  -- completion fires in member-access / ref(' / post-keyword positions
-  -- (spec §6.3 — revisit if the server grows triggerCharacters)
+  -- the server advertises these trigger characters itself since the
+  -- dbt.relation batch; this block is a back-compat fallback for older
+  -- server builds that advertise none (spec §6.3)
   local completion = client.server_capabilities.completionProvider
   if completion and not completion.triggerCharacters then
     completion.triggerCharacters = { ".", "'", '"', " ", "(" }
