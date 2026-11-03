@@ -627,6 +627,46 @@ fn full_session() {
     let bad = lsp.request("textDocument/rename", serde_json::json!({}));
     assert_eq!(bad["error"]["code"], -32602);
 
+    // 6e. dbt.setProfilesDir: live switch to another profiles directory —
+    //     the report follows without a client restart, and the stale
+    //     target override resets (last profiles assertions of the session)
+    let other_dir =
+        std::env::temp_dir().join(format!("cogitator-e2e-profiles-{}", std::process::id()));
+    std::fs::create_dir_all(&other_dir).unwrap();
+    std::fs::write(
+        other_dir.join("profiles.yml"),
+        "jaffle_shop:\n  target: dev\n  outputs:\n    dev:\n      type: snowflake\n",
+    )
+    .unwrap();
+    let _profiles_cleanup = RemoveOnDrop(other_dir.clone());
+    let switched_dir = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.setProfilesDir",
+                            "arguments": [{ "dir": other_dir.to_string_lossy() }] }),
+    );
+    assert_eq!(
+        switched_dir["result"]["dir"],
+        other_dir.to_string_lossy().as_ref(),
+        "{switched_dir}"
+    );
+    let report = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.profiles", "arguments": [{}] }),
+    );
+    let r = &report["result"];
+    assert!(
+        r["path"]
+            .as_str()
+            .is_some_and(|p| p.starts_with(other_dir.to_string_lossy().as_ref())),
+        "{r}"
+    );
+    assert_eq!(r["profiles"][0]["targets"][0]["type"], "snowflake", "{r}");
+    let empty_dir = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.setProfilesDir", "arguments": [{}] }),
+    );
+    assert!(empty_dir["result"].is_null(), "{empty_dir}");
+
     // 7. shutdown must carry "result": null (deliberate deviation from the
     //    Go bare shape — Neovim rejects it as INVALID_SERVER_MESSAGE)
     let shutdown = lsp.request("shutdown", serde_json::json!({}));

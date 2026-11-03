@@ -71,7 +71,8 @@ error.
   `dbt.run`, `dbt.test`, `dbt.compile`, `dbt.modelGraph`, `dbt.profiles`,
   `dbt.setTarget`, `dbt.extractModelYaml`, `dbt.modelTests`,
   `dbt.goToTests`, `dbt.status`, `dbt.projectGraph`, `dbt.modelInfo`,
-  `dbt.relation`, `dbt.compiledSql`, `dbt.parse`, `dbt.openModel`
+  `dbt.relation`, `dbt.compiledSql`, `dbt.parse`, `dbt.openModel`,
+  `dbt.setProfilesDir`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -117,6 +118,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the 2 MiB wire cap |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
+| `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt

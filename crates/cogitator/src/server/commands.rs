@@ -20,6 +20,11 @@ pub struct DbtInvocation {
     pub model_path: PathBuf,
     /// Active target (dbt.setTarget / --target); appended as `--target`.
     pub target: Option<String>,
+    /// Active overrides (dbt.setProfilesDir / --profiles-dir, dbt.setTarget
+    /// profile / initializationOptions): the subprocess must resolve the
+    /// same connection the server does.
+    pub profiles_dir: Option<String>,
+    pub profile: Option<String>,
     /// Context refresh to trigger on success (sender + workspace root):
     /// dbt.parse refreshes the project context, run/test/compile do not.
     pub refresh: Option<(mpsc::UnboundedSender<String>, String)>,
@@ -27,7 +32,13 @@ pub struct DbtInvocation {
 
 /// The dbt CLI argument list for one invocation — pure, so the exact
 /// command line is provable without spawning dbt.
-fn dbt_args(kind: &str, selector: Option<&str>, target: Option<&str>) -> Vec<String> {
+fn dbt_args(
+    kind: &str,
+    selector: Option<&str>,
+    target: Option<&str>,
+    profiles_dir: Option<&str>,
+    profile: Option<&str>,
+) -> Vec<String> {
     let mut args = vec![kind.to_string()];
     if let Some(selector) = selector {
         args.push("--select".to_string());
@@ -36,6 +47,14 @@ fn dbt_args(kind: &str, selector: Option<&str>, target: Option<&str>) -> Vec<Str
     if let Some(target) = target {
         args.push("--target".to_string());
         args.push(target.to_string());
+    }
+    if let Some(dir) = profiles_dir {
+        args.push("--profiles-dir".to_string());
+        args.push(dir.to_string());
+    }
+    if let Some(profile) = profile {
+        args.push("--profile".to_string());
+        args.push(profile.to_string());
     }
     args
 }
@@ -53,6 +72,8 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
             selector,
             model_path,
             target,
+            profiles_dir,
+            profile,
             refresh,
         } = invocation;
         // what the messages call the invocation: the model selector, or the
@@ -70,7 +91,13 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 format!("dbt {kind} started for '{label}'{target_suffix}…"),
             );
         }
-        let args = dbt_args(kind, selector.as_deref(), target.as_deref());
+        let args = dbt_args(
+            kind,
+            selector.as_deref(),
+            target.as_deref(),
+            profiles_dir.as_deref(),
+            profile.as_deref(),
+        );
         let mut command = tokio::process::Command::new(&binary);
         command.args(&args).current_dir(&project_root);
         let result = command.output().await;
@@ -188,21 +215,45 @@ mod tests {
     #[test]
     fn selector_and_target_build_the_run_line() {
         assert_eq!(
-            dbt_args("run", Some("customers"), Some("prod")),
+            dbt_args("run", Some("customers"), Some("prod"), None, None),
             ["run", "--select", "customers", "--target", "prod"]
         );
         assert_eq!(
-            dbt_args("compile", Some("staging.stg_orders"), None),
+            dbt_args("compile", Some("staging.stg_orders"), None, None, None),
             ["compile", "--select", "staging.stg_orders"]
         );
     }
 
     #[test]
     fn parse_runs_project_wide_without_select() {
-        assert_eq!(dbt_args("parse", None, None), ["parse"]);
+        assert_eq!(dbt_args("parse", None, None, None, None), ["parse"]);
         assert_eq!(
-            dbt_args("parse", None, Some("dev")),
+            dbt_args("parse", None, Some("dev"), None, None),
             ["parse", "--target", "dev"]
+        );
+    }
+
+    #[test]
+    fn active_overrides_reach_the_subprocess() {
+        assert_eq!(
+            dbt_args(
+                "run",
+                Some("customers"),
+                Some("prod"),
+                Some("/etc/dbt"),
+                Some("jaffle_shop")
+            ),
+            [
+                "run",
+                "--select",
+                "customers",
+                "--target",
+                "prod",
+                "--profiles-dir",
+                "/etc/dbt",
+                "--profile",
+                "jaffle_shop"
+            ]
         );
     }
 }

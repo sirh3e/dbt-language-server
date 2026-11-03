@@ -62,6 +62,12 @@ pub struct SetTargetResult {
     pub target: String,
 }
 
+/// The dbt.setProfilesDir confirmation.
+#[derive(Debug, Serialize)]
+pub struct SetProfilesDirResult {
+    pub dir: String,
+}
+
 pub fn status_report(
     info: &StatusInfo,
     cfg: &ProfilesConfig,

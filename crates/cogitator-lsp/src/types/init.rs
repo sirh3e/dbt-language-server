@@ -157,6 +157,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.compiledSql",
                         "dbt.parse",
                         "dbt.openModel",
+                        "dbt.setProfilesDir",
                     ],
                 },
                 references_provider: true,

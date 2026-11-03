@@ -414,6 +414,15 @@ impl Dispatcher {
                 self.set_target(req.id, target, profile);
                 return;
             }
+            "dbt.setProfilesDir" => {
+                let dir = arg
+                    .get("dir")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                self.set_profiles_dir(req.id, dir);
+                return;
+            }
             "dbt.modelGraph" => {
                 let model = arg.get("model").and_then(|m| m.as_str());
                 let ctx = self.snapshot();
@@ -832,9 +841,13 @@ impl Dispatcher {
             self.server_request_ids.clone(),
             self.progress_supported.clone(),
         );
-        let target = {
+        let (target, profiles_dir, profile) = {
             let cfg = self.profiles.lock().expect("profiles config lock");
-            (!cfg.target.is_empty()).then(|| cfg.target.clone())
+            (
+                (!cfg.target.is_empty()).then(|| cfg.target.clone()),
+                (!cfg.dir_override.is_empty()).then(|| cfg.dir_override.clone()),
+                (!cfg.profile.is_empty()).then(|| cfg.profile.clone()),
+            )
         };
         // parse is project-wide (no --select) and the only kind whose
         // success refreshes the context: its whole point is fresh artifacts
@@ -852,6 +865,8 @@ impl Dispatcher {
                     cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string()),
                 ),
                 target,
+                profiles_dir,
+                profile,
                 refresh,
             },
         );
@@ -1087,6 +1102,36 @@ impl Dispatcher {
 
     /// `dbt.setTarget`: switch the active profile/target (allowlist-checked),
     /// trigger a context refresh, and confirm with the target's auth status.
+    /// `dbt.setProfilesDir`: point the live session at another profiles.yml
+    /// directory — no client restart. Profile/target overrides reset: a
+    /// stale target from the old file would stop the dialect resolving.
+    fn set_profiles_dir(&mut self, id: i64, dir: String) {
+        if dir.is_empty() {
+            self.show_message(
+                cogitator_lsp::message_type::ERROR,
+                "No profiles directory given.\n\
+                 Solution: call dbt.setProfilesDir with {\"dir\": \"/path/to/directory\"}.",
+            );
+            self.send(&ResultResponse::new(id, serde_json::Value::Null));
+            return;
+        }
+        {
+            let mut cfg = self.profiles.lock().expect("profiles config lock");
+            cfg.dir_override = dir.clone();
+            cfg.profile.clear();
+            cfg.target.clear();
+        }
+        let _ = self.refresh_tx.send(self.root_path.clone());
+        self.show_message(
+            cogitator_lsp::message_type::INFO,
+            format!("Profiles directory: {dir} (profile/target overrides reset)."),
+        );
+        self.send(&ResultResponse::new(
+            id,
+            super::status::SetProfilesDirResult { dir },
+        ));
+    }
+
     fn set_target(&mut self, id: i64, target: String, profile: Option<String>) {
         use cogitator_analysis::profiles::{load_inventory, ProfileScope};
 
