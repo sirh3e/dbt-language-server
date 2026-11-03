@@ -51,6 +51,8 @@ local function validate(opts)
 end
 
 --- The server command with the flags derived from the options (spec §1.2).
+---@param config table the merged options
+---@return string[] cmd argv for vim.lsp.config
 function M.cmd_with_flags(config)
   local cmd = vim.deepcopy(config.cmd)
   if not config.tree_sitter then
@@ -69,6 +71,8 @@ function M.cmd_with_flags(config)
 end
 
 --- Merge user options over the defaults; raises on unknown keys or types.
+---@param opts table user setup() options
+---@return table config the validated, merged configuration
 function M.build(opts)
   check_known_keys(opts)
   validate(opts)

@@ -16,6 +16,9 @@ local function effective_dir(config)
 end
 
 --- Candidate profiles.yml paths in the server's precedence order.
+---@param config {profiles_dir?: string}
+---@param root string? the dbt project root (nil outside a project)
+---@return string[] paths most-specific first
 function M.candidates(config, root)
   local list = {}
   if config.profiles_dir and config.profiles_dir ~= "" then
@@ -37,6 +40,7 @@ function M.candidates(config, root)
 end
 
 --- The resolution report shown by :DbtProfiles without an argument.
+---@param config table the plugin configuration
 function M.report(config)
   local dir, root = effective_dir(config)
   local lines = {

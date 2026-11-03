@@ -3,6 +3,9 @@
 
 local M = {}
 
+--- Enable code-lens refresh for an attached buffer.
+---@param bufnr integer
+---@param config table the plugin configuration (lens.enabled/events)
 function M.attach(bufnr, config)
   if not config.lens.enabled then
     return

@@ -39,6 +39,8 @@ local function write(data)
 end
 
 --- The stored selections for one project root ({} when unknown).
+---@param root string?
+---@return {profiles_dir?: string, profile?: string, target?: string, last_used?: integer}
 function M.for_root(root)
   if not root or root == "" then
     return {}
@@ -48,6 +50,8 @@ function M.for_root(root)
 end
 
 --- Merge `tbl` into the root's entry and bump last_used.
+---@param root string?
+---@param tbl table<string, any>? vim.NIL values clear their keys
 function M.remember(root, tbl)
   if not root or root == "" then
     return
@@ -67,6 +71,7 @@ function M.remember(root, tbl)
 end
 
 --- Known project roots, most recently used first.
+---@return string[]
 function M.roots()
   local projects = read().projects
   local list = {}

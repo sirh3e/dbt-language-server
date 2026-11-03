@@ -8,6 +8,9 @@ local M = {}
 local client_for = actions.client_for
 
 --- The single argument object of spec §1.6 (exposed for the test suite).
+---@param bufnr integer
+---@param with_position boolean include the cursor as a 0-based position
+---@return {uri: string, position?: {line: integer, character: integer}}
 function M.build_argument(bufnr, with_position)
   local arg = { uri = vim.uri_from_bufnr(bufnr) }
   if with_position then

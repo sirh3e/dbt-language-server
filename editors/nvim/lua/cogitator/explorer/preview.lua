@@ -1,7 +1,8 @@
---- The :DbtBrowse bottom pane: renders one of three tabs for the selected
---- model — [1] the raw SQL, [2] the compiled SQL served by dbt.compiledSql
---- (a hint when dbt has not written one), [3] versions and tests. Pure
---- render over the browser's state; browse.lua owns that state.
+--- The explorer's bottom pane: renders one of three tabs for the
+--- selected model — [1] the raw SQL, [2] the compiled SQL served by
+--- dbt.compiledSql (a hint when dbt has not written one), [3] versions
+--- and tests. Pure render over the explorer state (explorer/init.lua
+--- owns it).
 
 local render_lib = require("cogitator.render")
 local ui = require("cogitator.ui")

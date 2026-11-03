@@ -40,6 +40,10 @@ vim.api.nvim_create_user_command("DbtProjects", function()
   require("cogitator.manager").pick_project()
 end, { desc = "pick a known dbt project (manager store)" })
 
+vim.api.nvim_create_user_command("DbtExplorer", function()
+  require("cogitator.explorer").open()
+end, { desc = "project-wide model explorer (alias of :DbtBrowse)" })
+
 vim.api.nvim_create_user_command("DbtDag", function()
   require("cogitator.dag").open()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
