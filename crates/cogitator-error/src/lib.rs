@@ -4,6 +4,8 @@
 //! edges. The feature layer converts specific variants into the documented
 //! default LSP responses — degradation is explicit, never silent.
 
+pub mod guidance;
+
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
