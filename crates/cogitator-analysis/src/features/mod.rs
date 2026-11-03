@@ -16,6 +16,7 @@ mod graph_nav;
 mod hover;
 mod impact;
 mod inlay_hints;
+mod jinja_preview;
 mod lenses;
 mod linked_editing;
 pub mod lint;
@@ -43,6 +44,7 @@ pub use graph_nav::{
 pub use hover::hover;
 pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
 pub use inlay_hints::inlay_hints;
+pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};

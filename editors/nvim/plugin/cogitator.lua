@@ -24,6 +24,7 @@ cmd(
 vim.api.nvim_create_user_command("DbtRunSelection", function(opts)
   require("cogitator.commands").run_selection(opts)
 end, { nargs = "?", desc = "dbt run with an arbitrary selector (tag:…, state:modified+)" })
+cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
 vim.api.nvim_create_user_command("DbtImpact", function(opts)
   require("cogitator.commands").impact(opts)

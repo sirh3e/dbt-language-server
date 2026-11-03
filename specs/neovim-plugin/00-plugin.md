@@ -148,6 +148,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.cancel` | `{token, label}` or InvalidParams | aborts the running invocation (the child process is killed) + confirmation message |
 | `dbt.deadModels` | `{models: [{name, uri, reasons}]}` | none (conservative: seeds/package models never flagged; selector mentions keep a model alive) |
 | `dbt.impact` | `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}` | none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models) |
+| `dbt.expandJinja` | `{sql}` or InvalidParams Guidance | renders the open buffer with minijinja — project macros, ref/source → relations, var(), config()/is_incremental()/target stubs; adapter calls need a real compile |
 
 Two-argument `ref('package', 'model')` resolves like plain `ref()`
 everywhere (hover, definition, completion, dangling checks): the first

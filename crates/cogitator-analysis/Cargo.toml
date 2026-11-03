@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+minijinja = { workspace = true }
 sqlformat = { workspace = true }
 cogitator-error = { workspace = true }
 cogitator-lsp = { workspace = true }

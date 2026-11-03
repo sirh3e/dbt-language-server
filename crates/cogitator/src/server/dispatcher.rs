@@ -634,6 +634,31 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.expandJinja" => {
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.expandJinja", move || {
+                    let Some(doc) = snap.doc.as_deref() else {
+                        return super::reply::Reply::error(
+                            error_codes::INVALID_PARAMS,
+                            cogitator_error::guidance::Guidance::new(
+                                "dbt.expandJinja needs an open model buffer.",
+                            )
+                            .fix("pass the uri of a document the editor has opened.")
+                            .to_message(),
+                        );
+                    };
+                    let inputs = super::handlers::commands::preview_inputs(&snap, &derived);
+                    match features::expand_jinja(&doc.text, &inputs) {
+                        Ok(expanded) => super::reply::Reply::result(&expanded),
+                        Err(guidance) => super::reply::Reply::error(
+                            error_codes::INVALID_PARAMS,
+                            guidance.to_message(),
+                        ),
+                    }
+                });
+                return;
+            }
             "dbt.deadModels" => {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.deadModels", move || {

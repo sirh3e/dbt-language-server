@@ -135,3 +135,84 @@ pub fn cache(derived: &DerivedCache, action: &str) -> Reply {
         Reply::result(&derived.report())
     }
 }
+
+/// Everything dbt.expandJinja's renderer needs (05 §9): macro file
+/// sources (size-capped), relation strings from the active target's
+/// dbt defaults, project vars and the target name.
+pub fn preview_inputs(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+) -> cogitator_analysis::features::PreviewInputs {
+    const MACRO_SOURCE_CAP: usize = 1024 * 1024;
+    let target = super::profiles::active_target_relation(snap, derived);
+    let (database, schema) = target
+        .map(|t| (t.database, t.schema))
+        .unwrap_or((None, None));
+    let relation = |identifier: &str, schema_override: Option<&str>| {
+        let mut parts: Vec<&str> = Vec::new();
+        if let Some(db) = database.as_deref() {
+            parts.push(db);
+        }
+        if let Some(s) = schema_override.or(schema.as_deref()) {
+            parts.push(s)
+        }
+        parts.push(identifier);
+        parts.join(".")
+    };
+    let model_relations = snap
+        .ctx
+        .model_detail_map
+        .keys()
+        .map(|name| (name.clone(), relation(name, None)))
+        .collect();
+    let mut source_relations = std::collections::HashMap::new();
+    for source in snap.ctx.source_detail_map.values() {
+        for table in source.tables.values() {
+            // dbt defaults: schema falls back to the source name, the
+            // identifier to the declared table name (spec §1.6)
+            let schema_override = source.schema.as_deref().unwrap_or(&source.name);
+            let identifier = table.identifier.as_deref().unwrap_or(&table.name);
+            source_relations.insert(
+                (source.name.clone(), table.name.clone()),
+                relation(identifier, Some(schema_override)),
+            );
+        }
+    }
+    let mut macro_sources = Vec::new();
+    let mut macro_files: Vec<&std::path::PathBuf> = snap
+        .ctx
+        .macro_detail_map
+        .values()
+        .flat_map(|package| package.values().map(|m| &m.uri))
+        .collect();
+    macro_files.sort();
+    macro_files.dedup();
+    let mut total = 0usize;
+    for path in macro_files {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        total += text.len();
+        if total > MACRO_SOURCE_CAP {
+            tracing::debug!("macro sources over the preview cap; remainder skipped");
+            break;
+        }
+        macro_sources.push(text);
+    }
+    cogitator_analysis::features::PreviewInputs {
+        macro_sources,
+        model_relations,
+        source_relations,
+        vars: snap
+            .ctx
+            .variable_detail_map
+            .iter()
+            .map(|(name, details)| (name.clone(), details.value.clone()))
+            .collect(),
+        target_name: if snap.profiles.target.is_empty() {
+            "default".to_string()
+        } else {
+            snap.profiles.target.clone()
+        },
+    }
+}

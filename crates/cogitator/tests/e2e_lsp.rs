@@ -1831,3 +1831,27 @@ fn formatting_reflows_sql_and_keeps_jinja() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// dbt.expandJinja (05 §9): loops unroll, refs resolve to relations,
+/// fixture macros render; unsupported constructs answer Guidance.
+#[test]
+fn expand_jinja_renders_the_stubbed_subset() {
+    let (mut lsp, _uri) = booted(&[]);
+    let root = fixture_root().canonicalize().unwrap();
+    let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/expand_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
+            "text": "select {% for i in range(2) %}{{ times_five(i) }} as c{{ i }}{{ ', ' if not loop.last }}{% endfor %}\nfrom {{ ref('stg_customers') }}\n"}}),
+    );
+    let expanded = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.expandJinja", "arguments": [{"uri": probe_uri}]}),
+    );
+    let sql = expanded["result"]["sql"].as_str().expect("sql");
+    assert!(sql.contains("0 as c0, 5 as c1"), "{sql}");
+    assert!(sql.contains("from jaffle_shop.main.stg_customers"), "{sql}");
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

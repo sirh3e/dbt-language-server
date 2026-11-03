@@ -523,6 +523,7 @@ dependencies = [
  "cogitator-parser",
  "cogitator-schemas",
  "insta",
+ "minijinja",
  "petgraph",
  "pretty_assertions",
  "regex",

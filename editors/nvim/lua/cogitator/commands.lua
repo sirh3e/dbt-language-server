@@ -89,6 +89,34 @@ function M.impact(opts)
   end)
 end
 
+--- :DbtExpandJinja — render this model's Jinja (stubbed subset) into
+--- a scratch split.
+function M.expand_jinja()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.expandJinja",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" or type(result.sql) ~= "string" then
+      vim.notify(
+        "dbt.expandJinja failed" .. (err and (": " .. err.message) or ""),
+        vim.log.levels.ERROR
+      )
+      return
+    end
+    vim.cmd.vsplit()
+    local scratch = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(scratch, 0, -1, false, vim.split(result.sql, "\n"))
+    vim.bo[scratch].filetype = "sql"
+    vim.bo[scratch].modifiable = false
+    vim.api.nvim_win_set_buf(0, scratch)
+  end)
+end
+
 --- :DbtDeadModels — models nothing uses, as a quickfix list.
 function M.dead_models()
   local bufnr = vim.api.nvim_get_current_buf()
