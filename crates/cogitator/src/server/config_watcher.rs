@@ -14,7 +14,7 @@ use serde::Serialize;
 use tokio::sync::{mpsc, watch};
 
 use super::config_file::{self, Baseline, FileConfig};
-use super::{client_link::ClientLink, derived_cache, ProfilesConfig, SharedLimits};
+use super::{client_link::ClientLink, derived_cache, ProfilesConfig, SharedLimits, SharedToggles};
 
 /// What `dbt.status` reports about the config file.
 #[derive(Debug, Default, Clone, Serialize)]
@@ -38,6 +38,7 @@ pub struct ConfigWatcher {
     pub refresh_tx: mpsc::UnboundedSender<String>,
     pub profiles: Arc<std::sync::Mutex<ProfilesConfig>>,
     pub limits: Arc<SharedLimits>,
+    pub toggles: Arc<SharedToggles>,
     pub status: Arc<std::sync::Mutex<ConfigStatus>>,
 }
 
@@ -65,6 +66,9 @@ impl ConfigWatcher {
             compiled_cap_mib: self.limits.compiled_cap_bytes.load(Ordering::Relaxed)
                 / (1024 * 1024),
             debounce_ms: self.limits.refresh_debounce_ms.load(Ordering::Relaxed),
+            artifact_mib: self.limits.artifact_cap_bytes.load(Ordering::Relaxed) / (1024 * 1024),
+            lint_flags: self.toggles.lints.load(Ordering::Relaxed),
+            warehouse_columns: self.toggles.warehouse_columns.load(Ordering::Relaxed),
         };
         let mut last = FileConfig::default();
         let mut last_stamp: Option<(PathBuf, derived_cache::FileStamp)> = None;
@@ -168,7 +172,7 @@ impl ConfigWatcher {
         if std::mem::take(first_load) {
             changes = config_file::launch_filter(changes, baseline);
         }
-        let applied = config_file::apply(&changes, &self.profiles, &self.limits);
+        let applied = config_file::apply(&changes, &self.profiles, &self.limits, &self.toggles);
         *last = new;
         {
             let mut status = self.status.lock().expect("config status lock");
@@ -203,7 +207,7 @@ impl ConfigWatcher {
             return; // nothing was ever applied
         }
         let changes = config_file::diff(last, &FileConfig::default(), baseline);
-        let reverted = config_file::apply(&changes, &self.profiles, &self.limits);
+        let reverted = config_file::apply(&changes, &self.profiles, &self.limits, &self.toggles);
         *last = FileConfig::default();
         if !reverted.is_empty() {
             self.link.show_message(

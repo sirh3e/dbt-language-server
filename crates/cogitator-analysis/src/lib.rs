@@ -1,6 +1,7 @@
 //! Project analysis: state, dbt context, features (specs/rust-port/03).
 
 pub mod cache;
+pub mod config_schema;
 pub mod context;
 pub mod features;
 pub mod graph;

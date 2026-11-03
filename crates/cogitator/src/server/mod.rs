@@ -45,6 +45,8 @@ pub struct StatusInfo {
 pub struct SharedLimits {
     pub compiled_cap_bytes: std::sync::atomic::AtomicU64,
     pub refresh_debounce_ms: std::sync::atomic::AtomicU64,
+    /// target/ artifact files past this are skipped (03 §10).
+    pub artifact_cap_bytes: std::sync::atomic::AtomicU64,
 }
 
 impl Default for SharedLimits {
@@ -52,8 +54,18 @@ impl Default for SharedLimits {
         SharedLimits {
             compiled_cap_bytes: std::sync::atomic::AtomicU64::new(2 * 1024 * 1024),
             refresh_debounce_ms: std::sync::atomic::AtomicU64::new(200),
+            artifact_cap_bytes: std::sync::atomic::AtomicU64::new(64 * 1024 * 1024),
         }
     }
+}
+
+/// Hot-togglable feature switches (cogitator.yml `lint:`/`warehouse:`),
+/// read lock-free where diagnostics and completion assemble.
+#[derive(Debug, Default)]
+pub struct SharedToggles {
+    /// `config_file::lint_flags` bits; 0 = every check off.
+    pub lints: std::sync::atomic::AtomicU32,
+    pub warehouse_columns: std::sync::atomic::AtomicBool,
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by
@@ -237,6 +249,16 @@ pub async fn run(
     if let Some(ms) = launch.refresh.debounce_ms {
         limits.refresh_debounce_ms.store(ms, Ordering::Relaxed);
     }
+    if let Some(mib) = launch.limits.artifact_mib {
+        limits
+            .artifact_cap_bytes
+            .store(mib * 1024 * 1024, Ordering::Relaxed);
+    }
+    let toggles = Arc::new(SharedToggles::default());
+    toggles.lints.store(launch.lint.flags(0), Ordering::Relaxed);
+    if let Some(on) = launch.warehouse.columns {
+        toggles.warehouse_columns.store(on, Ordering::Relaxed);
+    }
     let refresh_limits = limits.clone();
     let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
@@ -393,6 +415,7 @@ pub async fn run(
             refresh_tx: refresh_tx.clone(),
             profiles: profiles.clone(),
             limits: limits.clone(),
+            toggles: toggles.clone(),
             status: config_status.clone(),
         }
         .run(),
