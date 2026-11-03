@@ -2,12 +2,13 @@
 //! dbt YAML problems and the feature-gated DuckDB 2.0 parse check. Pure over
 //! the snapshot + documents; the dispatcher publishes.
 
-use cogitator_analysis::{features, yaml_features, DbtContext, Documents};
+use cogitator_analysis::{features, yaml_features, DbtContext, Document};
 use cogitator_lsp::Diagnostic;
 
-/// Dangling-ref + dbt-YAML + (duckdb) parse diagnostics for one open doc.
-pub fn static_diagnostics(ctx: &DbtContext, documents: &Documents, uri: &str) -> Vec<Diagnostic> {
-    let Some(doc) = documents.get(uri) else {
+/// Dangling-ref + dbt-YAML + (duckdb) parse diagnostics for one open doc
+/// (the caller resolves the document — offloaded tasks hold an Arc).
+pub fn static_diagnostics(ctx: &DbtContext, doc: Option<&Document>, uri: &str) -> Vec<Diagnostic> {
+    let Some(doc) = doc else {
         return Vec::new();
     };
     let items = if is_yaml(uri) {

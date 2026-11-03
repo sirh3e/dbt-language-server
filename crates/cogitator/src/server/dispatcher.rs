@@ -39,6 +39,8 @@ pub struct Dispatcher {
     status: Arc<std::sync::Mutex<super::StatusInfo>>,
     /// Shared derived-data caches (profiles inventory, lineage, results).
     derived: Arc<super::derived_cache::DerivedCache>,
+    /// Offloaded requests by id — real $/cancelRequest lives here.
+    in_flight: super::offload::InFlight,
 }
 
 impl Dispatcher {
@@ -70,6 +72,7 @@ impl Dispatcher {
             progress_supported,
             status,
             derived,
+            in_flight: super::offload::InFlight::default(),
         }
     }
 
@@ -95,6 +98,23 @@ impl Dispatcher {
     /// Ship a handler's reply: effects in order, response last.
     fn transmit(&self, id: Option<i64>, reply: super::reply::Reply) {
         super::reply::transmit(&self.link, &self.refresh_tx, &self.root_path, id, reply);
+    }
+
+    /// Run a slow/fs handler off this task (05 §6.1: the dispatcher task
+    /// never touches the filesystem). Decode + snapshot happen BEFORE
+    /// this call, on the dispatcher task, so didChange ordering holds.
+    fn offload_blocking(
+        &mut self,
+        id: i64,
+        name: &'static str,
+        job: impl FnOnce() -> super::reply::Reply + Send + 'static,
+    ) {
+        let out = super::offload::OffloadLink {
+            link: self.link.clone(),
+            refresh_tx: self.refresh_tx.clone(),
+            root_path: self.root_path.clone(),
+        };
+        self.in_flight.spawn_blocking(id, name, out, job);
     }
 
     fn show_message(&mut self, message_type: i32, message: impl Into<String>) {
@@ -160,9 +180,15 @@ impl Dispatcher {
                 let _ = self.refresh_tx.send(self.root_path.clone());
             }
             "$/cancelRequest" => {
-                // accepted per protocol; handlers are sub-millisecond and
-                // synchronous, so there is nothing in flight to cancel
-                tracing::trace!("cancel request acknowledged");
+                #[derive(serde::Deserialize)]
+                struct CancelParams {
+                    id: i64,
+                }
+                if let Ok(req) = serde_json::from_slice::<Envelope<CancelParams>>(content) {
+                    if let Some(params) = req.params {
+                        self.in_flight.cancel(params.id, &self.link);
+                    }
+                }
             }
             "workspace/executeCommand" => self.execute_command(content),
             "shutdown" => self.shutdown(content),
@@ -393,8 +419,10 @@ impl Dispatcher {
             }
             "dbt.modelTests" => {
                 let snap = self.snapshot_for(&uri);
-                let reply = super::handlers::commands::model_tests(&snap, &self.derived, &uri);
-                self.transmit(Some(req.id), reply);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.modelTests", move || {
+                    super::handlers::commands::model_tests(&snap, &derived, &uri)
+                });
                 return;
             }
             "dbt.goToTests" => {
@@ -411,8 +439,9 @@ impl Dispatcher {
             }
             "dbt.projectGraph" => {
                 let ctx = self.snapshot();
-                let result = features::project_graph_json(&ctx);
-                self.send(&ResultResponse::new(req.id, result));
+                self.offload_blocking(req.id, "dbt.projectGraph", move || {
+                    super::reply::Reply::result(&features::project_graph_json(&ctx))
+                });
                 return;
             }
             "dbt.setTarget" => {
@@ -454,11 +483,15 @@ impl Dispatcher {
                 return;
             }
             "dbt.modelInfo" => {
-                let model = arg.get("model").and_then(|m| m.as_str());
+                let model = arg
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string);
                 let snap = self.snapshot_for(&uri);
-                let reply =
-                    super::handlers::commands::model_info(&snap, &self.derived, &uri, model);
-                self.transmit(Some(req.id), reply);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.modelInfo", move || {
+                    super::handlers::commands::model_info(&snap, &derived, &uri, model.as_deref())
+                });
                 return;
             }
             "dbt.openModel" => {
@@ -469,17 +502,23 @@ impl Dispatcher {
                 return;
             }
             "dbt.compiledSql" => {
-                let model = arg.get("model").and_then(|m| m.as_str());
+                let model = arg
+                    .get("model")
+                    .and_then(|m| m.as_str())
+                    .map(str::to_string);
                 let snap = self.snapshot_for(&uri);
-                let reply = super::handlers::commands::compiled_sql(&snap, &uri, model);
-                self.transmit(Some(req.id), reply);
+                self.offload_blocking(req.id, "dbt.compiledSql", move || {
+                    super::handlers::commands::compiled_sql(&snap, &uri, model.as_deref())
+                });
                 return;
             }
             "dbt.relation" => {
                 let pos = arg_position(arg);
                 let snap = self.snapshot_for(&uri);
-                let reply = super::handlers::profiles::relation(&snap, &self.derived, &uri, pos);
-                self.transmit(Some(req.id), reply);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.relation", move || {
+                    super::handlers::profiles::relation(&snap, &derived, &uri, pos)
+                });
                 return;
             }
             "dbt.goToSchema" => {}
@@ -504,6 +543,7 @@ impl Dispatcher {
             return;
         };
         tracing::info!("shutdown request");
+        self.in_flight.abort_all();
         // Deliberate deviation from Go's bare response: JSON-RPC requires a
         // result member on success, and Neovim rejects the bare shape as
         // INVALID_SERVER_MESSAGE, leaving the client lingering on restart.
@@ -598,16 +638,15 @@ impl Dispatcher {
             self.invalid_params(content, "textDocument/rename");
             return;
         };
-        let ctx = self.snapshot();
         let uri = params.text_document.uri.into_owned();
-        let edit = features::rename_model(
-            &ctx,
-            self.documents.get(&uri),
-            &uri,
-            params.position,
-            &params.new_name,
-        );
-        self.send(&ResultResponse::new(req.id, edit));
+        let new_name = params.new_name.into_owned();
+        let position = params.position;
+        let snap = self.snapshot_for(&uri);
+        self.offload_blocking(req.id, "textDocument/rename", move || {
+            let edit =
+                features::rename_model(&snap.ctx, snap.doc.as_deref(), &uri, position, &new_name);
+            super::reply::Reply::result(&edit)
+        });
     }
 
     fn code_lens(&mut self, content: &[u8]) {
@@ -673,19 +712,20 @@ impl Dispatcher {
             self.invalid_params(content, "textDocument/diagnostic");
             return;
         };
-        let items = self.static_diagnostics(&uri);
-        self.send(&ResultResponse::new(
-            id,
-            FullDocumentDiagnosticReport {
+        let snap = self.snapshot_for(&uri);
+        self.offload_blocking(id, "textDocument/diagnostic", move || {
+            let items =
+                super::diagnostics::static_diagnostics(&snap.ctx, snap.doc.as_deref(), &uri);
+            super::reply::Reply::result(&FullDocumentDiagnosticReport {
                 kind: "full",
                 items,
-            },
-        ));
+            })
+        });
     }
 
     /// Diagnostics for one open doc — see server::diagnostics.
     fn static_diagnostics(&self, uri: &str) -> Vec<Diagnostic> {
-        super::diagnostics::static_diagnostics(&self.snapshot(), &self.documents, uri)
+        super::diagnostics::static_diagnostics(&self.snapshot(), self.documents.get(uri), uri)
     }
 
     /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled
@@ -703,10 +743,18 @@ impl Dispatcher {
     }
 
     fn column_lineage(&mut self, id: i64, uri: &str) {
-        let ctx = self.snapshot();
-        let lineage = self.lineage_for(uri, &ctx);
-        let reply = super::handlers::commands::column_lineage(&lineage);
-        self.transmit(Some(id), reply);
+        let snap = self.snapshot_for(uri);
+        let derived = self.derived.clone();
+        let uri = uri.to_string();
+        self.offload_blocking(id, "dbt.columnLineage", move || {
+            let lineage = super::handlers::commands::lineage_for(
+                &derived,
+                &snap.ctx,
+                snap.doc.as_deref(),
+                &uri,
+            );
+            super::handlers::commands::column_lineage(&lineage)
+        });
     }
 
     fn open_schema(&mut self, id: i64, uri: &str) {
@@ -716,10 +764,18 @@ impl Dispatcher {
     }
 
     fn show_lineage(&mut self, id: i64, uri: &str) {
-        let ctx = self.snapshot();
-        let lineage = self.lineage_for(uri, &ctx);
-        let reply = super::handlers::navigation::show_lineage((*lineage).as_ref());
-        self.transmit(Some(id), reply);
+        let snap = self.snapshot_for(uri);
+        let derived = self.derived.clone();
+        let uri = uri.to_string();
+        self.offload_blocking(id, "dbt.showLineage", move || {
+            let lineage = super::handlers::commands::lineage_for(
+                &derived,
+                &snap.ctx,
+                snap.doc.as_deref(),
+                &uri,
+            );
+            super::handlers::navigation::show_lineage((*lineage).as_ref())
+        });
     }
 
     /// `dbt.run` / `dbt.test` / `dbt.compile` for one model, asynchronously.
@@ -780,18 +836,26 @@ impl Dispatcher {
     }
 
     fn extract_model_yaml(&mut self, id: i64, uri: &str) {
-        let ctx = self.snapshot();
-        let lineage = self.lineage_for(uri, &ctx);
         let snap = self.snapshot_for(uri);
-        let reply =
-            super::handlers::navigation::extract_model_yaml(&snap, uri, (*lineage).as_ref());
-        self.transmit(Some(id), reply);
+        let derived = self.derived.clone();
+        let uri = uri.to_string();
+        self.offload_blocking(id, "dbt.extractModelYaml", move || {
+            let lineage = super::handlers::commands::lineage_for(
+                &derived,
+                &snap.ctx,
+                snap.doc.as_deref(),
+                &uri,
+            );
+            super::handlers::navigation::extract_model_yaml(&snap, &uri, (*lineage).as_ref())
+        });
     }
 
     fn go_to_tests(&mut self, id: i64, uri: &str) {
         let snap = self.snapshot_for(uri);
-        let reply = super::handlers::navigation::go_to_tests(&snap, uri);
-        self.transmit(Some(id), reply);
+        let uri = uri.to_string();
+        self.offload_blocking(id, "dbt.goToTests", move || {
+            super::handlers::navigation::go_to_tests(&snap, &uri)
+        });
     }
 
     /// `dbt.status`: what the server knows and has been doing — project,
@@ -820,57 +884,42 @@ impl Dispatcher {
 
     fn profiles_report(&mut self, id: i64) {
         let snap = self.snapshot_for("");
-        let reply = super::handlers::profiles::report(&snap, &self.derived);
-        self.transmit(Some(id), reply);
+        let derived = self.derived.clone();
+        self.offload_blocking(id, "dbt.profiles", move || {
+            super::handlers::profiles::report(&snap, &derived)
+        });
     }
 
     fn set_profiles_dir(&mut self, id: i64, dir: String) {
-        let outcome = super::handlers::profiles::set_profiles_dir(dir);
-        if let Some(dir) = outcome.apply {
-            let mut cfg = self.profiles.lock().expect("profiles config lock");
-            cfg.dir_override = dir;
-            cfg.profile.clear();
-            cfg.target.clear();
-        }
-        self.transmit(Some(id), outcome.reply);
+        let live_cfg = self.profiles.clone();
+        self.offload_blocking(id, "dbt.setProfilesDir", move || {
+            let outcome = super::handlers::profiles::set_profiles_dir(dir);
+            if let Some(dir) = outcome.apply {
+                let mut cfg = live_cfg.lock().expect("profiles config lock");
+                cfg.dir_override = dir;
+                cfg.profile.clear();
+                cfg.target.clear();
+            }
+            outcome.reply
+        });
     }
 
     fn set_target(&mut self, id: i64, target: String, profile: Option<String>) {
         let snap = self.snapshot_for("");
-        let outcome = super::handlers::profiles::set_target(&snap, &self.derived, target, profile);
-        if let Some((profile_override, target)) = outcome.apply {
-            let mut live = self.profiles.lock().expect("profiles config lock");
-            live.target = target;
-            if let Some(profile) = profile_override {
-                live.profile = profile;
+        let derived = self.derived.clone();
+        let live_cfg = self.profiles.clone();
+        self.offload_blocking(id, "dbt.setTarget", move || {
+            let outcome = super::handlers::profiles::set_target(&snap, &derived, target, profile);
+            if let Some((profile_override, target)) = outcome.apply {
+                // tight std lock, no await in scope
+                let mut live = live_cfg.lock().expect("profiles config lock");
+                live.target = target;
+                if let Some(profile) = profile_override {
+                    live.profile = profile;
+                }
             }
-        }
-        self.transmit(Some(id), outcome.reply);
-    }
-
-    /// Column lineage for `uri`: cached per document generation for open
-    /// documents; disk files (unopened) are computed per call.
-    fn lineage_for(
-        &self,
-        uri: &str,
-        ctx: &DbtContext,
-    ) -> std::sync::Arc<Option<cogitator_analysis::lineage::ModelLineage>> {
-        match self.documents.get(uri) {
-            Some(doc) => self.derived.lineage(uri, doc.generation, || {
-                cogitator_analysis::lineage::column_lineage(&doc.parsed, &ctx.dialect)
-            }),
-            None => {
-                let compute = || {
-                    let path =
-                        cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-                    let text = std::fs::read_to_string(path).ok()?;
-                    let parsed =
-                        cogitator_parser::pipeline::parse_document(&text, &ctx.dialect).ok()?;
-                    cogitator_analysis::lineage::column_lineage(&parsed, &ctx.dialect)
-                };
-                std::sync::Arc::new(compute())
-            }
-        }
+            outcome.reply
+        });
     }
 
     /// Fusion compile per 04 §2, async + cancellable per URI (fixes Q9).

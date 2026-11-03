@@ -17,12 +17,19 @@ struct Lsp {
 
 impl Lsp {
     fn start() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_cogitator"))
+        Self::start_with_env(&[])
+    }
+
+    fn start_with_env(env: &[(&str, &str)]) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_cogitator"));
+        command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .expect("binary spawns");
+            .stderr(Stdio::null());
+        for (key, value) in env {
+            command.env(key, value);
+        }
+        let mut child = command.spawn().expect("binary spawns");
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         Lsp {
@@ -40,6 +47,33 @@ impl Lsp {
         write!(self.stdin, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
         self.stdin.write_all(&body).unwrap();
         self.stdin.flush().unwrap();
+    }
+
+    /// Send a request WITHOUT waiting — concurrency/cancel tests pair it
+    /// with `response_for`.
+    fn request_nowait(&mut self, method: &str, params: serde_json::Value) -> i64 {
+        self.next_id += 1;
+        let id = self.next_id;
+        let msg =
+            serde_json::json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params});
+        let body = serde_json::to_vec(&msg).unwrap();
+        write!(self.stdin, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
+        self.stdin.write_all(&body).unwrap();
+        self.stdin.flush().unwrap();
+        id
+    }
+
+    /// Read frames (stashing everything else) until `id` answers.
+    fn response_for(&mut self, id: i64) -> serde_json::Value {
+        loop {
+            let value = self.read_message();
+            let is_reply = value.get("id").and_then(|i| i.as_i64()) == Some(id)
+                && value.get("method").is_none();
+            if is_reply {
+                return value;
+            }
+            self.stash.push(value);
+        }
     }
 
     fn request(&mut self, method: &str, params: serde_json::Value) -> serde_json::Value {
@@ -725,4 +759,96 @@ fn full_session() {
     lsp.notify("exit", serde_json::json!({}));
     let status = lsp.child.wait().unwrap();
     assert_eq!(status.code(), Some(0));
+}
+
+/// Shared setup for the concurrency tests: initialize + open customers
+/// and wait for the first refresh (definition answers correctly).
+fn booted(env: &[(&str, &str)]) -> (Lsp, String) {
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/jaffle_shop_duckdb")
+        .canonicalize()
+        .unwrap();
+    let mut lsp = Lsp::start_with_env(env);
+    let model = root.join("models/customers.sql");
+    let text = std::fs::read_to_string(&model).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&model);
+    let _ = lsp.request(
+        "initialize",
+        serde_json::json!({
+            "rootUri": cogitator_lsp::fs_path_to_uri(&root),
+            "capabilities": {},
+            "initializationOptions": {"profilesDir": root.join(".dbt").to_string_lossy()},
+        }),
+    );
+    lsp.notify("initialized", serde_json::json!({}));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {
+            "uri": uri, "languageId": "sql", "version": 1, "text": text}}),
+    );
+    // wait for the refresh: hover over a ref answers non-empty eventually
+    for _ in 0..100 {
+        let hover = lsp.request(
+            "textDocument/hover",
+            serde_json::json!({"textDocument": {"uri": uri},
+                               "position": {"line": 2, "character": 24}}),
+        );
+        if hover["result"]["contents"]
+            .as_str()
+            .is_some_and(|c| !c.is_empty())
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    (lsp, uri)
+}
+
+/// The concurrency proof: a delayed dbt.modelInfo must NOT block the
+/// hover sent right after it — three orders of magnitude of margin
+/// (1500 ms floor vs a sub-ms handler), no polling.
+#[test]
+fn slow_request_does_not_block_fast_ones() {
+    let (mut lsp, uri) = booted(&[("COGITATOR_E2E_DELAY", "dbt.modelInfo=1500")]);
+    let slow = lsp.request_nowait(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.modelInfo",
+                           "arguments": [{"model": "customers", "uri": ""}]}),
+    );
+    let fast = lsp.request_nowait(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": uri},
+                           "position": {"line": 0, "character": 0}}),
+    );
+    // the hover must answer FIRST even though it was sent second
+    let first = lsp.response_for(fast);
+    assert!(first.get("result").is_some(), "{first}");
+    let slow_reply = lsp.response_for(slow);
+    assert_eq!(slow_reply["result"]["model"], "customers", "{slow_reply}");
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}
+
+/// Real cancellation: the delayed request answers RequestCancelled
+/// (-32800) and the server keeps serving.
+#[test]
+fn cancel_request_aborts_in_flight_work() {
+    let (mut lsp, uri) = booted(&[("COGITATOR_E2E_DELAY", "dbt.modelInfo=1500")]);
+    let slow = lsp.request_nowait(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.modelInfo",
+                           "arguments": [{"model": "customers", "uri": ""}]}),
+    );
+    lsp.notify("$/cancelRequest", serde_json::json!({"id": slow}));
+    let cancelled = lsp.response_for(slow);
+    assert_eq!(cancelled["error"]["code"], -32800, "{cancelled}");
+    // and the server still answers afterwards
+    let hover = lsp.request(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": uri},
+                           "position": {"line": 0, "character": 0}}),
+    );
+    assert!(hover.get("result").is_some(), "{hover}");
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
 }

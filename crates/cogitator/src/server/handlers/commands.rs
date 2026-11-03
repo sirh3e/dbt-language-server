@@ -8,6 +8,8 @@ use cogitator_analysis::features;
 use cogitator_analysis::lineage::ModelLineage;
 use cogitator_lsp::message_type;
 
+use cogitator_analysis::{DbtContext, Document};
+
 use super::super::derived_cache::DerivedCache;
 use super::super::reply::{Effect, Reply};
 use super::super::snapshot::Snapshot;
@@ -68,6 +70,31 @@ pub fn compiled_sql(snap: &Snapshot, uri: &str, model: Option<&str>) -> Reply {
         });
     }
     reply
+}
+
+/// Column lineage for `uri`: cached per document generation for open
+/// documents; disk files (unopened) are computed per call.
+pub fn lineage_for(
+    derived: &DerivedCache,
+    ctx: &DbtContext,
+    doc: Option<&Document>,
+    uri: &str,
+) -> Arc<Option<ModelLineage>> {
+    match doc {
+        Some(doc) => derived.lineage(uri, doc.generation, || {
+            cogitator_analysis::lineage::column_lineage(&doc.parsed, &ctx.dialect)
+        }),
+        None => {
+            let compute = || {
+                let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+                let text = std::fs::read_to_string(path).ok()?;
+                let parsed =
+                    cogitator_parser::pipeline::parse_document(&text, &ctx.dialect).ok()?;
+                cogitator_analysis::lineage::column_lineage(&parsed, &ctx.dialect)
+            };
+            Arc::new(compute())
+        }
+    }
 }
 
 /// `dbt.columnLineage`: the (cached) lineage payload.

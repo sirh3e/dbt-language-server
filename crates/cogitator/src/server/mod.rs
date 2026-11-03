@@ -10,9 +10,11 @@ mod diagnostics;
 mod dispatcher;
 mod fusion;
 mod handlers;
+mod offload;
 mod reply;
 mod snapshot;
 mod status;
+mod test_hooks;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
