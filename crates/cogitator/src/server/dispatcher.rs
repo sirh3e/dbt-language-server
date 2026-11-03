@@ -51,6 +51,8 @@ pub struct Dispatcher {
     config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
     /// Hot lint/warehouse switches (cogitator.yml).
     toggles: Arc<super::SharedToggles>,
+    /// Running dbt invocations, cancellable by token (dbt.cancel).
+    jobs: Arc<super::jobs::DbtJobs>,
 }
 
 impl Dispatcher {
@@ -73,6 +75,7 @@ impl Dispatcher {
         config_poke_tx: mpsc::UnboundedSender<()>,
         config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
         toggles: Arc<super::SharedToggles>,
+        jobs: Arc<super::jobs::DbtJobs>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -93,6 +96,7 @@ impl Dispatcher {
             config_poke_tx,
             config_status,
             toggles,
+            jobs,
         }
     }
 
@@ -476,6 +480,68 @@ impl Dispatcher {
             }
             "dbt.sourceFreshness" => {
                 self.run_dbt(req.id, "source freshness", &uri);
+                return;
+            }
+            "dbt.cancel" => {
+                let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
+                match self.jobs.cancel(token) {
+                    Ok(cancelled) => {
+                        self.show_message(
+                            cogitator_lsp::message_type::INFO,
+                            format!("cancelled {} (job {token}).", cancelled.label),
+                        );
+                        self.send(&ResultResponse::new(req.id, cancelled));
+                    }
+                    Err(guidance) => {
+                        let response = ErrorResponse::new(
+                            req.id,
+                            error_codes::INVALID_PARAMS,
+                            guidance.to_message(),
+                        );
+                        self.send(&response);
+                    }
+                }
+                return;
+            }
+            "dbt.runSelection" => {
+                let selector = arg
+                    .get("selector")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                if let Err(guidance) = super::jobs::validate_selector(&selector) {
+                    let response = ErrorResponse::new(
+                        req.id,
+                        error_codes::INVALID_PARAMS,
+                        guidance.to_message(),
+                    );
+                    self.send(&response);
+                    return;
+                }
+                let kind = match arg.get("kind").and_then(|k| k.as_str()) {
+                    None | Some("run") => "run",
+                    Some("test") => "test",
+                    Some("build") => "build",
+                    Some("compile") => "compile",
+                    Some(other) => {
+                        let guidance = cogitator_error::guidance::Guidance::new(format!(
+                            "'{other}' is not a dbt.runSelection kind."
+                        ))
+                        .suggest(cogitator_error::guidance::closest_matches(
+                            other,
+                            ["run", "test", "build", "compile"],
+                        ))
+                        .fix("pass kind run, test, build or compile (default: run).");
+                        let response = ErrorResponse::new(
+                            req.id,
+                            error_codes::INVALID_PARAMS,
+                            guidance.to_message(),
+                        );
+                        self.send(&response);
+                        return;
+                    }
+                };
+                self.run_dbt_selected(req.id, kind, &uri, Some(selector));
                 return;
             }
             "dbt.run" | "dbt.test" | "dbt.compile" | "dbt.parse" => {
@@ -923,6 +989,18 @@ impl Dispatcher {
 
     /// `dbt.run` / `dbt.test` / `dbt.compile` for one model, asynchronously.
     fn run_dbt(&mut self, id: i64, kind: &'static str, uri: &str) {
+        self.run_dbt_selected(id, kind, uri, None);
+    }
+
+    /// `selector`: Some overrides the uri-derived model selector
+    /// (dbt.runSelection); None keeps the per-model behavior.
+    fn run_dbt_selected(
+        &mut self,
+        id: i64,
+        kind: &'static str,
+        uri: &str,
+        selector_override: Option<String>,
+    ) {
         let ctx = self.snapshot();
         let Some(root) = ctx.project_root.clone() else {
             self.show_message(
@@ -960,9 +1038,10 @@ impl Dispatcher {
         // parse and source freshness are project-wide (no --select);
         // parse additionally refreshes the context on success
         let project_wide = kind == "parse" || kind == "source freshness";
-        let selector = (!project_wide).then(|| super::fusion::model_selector_from_uri(uri));
+        let selector = selector_override
+            .or_else(|| (!project_wide).then(|| super::fusion::model_selector_from_uri(uri)));
         let refresh = (kind == "parse").then(|| (self.refresh_tx.clone(), self.root_path.clone()));
-        super::commands::spawn_dbt(
+        let token = super::commands::spawn_dbt(
             link,
             super::commands::DbtInvocation {
                 kind,
@@ -978,8 +1057,9 @@ impl Dispatcher {
                 profile,
                 refresh,
             },
+            self.jobs.clone(),
         );
-        self.send(&ResultResponse::new(id, serde_json::Value::Null));
+        self.send(&ResultResponse::new(id, super::jobs::JobStarted { token }));
     }
 
     fn extract_model_yaml(&mut self, id: i64, uri: &str) {

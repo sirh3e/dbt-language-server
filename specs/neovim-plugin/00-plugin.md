@@ -118,8 +118,8 @@ Every command takes **one argument object**, not positional values:
 | `dbt.openSchema` | `null` | `window/showDocument` or warning |
 | `dbt.columnLineage` | lineage JSON or `null` | none |
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
-| `dbt.run` / `dbt.test` / `dbt.compile` | `null` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument |
-| `dbt.parse` | `null` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
+| `dbt.run` / `dbt.test` / `dbt.compile` | `{token}` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument; the token feeds `dbt.cancel` |
+| `dbt.parse` | `{token}` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -135,7 +135,9 @@ Every command takes **one argument object**, not positional values:
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
 | `dbt.cache` | `{profiles, lineage, results, artifacts}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 | `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
-| `dbt.sourceFreshness` | `null` (immediately) | async `dbt source freshness` (project-wide); the refreshed sources.json feeds the freshness lenses on source YAML entries |
+| `dbt.sourceFreshness` | `{token}` (immediately) | async `dbt source freshness` (project-wide); the refreshed sources.json feeds the freshness lenses on source YAML entries |
+| `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`) |
+| `dbt.cancel` | `{token, label}` or InvalidParams | aborts the running invocation (the child process is killed) + confirmation message |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt

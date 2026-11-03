@@ -63,7 +63,11 @@ fn dbt_args(
 /// Spawn `dbt <kind> [--select <selector>]` and report the outcome; a
 /// successful compile opens the compiled SQL in the editor, a successful
 /// parse triggers a context refresh.
-pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
+pub fn spawn_dbt(
+    link: ClientLink,
+    invocation: DbtInvocation,
+    jobs: std::sync::Arc<super::jobs::DbtJobs>,
+) -> u64 {
     let span = tracing::info_span!(
         "dbt_invocation",
         kind = invocation.kind,
@@ -71,7 +75,17 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
         exit = tracing::field::Empty,
     );
     use tracing::Instrument as _;
-    tokio::spawn(
+    let token = jobs.next_token();
+    let job_label = format!(
+        "dbt {}: {}",
+        invocation.kind,
+        invocation
+            .selector
+            .as_deref()
+            .unwrap_or(&invocation.project_name)
+    );
+    let job_token = token;
+    let handle = tokio::spawn(
         async move {
             let DbtInvocation {
                 kind,
@@ -93,7 +107,9 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 .map(|t| format!(" (target {t})"))
                 .unwrap_or_default();
             // progress-capable clients watch $/progress; others get messages
-            let progress = link.progress_begin(format!("dbt {kind}: {label}{target_suffix}"));
+            let progress = link.progress_begin(format!(
+                "dbt {kind}: {label}{target_suffix} [job {job_token}]"
+            ));
             if !progress.active() {
                 link.show_message(
                     message_type::INFO,
@@ -108,7 +124,11 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
                 profile.as_deref(),
             );
             let mut command = tokio::process::Command::new(&binary);
-            command.args(&args).current_dir(&project_root);
+            // aborting this task (dbt.cancel) must kill the child too
+            command
+                .args(&args)
+                .current_dir(&project_root)
+                .kill_on_drop(true);
             tracing::debug!(%binary, ?args, "dbt subprocess starting");
             let result = command.output().await;
 
@@ -198,6 +218,9 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
         }
         .instrument(span),
     );
+    jobs.register(token, job_label, handle.abort_handle());
+    // the entry self-cleans on completion through the registry's retain sweeps
+    token
 }
 
 /// After a successful compile: locate target/compiled/<project>/<model path>

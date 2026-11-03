@@ -12,6 +12,7 @@ mod diagnostics;
 mod dispatcher;
 mod fusion;
 mod handlers;
+mod jobs;
 mod offload;
 mod reply;
 mod snapshot;
@@ -254,6 +255,7 @@ pub async fn run(
             .artifact_cap_bytes
             .store(mib * 1024 * 1024, Ordering::Relaxed);
     }
+    let jobs = Arc::new(jobs::DbtJobs::default());
     let toggles = Arc::new(SharedToggles::default());
     toggles.lints.store(launch.lint.flags(0), Ordering::Relaxed);
     if let Some(on) = launch.warehouse.columns {
@@ -440,6 +442,7 @@ pub async fn run(
         config_poke_tx,
         config_status,
         toggles,
+        jobs,
     );
 
     let mut stdin = tokio::io::stdin();

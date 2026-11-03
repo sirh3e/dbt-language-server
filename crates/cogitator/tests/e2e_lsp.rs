@@ -1355,3 +1355,70 @@ fn artifact_backed_lenses_and_diagnostics() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// The job registry (05 §9): dbt.runSelection answers a token for a
+/// fake long-running dbt on PATH, dbt.cancel kills it, bad selectors
+/// and unknown tokens answer InvalidParams Guidance.
+#[cfg(unix)]
+#[test]
+fn dbt_jobs_start_and_cancel_by_token() {
+    use std::os::unix::fs::PermissionsExt;
+    let bin_dir =
+        std::env::temp_dir().join(format!("cogitator-e2e-fakedbt-{}", std::process::id()));
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let fake = bin_dir.join("dbt");
+    std::fs::write(&fake, "#!/bin/sh\nsleep 30\n").unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let _cleanup = RemoveOnDrop(bin_dir.clone());
+    let path_env = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let (mut lsp, _uri) = booted(&[("PATH", &path_env)]);
+
+    let started = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.runSelection",
+                           "arguments": [{"selector": "tag:nightly", "kind": "run"}]}),
+    );
+    let token = started["result"]["token"].as_u64().expect("token");
+    assert!(token >= 1, "{started}");
+
+    let cancelled = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.cancel", "arguments": [{"token": token}]}),
+    );
+    assert_eq!(cancelled["result"]["token"], token, "{cancelled}");
+    assert!(
+        cancelled["result"]["label"]
+            .as_str()
+            .is_some_and(|l| l.contains("tag:nightly")),
+        "{cancelled}"
+    );
+
+    // cancelling again: the token is gone
+    let missing = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.cancel", "arguments": [{"token": token}]}),
+    );
+    assert_eq!(missing["error"]["code"], -32602, "{missing}");
+
+    // argument-shaped selectors never reach argv
+    let bad = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.runSelection",
+                           "arguments": [{"selector": "--vars oops"}]}),
+    );
+    assert_eq!(bad["error"]["code"], -32602, "{bad}");
+    assert!(
+        bad["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("flag")),
+        "{bad}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

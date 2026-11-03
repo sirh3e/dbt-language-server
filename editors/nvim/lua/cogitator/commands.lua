@@ -52,6 +52,75 @@ function M.source_freshness()
   exec("dbt.sourceFreshness", false) -- project-wide; sources.json feeds the lenses
 end
 
+---@type table<integer, string> tokens of dbt jobs this session started
+M._jobs = {}
+
+--- :DbtRunSelection — run dbt with an arbitrary selector (tag:nightly,
+--- state:modified+, …); the returned token feeds :DbtCancel.
+function M.run_selection(opts)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local function start(selector)
+    if not selector or selector == "" then
+      return
+    end
+    client:exec_cmd({
+      command = "dbt.runSelection",
+      arguments = { { uri = vim.uri_from_bufnr(bufnr), selector = selector } },
+    }, { bufnr = bufnr }, function(err, result)
+      if err then
+        vim.notify(err.message, vim.log.levels.ERROR)
+      elseif type(result) == "table" and result.token then
+        M._jobs[result.token] = "dbt run: " .. selector
+        vim.notify(("dbt job %d started (%s)"):format(result.token, selector), vim.log.levels.INFO)
+      end
+    end)
+  end
+  if opts and opts.args and opts.args ~= "" then
+    start(opts.args)
+  else
+    vim.ui.input({ prompt = "dbt selector: " }, start)
+  end
+end
+
+--- :DbtCancel — pick a running job this session started and cancel it.
+function M.cancel()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local tokens = vim.tbl_keys(M._jobs)
+  if #tokens == 0 then
+    vim.notify("no dbt jobs started from this session", vim.log.levels.INFO)
+    return
+  end
+  table.sort(tokens)
+  vim.ui.select(tokens, {
+    prompt = "Cancel dbt job",
+    format_item = function(token)
+      return ("%d — %s"):format(token, M._jobs[token])
+    end,
+  }, function(token)
+    if not token then
+      return
+    end
+    client:exec_cmd({
+      command = "dbt.cancel",
+      arguments = { { uri = vim.uri_from_bufnr(bufnr), token = token } },
+    }, { bufnr = bufnr }, function(err)
+      if err then
+        vim.notify(err.message, vim.log.levels.ERROR)
+      else
+        M._jobs[token] = nil
+      end
+    end)
+  end)
+end
+
 --- :DbtCache [clear] — derived-cache counters, or clear + refresh.
 function M.cache(action)
   local bufnr = vim.api.nvim_get_current_buf()

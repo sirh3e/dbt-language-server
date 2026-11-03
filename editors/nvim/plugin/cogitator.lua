@@ -21,6 +21,12 @@ cmd(
   "source_freshness",
   "dbt source freshness for the project (feeds the freshness lenses)"
 )
+vim.api.nvim_create_user_command("DbtRunSelection", function(opts)
+  require("cogitator.commands").run_selection(opts)
+end, { nargs = "?", desc = "dbt run with an arbitrary selector (tag:…, state:modified+)" })
+vim.api.nvim_create_user_command("DbtCancel", function()
+  require("cogitator.commands").cancel()
+end, { desc = "cancel a running dbt job started from this session" })
 cmd("DbtRelation", "relation", "resolve database.schema.identifier under the cursor (yanks it)")
 cmd("DbtQuery", "query", "bounded SELECT on the relation under the cursor (dadbod or scratch)")
 cmd("DbtSchema", "schema", "jump to the model's properties-YAML entry")

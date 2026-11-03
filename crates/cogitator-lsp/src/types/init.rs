@@ -150,6 +150,8 @@ pub const COMMANDS: &[&str] = &[
     "dbt.cache",
     "dbt.reloadConfig",
     "dbt.sourceFreshness",
+    "dbt.cancel",
+    "dbt.runSelection",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {
