@@ -6,10 +6,6 @@
 //! shell. `startup:` keys are honored only from `--config` at launch
 //! (the tracing subscriber and parser backend are install-once).
 
-// The watcher task (next commit) is the consumer; the pure core lands
-// first so its tests pin the semantics.
-#![allow(dead_code)]
-
 use std::path::Path;
 
 use cogitator_error::guidance::{closest_matches, Guidance};
@@ -206,6 +202,23 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     out
 }
 
+/// Launch precedence (defaults < file < CLI < initializationOptions):
+/// on the FIRST load of the root file, a profiles key that a higher
+/// layer already set (non-empty in the baseline) stays with that layer.
+/// Later edits apply unconditionally — last writer wins.
+pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
+    changes
+        .into_iter()
+        .filter(|change| match change {
+            Change::ProfilesDir(_) => baseline.profiles.dir_override.is_empty(),
+            Change::Profile(_) => baseline.profiles.profile.is_empty(),
+            Change::Target(_) => baseline.profiles.target.is_empty(),
+            Change::Allow(_) => baseline.profiles.allow.is_empty(),
+            Change::CompiledCapMib(_) | Change::DebounceMs(_) => true,
+        })
+        .collect()
+}
+
 /// The launch-time values keys revert to when removed from the file.
 #[derive(Debug, Clone)]
 pub struct Baseline {
@@ -333,6 +346,25 @@ mod tests {
             "{changes:?}"
         );
         assert_eq!(changes.len(), 2, "untouched keys stay out: {changes:?}");
+    }
+
+    #[test]
+    fn launch_filter_keeps_higher_layers() {
+        let mut base = baseline();
+        base.profiles.target = "prod".into(); // set via CLI/initOptions
+        let kept = launch_filter(
+            vec![
+                Change::Target("dev".into()),
+                Change::ProfilesDir("/x".into()),
+                Change::CompiledCapMib(4),
+            ],
+            &base,
+        );
+        // the CLI-set target survives the first file load; the rest applies
+        assert_eq!(
+            kept,
+            vec![Change::ProfilesDir("/x".into()), Change::CompiledCapMib(4)]
+        );
     }
 
     #[test]

@@ -43,6 +43,12 @@ pub struct Dispatcher {
     in_flight: super::offload::InFlight,
     /// Hot-tunable numeric settings (cogitator.yml).
     limits: Arc<super::SharedLimits>,
+    /// Hands the config watcher its root at initialize.
+    config_root_tx: watch::Sender<Option<String>>,
+    /// Fast-path reload trigger (didSave/didOpen of the file, dbt.reloadConfig).
+    config_poke_tx: mpsc::UnboundedSender<()>,
+    /// The watcher's view, reported by dbt.status.
+    config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
 }
 
 impl Dispatcher {
@@ -61,6 +67,9 @@ impl Dispatcher {
         status: Arc<std::sync::Mutex<super::StatusInfo>>,
         derived: Arc<super::derived_cache::DerivedCache>,
         limits: Arc<super::SharedLimits>,
+        config_root_tx: watch::Sender<Option<String>>,
+        config_poke_tx: mpsc::UnboundedSender<()>,
+        config_status: Arc<std::sync::Mutex<super::config_watcher::ConfigStatus>>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -77,6 +86,9 @@ impl Dispatcher {
             derived,
             in_flight: super::offload::InFlight::default(),
             limits,
+            config_root_tx,
+            config_poke_tx,
+            config_status,
         }
     }
 
@@ -266,6 +278,24 @@ impl Dispatcher {
         self.send(&response);
         // first refresh so hover works before the first save (05 §6.2)
         let _ = self.refresh_tx.send(self.root_path.clone());
+        // the config watcher waits on the root; its first pass is immediate
+        let _ = self.config_root_tx.send(Some(self.root_path.clone()));
+    }
+
+    /// Is this URI the workspace's cogitator.yml? Compared as `Path`
+    /// components (08 §1: never as strings — drive letters, separators).
+    fn is_config_uri(&self, uri: &str) -> bool {
+        if self.root_path.is_empty() {
+            return false;
+        }
+        let Some(path) = cogitator_lsp::uri_to_fs_path(uri) else {
+            return false;
+        };
+        let path = std::path::Path::new(&path);
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| super::config_watcher::FILE_NAMES.contains(&n))
+            && path.parent() == Some(std::path::Path::new(&self.root_path))
     }
 
     fn did_open(&mut self, content: &[u8]) {
@@ -280,6 +310,9 @@ impl Dispatcher {
             .open(uri.clone(), &params.text_document.text, &dialect);
         tracing::debug!(%uri, "opened");
         let _ = self.refresh_tx.send(self.root_path.clone());
+        if self.is_config_uri(&uri) {
+            let _ = self.config_poke_tx.send(());
+        }
         self.publish_static_diagnostics(&uri);
         self.spawn_fusion(uri);
     }
@@ -301,6 +334,9 @@ impl Dispatcher {
         let uri = params.text_document.uri.into_owned();
         tracing::debug!(%uri, "saved");
         let _ = self.refresh_tx.send(self.root_path.clone());
+        if self.is_config_uri(&uri) {
+            let _ = self.config_poke_tx.send(());
+        }
         self.publish_static_diagnostics(&uri);
         self.spawn_fusion(uri);
     }
@@ -540,6 +576,13 @@ impl Dispatcher {
                 self.offload_blocking(req.id, "dbt.relation", move || {
                     super::handlers::profiles::relation(&snap, &derived, &uri, pos)
                 });
+                return;
+            }
+            "dbt.reloadConfig" => {
+                // the watcher stats, reads and applies off this task;
+                // the null answer just acknowledges the trigger
+                let _ = self.config_poke_tx.send(());
+                self.send(&ResultResponse::new(req.id, serde_json::Value::Null));
                 return;
             }
             "dbt.goToSchema" => {}
@@ -910,6 +953,10 @@ impl Dispatcher {
             fusion,
             self.progress_supported.load(Ordering::Relaxed),
             self.derived.report(),
+            self.config_status
+                .lock()
+                .expect("config status lock")
+                .clone(),
         );
         self.send(&ResultResponse::new(id, report));
     }

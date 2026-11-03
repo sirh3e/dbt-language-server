@@ -18,7 +18,7 @@ use serde::Serialize;
 
 /// (mtime secs, mtime nanos, size) — the same freshness idea as the scan
 /// cache; a file that changed under us gets a different stamp.
-type FileStamp = (i64, u32, u64);
+pub(crate) type FileStamp = (i64, u32, u64);
 
 pub fn stamp(path: &Path) -> Option<FileStamp> {
     let meta = std::fs::metadata(path).ok()?;

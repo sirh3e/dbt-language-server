@@ -5,7 +5,8 @@
 mod client_link;
 mod commands;
 mod compiled;
-mod config_file;
+pub(crate) mod config_file;
+mod config_watcher;
 mod derived_cache;
 mod diagnostics;
 mod dispatcher;
@@ -146,6 +147,7 @@ pub async fn run(
     fusion_path: String,
     use_tree_sitter: bool,
     profiles: ProfilesConfig,
+    launch: config_file::FileConfig,
 ) -> Result<()> {
     // Backend selection (06 §3.5): tree-sitter is the default; phase-1 stays
     // compiled as the fallback and behind --no-tree-sitter. The status
@@ -225,6 +227,16 @@ pub async fn run(
     let derived = Arc::new(derived_cache::DerivedCache::default());
     let refresh_derived = derived.clone();
     let limits = Arc::new(SharedLimits::default());
+    // --config seeds the hot-tunable numbers; the file at the root may
+    // re-tune them later (the watcher's baseline is captured post-seed)
+    if let Some(mib) = launch.limits.compiled_sql_mib {
+        limits
+            .compiled_cap_bytes
+            .store(mib * 1024 * 1024, Ordering::Relaxed);
+    }
+    if let Some(ms) = launch.refresh.debounce_ms {
+        limits.refresh_debounce_ms.store(ms, Ordering::Relaxed);
+    }
     let refresh_limits = limits.clone();
     let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
@@ -362,6 +374,30 @@ pub async fn run(
         }
     });
 
+    // config watcher: <root>/cogitator.yml hot-reloads into the shared
+    // state above; the dispatcher hands it the root at initialize
+    let (config_root_tx, config_root_rx) = watch::channel::<Option<String>>(None);
+    let (config_poke_tx, config_poke_rx) = mpsc::unbounded_channel::<()>();
+    let config_status = Arc::new(std::sync::Mutex::new(
+        config_watcher::ConfigStatus::default(),
+    ));
+    tokio::spawn(
+        config_watcher::ConfigWatcher {
+            root_rx: config_root_rx,
+            poke_rx: config_poke_rx,
+            link: client_link::ClientLink::new(
+                write_tx.clone(),
+                request_ids.clone(),
+                progress_supported.clone(),
+            ),
+            refresh_tx: refresh_tx.clone(),
+            profiles: profiles.clone(),
+            limits: limits.clone(),
+            status: config_status.clone(),
+        }
+        .run(),
+    );
+
     // reader loop feeding the dispatcher (same task: ordering preserved)
     let dispatcher_link =
         client_link::ClientLink::new(write_tx, request_ids, progress_supported.clone());
@@ -377,6 +413,9 @@ pub async fn run(
         status,
         derived,
         limits,
+        config_root_tx,
+        config_poke_tx,
+        config_status,
     );
 
     let mut stdin = tokio::io::stdin();

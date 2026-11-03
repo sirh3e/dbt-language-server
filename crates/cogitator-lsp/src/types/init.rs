@@ -148,6 +148,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.openModel",
     "dbt.setProfilesDir",
     "dbt.cache",
+    "dbt.reloadConfig",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {
