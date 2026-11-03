@@ -199,3 +199,44 @@ fn target_override_switches_the_dialect() {
     );
     let _ = PathBuf::from(dir);
 }
+
+#[test]
+fn relation_coordinates_per_adapter() {
+    // duckdb: database = path file stem, schema defaults to main
+    let inv = inventory(
+        Path::new(PATH),
+        "p:\n  target: dev\n  outputs:\n    dev:\n      type: duckdb\n      path: 'jaffle_shop.duckdb'\n",
+        &ProfileScope::All,
+    );
+    let t = &inv.profiles[0].targets[0];
+    assert_eq!(t.database.as_deref(), Some("jaffle_shop"));
+    assert_eq!(t.schema.as_deref(), Some("main"));
+
+    // duckdb in-memory: no database to name
+    let inv = inventory(
+        Path::new(PATH),
+        "p:\n  target: dev\n  outputs:\n    dev:\n      type: duckdb\n      path: ':memory:'\n",
+        &ProfileScope::All,
+    );
+    assert_eq!(inv.profiles[0].targets[0].database, None);
+
+    // snowflake: database/schema keys pass through
+    let inv = inventory(
+        Path::new(PATH),
+        "p:\n  target: dev\n  outputs:\n    dev:\n      type: snowflake\n      database: ANALYTICS\n      schema: PUBLIC\n",
+        &ProfileScope::All,
+    );
+    let t = &inv.profiles[0].targets[0];
+    assert_eq!(t.database.as_deref(), Some("ANALYTICS"));
+    assert_eq!(t.schema.as_deref(), Some("PUBLIC"));
+
+    // postgres: dbname is the database; no schema default
+    let inv = inventory(
+        Path::new(PATH),
+        "p:\n  target: dev\n  outputs:\n    dev:\n      type: postgres\n      dbname: warehouse\n",
+        &ProfileScope::All,
+    );
+    let t = &inv.profiles[0].targets[0];
+    assert_eq!(t.database.as_deref(), Some("warehouse"));
+    assert_eq!(t.schema, None);
+}

@@ -35,6 +35,10 @@ pub struct TargetReport {
     pub name: String,
     #[serde(rename = "type")]
     pub adapter_type: String,
+    /// Relation coordinates (database/schema names only, never secrets);
+    /// explicit `null` when the target does not define them.
+    pub database: Option<String>,
+    pub schema: Option<String>,
     pub auth: AuthReport,
 }
 
@@ -64,6 +68,8 @@ impl ProfilesInventory {
                         .map(|t| TargetReport {
                             name: t.name.clone(),
                             adapter_type: t.adapter_type.clone(),
+                            database: t.database.clone(),
+                            schema: t.schema.clone(),
                             auth: AuthReport {
                                 method: t.auth.method.as_str(),
                                 issues: t.auth.issues.iter().map(|i| i.message.clone()).collect(),

@@ -59,6 +59,10 @@ pub struct ProfileInfo {
 pub struct TargetInfo {
     pub name: String,
     pub adapter_type: String,
+    /// Relation coordinates (never secrets): `database`/`dbname`, or for
+    /// duckdb the `path` file stem; `schema`, defaulting to `main` on duckdb.
+    pub database: Option<String>,
+    pub schema: Option<String>,
     pub auth: AuthInfo,
     pub position: Position,
 }
@@ -107,6 +111,36 @@ impl ProfilesInventory {
     }
 }
 
+/// The target's relation coordinates — names only, never credentials.
+/// `database` = `database` | `dbname`, or for duckdb the `path` file stem
+/// (`:memory:` and absent yield `None`); `schema` defaults to `main` on
+/// duckdb, matching dbt-duckdb.
+fn relation_coordinates(
+    target: &MarkedYaml<'_>,
+    adapter_type: &str,
+) -> (Option<String>, Option<String>) {
+    let value = |key: &str| {
+        get(target, key)
+            .and_then(as_str)
+            .map(util::resolve_env_vars)
+    };
+    let mut database = value("database").or_else(|| value("dbname"));
+    let mut schema = value("schema");
+    if adapter_type == "duckdb" {
+        database = database.or_else(|| {
+            let path = value("path")?;
+            if path == ":memory:" {
+                return None;
+            }
+            std::path::Path::new(&path)
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+        });
+        schema = schema.or_else(|| Some("main".to_string()));
+    }
+    (database, schema)
+}
+
 /// Parse `text` (the content of `path`) under `scope`. Profiles outside the
 /// scope appear by name only (`allowed: false`, no targets).
 pub fn inventory(path: &Path, text: &str, scope: &ProfileScope<'_>) -> ProfilesInventory {
@@ -146,9 +180,12 @@ pub fn inventory(path: &Path, text: &str, scope: &ProfileScope<'_>) -> ProfilesI
                     .and_then(as_str)
                     .map(util::resolve_env_vars)
                     .unwrap_or_default();
+                let (database, schema) = relation_coordinates(tnode, &adapter_type);
                 targets.push(TargetInfo {
                     name: tname.to_string(),
                     adapter_type: adapter_type.clone(),
+                    database,
+                    schema,
                     auth: classify_and_validate(tnode, &adapter_type, position_of(tkey)),
                     position: position_of(tkey),
                 });
