@@ -1054,3 +1054,66 @@ fn dangling_ref_quickfix_carries_an_edit() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// cogitator.yml intelligence (03 §10): an open config file gets its
+/// OWN diagnostics pass — unknown-key warnings from the shared schema,
+/// never the dbt-properties pass that used to flag every root key.
+#[test]
+fn cogitator_yml_gets_config_intelligence() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-yamlcfg-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let config = root.join("cogitator.yml");
+    let text = "lint:\n  select_star: true\n  bogus: 1\n";
+    std::fs::write(&config, text).unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let config_uri = cogitator_lsp::fs_path_to_uri(&config);
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": config_uri, "languageId": "yaml",
+            "version": 1, "text": text}}),
+    );
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": config_uri}}),
+    );
+    let items = pulled["result"]["items"].as_array().expect("items");
+    assert_eq!(items.len(), 1, "exactly the unknown-key warning: {pulled}");
+    assert!(
+        items[0]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("'bogus'") && m.contains("under lint:")),
+        "{items:?}"
+    );
+    // completion inside lint: offers the checks, documented
+    let completion = lsp.request(
+        "textDocument/completion",
+        serde_json::json!({"textDocument": {"uri": config_uri},
+                           "position": {"line": 1, "character": 2}}),
+    );
+    let labels: Vec<&str> = completion["result"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .filter_map(|i| i["label"].as_str())
+        .collect();
+    assert!(labels.contains(&"dead_models"), "{labels:?}");
+    // hover documents the key from the schema table
+    let hover = lsp.request(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": config_uri},
+                           "position": {"line": 1, "character": 4}}),
+    );
+    assert!(
+        hover["result"]["contents"]
+            .as_str()
+            .is_some_and(|c| c.contains("SELECT *")),
+        "{hover}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

@@ -11,7 +11,10 @@ pub fn static_diagnostics(ctx: &DbtContext, doc: Option<&Document>, uri: &str) -
     let Some(doc) = doc else {
         return Vec::new();
     };
-    let items = if is_yaml(uri) {
+    let items = if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) {
+        // the server's own config file — never the dbt-properties pass
+        cogitator_analysis::yaml_cogitator::cogitator_diagnostics(&doc.text)
+    } else if is_yaml(uri) {
         yaml_features::yaml_diagnostics(uri, &doc.text)
     } else {
         features::dangling_ref_diagnostics(ctx, doc)

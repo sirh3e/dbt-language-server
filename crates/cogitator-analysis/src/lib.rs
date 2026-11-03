@@ -8,6 +8,7 @@ pub mod graph;
 pub mod lineage;
 pub mod profiles;
 pub mod util;
+pub mod yaml_cogitator;
 pub mod yaml_features;
 
 use std::collections::HashMap;

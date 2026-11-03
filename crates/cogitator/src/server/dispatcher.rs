@@ -380,11 +380,18 @@ impl Dispatcher {
     }
 
     fn hover(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/hover", |ctx, doc, _, pos| {
+        self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
                 // Q8: unknown doc → empty hover
                 contents: doc
-                    .map(|d| features::hover(ctx, d, pos))
+                    .map(|d| {
+                        if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) {
+                            cogitator_analysis::yaml_cogitator::cogitator_hover(&d.text, pos)
+                                .unwrap_or_default()
+                        } else {
+                            features::hover(ctx, d, pos)
+                        }
+                    })
                     .unwrap_or_default(),
             }
         });
@@ -407,6 +414,10 @@ impl Dispatcher {
     fn completion(&mut self, content: &[u8]) {
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
             match doc {
+                // the server's own config file: schema-table completion
+                Some(d) if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) => {
+                    cogitator_analysis::yaml_cogitator::cogitator_completion(&d.text, pos)
+                }
                 // dbt YAML files get schema-key completion (08 §2.6 v1)
                 Some(d) if super::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
