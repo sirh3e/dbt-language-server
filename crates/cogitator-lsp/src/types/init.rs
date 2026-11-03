@@ -152,6 +152,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.sourceFreshness",
     "dbt.cancel",
     "dbt.runSelection",
+    "dbt.deadModels",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

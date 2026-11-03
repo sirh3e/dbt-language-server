@@ -579,6 +579,19 @@ impl Dispatcher {
                 self.status_report(req.id);
                 return;
             }
+            "dbt.deadModels" => {
+                let ctx = self.snapshot();
+                self.offload_blocking(req.id, "dbt.deadModels", move || {
+                    #[derive(serde::Serialize)]
+                    struct DeadModels {
+                        models: Vec<features::DeadModel>,
+                    }
+                    super::reply::Reply::result(&DeadModels {
+                        models: features::dead_models(&ctx),
+                    })
+                });
+                return;
+            }
             "dbt.projectGraph" => {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.projectGraph", move || {

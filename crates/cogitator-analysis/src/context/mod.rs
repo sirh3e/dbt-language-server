@@ -94,6 +94,9 @@ pub struct SelectorDetails {
     pub description: String,
     pub uri: PathBuf,
     pub range: Range,
+    /// The definition subtree re-serialized as JSON text — dead-model
+    /// detection scans it for verbatim model mentions (03 §10).
+    pub definition_text: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -328,6 +331,9 @@ fn load_selectors(root: &Path) -> HashMap<String, SelectorDetails> {
                     .to_string(),
                 uri: path.clone(),
                 range: Range::zero_width(position),
+                definition_text: get(entry, "definition")
+                    .map(|d| cogitator_schemas::yaml::to_json(d).to_string())
+                    .unwrap_or_default(),
             },
         );
     }

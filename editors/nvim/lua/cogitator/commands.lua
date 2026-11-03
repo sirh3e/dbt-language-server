@@ -52,6 +52,39 @@ function M.source_freshness()
   exec("dbt.sourceFreshness", false) -- project-wide; sources.json feeds the lenses
 end
 
+--- :DbtDeadModels — models nothing uses, as a quickfix list.
+function M.dead_models()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.deadModels",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.deadModels failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    if #result.models == 0 then
+      vim.notify("no dead models — everything is referenced", vim.log.levels.INFO)
+      return
+    end
+    local items = {}
+    for _, dead in ipairs(result.models) do
+      items[#items + 1] = {
+        filename = dead.uri and vim.uri_to_fname(dead.uri) or "",
+        lnum = 1,
+        col = 1,
+        text = dead.name .. " — " .. table.concat(dead.reasons, "; "),
+      }
+    end
+    vim.fn.setqflist({}, " ", { title = "dbt dead models", items = items })
+    vim.cmd.copen()
+  end)
+end
+
 ---@type table<integer, string> tokens of dbt jobs this session started
 M._jobs = {}
 

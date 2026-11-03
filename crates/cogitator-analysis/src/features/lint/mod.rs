@@ -20,6 +20,7 @@ pub struct LintOptions {
     pub unaliased_columns: bool,
     pub trailing_comma: bool,
     pub undocumented_columns: bool,
+    pub dead_models: bool,
 }
 
 impl LintOptions {
@@ -29,6 +30,7 @@ impl LintOptions {
             unaliased_columns: flags & lint_flags::UNALIASED_COLUMNS != 0,
             trailing_comma: flags & lint_flags::TRAILING_COMMA != 0,
             undocumented_columns: flags & lint_flags::UNDOCUMENTED_COLUMNS != 0,
+            dead_models: flags & lint_flags::DEAD_MODELS != 0,
         }
     }
 
@@ -37,6 +39,7 @@ impl LintOptions {
             || self.unaliased_columns
             || self.trailing_comma
             || self.undocumented_columns
+            || self.dead_models
     }
 }
 
@@ -65,7 +68,33 @@ pub fn lint(
             out.extend(undocumented::check(ctx, doc, uri, lineage));
         }
     }
+    if opts.dead_models {
+        out.extend(dead_model_hint(ctx, uri));
+    }
     out
+}
+
+/// The opt-in per-file Hint for a dead model, tagged Unnecessary so
+/// editors fade it.
+fn dead_model_hint(ctx: &DbtContext, uri: &str) -> Option<cogitator_lsp::Diagnostic> {
+    let model = super::model_name_from_uri(uri)?;
+    let details = ctx.model_detail_map.get(&model)?;
+    if !super::dead_models::is_dead(ctx, &model, details) {
+        return None;
+    }
+    let mut diagnostic = cogitator_lsp::Diagnostic::plain(
+        cogitator_lsp::Range::default(),
+        cogitator_error::guidance::Guidance::new(format!(
+            "'{model}' looks dead: nothing downstream, no exposure, no selector names it"
+        ))
+        .fix("wire it into something, or remove it (dbt.deadModels lists all of them).")
+        .to_diagnostic(),
+        cogitator_lsp::diagnostic_severity::HINT,
+        "lint-dead-model",
+        "cogitator",
+    );
+    diagnostic.tags = Some(vec![cogitator_lsp::diagnostic_tag::UNNECESSARY]);
+    Some(diagnostic)
 }
 
 /// Staging models are exempt from `select_star` by convention: a

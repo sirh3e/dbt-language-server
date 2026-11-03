@@ -1497,6 +1497,21 @@ fn exposures_join_the_graph() {
         "{dangling}"
     );
 
+    // dead models: the exposure keeps 'customers' alive; customer_orders
+    // has no dependents and no selector naming it
+    let dead = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.deadModels", "arguments": [{}]}),
+    );
+    let names: Vec<&str> = dead["result"]["models"]
+        .as_array()
+        .expect("models")
+        .iter()
+        .filter_map(|m| m["name"].as_str())
+        .collect();
+    assert!(names.contains(&"customer_orders"), "{names:?}");
+    assert!(!names.contains(&"customers"), "{names:?}");
+
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
