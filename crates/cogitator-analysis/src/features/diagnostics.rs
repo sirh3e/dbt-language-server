@@ -71,11 +71,22 @@ fn has_default(doc: &Document, token: &cogitator_parser::Token) -> bool {
 }
 
 fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Option<Diagnostic> {
-    Some(Diagnostic::plain(
-        token_range(token),
+    let range = token_range(token);
+    let mut diagnostic = Diagnostic::plain(
+        range,
         guidance.to_diagnostic(),
         diagnostic_severity::WARNING,
         code,
         "cogitator",
-    ))
+    );
+    // the suggestions ride as typed data so quickfixes never re-derive
+    // them from the message text (01 §6.1)
+    if !guidance.suggestions.is_empty() {
+        diagnostic.data = Some(cogitator_lsp::DiagnosticData {
+            fix: cogitator_lsp::FixKind::ReplaceToken,
+            token_range: range,
+            suggestions: guidance.suggestions,
+        });
+    }
+    Some(diagnostic)
 }

@@ -738,9 +738,9 @@ impl Dispatcher {
             return;
         };
         let uri = params.text_document.uri.into_owned();
-        let only: Option<Vec<String>> = params
-            .context
-            .and_then(|c| c.only)
+        let context = params.context.unwrap_or_default();
+        let only: Option<Vec<String>> = context
+            .only
             .map(|kinds| kinds.into_iter().map(|k| k.into_owned()).collect());
         let snap = self.snapshot_for(&uri);
         // profiles.yml buffers offer "Switch target" actions instead
@@ -752,6 +752,7 @@ impl Dispatcher {
             params.range,
             only.as_deref(),
             targets.as_deref(),
+            &context.diagnostics,
         );
         self.send(&ResultResponse::new(req.id, actions));
     }

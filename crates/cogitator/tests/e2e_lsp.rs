@@ -1005,3 +1005,52 @@ fn config_file_hot_reload() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Did-you-mean quickfixes end to end (01 §6.1-6.2): the dangling-ref
+/// diagnostic carries typed data; echoed back through the codeAction
+/// context it yields an edit-bearing quickfix, and `only: ["quickfix"]`
+/// now filters instead of blanking the response.
+#[test]
+fn dangling_ref_quickfix_carries_an_edit() {
+    let (mut lsp, _uri) = booted(&[]);
+    let root = fixture_root().canonicalize().unwrap();
+    let bad_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/quickfix_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": bad_uri, "languageId": "sql", "version": 1,
+            "text": "select * from {{ ref('customer') }}\n"}}),
+    );
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": bad_uri}}),
+    );
+    let items = pulled["result"]["items"].as_array().expect("items").clone();
+    let diag = items
+        .iter()
+        .find(|d| d["code"] == "dangling-ref")
+        .expect("dangling-ref diagnostic")
+        .clone();
+    assert_eq!(diag["data"]["fix"], "replace_token", "{diag}");
+    assert_eq!(diag["data"]["suggestions"][0], "customers", "{diag}");
+
+    let actions = lsp.request(
+        "textDocument/codeAction",
+        serde_json::json!({
+            "textDocument": {"uri": bad_uri},
+            "range": diag["range"],
+            "context": {"diagnostics": [diag], "only": ["quickfix"]}
+        }),
+    );
+    let list = actions["result"].as_array().expect("actions");
+    assert!(!list.is_empty(), "{actions}");
+    assert!(list.iter().all(|a| a["kind"] == "quickfix"), "{actions}");
+    let first = &list[0];
+    assert_eq!(first["title"], "Change to 'customers'", "{first}");
+    assert_eq!(
+        first["edit"]["documentChanges"][0]["edits"][0]["newText"], "customers",
+        "{first}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

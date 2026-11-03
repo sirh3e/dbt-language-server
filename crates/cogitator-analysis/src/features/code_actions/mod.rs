@@ -4,7 +4,9 @@
 //! offered — payload-returning ones (dbt.modelGraph, dbt.columnLineage…)
 //! make dishonest actions because clients drop executeCommand results.
 
-use cogitator_lsp::{CodeAction, Command, Range};
+mod quickfix;
+
+use cogitator_lsp::{CodeAction, Command, Diagnostic, Range};
 use cogitator_parser::TokenKind;
 use serde::Serialize;
 
@@ -33,6 +35,7 @@ pub fn code_actions(
     range: Range,
     only: Option<&[String]>,
     targets: Option<&[TargetChoice]>,
+    context_diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     // the active profiles.yml: target switching is the only action set
     // that makes sense there (works even in editors without pickers)
@@ -53,10 +56,13 @@ pub fn code_actions(
         }
         actions
     };
+    // quickfixes first: a fix beats a workflow command in every menu
+    let mut all = quickfix::quickfixes(uri, context_diagnostics);
+    all.append(&mut actions);
     // kind filtering (01 §6.2): kind-less command actions drop out of a
-    // kind-filtered request; quickfixes (assembled by the caller) match
-    actions.retain(|a| a.allowed_by(only));
-    actions
+    // kind-filtered request; quickfixes match by prefix
+    all.retain(|a| a.allowed_by(only));
+    all
 }
 
 /// On a `ref('x')` token: open x's schema entry (when it has one) without

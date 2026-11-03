@@ -292,6 +292,59 @@ check(
   vim.inspect(ca_titles)
 )
 
+-- did-you-mean quickfix: a dangling ref's pull diagnostic carries typed
+-- data; echoing it back through the codeAction context yields an edit
+vim.cmd.edit(vim.fs.joinpath(fixture, "models", "quickfix_probe.sql"))
+local fix_buf = vim.api.nvim_get_current_buf()
+vim.api.nvim_buf_set_lines(fix_buf, 0, -1, false, { "select * from {{ ref('customer') }}" })
+local fix_attached = vim.wait(10000, function()
+  return #vim.lsp.get_clients({ bufnr = fix_buf, name = "cogitator" }) > 0
+end, 50)
+check(fix_attached, "quickfix: client attaches to the probe buffer")
+local fix_diag, pulled
+vim.wait(10000, function()
+  pulled = vim.lsp.buf_request_sync(fix_buf, "textDocument/diagnostic", {
+    textDocument = { uri = vim.uri_from_bufnr(fix_buf) },
+  }, 5000)
+  for _, resp in pairs(pulled or {}) do
+    for _, d in ipairs((resp.result or {}).items or {}) do
+      if d.code == "dangling-ref" then
+        fix_diag = d
+      end
+    end
+  end
+  return fix_diag ~= nil
+end, 200)
+check(
+  fix_diag ~= nil and fix_diag.data ~= nil and fix_diag.data.suggestions[1] == "customers",
+  "quickfix: dangling-ref diagnostic carries typed suggestions",
+  vim.inspect(pulled)
+)
+local fixes = fix_diag
+    and vim.lsp.buf_request_sync(fix_buf, "textDocument/codeAction", {
+      textDocument = { uri = vim.uri_from_bufnr(fix_buf) },
+      range = fix_diag.range,
+      context = { diagnostics = { fix_diag }, only = { "quickfix" } },
+    }, 5000)
+  or {}
+local fix_action
+for _, resp in pairs(fixes) do
+  for _, a in ipairs(resp.result or {}) do
+    if a.kind == "quickfix" then
+      fix_action = a
+    end
+  end
+end
+check(
+  fix_action ~= nil
+    and fix_action.edit ~= nil
+    and fix_action.edit.documentChanges[1].edits[1].newText == "customers",
+  "quickfix: codeAction answers an edit-bearing quickfix",
+  vim.inspect(fix_action)
+)
+vim.api.nvim_set_current_buf(bufnr)
+vim.api.nvim_buf_delete(fix_buf, { force = true })
+
 -- the yazi-style browser: three panes, upstream pane lists neighbors
 local graph = require("cogitator.graph")
 graph.open()

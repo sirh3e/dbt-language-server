@@ -33,7 +33,7 @@ fn cmd(a: &cogitator_lsp::CodeAction) -> &cogitator_lsp::Command {
 fn model_file_offers_the_lens_command_set() {
     let ctx = ctx();
     let uri = model_uri("models/customers.sql");
-    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None);
+    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None, &[]);
     let titles = titles(&actions);
     assert!(titles.contains(&"Go to schema".to_string()), "{titles:?}");
     assert!(titles.contains(&"dbt run".to_string()), "{titles:?}");
@@ -58,7 +58,7 @@ fn model_file_offers_the_lens_command_set() {
 fn model_without_schema_entry_offers_the_scaffold() {
     let ctx = ctx();
     let uri = model_uri("models/staging/stg_stripe_payments.sql");
-    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None);
+    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None, &[]);
     let titles = titles(&actions);
     assert!(
         titles.contains(&"Extract schema YAML".to_string()),
@@ -75,7 +75,8 @@ fn kind_filter_yields_nothing() {
     let ctx = ctx();
     let uri = model_uri("models/customers.sql");
     let only = vec!["quickfix".to_string()];
-    let actions = features::code_actions(&ctx, None, &uri, Range::default(), Some(&only), None);
+    let actions =
+        features::code_actions(&ctx, None, &uri, Range::default(), Some(&only), None, &[]);
     assert_eq!(titles(&actions), Vec::<String>::new());
 }
 
@@ -90,7 +91,7 @@ fn ref_token_prepends_the_target_schema_action() {
         line: 0,
         character: 24,
     });
-    let actions = features::code_actions(&ctx, docs.get(&uri), &uri, range, None, None);
+    let actions = features::code_actions(&ctx, docs.get(&uri), &uri, range, None, None, &[]);
     assert_eq!(actions[0].title, "Open schema of 'customers'");
     assert_eq!(cmd(&actions[0]).command, "dbt.openSchema");
     let arg = serde_json::to_value(&cmd(&actions[0]).arguments[0]).unwrap();
@@ -117,7 +118,7 @@ fn yaml_entry_offers_model_and_tests_jumps() {
         line: entry_line,
         character: 0,
     });
-    let actions = features::code_actions(&ctx, None, &uri, range, None, None);
+    let actions = features::code_actions(&ctx, None, &uri, range, None, None, &[]);
     assert_eq!(
         titles(&actions),
         vec![
@@ -152,7 +153,8 @@ fn profiles_yaml_offers_target_switch_actions() {
         },
     ];
     let uri = "file:///home/me/.dbt/profiles.yml";
-    let actions = features::code_actions(&ctx, None, uri, Range::default(), None, Some(&choices));
+    let actions =
+        features::code_actions(&ctx, None, uri, Range::default(), None, Some(&choices), &[]);
     assert_eq!(
         titles(&actions),
         vec![
