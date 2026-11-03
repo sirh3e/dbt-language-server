@@ -56,6 +56,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
   :DbtParse      dbt parse; refreshes the context
   :DbtRelation   yank database.schema.identifier     <leader>dR
+  :DbtProjects   pick a known dbt project            <leader>dP
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
@@ -81,8 +82,14 @@ appear in |vim.lsp.status()| and plugins like fidget.nvim.
 
 `:DbtProfiles` without an argument prints the server's profiles.yml
 resolution order with the winning candidate marked. With a directory
-argument it switches `profiles_dir` and restarts the server, since
-initializationOptions only apply at initialize.
+argument it switches the directory LIVE through `dbt.setProfilesDir`
+(no restart) and remembers the choice for this project in the manager
+store; against older servers without that command it falls back to the
+restart flow. `:DbtTarget` choices persist per project the same way,
+and `:DbtProjects` picks among every project the store knows. The
+store is a JSON file at `stdpath("data")/cogitator/manager.json`
+(override with setup's `manager_path`); stored selections are injected
+as initializationOptions on the next attach.
 
 The graph browser (|:DbtGraph|) is a yazi-style three-pane float: direct
 upstream models on the left, the current model in the center, direct

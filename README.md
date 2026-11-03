@@ -126,6 +126,12 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `initializationOptions.profilesDir`, `$DBT_PROFILES_DIR`,
   `<root>/profiles.yml`, `<root>/.dbt/profiles.yml`, `~/.dbt/profiles.yml`
   — first file whose profile resolves a target wins (details below)
+- **Session configuration manager** (Neovim): a persisted JSON store of
+  every dbt project ever opened with per-project profiles-dir /
+  profile / target selections — injected at attach, switched live via
+  `dbt.setProfilesDir` (`:DbtProfiles <dir>`, `M-x
+  cogitator-set-profiles-dir`) with no server restart, browsed with
+  `:DbtProjects`
 - **Connection auth manager**: Snowflake auth classification (password,
   key pair, SSO, OAuth, MFA, JWT) with per-method validation, a redacted
   `dbt.profiles` inventory behind a profile allowlist, runtime

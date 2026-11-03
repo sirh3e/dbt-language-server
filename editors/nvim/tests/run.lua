@@ -63,10 +63,25 @@ if not vim.uv.fs_stat(bin) then
 end
 local fixture = vim.fs.joinpath(repo_root, "testdata", "jaffle_shop_duckdb")
 
+local manager_store =
+  vim.fs.joinpath(vim.uv.os_tmpdir(), "cogitator-nvim-manager-" .. vim.uv.os_getpid() .. ".json")
 require("cogitator").setup({
   cmd = { bin },
   profiles_dir = vim.fs.joinpath(fixture, ".dbt"),
+  manager_path = manager_store,
 })
+
+-- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
+local manager = require("cogitator.manager")
+manager.remember("/tmp/proj-a", { profiles_dir = "/etc/dbt", target = "prod" })
+manager.remember("/tmp/proj-a", { target = vim.NIL })
+local entry = manager.for_root("/tmp/proj-a")
+check(
+  entry.profiles_dir == "/etc/dbt" and entry.target == nil and entry.last_used ~= nil,
+  "manager: store merge + vim.NIL clear roundtrip",
+  vim.inspect(entry)
+)
+check(vim.tbl_contains(manager.roots(), "/tmp/proj-a"), "manager: roots lists the project")
 
 local model = vim.fs.joinpath(fixture, "models", "customers.sql")
 vim.cmd.edit(model)
@@ -378,28 +393,49 @@ vim.fn.writefile(
   vim.fs.joinpath(other_dir, "profiles.yml")
 )
 profiles.set(other_dir)
--- the dying client can emit a late notification that would interrupt a
--- plain vim.wait, so pump events in small tolerant slices instead
+-- live switch: the server advertises dbt.setProfilesDir, so the SAME
+-- client stays up — poll dbt.status until dirOverride reflects the dir
+local live_client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
 local switched = false
-for _ = 1, 150 do
-  pcall(vim.wait, 100)
-  local c = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
-  if c and c.config.init_options and c.config.init_options.profilesDir == other_dir then
+local last_status
+for _ = 1, 100 do
+  local status
+  live_client:exec_cmd({
+    command = "dbt.status",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    status = err == nil and result or false
+  end)
+  pcall(vim.wait, 2000, function()
+    return status ~= nil
+  end, 50)
+  last_status = status
+  if type(status) == "table" and status.profiles and status.profiles.dirOverride == other_dir then
     switched = true
     break
   end
+  pcall(vim.wait, 100)
 end
 check(
   switched,
-  "profiles: :DbtProfiles restarts with the new initializationOptions",
-  vim.inspect(vim.tbl_map(function(c)
-    return c.config.init_options
-  end, vim.lsp.get_clients({ name = "cogitator" })))
+  "profiles: :DbtProfiles live-switches via dbt.setProfilesDir (no restart)",
+  "wanted " .. other_dir .. " got " .. vim.inspect(last_status):sub(1, 300)
 )
+-- and the selection was persisted for this project root
+local persisted = false
+for _ = 1, 50 do
+  local stored = manager.for_root(live_client.root_dir)
+  if stored.profiles_dir == other_dir then
+    persisted = true
+    break
+  end
+  pcall(vim.wait, 100)
+end
+check(persisted, "manager: live switch persists the per-root profiles dir")
 
 -- the auth manager over the wire: dbt.profiles + dbt.setTarget against the
--- restarted client (its temp profiles dir holds a snowflake jaffle_shop)
-local new_client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+-- same client (its new profiles dir holds a snowflake jaffle_shop)
+local new_client = live_client
 -- poll: right after the restart the first context refresh may not have
 -- landed yet, and without it the project profile (the read scope) is empty
 local report

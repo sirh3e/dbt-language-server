@@ -40,8 +40,11 @@ Target: **Neovim ≥ 0.11** (`vim.lsp.config` / `vim.lsp.enable`). §10 notes th
 ```
 
 `profilesDir` (also accepted: `profiles_dir`) replaces a `--profiles-dir`
-launch flag. Any other shape of `initializationOptions` is ignored, never an
-error.
+launch flag. The server also accepts `profile`, `target` and
+`profilesAllow` (`profiles_allow`) — the same overrides as the matching
+CLI flags; the Neovim manager store injects profilesDir/profile/target
+per project root at attach. Any other shape of `initializationOptions`
+is ignored, never an error.
 
 ### 1.4 Advertised capabilities (initialize result)
 
@@ -328,6 +331,17 @@ vim.lsp.enable("cogitator")
 | `:DbtCompile` | `dbt.compile` | compiled SQL opens via showDocument |
 | `:DbtParse` | `dbt.parse` | project-wide; refreshes artifacts + server context |
 | `:DbtRelation` | `dbt.relation` | yanks the resolved relation into `"` (and `+` when a clipboard exists), `<leader>dR` |
+| `:DbtTarget` | `dbt.profiles` + `dbt.setTarget` | picker over allowed profile×target; the choice persists per project in the manager store, `<leader>dT` |
+| `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
+| `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
+
+The manager store is a JSON file (default
+`stdpath("data")/cogitator/manager.json`, override via setup
+`manager_path`) holding `{projects = {[root] = {profiles_dir?, profile?,
+target?, last_used}}}`. Stored selections are merged into
+`initializationOptions` per root through `before_init` at attach, and
+applied live through `dbt.setProfilesDir`/`dbt.setTarget` while a client
+runs.
 | `:DbtSchema` | `dbt.goToSchema` | uri + cursor position; jump to the returned `Location` with `vim.lsp.util.show_document` |
 | `:DbtLineage` | `dbt.showLineage` | result arrives as a showMessage |
 

@@ -25,6 +25,10 @@ cmd("DbtStatus", "status", "show what the language server knows and has been doi
 cmd("DbtTags", "tags", "pick a dbt tag, then a model carrying it")
 cmd("DbtSelectors", "selectors", "pick a selectors.yml entry and jump to it")
 
+vim.api.nvim_create_user_command("DbtProjects", function()
+  require("cogitator.manager").pick_project()
+end, { desc = "pick a known dbt project (manager store)" })
+
 vim.api.nvim_create_user_command("DbtDag", function()
   require("cogitator.dag").open()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })

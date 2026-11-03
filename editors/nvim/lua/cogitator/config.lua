@@ -6,6 +6,8 @@ local M = {}
 M.defaults = {
   cmd = { "cogitator" },
   profiles_dir = nil, -- string → initializationOptions.profilesDir
+  manager_path = nil, -- string → where the project/profile store lives
+  query_limit = 100, -- :DbtQuery row cap
   fusion = false, -- false | true | "/path/to/dbt"
   tree_sitter = true, -- false → --no-tree-sitter
   debug = false, -- true → --debug
@@ -18,8 +20,10 @@ M.defaults = {
 }
 
 local function check_known_keys(opts)
+  -- keys whose default is nil and so invisible to the defaults lookup
+  local nil_defaults = { profiles_dir = true, manager_path = true }
   for key in pairs(opts) do
-    if M.defaults[key] == nil and key ~= "profiles_dir" then
+    if M.defaults[key] == nil and not nil_defaults[key] then
       error(("cogitator.nvim: unknown setup key %q"):format(key), 0)
     end
   end
@@ -33,6 +37,8 @@ end
 local function validate(opts)
   vim.validate("cmd", opts.cmd, "table", true)
   vim.validate("profiles_dir", opts.profiles_dir, "string", true)
+  vim.validate("manager_path", opts.manager_path, "string", true)
+  vim.validate("query_limit", opts.query_limit, "number", true)
   vim.validate("fusion", opts.fusion, { "boolean", "string" }, true)
   vim.validate("tree_sitter", opts.tree_sitter, "boolean", true)
   vim.validate("debug", opts.debug, "boolean", true)

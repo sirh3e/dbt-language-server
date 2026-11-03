@@ -48,6 +48,9 @@ local function keymaps(bufnr)
   map("<leader>dD", function()
     require("cogitator.dag").open()
   end, "dbt: project DAG (Neovim only)")
+  map("<leader>dP", function()
+    require("cogitator.manager").pick_project()
+  end, "dbt: pick a known dbt project")
 end
 
 local function on_attach(client, bufnr, config)
@@ -77,6 +80,28 @@ function M.register(config)
   }
   if config.profiles_dir then
     server.init_options = { profilesDir = vim.fn.expand(config.profiles_dir) }
+  end
+  -- per-root selections from the manager store win over the global
+  -- profiles_dir: they are merged into initializationOptions at attach
+  server.before_init = function(params, _)
+    local root = params.rootPath
+    if params.rootUri and params.rootUri ~= vim.NIL then
+      root = vim.uri_to_fname(params.rootUri)
+    end
+    local stored = require("cogitator.manager").for_root(root)
+    local options = params.initializationOptions or {}
+    if stored.profiles_dir then
+      options.profilesDir = stored.profiles_dir
+    end
+    if stored.profile then
+      options.profile = stored.profile
+    end
+    if stored.target then
+      options.target = stored.target
+    end
+    if next(options) then
+      params.initializationOptions = options
+    end
   end
   if config.attach_outside_project then
     local markers = config.root_markers
@@ -112,6 +137,10 @@ function M.setup(opts)
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "cogitator" then
         on_attach(client, args.buf, config)
+        -- every attached project registers itself with the manager store
+        if client.root_dir then
+          require("cogitator.manager").remember(client.root_dir, {})
+        end
       end
     end,
   })

@@ -1,9 +1,17 @@
 --- dbt profiles helpers: the candidate list (kept in sync with the
 --- server's util::profiles_candidates), the :DbtProfiles report, and
---- switching the directory at runtime (restarts the server, because
---- initializationOptions only apply at initialize).
+--- switching the directory at runtime — live through dbt.setProfilesDir
+--- when the server has it, with a restart fallback for older builds.
 
 local M = {}
+
+--- The effective profiles dir for the current buffer's project: the
+--- manager store's per-root selection wins over the global option.
+local function effective_dir(config)
+  local root = vim.fs.root(0, config.root_markers or { "dbt_project.yml" })
+  local stored = require("cogitator.manager").for_root(root)
+  return stored.profiles_dir or config.profiles_dir, root
+end
 
 --- Candidate profiles.yml paths in the server's precedence order.
 function M.candidates(config, root)
@@ -28,12 +36,13 @@ end
 
 --- The resolution report shown by :DbtProfiles without an argument.
 function M.report(config)
-  local root = vim.fs.root(0, config.root_markers or { "dbt_project.yml" })
+  local dir, root = effective_dir(config)
   local lines = {
-    "dbt profiles directory: " .. (config.profiles_dir or "(not set — server search order)"),
+    "dbt profiles directory: " .. (dir or "(not set — server search order)"),
   }
   local found = false
-  for _, candidate in ipairs(M.candidates(config, root)) do
+  local view = vim.tbl_extend("force", {}, config, { profiles_dir = dir })
+  for _, candidate in ipairs(M.candidates(view, root)) do
     local exists = vim.uv.fs_stat(candidate) ~= nil
     local marker = "   "
     if exists and not found then
@@ -106,13 +115,24 @@ function M.pick_target()
       client:exec_cmd({
         command = "dbt.setTarget",
         arguments = { { target = choice.target, profile = choice.profile } },
-      }, { bufnr = bufnr })
+      }, { bufnr = bufnr }, function(set_err, result)
+        -- persist the selection for this project so the next session's
+        -- attach injects it through initializationOptions
+        if not set_err and result and result ~= vim.NIL and client.root_dir then
+          require("cogitator.manager").remember(client.root_dir, {
+            profile = result.profile,
+            target = result.target,
+          })
+        end
+      end)
     end)
   end)
 end
 
---- Switch the profiles directory and restart cogitator so the server
---- re-initializes with the new initializationOptions.
+--- Switch the profiles directory: live through dbt.setProfilesDir when
+--- the attached server advertises it (per-project, persisted), otherwise
+--- the old restart flow (older servers; initializationOptions only apply
+--- at initialize).
 function M.set(dir)
   local cogitator = require("cogitator")
   if not cogitator.config then
@@ -126,6 +146,36 @@ function M.set(dir)
       vim.log.levels.WARN
     )
   end
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local commands = client
+    and vim.tbl_get(client.server_capabilities, "executeCommandProvider", "commands")
+  if client and vim.tbl_contains(commands or {}, "dbt.setProfilesDir") then
+    client:exec_cmd({
+      command = "dbt.setProfilesDir",
+      arguments = { { dir = expanded } },
+    }, { bufnr = bufnr }, function(err, result)
+      if err or not result or result == vim.NIL then
+        vim.notify(
+          "dbt.setProfilesDir failed" .. (err and (": " .. err.message) or ""),
+          vim.log.levels.ERROR
+        )
+        return
+      end
+      if client.root_dir then
+        -- the switch reset the server's profile/target overrides too
+        require("cogitator.manager").remember(client.root_dir, {
+          profiles_dir = expanded,
+          profile = vim.NIL,
+          target = vim.NIL,
+        })
+      end
+    end)
+    return
+  end
+
+  -- fallback: old server without the command — global option + restart
   cogitator.config.profiles_dir = expanded
   cogitator.register(cogitator.config)
 
