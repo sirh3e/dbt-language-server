@@ -26,6 +26,16 @@ cmd("DbtStatus", "status", "show what the language server knows and has been doi
 cmd("DbtTags", "tags", "pick a dbt tag, then a model carrying it")
 cmd("DbtSelectors", "selectors", "pick a selectors.yml entry and jump to it")
 
+vim.api.nvim_create_user_command("DbtCache", function(opts)
+  require("cogitator.commands").cache(opts.args)
+end, {
+  nargs = "?",
+  complete = function()
+    return { "clear" }
+  end,
+  desc = "derived-cache counters (argument 'clear' empties them)",
+})
+
 vim.api.nvim_create_user_command("DbtProjects", function()
   require("cogitator.manager").pick_project()
 end, { desc = "pick a known dbt project (manager store)" })

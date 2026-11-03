@@ -232,6 +232,26 @@ check(
   vim.fn.getreg('"')
 )
 
+-- dbt.cache: wire shape of the derived-cache report
+local cache_result
+client:exec_cmd({
+  command = "dbt.cache",
+  arguments = { { uri = vim.uri_from_bufnr(bufnr), action = "stats" } },
+}, { bufnr = bufnr }, function(err, result)
+  cache_result = err == nil and result or false
+end)
+vim.wait(5000, function()
+  return cache_result ~= nil
+end, 50)
+check(
+  type(cache_result) == "table"
+    and type(cache_result.profiles) == "table"
+    and type(cache_result.profiles.entries) == "number"
+    and type(cache_result.lineage.hits) == "number",
+  "integration: dbt.cache reports the derived-cache surfaces",
+  vim.inspect(cache_result):sub(1, 200)
+)
+
 -- :DbtQuery: no DB configured headless → the bounded SELECT lands in a
 -- scratch sql buffer
 require("cogitator.commands").query()

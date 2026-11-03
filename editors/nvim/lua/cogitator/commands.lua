@@ -46,6 +46,33 @@ function M.parse()
   exec("dbt.parse", false) -- project-wide; success refreshes the server context
 end
 
+--- :DbtCache [clear] — derived-cache counters, or clear + refresh.
+function M.cache(action)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
+    return
+  end
+  local arg = M.build_argument(bufnr, false)
+  arg.action = (action == "clear") and "clear" or "stats"
+  client:exec_cmd({ command = "dbt.cache", arguments = { arg } }, { bufnr = bufnr }, function(err, r)
+    if err or not r or r == vim.NIL then
+      vim.notify("dbt.cache failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    local function line(name, surface)
+      return ("%s: %d entries, %d hits, %d misses"):format(name, surface.entries, surface.hits, surface.misses)
+    end
+    vim.notify(table.concat({
+      "cogitator derived caches" .. (arg.action == "clear" and " (cleared)" or ""),
+      line("profiles", r.profiles),
+      line("lineage", r.lineage),
+      line("results", r.results),
+    }, "\n"))
+  end)
+end
+
 --- :DbtQuery — bounded SELECT on the relation under the cursor: through
 --- vim-dadbod when a connection is configured, else into a scratch sql
 --- buffer ready for any client.

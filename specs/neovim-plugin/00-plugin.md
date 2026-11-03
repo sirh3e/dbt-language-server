@@ -126,6 +126,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the 2 MiB wire cap |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
+| `dbt.cache` | `{profiles, lineage, results}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt

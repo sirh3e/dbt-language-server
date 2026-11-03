@@ -369,6 +369,31 @@ Emacs has no :checkhealth, so this is a plain report buffer."
     (pop-to-buffer buf)))
 
 ;;;###autoload
+(defun cogitator-cache (&optional clear)
+  "Show the server's derived-cache counters; with prefix arg, CLEAR them."
+  (interactive "P")
+  (cogitator--execute
+   "dbt.cache"
+   (append (cogitator--command-argument)
+           (list :action (if clear "clear" "stats")))
+   (lambda (r)
+     (let ((fmt (lambda (s) (format "%s/%s/%s"
+                                    (plist-get s :entries)
+                                    (plist-get s :hits)
+                                    (plist-get s :misses)))))
+       (message "cogitator caches%s — profiles %s, lineage %s, results %s (entries/hits/misses)"
+                (if clear " (cleared)" "")
+                (funcall fmt (plist-get r :profiles))
+                (funcall fmt (plist-get r :lineage))
+                (funcall fmt (plist-get r :results)))))))
+
+;;;###autoload
+(defun cogitator-cache-clear ()
+  "Clear the server's derived caches and refresh the context."
+  (interactive)
+  (cogitator-cache t))
+
+;;;###autoload
 (defun cogitator-relation ()
   "Resolve the relation under point and put it on the kill ring.
 dbt.relation answers database.schema.identifier for the source() table

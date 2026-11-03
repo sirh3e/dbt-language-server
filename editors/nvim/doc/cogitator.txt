@@ -58,6 +58,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtRelation   yank database.schema.identifier     <leader>dR
   :DbtProjects   pick a known dbt project            <leader>dP
   :DbtQuery      bounded SELECT on the relation      <leader>dx
+  :DbtCache      derived-cache stats ('clear' empties)
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg

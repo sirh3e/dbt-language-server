@@ -136,6 +136,14 @@
          "integration: cogitator-query builds the bounded SELECT")
   (pop-to-buffer orig))
 
+;; integration: dbt.cache wire shape
+(let ((caches (run--exec "dbt.cache"
+                         (append (cogitator--command-argument)
+                                 '(:action "stats")))))
+  (check (and (plist-get caches :profiles)
+              (numberp (plist-get (plist-get caches :profiles) :entries)))
+         "integration: dbt.cache reports the derived-cache surfaces" caches))
+
 ;; pickers + doctor parity: the data each one feeds on, plus rendering
 (let ((graph (run--exec "dbt.projectGraph" (cogitator--command-argument))))
   (check (seq-some (lambda (n) (member "nightly" (append (plist-get n :tags) nil)))
