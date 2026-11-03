@@ -288,12 +288,22 @@ project rescan, and Fusion blocks the whole loop — Q9.)
                               └─► fusion task(s) ── tokio::process ──► writer channel
 ```
 
-- **Reader task:** async-reads stdin (`tokio::io::stdin`), frames per 01 §1.3, sends
-  `(method, bytes)` over an `mpsc` channel.
-- **Dispatcher task:** single owner of `Documents` (no lock needed); handles every
-  request inline — that's fine because handlers are sub-millisecond pure functions
-  over the snapshot. Request ordering is preserved (LSP requires didChange before
-  the completion that follows it).
+- **Reader task:** async-reads stdin (`tokio::io::stdin`), frames per 01 §1.3, and
+  calls the dispatcher directly on the same task (the earlier draft's
+  `(method, bytes)` mpsc hop never existed in the implementation; ordering comes
+  from the single task either way).
+- **Dispatcher task:** single owner of `Documents` (no lock needed). Document sync
+  and state mutation run inline; every effectful or offloadable handler is a PURE
+  function in `server/handlers/{navigation,profiles,commands}.rs` with the
+  Elm-style contract `fn(&Snapshot, …) -> Reply` — a `Snapshot` of Arc clones
+  (context, document, cloned profiles config; `server/snapshot.rs`) in, ordered
+  `Effect`s plus the response out (`server/reply.rs`), shipped by one
+  `transmit()` whose effects-before-response order is load-bearing. State writes
+  (setTarget/setProfilesDir) come back as verdict values the shell applies —
+  effects are data, mutations stay in the shell. Sub-millisecond query handlers
+  (hover…symbols) keep the one generic decode→feature→send path; their logic is
+  already pure in `cogitator-analysis::features`. Request ordering is preserved
+  (LSP requires didChange before the completion that follows it).
 - **Writer task:** owns stdout; receives already-encoded frames over `mpsc`. This is
   the interleaving guard that Go lacks (01 §4) — everyone (dispatcher, fusion,
   refresh-triggered diagnostics) writes through this channel.

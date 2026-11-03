@@ -149,6 +149,12 @@ the flat main-loop code; 06 §4 adds the phase-2 tree-sitter paths.
 
 ## State & concurrency model
 
+> Amendment (dispatcher decomposition): handlers with effects live as pure
+> `fn(&Snapshot, …) -> Reply` functions under `server/handlers/`; the
+> dispatcher is the router + document-sync owner, and one `transmit()`
+> ships ordered effects then the response. 05 §6.2 carries the binding
+> contract.
+
 Go (see 03 for details): one `State` struct owned by a single-threaded message loop;
 a `sync.RWMutex` guards only the `FusionEnabled` flag (set from a background
 validation goroutine). Context refresh (`refreshDbtContext`) runs three builders in
