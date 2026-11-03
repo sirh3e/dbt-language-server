@@ -7,15 +7,42 @@ use std::path::{Path, PathBuf};
 
 use cogitator_schemas::yaml::{get, items, to_json};
 use saphyr::{LoadableYamlNode, MarkedYaml};
-use serde_json::{json, Value};
+use serde::Serialize;
 
-use super::navigation::graph_entry_json;
-use super::tests_nav::{collect_model_tests, model_entry, resolve_model_name};
+use super::graph_nav::{graph_entry, GraphEntry};
+use super::tests_nav::{collect_model_tests, model_entry, resolve_model_name, ModelTest};
 use super::{file_uri, model_name_from_uri, DbtContext};
+
+/// The dbt.modelInfo result. `versions` and `compiled_uri` are `None` →
+/// `null` on the wire (never omitted).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInfo {
+    pub model: String,
+    pub uri: String,
+    pub upstream: Vec<GraphEntry>,
+    pub downstream: Vec<GraphEntry>,
+    pub versions: Option<ModelVersions>,
+    pub tests: Vec<ModelTest>,
+    pub compiled_uri: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelVersions {
+    pub latest_version: Option<i64>,
+    pub versions: Vec<VersionEntry>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VersionEntry {
+    pub v: i64,
+    pub uri: Option<String>,
+}
 
 /// `model_arg` (re-selecting in the browser) wins over `uri`; `None` when the
 /// name resolves to nothing in the project.
-pub fn model_info(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Option<Value> {
+pub fn model_info(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Option<ModelInfo> {
     let requested = match model_arg {
         Some(m) if !m.is_empty() => m.to_string(),
         _ => model_name_from_uri(uri)?,
@@ -35,29 +62,26 @@ pub fn model_info(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Optio
         .model_detail_map
         .get(&base)
         .and_then(|d| d.schema_uri.as_ref())
-        .and_then(|schema_path| schema_json(ctx, &base, schema_path))
-        .unwrap_or((Value::Null, Vec::new()));
+        .and_then(|schema_path| schema_details(ctx, &base, schema_path))
+        .unwrap_or((None, Vec::new()));
 
     let compiled_uri = ctx.project_root.as_deref().and_then(|root| {
         let compiled = compiled_sql_path(root, &ctx.project.name, &details.uri);
         compiled.is_file().then(|| file_uri(&compiled))
     });
 
-    Some(json!({
-        "model": name,
-        "uri": file_uri(&details.uri),
-        "upstream": upstream
+    Some(ModelInfo {
+        uri: file_uri(&details.uri),
+        upstream: upstream.into_iter().map(|n| graph_entry(ctx, n)).collect(),
+        downstream: downstream
             .into_iter()
-            .map(|n| graph_entry_json(ctx, n))
-            .collect::<Vec<_>>(),
-        "downstream": downstream
-            .into_iter()
-            .map(|n| graph_entry_json(ctx, n))
-            .collect::<Vec<_>>(),
-        "versions": versions,
-        "tests": tests,
-        "compiledUri": compiled_uri,
-    }))
+            .map(|n| graph_entry(ctx, n))
+            .collect(),
+        versions,
+        tests,
+        compiled_uri,
+        model: name,
+    })
 }
 
 /// Where dbt writes the compiled model: `<root>/target/compiled/<project>/
@@ -90,43 +114,41 @@ fn schema_base(ctx: &DbtContext, name: &str) -> String {
 }
 
 /// Versions and tests from one read+parse of the base model's properties YAML.
-fn schema_json(ctx: &DbtContext, model: &str, schema_path: &Path) -> Option<(Value, Vec<Value>)> {
+fn schema_details(
+    ctx: &DbtContext,
+    model: &str,
+    schema_path: &Path,
+) -> Option<(Option<ModelVersions>, Vec<ModelTest>)> {
     let text = std::fs::read_to_string(schema_path).ok()?;
     let schema_uri = file_uri(schema_path);
     let docs = MarkedYaml::load_from_str(&text).ok()?;
     let root = docs.first()?;
     let entry = model_entry(root, model)?;
-    let tests = collect_model_tests(entry, &schema_uri)
-        .iter()
-        .map(|t| {
-            json!({
-                "name": t.name,
-                "column": t.column,
-                "version": t.version,
-                "uri": t.uri,
-                "range": t.range,
-            })
-        })
-        .collect();
     Some((
-        versions_json(ctx, model, entry).unwrap_or(Value::Null),
-        tests,
+        versions(ctx, model, entry),
+        collect_model_tests(entry, &schema_uri),
     ))
 }
 
-/// `{latestVersion, versions: [{v, uri}]}`, or `None` for an unversioned model.
-fn versions_json(ctx: &DbtContext, model: &str, entry: &MarkedYaml<'_>) -> Option<Value> {
-    let versions = get(entry, "versions")?;
-    let latest = get(entry, "latest_version")
+/// The `versions:` block, or `None` for an unversioned model.
+fn versions(ctx: &DbtContext, model: &str, entry: &MarkedYaml<'_>) -> Option<ModelVersions> {
+    let list = get(entry, "versions")?;
+    let latest_version = get(entry, "latest_version")
         .map(to_json)
         .and_then(|v| v.as_i64());
-    let list = items(versions)
+    let versions = items(list)
         .filter_map(|version| {
             let v = get(version, "v").map(to_json).and_then(|v| v.as_i64())?;
-            Some(json!({ "v": v, "uri": version_uri(ctx, model, v, latest) }))
+            Some(VersionEntry {
+                uri: version_uri(ctx, model, v, latest_version),
+                v,
+            })
         })
-        .collect::<Vec<_>>();
-    Some(json!({ "latestVersion": latest, "versions": list }))
+        .collect();
+    Some(ModelVersions {
+        latest_version,
+        versions,
+    })
 }
 
 /// dbt's file convention: `<model>_v<N>.sql`, with the latest version allowed

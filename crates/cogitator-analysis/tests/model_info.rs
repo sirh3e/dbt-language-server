@@ -25,7 +25,8 @@ fn names(list: &serde_json::Value) -> Vec<&str> {
 
 #[test]
 fn versioned_model_reports_neighbors_versions_and_tests() {
-    let info = model_info(&ctx(), "", Some("customer_orders")).expect("info");
+    let info = serde_json::to_value(model_info(&ctx(), "", Some("customer_orders")).expect("info"))
+        .unwrap();
 
     assert_eq!(info["model"], "customer_orders");
     assert!(info["uri"]
@@ -75,7 +76,9 @@ fn versioned_model_reports_neighbors_versions_and_tests() {
 
 #[test]
 fn versioned_file_keeps_its_node_but_reads_the_base_schema() {
-    let info = model_info(&ctx(), "", Some("customer_orders_v1")).expect("info");
+    let info =
+        serde_json::to_value(model_info(&ctx(), "", Some("customer_orders_v1")).expect("info"))
+            .unwrap();
     assert_eq!(info["model"], "customer_orders_v1");
     assert!(names(&info["upstream"]).contains(&"stg_orders"));
     // versions and tests come from customer_orders.yml via the base model
@@ -86,7 +89,8 @@ fn versioned_file_keeps_its_node_but_reads_the_base_schema() {
 #[test]
 fn unversioned_model_and_unknown_names() {
     let ctx = ctx();
-    let info = model_info(&ctx, "", Some("customers")).expect("info");
+    let info =
+        serde_json::to_value(model_info(&ctx, "", Some("customers")).expect("info")).unwrap();
     assert!(info["versions"].is_null());
     assert!(!info["tests"].as_array().unwrap().is_empty());
     assert!(names(&info["upstream"]).contains(&"stg_customers"));
@@ -112,7 +116,7 @@ fn compiled_uri_appears_when_dbt_wrote_output() {
     std::fs::write(compiled_dir.join("m.sql"), "select 1 as id\n").unwrap();
 
     let ctx = build_context(root.to_str().unwrap());
-    let info = model_info(&ctx, "", Some("m")).expect("info");
+    let info = serde_json::to_value(model_info(&ctx, "", Some("m")).expect("info")).unwrap();
     let compiled = info["compiledUri"].as_str().expect("compiled uri");
     assert!(
         compiled.ends_with("target/compiled/t/models/m.sql"),

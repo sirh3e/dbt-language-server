@@ -73,7 +73,7 @@ fn workspace_symbol_tag_and_selector_queries() {
 #[test]
 fn project_graph_layers_columns_edges() {
     let ctx = ctx();
-    let graph = features::project_graph_json(&ctx);
+    let graph = serde_json::to_value(features::project_graph_json(&ctx)).unwrap();
     let nodes = graph["nodes"].as_array().unwrap();
     let by_id = |id: &str| nodes.iter().find(|n| n["id"] == id).unwrap();
 

@@ -5,11 +5,11 @@
 use cogitator_lsp::Range;
 use cogitator_schemas::yaml::{as_str, entries, get, items, position_of};
 use saphyr::{LoadableYamlNode, MarkedYaml};
-use serde_json::{json, Value};
+use serde::Serialize;
 
 use super::{file_uri, model_name_from_uri, DbtContext};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct ModelTest {
     pub name: String,
     pub column: Option<String>,
@@ -106,16 +106,13 @@ fn collect_node_tests(
 }
 
 /// The `dbt.modelTests` wire shape.
-pub fn model_tests_json(ctx: &DbtContext, uri: &str) -> Option<Value> {
+#[derive(Debug, Serialize)]
+pub struct ModelTests {
+    pub model: String,
+    pub tests: Vec<ModelTest>,
+}
+
+pub fn model_tests_json(ctx: &DbtContext, uri: &str) -> Option<ModelTests> {
     let (model, tests) = model_tests(ctx, uri)?;
-    Some(json!({
-        "model": model,
-        "tests": tests.iter().map(|t| json!({
-            "name": t.name,
-            "column": t.column,
-            "version": t.version,
-            "uri": t.uri,
-            "range": t.range,
-        })).collect::<Vec<_>>(),
-    }))
+    Some(ModelTests { model, tests })
 }

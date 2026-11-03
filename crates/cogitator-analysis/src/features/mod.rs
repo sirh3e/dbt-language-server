@@ -6,7 +6,9 @@ mod completion;
 mod definition;
 mod diagnostics;
 mod extract;
+mod graph_nav;
 mod hover;
+mod lenses;
 mod model_info;
 mod navigation;
 mod rename;
@@ -18,16 +20,17 @@ pub use completion::{completion, resolve_completion_documentation};
 pub use definition::{definition, go_to_schema};
 pub use diagnostics::dangling_ref_diagnostics;
 pub use extract::{extract_model_yaml, ExtractEdit};
-pub use hover::hover;
-pub use model_info::{compiled_sql_path, model_info};
-pub use navigation::{
-    code_lenses, document_highlights, document_symbols, model_graph, project_graph_json,
-    references, workspace_symbols,
+pub use graph_nav::{
+    model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };
+pub use hover::hover;
+pub use lenses::code_lenses;
+pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
+pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
 pub use rename::rename_model;
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
-pub use tests_nav::{model_tests, model_tests_json, ModelTest};
+pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
 
 use std::path::Path;
 

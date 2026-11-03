@@ -229,7 +229,10 @@ fn signature_help_uses_structured_params_with_defaults() {
 fn model_graph_direct_neighbors() {
     let ctx = build_context(fixture_root().to_str().unwrap());
 
-    let graph = features::model_graph(&ctx, "", Some("customers")).expect("customers graph");
+    let graph = serde_json::to_value(
+        features::model_graph(&ctx, "", Some("customers")).expect("customers graph"),
+    )
+    .unwrap();
     assert_eq!(graph["model"], "customers");
     assert!(graph["uri"].as_str().unwrap().ends_with("customers.sql"));
     let upstream: Vec<&str> = graph["upstream"]
@@ -241,7 +244,10 @@ fn model_graph_direct_neighbors() {
     assert!(upstream.contains(&"stg_customers"), "{upstream:?}");
 
     // re-center by name (no uri): the neighbor's downstream points back
-    let stg = features::model_graph(&ctx, "", Some("stg_customers")).expect("stg graph");
+    let stg = serde_json::to_value(
+        features::model_graph(&ctx, "", Some("stg_customers")).expect("stg graph"),
+    )
+    .unwrap();
     let down: Vec<&str> = stg["downstream"]
         .as_array()
         .unwrap()
