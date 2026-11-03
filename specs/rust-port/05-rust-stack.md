@@ -125,6 +125,27 @@ Rules:
 - `panic!`/`unwrap` only for true invariants (poisoned locks, serializing our own
   structs). Request handling must never panic on client input.
 
+#### Error-guidance style (binding since the Guidance batch)
+
+Every user-facing failure is ONE `cogitator_error::guidance::Guidance`
+value — never an ad-hoc string. Canonical rendering (`to_message`):
+
+```text
+<headline — one sentence that names the thing>.
+  in: <path or path:line, when known>
+Reason: <one sentence of evidence>.
+Did you mean: <closest candidates>?
+Solution: <the concrete next step, imperative>.
+```
+
+Diagnostics use `to_diagnostic()` (headline — did you mean 'x'?).
+Did-you-mean is REQUIRED wherever a name-keyed collection exists
+(models, sources, vars, profiles, targets, commands, schema keys);
+`closest_matches` (optimal-string-alignment, ≤ max(1, len/3) edits,
+top three) is the one ranking. Silently dropping a request is
+forbidden — undecodable request params answer InvalidParams (01 §3's
+narrow error policy).
+
 ## 3. Code style: composable, function-first
 
 - **Functional core, imperative shell.** All extraction/analysis logic is pure
