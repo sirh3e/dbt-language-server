@@ -306,6 +306,7 @@ project rescan, and Fusion blocks the whole loop — Q9.)
  stdin ──► reader task ──► dispatcher (owns Documents) ──► stdout writer task
                               │  reads Arc<DbtContext> snapshot (watch::Receiver)
                               ├─► refresh task  ── builds DbtContext+graph ──► watch::Sender
+                              ├─► config watcher ── <root>/cogitator.yml ──► shared cfg + limits
                               └─► fusion task(s) ── tokio::process ──► writer channel
 ```
 
@@ -325,6 +326,16 @@ project rescan, and Fusion blocks the whole loop — Q9.)
   (hover…symbols) keep the one generic decode→feature→send path; their logic is
   already pure in `cogitator-analysis::features`. Request ordering is preserved
   (LSP requires didChange before the completion that follows it).
+- **Config watcher task:** owns `<root>/cogitator.yml` (the hot-loadable
+  config): the dispatcher hands it the root over a `watch` channel at
+  initialize; a 2 s stamp poll (fs work in `spawn_blocking`), a
+  didSave/didOpen fast-path poke from the dispatcher and the
+  `dbt.reloadConfig` command each trigger a reload — **no OS-watcher
+  dependency and no dynamic registration**, matching this spec's posture.
+  The pure core (parse/diff/apply, changed-keys-only with
+  revert-to-baseline) lives in `server/config_file.rs`; applied keys show
+  one INFO message and send a refresh; parse failures keep the previous
+  values and surface as Guidance. `dbt.status` reports path/loaded/error.
 - **Writer task:** owns stdout; receives already-encoded frames over `mpsc`. This is
   the interleaving guard that Go lacks (01 §4) — everyone (dispatcher, fusion,
   refresh-triggered diagnostics) writes through this channel.

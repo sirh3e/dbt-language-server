@@ -140,6 +140,32 @@ fn fixture_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/jaffle_shop_duckdb")
 }
 
+/// Removes a path on drop — fixtures stay pristine even on panic.
+struct RemoveOnDrop(PathBuf);
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        std::fs::remove_dir_all(&self.0).ok();
+    }
+}
+
+/// Copy the fixture (minus target/) so a test can mutate its own root
+/// without racing the parallel tests on the shared fixture.
+fn copy_fixture(src: &std::path::Path, dst: &std::path::Path) {
+    std::fs::create_dir_all(dst).unwrap();
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name() == "target" {
+            continue;
+        }
+        let to = dst.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_fixture(&entry.path(), &to);
+        } else {
+            std::fs::copy(entry.path(), &to).unwrap();
+        }
+    }
+}
+
 #[test]
 fn full_session() {
     let root = fixture_root().canonicalize().unwrap();
@@ -596,12 +622,6 @@ fn full_session() {
     // 6c. modelInfo: neighbors + tests + versions + compiled SQL in one trip.
     // dbt would write target/compiled/ at runtime; fake it (gitignored) and
     // clean up even on assertion failure.
-    struct RemoveOnDrop(PathBuf);
-    impl Drop for RemoveOnDrop {
-        fn drop(&mut self) {
-            std::fs::remove_dir_all(&self.0).ok();
-        }
-    }
     let compiled_dir = root.join("target/compiled/jaffle_shop/models");
     std::fs::create_dir_all(&compiled_dir).unwrap();
     std::fs::write(compiled_dir.join("customers.sql"), "select 1 as id\n").unwrap();
@@ -764,10 +784,11 @@ fn full_session() {
 /// Shared setup for the concurrency tests: initialize + open customers
 /// and wait for the first refresh (definition answers correctly).
 fn booted(env: &[(&str, &str)]) -> (Lsp, String) {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../testdata/jaffle_shop_duckdb")
-        .canonicalize()
-        .unwrap();
+    booted_in(&fixture_root().canonicalize().unwrap(), env)
+}
+
+/// `booted` against an arbitrary project root (temp fixture copies).
+fn booted_in(root: &std::path::Path, env: &[(&str, &str)]) -> (Lsp, String) {
     let mut lsp = Lsp::start_with_env(env);
     let model = root.join("models/customers.sql");
     let text = std::fs::read_to_string(&model).unwrap();
@@ -775,7 +796,7 @@ fn booted(env: &[(&str, &str)]) -> (Lsp, String) {
     let _ = lsp.request(
         "initialize",
         serde_json::json!({
-            "rootUri": cogitator_lsp::fs_path_to_uri(&root),
+            "rootUri": cogitator_lsp::fs_path_to_uri(root),
             "capabilities": {},
             "initializationOptions": {"profilesDir": root.join(".dbt").to_string_lossy()},
         }),
@@ -869,6 +890,118 @@ fn malformed_command_argument_answers_invalid_params() {
             .is_some_and(|m| m.contains("argument OBJECT")),
         "{bad}"
     );
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}
+
+/// Poll dbt.status until `good` holds (the watcher applies asynchronously).
+fn status_until(lsp: &mut Lsp, good: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
+    let mut last = serde_json::Value::Null;
+    for _ in 0..100 {
+        let reply = lsp.request(
+            "workspace/executeCommand",
+            serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+        );
+        last = reply["result"].clone();
+        if good(&last) {
+            return last;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("dbt.status never converged: {last}");
+}
+
+/// dbt.reloadConfig acknowledges with null and forces a watcher pass.
+fn reload_config(lsp: &mut Lsp) {
+    let reply = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.reloadConfig", "arguments": [{}]}),
+    );
+    assert!(reply.get("result").is_some_and(|r| r.is_null()), "{reply}");
+}
+
+/// The hot-loadable cogitator.yml end to end: applied at boot, re-tuned
+/// live (the compiledSql wire cap), a parse failure keeps the old values
+/// and surfaces as Guidance, and deleting the file reverts to launch
+/// values — all driven through dbt.reloadConfig, never the 2 s poll.
+#[test]
+fn config_file_hot_reload() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-config-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let config = root.join("cogitator.yml");
+    std::fs::write(&config, "profiles:\n  target: dev\n").unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+
+    // 1. the boot pass loaded the file and applied profiles.target
+    let status = status_until(&mut lsp, |s| {
+        s["config"]["loaded"] == true && s["profiles"]["activeTarget"] == "dev"
+    });
+    assert!(
+        status["config"]["path"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("cogitator.yml")),
+        "{status}"
+    );
+    assert!(status["config"]["error"].is_null(), "{status}");
+
+    // 2. hot re-tune: a 0 MiB wire cap flips compiledSql to uri-only
+    let compiled_dir = root.join("target/compiled/jaffle_shop/models");
+    std::fs::create_dir_all(&compiled_dir).unwrap();
+    std::fs::write(compiled_dir.join("customers.sql"), "select 1 as id\n").unwrap();
+    std::fs::write(
+        &config,
+        "profiles:\n  target: dev\nlimits:\n  compiled_sql_mib: 0\n",
+    )
+    .unwrap();
+    reload_config(&mut lsp);
+    let mut capped = serde_json::Value::Null;
+    for _ in 0..100 {
+        let reply = lsp.request(
+            "workspace/executeCommand",
+            serde_json::json!({"command": "dbt.compiledSql",
+                               "arguments": [{"model": "customers"}]}),
+        );
+        if reply["result"]["content"].is_null() && reply["result"]["uri"].is_string() {
+            capped = reply;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        capped["result"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("customers.sql")),
+        "cap never applied: {capped}"
+    );
+    // the cap explanation reached the client as a showMessage
+    assert!(
+        lsp.stash.iter().any(|m| {
+            m["method"] == "window/showMessage"
+                && m["params"]["message"]
+                    .as_str()
+                    .is_some_and(|t| t.contains("wire cap"))
+        }),
+        "{:?}",
+        lsp.stash
+    );
+
+    // 3. a file that stops parsing: error surfaces, old values stay
+    std::fs::write(&config, "profiles:\n  dir: [unclosed\n").unwrap();
+    reload_config(&mut lsp);
+    let broken = status_until(&mut lsp, |s| s["config"]["error"].is_string());
+    assert_eq!(broken["profiles"]["activeTarget"], "dev", "{broken}");
+
+    // 4. deleting the file reverts its keys to the launch values
+    std::fs::remove_file(&config).unwrap();
+    reload_config(&mut lsp);
+    let reverted = status_until(&mut lsp, |s| s["config"]["loaded"] == false);
+    assert!(reverted["config"]["path"].is_null(), "{reverted}");
+    assert_eq!(reverted["profiles"]["activeTarget"], "", "{reverted}");
+
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }

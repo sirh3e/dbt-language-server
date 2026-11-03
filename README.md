@@ -267,6 +267,45 @@ the `dbt.setTarget` command, which re-resolves the SQL dialect and passes
 showing each target's auth method and issues); in Emacs:
 `M-x cogitator-target`.
 
+## Configuration file
+
+`cogitator.yml` (or `.cogitator.yml`) at the workspace root is read at
+initialize and **hot-reloaded** while the server runs — a stamp poll
+every 2 s, a fast-path when you save the file through the editor, and
+an explicit `dbt.reloadConfig` command. Every key is optional:
+
+```yaml
+profiles:
+  dir: ~/.dbt            # ↔ --profiles-dir
+  profile: jaffle_shop
+  target: dev            # ↔ --target
+  allow: [other_profile] # ↔ --profiles-allow
+limits:
+  compiled_sql_mib: 2    # dbt.compiledSql wire cap
+refresh:
+  debounce_ms: 200       # context-refresh coalescing window
+startup:                 # honored only via --config at launch
+  debug: false
+  otlp: ""
+  tree_sitter: true
+  fusion: dbt
+```
+
+Hot semantics are **changed-keys-only, last writer wins**: a reload
+applies only keys whose file value changed, so editing `target:`
+updates the live target even after a `dbt.setTarget`, while untouched
+keys never clobber runtime switches. Keys removed from the file (or
+the whole file, when deleted) revert to their launch values. Each
+applied change shows one INFO message naming the keys; a file that
+stops parsing shows the syntax error and keeps the previous values.
+Unknown keys warn with a did-you-mean, never fail.
+
+Launch precedence: defaults < config file < CLI flags <
+`initializationOptions`. The `startup:` keys (install-once subsystems)
+only apply when the file is passed at launch via `--config <path>`;
+found in the root file, they warn to restart instead. `dbt.status`
+reports the file's path, whether it loaded, and the last parse error.
+
 ## Observability
 
 Off by default. `--otlp[=endpoint]` (or `OTEL_EXPORTER_OTLP_ENDPOINT`)

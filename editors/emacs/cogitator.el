@@ -356,6 +356,12 @@ Emacs has no :checkhealth, so this is a plain report buffer."
                         (if found (format "%s (%s)" found (or version "?"))
                           (format "%s NOT FOUND on PATH" binary))))
         (insert (format "project root: %s\n" (or root "(no dbt_project.yml above here)")))
+        (let ((cfg (and root
+                        (seq-find #'file-exists-p
+                                  (list (expand-file-name "cogitator.yml" root)
+                                        (expand-file-name ".cogitator.yml" root))))))
+          (insert (format "config file: %s\n"
+                          (or cfg "(none — cogitator.yml at the root is hot-loaded)"))))
         (insert (format "managed: eglot=%s lsp-mode=%s\n\n"
                         (and (featurep 'eglot) (eglot-managed-p) t)
                         (bound-and-true-p lsp-mode)))

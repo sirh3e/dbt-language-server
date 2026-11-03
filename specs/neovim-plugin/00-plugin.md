@@ -46,6 +46,13 @@ CLI flags; the Neovim manager store injects profilesDir/profile/target
 per project root at attach. Any other shape of `initializationOptions`
 is ignored, never an error.
 
+A fourth, **hot** configuration layer sits underneath these:
+`<root>/cogitator.yml` (see the README's "Configuration file"), applied
+at initialize and re-applied changed-keys-only while the server runs.
+Precedence stays defaults < file < CLI < initializationOptions at
+launch; later file edits win over earlier runtime switches (last
+writer wins).
+
 ### 1.4 Advertised capabilities (initialize result)
 
 - `textDocumentSync: 2` (incremental)
@@ -119,14 +126,15 @@ Every command takes **one argument object**, not positional values:
 | `dbt.extractModelYaml` | `null` | workspace/applyEdit (CreateFile scaffold, or version TextEdits) + showDocument |
 | `dbt.modelTests` | `{model, tests: [{name, column?, version?, uri, range}]}` or `null` | none |
 | `dbt.goToTests` | `null` | showDocument to the first test + INFO list |
-| `dbt.status` | server/project/profiles/refresh snapshot | none |
+| `dbt.status` | server/project/profiles/refresh/caches/config snapshot | none |
 | `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
 | `dbt.modelInfo` | `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
 | `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
-| `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the 2 MiB wire cap |
+| `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the wire cap (2 MiB default; `limits.compiled_sql_mib`) |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
 | `dbt.cache` | `{profiles, lineage, results}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
+| `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
 
 `dbt.relation` resolves the `source()` table or `ref()` under `position`
 (otherwise the file's own model) to its warehouse coordinates. **dbt

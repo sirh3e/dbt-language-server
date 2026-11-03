@@ -80,6 +80,10 @@ with `tag:x` and `selector:x` queries.
 
 Context refreshes and dbt runs also report through $/progress, so they
 appear in |vim.lsp.status()| and plugins like fidget.nvim.
+
+A `cogitator.yml` at the project root configures the server and is
+hot-reloaded on save (see the server README's "Configuration file");
+`:DbtStatus` shows whether one is loaded and any parse error.
                  run the code lens on this line      <leader>dL
 
 `:DbtProfiles` without an argument prints the server's profiles.yml

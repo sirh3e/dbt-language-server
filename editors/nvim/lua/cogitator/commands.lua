@@ -313,6 +313,15 @@ function M.status()
     if s.project.root ~= vim.NIL then
       table.insert(lines, "root: " .. s.project.root)
     end
+    if s.config then
+      if s.config.error ~= nil and s.config.error ~= vim.NIL then
+        table.insert(lines, "config: BROKEN — " .. tostring(s.config.error):gsub("\n.*", ""))
+      elseif s.config.loaded then
+        table.insert(lines, "config: " .. tostring(s.config.path))
+      else
+        table.insert(lines, "config: none (cogitator.yml at the project root is hot-loaded)")
+      end
+    end
     vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
   end)
 end

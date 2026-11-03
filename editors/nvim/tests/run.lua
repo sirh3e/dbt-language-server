@@ -640,6 +640,13 @@ check(
   "status: dbt.status reports backend, progress support and project",
   vim.inspect(status_result):sub(1, 300)
 )
+check(
+  type(status_result) == "table"
+    and type(status_result.config) == "table"
+    and status_result.config.loaded == false,
+  "status: dbt.status carries the config section (no cogitator.yml here)",
+  type(status_result) == "table" and vim.inspect(status_result.config) or status_result
+)
 
 -- the project DAG (Neovim-only): wire shape, boxes, edges, columns
 local dag_result

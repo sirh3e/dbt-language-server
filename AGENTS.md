@@ -107,7 +107,15 @@ editor integrations live under `editors/`.
   `<root>/profiles.yml` → `<root>/.dbt/profiles.yml` →
   `~/.dbt/profiles.yml`; the first file whose profile resolves a target wins.
 - CLI: `--profiles-dir`, `--target`, `--profiles-allow`, `--fusion [path]`,
-  `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`.
+  `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`, `--config [path]`.
+- **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
+  `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
+  `refresh.debounce_ms` hot-reload (2 s stamp poll + didSave fast-path +
+  `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch
+  values; `startup.{debug,otlp,tree_sitter,fusion}` only via `--config`
+  at launch. Precedence: defaults < file < CLI < initializationOptions.
+  Core in `server/config_file.rs` (pure), watcher in
+  `server/config_watcher.rs`; `dbt.status` reports path/loaded/error.
 
 ## Project Structure (specs/rust-port/09 §1)
 - `crates/cogitator-error` — error type
