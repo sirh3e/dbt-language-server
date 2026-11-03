@@ -78,6 +78,13 @@ impl Lsp {
             }
         }
         let header_text = String::from_utf8_lossy(&header);
+        // stdout-cleanliness guard: nothing but LSP frames may appear on
+        // stdout (05 §6.3), so the very first header line must be a
+        // Content-Length — stray print output fails loudly here
+        assert!(
+            header_text.starts_with("Content-Length:"),
+            "non-LSP bytes on stdout: {header_text:?}"
+        );
         let len: usize = header_text
             .lines()
             .find_map(|l| l.strip_prefix("Content-Length:"))

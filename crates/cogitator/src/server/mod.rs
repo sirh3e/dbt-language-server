@@ -323,6 +323,7 @@ pub async fn run(
                     tracing::error!(%err, "malformed frame; shutting down reader");
                     drop(dispatcher);
                     writer.await.ok();
+                    crate::observability::flush(); // batched spans survive this exit path too
                     return Ok(());
                 }
             }
@@ -335,6 +336,7 @@ pub async fn run(
     }
     drop(dispatcher);
     writer.await.ok();
+    crate::observability::flush(); // stdin EOF used to lose batched spans
     Ok(())
 }
 

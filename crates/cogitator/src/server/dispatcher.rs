@@ -119,7 +119,15 @@ impl Dispatcher {
             tracing::trace!("client response ignored");
             return;
         }
-        let span = tracing::debug_span!("lsp_message", %method);
+        // INFO so OTLP sees it under default filters (05 §6.3: span
+        // duration is the latency measurement); request id when present.
+        let id = serde_json::from_slice::<MaybeId>(content)
+            .ok()
+            .and_then(|m| m.id);
+        let span = tracing::info_span!("lsp_message", %method, id = tracing::field::Empty);
+        if let Some(id) = id {
+            span.record("id", id);
+        }
         let _enter = span.enter();
 
         match method.as_str() {

@@ -37,28 +37,45 @@ pub fn flush() {
 
 pub fn init(debug: bool, otlp: Option<&str>) -> Result<()> {
     let default_level = if debug { "debug" } else { "info" };
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+    // PER-LAYER filters: a single global filter at `info` used to hide
+    // every debug-level span from OTLP; each layer now filters itself.
+    let layer_filter =
+        || EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
 
-    // `--debug` file layer: log.txt beside the executable (01 §5).
+    // `--debug` file layer: log.txt beside the executable (01 §5). An
+    // unwritable install dir (e.g. the Nix store) degrades to a stderr
+    // warning instead of failing startup.
     let file_layer = if debug {
         let dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_default();
-        let file = std::fs::OpenOptions::new()
+        match std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(dir.join("log.txt"))?;
-        Some(
-            tracing_subscriber::fmt::layer()
-                .with_writer(file)
-                .with_ansi(false)
-                .with_target(true),
-        )
+            .open(dir.join("log.txt"))
+        {
+            Ok(file) => Some(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(file)
+                    .with_ansi(false)
+                    .with_target(true),
+            ),
+            Err(err) => {
+                eprintln!(
+                    "cogitator: --debug log.txt not writable in {} ({err});                      continuing without the file log",
+                    dir.display()
+                );
+                None
+            }
+        }
     } else {
         None
     };
+    let file_layer = file_layer.map(|layer| {
+        use tracing_subscriber::Layer as _;
+        layer.with_filter(layer_filter())
+    });
 
     // Opt-in OTLP layer (05 §6.3): --otlp[=endpoint] or the standard env var.
     let enabled_by_env = std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok();
@@ -68,7 +85,10 @@ pub fn init(debug: bool, otlp: Option<&str>) -> Result<()> {
     };
     let otlp_layer = otlp_provider.as_ref().map(|provider| {
         use opentelemetry::trace::TracerProvider as _;
-        tracing_opentelemetry::layer().with_tracer(provider.tracer("cogitator"))
+        use tracing_subscriber::Layer as _;
+        tracing_opentelemetry::layer()
+            .with_tracer(provider.tracer("dbt-language-server"))
+            .with_filter(layer_filter())
     });
 
     #[cfg(feature = "tokio-console")]
@@ -77,7 +97,6 @@ pub fn init(debug: bool, otlp: Option<&str>) -> Result<()> {
     let console_layer: Option<tracing_subscriber::layer::Identity> = None;
 
     tracing_subscriber::registry()
-        .with(filter)
         .with(file_layer)
         .with(otlp_layer)
         .with(console_layer)
@@ -100,7 +119,7 @@ fn build_otlp(endpoint: Option<&str>) -> Result<opentelemetry_sdk::trace::SdkTra
     let exporter = exporter.build()?;
 
     let resource = opentelemetry_sdk::Resource::builder()
-        .with_service_name("cogitator")
+        .with_service_name("dbt-language-server") // 05 §6.3's resource name
         .with_attributes([KeyValue::new("service.version", crate::VERSION)])
         .build();
     Ok(opentelemetry_sdk::trace::SdkTracerProvider::builder()
