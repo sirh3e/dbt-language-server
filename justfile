@@ -75,6 +75,11 @@ lua-fmt-check:
 lua-lint:
     luacheck editors/nvim
 
+# Byte-compile the Emacs integration with warnings as errors
+elisp-lint:
+    emacs -Q --batch --eval "(setq byte-compile-error-on-warn t)" -L editors/emacs -f batch-byte-compile editors/emacs/cogitator.el editors/emacs/cogitator-graph.el
+    rm -f editors/emacs/*.elc
+
 # Compile the Zed extension to WebAssembly the way Zed does
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1

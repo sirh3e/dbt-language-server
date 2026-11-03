@@ -93,6 +93,9 @@ When nil the server searches its own candidate order ($DBT_PROFILES_DIR,
 ;; ---------------------------------------------------------------------------
 
 (declare-function eglot-managed-p "eglot")
+;; compile-time only: gives the byte compiler eglot's class, functions and
+;; variables (eglot ships with Emacs >= 29); runtime loading stays lazy
+(eval-when-compile (require 'eglot))
 (declare-function eglot--current-server-or-lose "eglot")
 (declare-function jsonrpc-async-request "jsonrpc")
 (declare-function lsp-request-async "lsp-mode")
@@ -531,11 +534,16 @@ The server re-resolves the SQL dialect and passes --target to dbt runs."
   (when-let* ((root (locate-dominating-file dir "dbt_project.yml")))
     (cons 'transient root)))
 
+;; Evaluated (not byte-compiled) once eglot loads: eieio generates class
+;; predicates the compiler cannot know about inside with-eval-after-load.
 (with-eval-after-load 'eglot
-  (defclass eglot-cogitator (eglot-lsp-server) ()
-    :documentation "The cogitator dbt language server.")
-  (cl-defmethod eglot-initialization-options ((_server eglot-cogitator))
-    (or (cogitator--initialization-options) eglot--{}))) ; {} when unset
+  (eval
+   '(progn
+      (defclass eglot-cogitator (eglot-lsp-server) ()
+        :documentation "The cogitator dbt language server.")
+      (cl-defmethod eglot-initialization-options ((_server eglot-cogitator))
+        (or (cogitator--initialization-options) eglot--{}))) ; {} when unset
+   t))
 
 ;;;###autoload
 (defun cogitator-setup-eglot ()
