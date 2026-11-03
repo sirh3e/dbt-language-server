@@ -81,6 +81,53 @@ function M.check()
       health.error(("fusion binary '%s' not found"):format(fusion_bin))
     end
   end
+
+  -- the server's own view, when one is attached (dbt.doctor)
+  local client = vim.lsp.get_clients({ name = "cogitator" })[1]
+  if not client then
+    health.info("no live cogitator client — start one for the server-side report (dbt.doctor)")
+    return
+  end
+  local done, report = false, nil
+  client:exec_cmd({ command = "dbt.doctor", arguments = { {} } }, {}, function(err, result)
+    done = true
+    if not err then
+      report = result
+    end
+  end)
+  vim.wait(5000, function()
+    return done
+  end, 50)
+  if type(report) ~= "table" then
+    health.warn("dbt.doctor did not answer (older server?)")
+    return
+  end
+  health.ok(("server %s — project '%s' (%s), graph %d nodes / %d edges, %d dangling"):format(
+    report.serverVersion,
+    report.projectName,
+    report.dialect,
+    report.graph.nodes,
+    report.graph.edges,
+    report.graph.dangling
+  ))
+  if report.dbtBinaryFound then
+    health.ok("dbt binary on PATH: " .. report.dbtBinary)
+  else
+    health.warn("dbt binary not found: " .. report.dbtBinary)
+  end
+  if report.artifacts.runResultsAgeS ~= vim.NIL and report.artifacts.runResultsAgeS then
+    health.ok(("run_results.json is %ds old (drift: %d)"):format(
+      report.artifacts.runResultsAgeS,
+      report.artifacts.driftCount
+    ))
+  else
+    health.info("no target/run_results.json — run dbt once for run-status surfaces")
+  end
+  health.info(("scan cache persisted: %s · lint: %s · running jobs: %d"):format(
+    tostring(report.scanCachePersisted),
+    #report.lintEnabled > 0 and table.concat(report.lintEnabled, ",") or "off",
+    #report.runningJobs
+  ))
 end
 
 return M

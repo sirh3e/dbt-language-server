@@ -79,8 +79,7 @@ impl DbtJobs {
         }
     }
 
-    /// Running jobs, oldest token first.
-    #[allow(dead_code)] // dbt.doctor (final commit of the batch) reports these
+    /// Running jobs, oldest token first (dbt.doctor reports these).
     pub fn list(&self) -> Vec<(u64, String)> {
         let mut map = self.inner.lock().expect("jobs lock");
         map.retain(|_, job| !job.abort.is_finished());

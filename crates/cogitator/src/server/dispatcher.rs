@@ -659,6 +659,29 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.doctor" => {
+                let snap = self.snapshot_for("");
+                let derived = self.derived.clone();
+                let lints = self.toggles.lints.load(Ordering::Relaxed);
+                let jobs = self.jobs.list();
+                let config = self
+                    .config_status
+                    .lock()
+                    .expect("config status lock")
+                    .clone();
+                let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+                self.offload_blocking(req.id, "dbt.doctor", move || {
+                    super::handlers::doctor::doctor(
+                        &snap,
+                        &derived,
+                        lints,
+                        jobs,
+                        config,
+                        artifact_cap,
+                    )
+                });
+                return;
+            }
             "dbt.deadModels" => {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.deadModels", move || {

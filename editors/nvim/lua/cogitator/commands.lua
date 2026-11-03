@@ -117,6 +117,38 @@ function M.expand_jinja()
   end)
 end
 
+--- :DbtDoctor — the server's health report in a float.
+function M.doctor()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.doctor",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, report)
+    if err or type(report) ~= "table" then
+      vim.notify("dbt.doctor failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    local lines = vim.split(vim.inspect(report), "\n")
+    local ui = require("cogitator.ui")
+    local width = math.min(90, vim.o.columns - 4)
+    local height = math.min(#lines, vim.o.lines - 6)
+    local buf, win = ui.float({
+      row = math.floor((vim.o.lines - height) / 2),
+      col = math.floor((vim.o.columns - width) / 2),
+      width = width,
+      height = height,
+      title = "dbt doctor",
+    })
+    ui.set_lines(buf, lines)
+    vim.api.nvim_set_current_win(win)
+    vim.keymap.set("n", "q", vim.cmd.close, { buffer = buf, nowait = true })
+  end)
+end
+
 --- :DbtDeadModels — models nothing uses, as a quickfix list.
 function M.dead_models()
   local bufnr = vim.api.nvim_get_current_buf()

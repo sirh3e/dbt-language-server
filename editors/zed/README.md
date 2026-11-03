@@ -53,3 +53,12 @@ compiles the extension to WebAssembly (`wasm32-wasip1`) the way Zed does.
 - The third-party [zed-dbt](https://github.com/kylejbrk/zed-dbt)
   extension predates this one and also works; this extension is the
   first-party, settings-passthrough variant.
+
+## Server features beyond stock LSP
+
+Formatting, inlay hints, document links, linked CTE editing, quickfix
+and refactor code actions, pull + workspace diagnostics all work in
+Zed out of the box. The `dbt.*` executeCommand surface (doctor,
+impact, deadModels, expandJinja, runSelection/cancel, …) has no
+generic Zed UI yet — use the Neovim or Emacs integrations, or any
+client that can send workspace/executeCommand.

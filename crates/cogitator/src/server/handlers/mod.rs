@@ -5,5 +5,6 @@
 //! path; their logic is already pure in `cogitator_analysis::features`.
 
 pub mod commands;
+pub mod doctor;
 pub mod navigation;
 pub mod profiles;

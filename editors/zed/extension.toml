@@ -1,7 +1,7 @@
 id = "cogitator"
 name = "cogitator (dbt)"
 description = "dbt language server: grammar-aware completion, column lineage, code lenses and dbt execution for dbt projects"
-version = "0.1.0"
+version = "0.2.0"
 schema_version = 1
 authors = ["sirh3e"]
 repository = "https://github.com/j-clemons/dbt-language-server"

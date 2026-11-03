@@ -163,6 +163,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.deadModels",
     "dbt.impact",
     "dbt.expandJinja",
+    "dbt.doctor",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

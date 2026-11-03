@@ -329,6 +329,22 @@ Returns the buffer (separated from `cogitator-profiles' for testing)."
      (pop-to-buffer (cogitator--profiles-render report)))))
 
 ;;;###autoload
+(defun cogitator-server-doctor ()
+  "The server's own health report (dbt.doctor), pretty-printed."
+  (interactive)
+  (cogitator--execute
+   "dbt.doctor" (cogitator--command-argument)
+   (lambda (report)
+     (let ((buf (get-buffer-create "*cogitator-server-doctor*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (pp-to-string report))
+           (goto-char (point-min)))
+         (special-mode))
+       (pop-to-buffer buf)))))
+
+;;;###autoload
 (defun cogitator-doctor ()
   "Health report: binary, project root, profiles candidates, client state.
 Emacs has no :checkhealth, so this is a plain report buffer."

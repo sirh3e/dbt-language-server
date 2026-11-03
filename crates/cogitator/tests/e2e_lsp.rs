@@ -2007,3 +2007,60 @@ fn scan_cache_persists_across_sessions() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// dbt.doctor (05 §9): the merged health report over a project with
+/// synthesized artifacts.
+#[test]
+fn doctor_reports_the_whole_picture() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-doctor-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    let target = root.join("target");
+    std::fs::create_dir_all(&target).unwrap();
+    std::fs::write(
+        target.join("run_results.json"),
+        r#"{"results": [{"unique_id": "model.jaffle_shop.customers", "status": "success"}]}"#,
+    )
+    .unwrap();
+    std::fs::write(root.join("cogitator.yml"), "lint:\n  select_star: true\n").unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let mut report = serde_json::Value::Null;
+    for _ in 0..100 {
+        let answer = lsp.request(
+            "workspace/executeCommand",
+            serde_json::json!({"command": "dbt.doctor", "arguments": [{}]}),
+        );
+        report = answer["result"].clone();
+        // wait until the hot config applied the lint flag
+        if report["lintEnabled"]
+            .as_array()
+            .is_some_and(|l| l.iter().any(|x| x == "select_star"))
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(report["projectName"], "jaffle_shop", "{report}");
+    assert_eq!(report["dialect"], "duckdb", "{report}");
+    assert!(report["graph"]["nodes"].as_u64().unwrap() > 5, "{report}");
+    assert!(report["artifacts"]["runResultsAgeS"].is_u64(), "{report}");
+    assert!(report["dbtBinary"].is_string(), "{report}");
+    assert!(report["config"]["loaded"].as_bool().unwrap(), "{report}");
+    assert!(
+        report["lintEnabled"]
+            .as_array()
+            .is_some_and(|l| l.len() == 1),
+        "{report}"
+    );
+    assert_eq!(
+        report["runningJobs"].as_array().map(Vec::len),
+        Some(0),
+        "{report}"
+    );
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

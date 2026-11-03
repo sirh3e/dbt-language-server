@@ -87,8 +87,11 @@ editor integrations live under `editors/`.
   the source/ref/model under the cursor, dbt defaults only),
   dbt.compiledSql (compiled SQL content, 2 MiB cap), dbt.parse
   (project-wide, refreshes the context on success), dbt.openModel
-  (showDocument navigation for the YAML-side code actions). Every
-  command takes one argument object (`{uri, position?, …}`).
+  (showDocument navigation for the YAML-side code actions),
+  dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
+  dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
+  dbt.impact, dbt.expandJinja, dbt.doctor. Every command takes one
+  argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`); the
   completion capability advertises `triggerCharacters`.
