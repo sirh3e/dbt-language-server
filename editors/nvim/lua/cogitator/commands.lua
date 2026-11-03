@@ -1,11 +1,11 @@
 --- workspace/executeCommand wrappers (spec §1.6, §5.1): every dbt.* command
 --- takes one argument object { uri, position? }.
 
+local actions = require("cogitator.actions")
+
 local M = {}
 
-local function client_for(bufnr)
-  return vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
-end
+local client_for = actions.client_for
 
 --- The single argument object of spec §1.6 (exposed for the test suite).
 function M.build_argument(bufnr, with_position)
@@ -21,7 +21,6 @@ local function exec(command, with_position, handler)
   local bufnr = vim.api.nvim_get_current_buf()
   local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:exec_cmd({
@@ -51,7 +50,6 @@ function M.cache(action)
   local bufnr = vim.api.nvim_get_current_buf()
   local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   local arg = M.build_argument(bufnr, false)
@@ -130,7 +128,6 @@ function M.schema()
   local bufnr = vim.api.nvim_get_current_buf()
   local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:exec_cmd({
@@ -158,9 +155,8 @@ end
 --- Picker over every test defined for this model (and its versions).
 function M.tests()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:exec_cmd({
@@ -202,9 +198,8 @@ end
 --- :DbtTags — pick a tag, then a model carrying it, and open it.
 function M.tags()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:exec_cmd({
@@ -254,9 +249,8 @@ end
 --- :DbtSelectors — pick a selectors.yml entry and jump to it.
 function M.selectors()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:request("workspace/symbol", { query = "selector:" }, function(err, symbols)
@@ -280,9 +274,8 @@ end
 --- :DbtStatus — what the server knows and has been doing.
 function M.status()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local client = client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:exec_cmd({

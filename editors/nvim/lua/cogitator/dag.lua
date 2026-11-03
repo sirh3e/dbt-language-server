@@ -233,9 +233,7 @@ local function render()
   local boxes, width, height = layout(s.data, s.expanded, s.all_expanded)
   s.boxes = boxes
   local lines = draw(boxes, s.data.edges, width + 2, height + 1)
-  vim.bo[s.buf].modifiable = true
-  vim.api.nvim_buf_set_lines(s.buf, 0, -1, false, lines)
-  vim.bo[s.buf].modifiable = false
+  require("cogitator.ui").set_lines(s.buf, lines)
 end
 
 local function open_node()

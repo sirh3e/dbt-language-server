@@ -3,6 +3,8 @@
 --- switching the directory at runtime — live through dbt.setProfilesDir
 --- when the server has it, with a restart fallback for older builds.
 
+local actions = require("cogitator.actions")
+
 local M = {}
 
 --- The effective profiles dir for the current buffer's project: the
@@ -61,9 +63,8 @@ end
 --- re-resolves the dialect and passes --target to dbt runs).
 function M.pick_target()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local client = actions.client_for(bufnr)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   client:exec_cmd({
@@ -148,7 +149,7 @@ function M.set(dir)
   end
 
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
+  local client = actions.client_for(bufnr, true)
   local commands = client
     and vim.tbl_get(client.server_capabilities, "executeCommandProvider", "commands")
   if client and vim.tbl_contains(commands or {}, "dbt.setProfilesDir") then

@@ -3,6 +3,9 @@
 --- (a hint when dbt has not written one), [3] versions and tests. Pure
 --- render over the browser's state; browse.lua owns that state.
 
+local render_lib = require("cogitator.render")
+local ui = require("cogitator.ui")
+
 local M = {}
 
 local function tab_title(tab)
@@ -32,16 +35,6 @@ local function read_uri_lines(uri)
   return nil
 end
 
-local function test_label(t)
-  local label = t.name
-  if t.column and t.column ~= vim.NIL then
-    label = label .. " on " .. t.column
-  end
-  if t.version and t.version ~= vim.NIL then
-    label = label .. (" (v%d)"):format(t.version)
-  end
-  return "  " .. label
-end
 
 local function versions_and_tests(info)
   local lines = {}
@@ -65,7 +58,7 @@ local function versions_and_tests(info)
     lines[#lines + 1] = "  · none ·"
   else
     for _, t in ipairs(info.tests) do
-      lines[#lines + 1] = test_label(t)
+      lines[#lines + 1] = "  " .. render_lib.test_label(t)
     end
   end
   return lines
@@ -100,9 +93,7 @@ function M.render(s)
       lines = versions_and_tests(s.info)
     end
   end
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
+  ui.set_lines(buf, lines)
   if vim.bo[buf].filetype ~= filetype then
     vim.bo[buf].filetype = filetype
   end

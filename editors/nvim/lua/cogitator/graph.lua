@@ -1,10 +1,22 @@
 --- Model-graph browser (dbt.modelGraph): a yazi-style three-pane float —
 --- upstream models on the left, the current model in the center, downstream
 --- models on the right. h/l move focus, <CR> re-centers on a neighbor,
---- o opens its file, q/<Esc> closes.
+--- o opens its file, q/<Esc> closes. Float/label plumbing lives in
+--- cogitator.ui / cogitator.render / cogitator.actions.
+
+local actions = require("cogitator.actions")
+local render_lib = require("cogitator.render")
+local ui = require("cogitator.ui")
 
 local M = {}
 
+---@class cogitator.graph.State
+---@field client vim.lsp.Client
+---@field src_buf integer
+---@field wins table<string, integer>
+---@field bufs table<string, integer>
+---@field data table? the dbt.modelGraph payload
+---@type cogitator.graph.State?
 M._state = nil
 
 local function close()
@@ -13,56 +25,26 @@ local function close()
     return
   end
   M._state = nil
-  for _, win in pairs(s.wins) do
-    if vim.api.nvim_win_is_valid(win) then
-      vim.api.nvim_win_close(win, true)
-    end
-  end
-  for _, buf in pairs(s.bufs) do
-    if vim.api.nvim_buf_is_valid(buf) then
-      vim.api.nvim_buf_delete(buf, { force = true })
-    end
-  end
+  ui.close_state(s)
 end
 
-local function entry_label(e)
-  local label = e.name
-  if e.kind == "source" then
-    label = label .. "  [source]"
-  end
-  if not e.uri then
-    label = label .. "  (missing)"
-  end
-  return label
-end
-
-local function pane_lines(entries)
-  if #entries == 0 then
-    return { "· none ·" }
-  end
-  return vim.tbl_map(entry_label, entries)
-end
-
-local function set_lines(buf, lines)
-  vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.bo[buf].modifiable = false
-end
-
+--- Fill all three panes from a dbt.modelGraph payload.
+---@param data table
 local function render(data)
   local s = M._state
   s.data = data
-  local path = data.uri and vim.fn.fnamemodify(vim.uri_to_fname(data.uri), ":~:.") or ""
-  set_lines(s.bufs.left, pane_lines(data.upstream))
-  set_lines(s.bufs.center, {
+  local path = (data.uri and data.uri ~= vim.NIL) and vim.fn.fnamemodify(vim.uri_to_fname(data.uri), ":~:.")
+    or ""
+  ui.set_lines(s.bufs.left, render_lib.pane_lines(data.upstream))
+  ui.set_lines(s.bufs.center, {
     data.model,
     "",
     path,
     "",
     ("%d upstream · %d downstream"):format(#data.upstream, #data.downstream),
   })
-  set_lines(s.bufs.right, pane_lines(data.downstream))
-  vim.api.nvim_win_set_config(s.wins.center, { title = " " .. data.model .. " ", title_pos = "center" })
+  ui.set_lines(s.bufs.right, render_lib.pane_lines(data.downstream))
+  ui.retitle(s.wins.center, " " .. data.model .. " ")
   for _, pane in ipairs({ "left", "right" }) do
     if vim.api.nvim_win_is_valid(s.wins[pane]) then
       vim.api.nvim_win_set_cursor(s.wins[pane], { 1, 0 })
@@ -72,16 +54,15 @@ end
 
 --- dbt.modelGraph through the originating client; `by` is {uri=...} for the
 --- initial view or {model=...} when re-centering on a neighbor.
+---@param by {uri?: string, model?: string}
+---@param on_result fun(data: table)
 local function fetch(by, on_result)
   local s = M._state
   if not s or not s.client or s.client:is_stopped() then
     vim.notify("cogitator client is gone; close and reopen the graph", vim.log.levels.ERROR)
     return
   end
-  s.client:exec_cmd({
-    command = "dbt.modelGraph",
-    arguments = { { uri = by.uri or "", model = by.model } },
-  }, { bufnr = s.src_buf }, function(err, result)
+  actions.exec_with(s.client, s.src_buf, "dbt.modelGraph", { uri = by.uri or "", model = by.model }, function(err, result)
     if err then
       vim.notify("dbt.modelGraph failed: " .. err.message, vim.log.levels.ERROR)
       return
@@ -97,6 +78,9 @@ local function fetch(by, on_result)
   end)
 end
 
+--- The entry under the cursor in a side pane.
+---@param pane "left"|"right"
+---@return cogitator.GraphEntry?
 local function selected_entry(pane)
   local s = M._state
   local entries = pane == "left" and s.data.upstream or s.data.downstream
@@ -106,6 +90,8 @@ local function selected_entry(pane)
   return entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
 end
 
+--- <CR> on a side entry: make that model the center.
+---@param pane "left"|"right"
 local function recenter(pane)
   local e = selected_entry(pane)
   if not e then
@@ -118,15 +104,19 @@ local function recenter(pane)
   fetch({ model = e.name }, render)
 end
 
+--- Close the view and open the entry's file (if it has one).
+---@param uri string|vim.NIL|nil
 local function open_entry(uri)
-  if not uri then
+  if not uri or uri == vim.NIL then
     vim.notify("no file on disk for this entry", vim.log.levels.WARN)
     return
   end
   close()
-  vim.cmd.edit(vim.uri_to_fname(uri))
+  actions.open_uri(uri)
 end
 
+---@param pane "left"|"center"|"right"
+---@param buf integer
 local function keymaps(pane, buf)
   local s = M._state
   local function map(lhs, fn)
@@ -159,31 +149,26 @@ local function keymaps(pane, buf)
   end
 end
 
+---@param pane "left"|"center"|"right"
 local function float(pane, col, width, height, title)
   local s = M._state
-  local buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[buf].bufhidden = "wipe"
-  local win = vim.api.nvim_open_win(buf, false, {
-    relative = "editor",
+  local buf, win = ui.float({
     row = math.max(1, math.floor((vim.o.lines - height) / 2) - 1),
     col = col,
     width = width,
     height = height,
-    style = "minimal",
-    border = "rounded",
-    title = " " .. title .. " ",
-    title_pos = "center",
+    title = title,
+    cursorline = pane ~= "center",
   })
-  vim.wo[win].cursorline = pane ~= "center"
   s.bufs[pane], s.wins[pane] = buf, win
   keymaps(pane, buf)
 end
 
+--- Open the three-pane graph for the current buffer's model.
 function M.open()
   local src_buf = vim.api.nvim_get_current_buf()
-  local client = vim.lsp.get_clients({ bufnr = src_buf, name = "cogitator" })[1]
+  local client = actions.client_for(src_buf)
   if not client then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
     return
   end
   close()
