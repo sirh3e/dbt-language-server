@@ -69,17 +69,20 @@ fn rename_model_produces_full_workspace_edit() {
     let doc = docs.get("file:///r.sql");
     let col = text.find("stg_orders").unwrap() as u32;
 
-    let edit = features::rename_model(
-        &ctx,
-        doc,
-        "file:///r.sql",
-        Position {
-            line: 0,
-            character: col + 1,
-        },
-        "stg_orders_v2",
+    let edit = serde_json::to_value(
+        features::rename_model(
+            &ctx,
+            doc,
+            "file:///r.sql",
+            Position {
+                line: 0,
+                character: col + 1,
+            },
+            "stg_orders_v2",
+        )
+        .expect("workspace edit"),
     )
-    .expect("workspace edit");
+    .unwrap();
     let changes = edit["documentChanges"].as_array().expect("documentChanges");
 
     // dependents rewritten (customers.sql refs stg_orders in the fixture)
