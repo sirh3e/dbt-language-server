@@ -106,6 +106,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                         "dbt.goToTests",
                         "dbt.status",
                         "dbt.projectGraph",
+                        "dbt.modelInfo",
                     ],
                 },
                 references_provider: true,

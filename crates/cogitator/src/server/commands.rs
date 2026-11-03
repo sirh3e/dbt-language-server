@@ -240,12 +240,7 @@ pub fn spawn_dbt(link: ClientLink, invocation: DbtInvocation) {
 /// After a successful compile: locate target/compiled/<project>/<model path>
 /// and open it, or explain where we looked.
 fn open_compiled(link: &ClientLink, root: &Path, project: &str, model_path: &Path) {
-    let relative = model_path.strip_prefix(root).unwrap_or(model_path);
-    let compiled = root
-        .join("target")
-        .join("compiled")
-        .join(project)
-        .join(relative);
+    let compiled = cogitator_analysis::features::compiled_sql_path(root, project, model_path);
     if compiled.is_file() {
         link.show_document(cogitator_lsp::fs_path_to_uri(&compiled), None);
     } else {

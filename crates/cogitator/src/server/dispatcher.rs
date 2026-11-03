@@ -418,6 +418,13 @@ impl Dispatcher {
                 self.send(&ResultResponse::new(req.id, result));
                 return;
             }
+            "dbt.modelInfo" => {
+                let model = arg.get("model").and_then(|m| m.as_str());
+                let ctx = self.snapshot();
+                let result = features::model_info(&ctx, &uri, model);
+                self.send(&ResultResponse::new(req.id, result));
+                return;
+            }
             "dbt.goToSchema" => {}
             other => {
                 let response = ErrorResponse::new(

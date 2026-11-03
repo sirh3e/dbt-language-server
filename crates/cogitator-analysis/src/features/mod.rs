@@ -7,6 +7,7 @@ mod definition;
 mod diagnostics;
 mod extract;
 mod hover;
+mod model_info;
 mod navigation;
 mod rename;
 mod signature;
@@ -18,6 +19,7 @@ pub use definition::{definition, go_to_schema};
 pub use diagnostics::dangling_ref_diagnostics;
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use hover::hover;
+pub use model_info::{compiled_sql_path, model_info};
 pub use navigation::{
     code_lenses, document_highlights, document_symbols, model_graph, project_graph_json,
     references, workspace_symbols,

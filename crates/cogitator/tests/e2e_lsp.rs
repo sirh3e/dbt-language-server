@@ -481,7 +481,50 @@ fn full_session() {
         .as_array()
         .is_some_and(|e| !e.is_empty()));
 
-    // 6c. status: dbt.status knows the project
+    // 6c. modelInfo: neighbors + tests + versions + compiled SQL in one trip.
+    // dbt would write target/compiled/ at runtime; fake it (gitignored) and
+    // clean up even on assertion failure.
+    struct RemoveOnDrop(PathBuf);
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+    let compiled_dir = root.join("target/compiled/jaffle_shop/models");
+    std::fs::create_dir_all(&compiled_dir).unwrap();
+    std::fs::write(compiled_dir.join("customers.sql"), "select 1 as id\n").unwrap();
+    let _compiled_cleanup = RemoveOnDrop(root.join("target"));
+
+    let info = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.modelInfo",
+                            "arguments": [{ "model": "customers" }] }),
+    );
+    let i = &info["result"];
+    assert!(
+        i["upstream"]
+            .as_array()
+            .is_some_and(|u| u.iter().any(|e| e["name"] == "stg_customers")),
+        "{i}"
+    );
+    assert!(i["tests"].as_array().is_some_and(|t| !t.is_empty()), "{i}");
+    assert!(
+        i["compiledUri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("target/compiled/jaffle_shop/models/customers.sql")),
+        "{i}"
+    );
+    let versioned = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({ "command": "dbt.modelInfo",
+                            "arguments": [{ "model": "customer_orders" }] }),
+    );
+    assert_eq!(
+        versioned["result"]["versions"]["latestVersion"], 2,
+        "{versioned}"
+    );
+
+    // 6d. status: dbt.status knows the project
     let status = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({ "command": "dbt.status", "arguments": [{}] }),

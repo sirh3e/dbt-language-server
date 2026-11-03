@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: customer_orders
+    description: Orders aggregated per customer (versioned model)
+    latest_version: 2
+
+    versions:
+      - v: 1
+        columns:
+          - name: order_count
+            data_tests:
+              - not_null
+      - v: 2
+
+    columns:
+      - name: customer_id
+        data_tests:
+          - unique
