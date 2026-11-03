@@ -1,6 +1,6 @@
 //! Outgoing result/notification types (01 §2.3 + post-parity).
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::core::{Location, Range};
 
@@ -99,13 +99,55 @@ pub mod diagnostic_severity {
     pub const HINT: i32 = 4;
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Diagnostic {
     pub range: Range,
     pub message: String,
+    #[serde(default)]
     pub severity: i32,
+    #[serde(default, deserialize_with = "super::diagnostics::lenient_code")]
     pub code: String,
+    #[serde(default)]
     pub source: String,
+    /// LSP DiagnosticTags (1 = Unnecessary, 2 = Deprecated).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<u8>>,
+    #[serde(
+        default,
+        rename = "relatedInformation",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub related_information: Option<Vec<super::diagnostics::DiagnosticRelatedInformation>>,
+    /// Typed quickfix payload (01 §6.1); foreign shapes decode to None.
+    #[serde(
+        default,
+        deserialize_with = "super::diagnostics::lenient_data",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub data: Option<super::diagnostics::DiagnosticData>,
+}
+
+impl Diagnostic {
+    /// A diagnostic with none of the optional extras — the default
+    /// constructor everywhere a plain message is enough.
+    pub fn plain(
+        range: Range,
+        message: String,
+        severity: i32,
+        code: impl Into<String>,
+        source: impl Into<String>,
+    ) -> Self {
+        Diagnostic {
+            range,
+            message,
+            severity,
+            code: code.into(),
+            source: source.into(),
+            tags: None,
+            related_information: None,
+            data: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]

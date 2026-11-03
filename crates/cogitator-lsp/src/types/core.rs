@@ -30,7 +30,7 @@ impl Range {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Location {
     pub uri: String,
     pub range: Range,

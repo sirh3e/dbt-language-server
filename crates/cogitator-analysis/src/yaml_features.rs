@@ -133,13 +133,7 @@ fn position_of_key(text: &str, key: &str) -> Option<Range> {
 }
 
 fn diag(range: Range, message: String, severity: i32) -> Diagnostic {
-    Diagnostic {
-        range,
-        message,
-        severity,
-        code: "dbt-yaml".to_string(),
-        source: "cogitator".to_string(),
-    }
+    Diagnostic::plain(range, message, severity, "dbt-yaml", "cogitator")
 }
 
 static ROOT_KEYS: LazyLock<Vec<String>> =

@@ -71,11 +71,11 @@ fn has_default(doc: &Document, token: &cogitator_parser::Token) -> bool {
 }
 
 fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Option<Diagnostic> {
-    Some(Diagnostic {
-        range: token_range(token),
-        message: guidance.to_diagnostic(),
-        severity: diagnostic_severity::WARNING,
-        code: code.to_string(),
-        source: "cogitator".to_string(),
-    })
+    Some(Diagnostic::plain(
+        token_range(token),
+        guidance.to_diagnostic(),
+        diagnostic_severity::WARNING,
+        code,
+        "cogitator",
+    ))
 }

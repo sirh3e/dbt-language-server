@@ -161,13 +161,13 @@ pub fn parse_compile_log(log: &FusionLog) -> (String, Diagnostic) {
         parse_fusion_log_msg(&log.info.msg, &log.info.code, &log.info.level);
     (
         uri,
-        Diagnostic {
+        Diagnostic::plain(
             range,
             message,
             severity,
-            code: log.info.code.clone(),
-            source: format!("dbt Fusion {}", log.data.version),
-        },
+            log.info.code.clone(),
+            format!("dbt Fusion {}", log.data.version),
+        ),
     )
 }
 

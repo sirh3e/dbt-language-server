@@ -127,13 +127,13 @@ pub mod engine {
                 })
                 .unwrap_or(0);
             let (line, character) = line_col(template, offset);
-            Some(Diagnostic {
-                range: Range::zero_width(Position { line, character }),
+            Some(Diagnostic::plain(
+                Range::zero_width(Position { line, character }),
                 message,
-                severity: diagnostic_severity::ERROR,
-                code: String::new(),
-                source: "duckdb 2.0".to_string(),
-            })
+                diagnostic_severity::ERROR,
+                "",
+                "duckdb 2.0",
+            ))
         }
     }
 

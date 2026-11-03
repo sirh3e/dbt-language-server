@@ -4,6 +4,7 @@
 
 mod actions;
 mod core;
+mod diagnostics;
 mod init;
 mod messages;
 mod params;
@@ -12,6 +13,7 @@ mod workspace;
 
 pub use actions::*;
 pub use core::*;
+pub use diagnostics::*;
 pub use init::*;
 pub use messages::*;
 pub use params::*;
