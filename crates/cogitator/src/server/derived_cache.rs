@@ -3,9 +3,10 @@
 //! lineage per document, and the serialized dbt.modelInfo/modelTests
 //! results (whose inputs are the context snapshot plus schema/compiled
 //! file stamps). Everything is Sync — the offload architecture's tasks
-//! consult it concurrently. No on-disk persistence by design: the full
-//! context build is sub-second, so only intra-session recomputation is
-//! worth saving (recorded exclusion in the spec).
+//! consult it concurrently. THESE derived caches stay memory-only by
+//! design; the SCAN cache now persists separately (03 §10,
+//! server/cache_persist.rs) — that supersedes the old blanket
+//! no-persistence note.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

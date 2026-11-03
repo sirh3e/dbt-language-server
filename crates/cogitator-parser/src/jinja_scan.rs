@@ -10,7 +10,7 @@ use regex::Regex;
 
 use crate::LineTable;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RawMacro {
     pub name: String,
     /// Full `name(args…)` signature text (Go kept it as the description).
@@ -23,13 +23,13 @@ pub struct RawMacro {
     pub end: (u32, u32),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MacroParam {
     pub name: String,
     pub default: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RawDocsBlock {
     pub name: String,
     pub content: String,

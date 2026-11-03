@@ -5,6 +5,7 @@ pub mod exposures;
 mod macros;
 mod models;
 mod packages;
+pub mod persist;
 mod variables;
 
 use std::collections::HashMap;

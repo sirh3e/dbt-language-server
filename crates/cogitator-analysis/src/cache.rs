@@ -58,6 +58,10 @@ impl<T> FileCache<T> {
     }
 
     /// Drop entries not touched since the last sweep (deleted/moved files).
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     pub fn sweep(&mut self) {
         let touched: std::collections::HashSet<_> = self.touched.drain(..).collect();
         self.entries.retain(|path, _| touched.contains(path));
@@ -74,4 +78,23 @@ impl<T> FileCache<T> {
 fn stamp(path: &Path) -> Option<Stamp> {
     let meta = std::fs::metadata(path).ok()?;
     Some((meta.modified().ok()?, meta.len()))
+}
+
+impl<T: serde::Serialize + serde::de::DeserializeOwned + Clone> FileCache<T> {
+    /// Snapshot for on-disk persistence (03 §10): stamps + owned values.
+    pub fn export(&self) -> Vec<(std::path::PathBuf, Stamp, T)> {
+        self.entries
+            .iter()
+            .map(|(path, (stamp, value))| (path.clone(), *stamp, (**value).clone()))
+            .collect()
+    }
+
+    /// Seed from a persisted snapshot. A seeded entry with a stale stamp
+    /// self-heals through the ordinary (mtime, size) check on next use.
+    pub fn seed(&mut self, items: Vec<(std::path::PathBuf, Stamp, T)>) {
+        for (path, stamp, value) in items {
+            self.entries
+                .insert(path, (stamp, std::sync::Arc::new(value)));
+        }
+    }
 }

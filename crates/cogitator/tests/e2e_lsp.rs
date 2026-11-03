@@ -1965,3 +1965,45 @@ fn editing_actions_convert_scaffold_inherit() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Persisted scan cache (03 §10): the first session writes
+/// target/.cogitator-cache; a fresh process seeds from it and its
+/// first refresh serves stamp hits instead of re-reading the project.
+#[test]
+fn scan_cache_persists_across_sessions() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-cache-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+
+    {
+        let (mut lsp, _uri) = booted_in(&root, &[]);
+        let _ = lsp.request("shutdown", serde_json::json!({}));
+        lsp.notify("exit", serde_json::json!({}));
+        let status = lsp.child.wait().unwrap();
+        assert_eq!(status.code(), Some(0));
+    }
+    let cache = root.join("target/.cogitator-cache");
+    assert!(cache.is_file(), "first session persisted the scan cache");
+    let text = std::fs::read_to_string(&cache).unwrap();
+    assert!(
+        text.starts_with("{\"format\":1,"),
+        "versioned header: {}",
+        &text[..60.min(text.len())]
+    );
+
+    // second session: the first refresh hits instead of re-reading
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let status = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    );
+    let hits = status["result"]["refresh"]["cacheHits"]
+        .as_u64()
+        .unwrap_or(0);
+    assert!(hits > 0, "warm start served no scan-cache hits: {status}");
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

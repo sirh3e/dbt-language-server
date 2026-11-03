@@ -591,6 +591,7 @@ dependencies = [
  "pretty_assertions",
  "regex",
  "rstest",
+ "serde",
  "sqlparser",
  "tracing",
 ]

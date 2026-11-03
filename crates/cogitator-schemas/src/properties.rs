@@ -11,13 +11,13 @@ use cogitator_lsp::Position;
 use crate::generated::dbt_yml_files::DbtYmlFiles;
 use crate::yaml;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesFile {
     pub models: Vec<ModelEntry>,
     pub sources: Vec<SourceEntry>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ModelEntry {
     pub name: String,
     pub name_pos: Position,
@@ -30,7 +30,7 @@ pub struct ModelEntry {
 
 /// A documented column from the properties YAML (write-assist completion,
 /// column hover/definition).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ColumnEntry {
     pub name: String,
     pub description: String,
@@ -38,7 +38,7 @@ pub struct ColumnEntry {
     pub name_pos: Position,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SourceEntry {
     pub name: String,
     pub name_pos: Position,
@@ -51,7 +51,7 @@ pub struct SourceEntry {
     pub tables: Vec<TableEntry>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TableEntry {
     pub name: String,
     pub name_pos: Position,

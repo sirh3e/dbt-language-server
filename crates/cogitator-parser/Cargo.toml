@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde = { workspace = true }
 cogitator-error = { workspace = true }
 cogitator-dialects = { workspace = true }
 minijinja = { workspace = true }

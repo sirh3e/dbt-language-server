@@ -12,13 +12,13 @@ use cogitator_schemas::yaml::{as_str, entries, get, items, position_of};
 use saphyr::{LoadableYamlNode, MarkedYaml, Scalar, YamlData};
 
 /// What an exposure/metric/semantic model points at.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RefTarget {
     Model(String),
     Source(String, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CitizenDetails {
     pub name: String,
     pub uri: PathBuf,
@@ -31,7 +31,7 @@ pub struct CitizenDetails {
 }
 
 /// One properties file's citizens.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CitizenFile {
     pub exposures: Vec<CitizenDetails>,
     pub metrics: Vec<CitizenDetails>,

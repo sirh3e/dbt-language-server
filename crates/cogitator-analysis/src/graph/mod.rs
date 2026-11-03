@@ -20,7 +20,9 @@ mod traverse;
 /// Cached per-model edge extraction result: (target kind, edge, target name).
 pub type EdgeSeed = (NodeKind, EdgeKind, String);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum NodeKind {
     Model,
     Source,
@@ -51,7 +53,7 @@ pub struct NodeData {
     pub uri: PathBuf,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum EdgeKind {
     Ref,
     Source,

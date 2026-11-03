@@ -2,6 +2,7 @@
 //! reader → dispatcher (owns Documents) → writer; debounced refresh task
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
+mod cache_persist;
 mod client_link;
 mod commands;
 mod compiled;
@@ -307,6 +308,17 @@ pub async fn run(
                     builder.set_profiles_dir(cfg.dir_override.clone());
                     builder.set_profile_override(cfg.profile.clone());
                     builder.set_target_override(cfg.target.clone());
+                    // cold process + persisted snapshot → warm start
+                    if builder.scan_is_cold() {
+                        if let Some(project_root) = cogitator_analysis::util::get_project_root(
+                            "dbt_project.yml",
+                            std::path::Path::new(&root),
+                        ) {
+                            if let Some(scan) = server_cache_load(&project_root) {
+                                builder.seed_scan(scan);
+                            }
+                        }
+                    }
                     #[allow(unused_mut)]
                     let mut ctx = builder.build(&root);
                     let stats = builder.cache_stats();
@@ -314,6 +326,9 @@ pub async fn run(
                     #[cfg(feature = "duckdb-parser")]
                     if warehouse.0.warehouse_columns.load(Ordering::Relaxed) {
                         enrich_warehouse_columns(&mut ctx, &root, &cfg, &warehouse.1);
+                    }
+                    if let Some(project_root) = ctx.project_root.as_deref() {
+                        cache_persist::save(project_root, builder.export_scan());
                     }
                     (ctx, stats)
                 }
@@ -582,4 +597,11 @@ fn enrich_warehouse_columns(
             }
         }
     }
+}
+
+/// Thin indirection so the refresh closure reads cleanly.
+fn server_cache_load(
+    project_root: &std::path::Path,
+) -> Option<cogitator_analysis::context::persist::PersistedScan> {
+    cache_persist::load(project_root)
 }
