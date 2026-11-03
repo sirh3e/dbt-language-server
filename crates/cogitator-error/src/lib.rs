@@ -22,14 +22,6 @@ pub enum Error {
     Jinja { path: PathBuf, message: String },
     #[error("sql tokenizer: {0}")]
     SqlTokenizer(#[from] sqlparser::tokenizer::TokenizerError),
-    #[error("unknown document: {uri}")]
-    UnknownDocument { uri: String },
-    #[error("no token at {line}:{character}")]
-    NoTokenAtCursor { line: u32, character: u32 },
-    #[error("dbt project root not found from {start}")]
-    ProjectRootNotFound { start: PathBuf },
-    #[error("fusion: {0}")]
-    Fusion(String),
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
