@@ -135,9 +135,10 @@ impl RefreshTask {
                         ctx.source_detail_map.len(),
                         elapsed_ms
                     ));
-                    tracing::debug!(
+                    tracing::info!(
                         models = ctx.model_detail_map.len(),
                         sources = ctx.source_detail_map.len(),
+                        elapsed_ms,
                         "context refreshed"
                     );
                     // proactive feedback: explain *why* features are degraded

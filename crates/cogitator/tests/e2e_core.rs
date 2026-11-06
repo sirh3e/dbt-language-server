@@ -619,3 +619,36 @@ fn full_session() {
     let status = lsp.child.wait().unwrap();
     assert_eq!(status.code(), Some(0));
 }
+
+/// The editor-visible log stream (05 §6.3 addendum): a plain boot
+/// already surfaces the INFO overview lines as window/logMessage.
+#[test]
+fn server_logs_reach_the_editor() {
+    let (mut lsp, _uri) = booted(&[]);
+    // stir once more so any straggling notifications get stashed
+    let _ = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    );
+    let logs: Vec<&str> = lsp
+        .stash
+        .iter()
+        .filter(|m| m["method"] == "window/logMessage")
+        .filter_map(|m| m["params"]["message"].as_str())
+        .collect();
+    assert!(
+        logs.iter().any(|m| m.contains("context refreshed")),
+        "no overview line in {logs:?}"
+    );
+    assert!(
+        lsp.stash
+            .iter()
+            .filter(|m| m["method"] == "window/logMessage")
+            .all(|m| m["params"]["type"]
+                .as_i64()
+                .is_some_and(|t| (1..=3).contains(&t))),
+        "default level is info — no debug lines: {logs:?}"
+    );
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

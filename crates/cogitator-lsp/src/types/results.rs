@@ -304,6 +304,19 @@ pub fn show_message(
     }
 }
 
+/// window/logMessage: the editor's LOG VIEW, not an alert — same
+/// params shape as showMessage (01 §5).
+pub fn log_message(message_type: i32, message: String) -> Notification<ShowMessageParams> {
+    Notification {
+        jsonrpc: "2.0",
+        method: "window/logMessage",
+        params: ShowMessageParams {
+            message_type,
+            message,
+        },
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct ShowDocumentParams {
     pub uri: String,

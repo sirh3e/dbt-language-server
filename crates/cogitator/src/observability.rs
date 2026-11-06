@@ -113,6 +113,9 @@ pub fn init(debug: bool, otlp: Option<&str>) -> Result<()> {
         .with(file_layer)
         .with(otlp_layer)
         .with(console_layer)
+        // editor-visible stream (05 §6.3 addendum): its own atomic gate,
+        // no EnvFilter — the per-layer-filter rule stays intact
+        .with(crate::client_log::ClientLogLayer)
         .init();
 
     let _ = GUARD.set(Guard {

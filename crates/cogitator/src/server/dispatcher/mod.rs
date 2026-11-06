@@ -249,7 +249,9 @@ impl Dispatcher {
                 }
             }
         }
-        crate::metrics::record_request(&method, started.elapsed().as_secs_f64() * 1000.0);
+        let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+        tracing::debug!(target: "cogitator::requests", %method, elapsed_ms, "handled");
+        crate::metrics::record_request(&method, elapsed_ms);
     }
 
     /// Reply InvalidParams when a request (id present) has undecodable params.

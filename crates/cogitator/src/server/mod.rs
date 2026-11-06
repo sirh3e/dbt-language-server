@@ -139,6 +139,8 @@ pub async fn run(
 
     // writer task: sole owner of stdout (05 §6.2 / 01 §4)
     let (write_tx, mut write_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    // from here on, INFO+ events reach the editor's log view too
+    crate::client_log::set_sink(write_tx.clone());
     let request_ids = Arc::new(std::sync::atomic::AtomicI64::new(1));
     // set at initialize from the client's window.workDoneProgress capability
     let progress_supported = Arc::new(AtomicBool::new(false));
@@ -176,7 +178,7 @@ pub async fn run(
     let writer = tokio::spawn(async move {
         let mut stdout = tokio::io::stdout();
         while let Some(frame) = write_rx.recv().await {
-            tracing::trace!(bytes = frame.len(), "frame write");
+            tracing::trace!(target: "cogitator::wire", bytes = frame.len(), "frame write");
             if stdout.write_all(&frame).await.is_err() {
                 break;
             }
