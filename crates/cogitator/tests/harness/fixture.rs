@@ -49,9 +49,24 @@ pub fn jaffle() -> TestProject {
     let home = tmp.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     TestProject {
-        root: root.canonicalize().unwrap(),
+        root: simplified(root.canonicalize().unwrap()),
         home,
         _tmp: tmp,
+    }
+}
+
+/// `canonicalize` resolves symlinks (macOS tempdirs live behind
+/// /var → /private/var) but on Windows returns a `\\?\` verbatim path,
+/// which no editor ever sends over LSP and whose prefix compares
+/// unequal to the plain `C:\…` spelling. Tests speak like an editor.
+fn simplified(path: PathBuf) -> PathBuf {
+    let raw = path.to_string_lossy();
+    if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = raw.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
     }
 }
 

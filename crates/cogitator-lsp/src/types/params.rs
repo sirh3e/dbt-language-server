@@ -178,11 +178,19 @@ fn strip_drive_slash(path: String) -> String {
 
 /// Filesystem path → `file://` URI: backslashes become `/`, a Windows drive
 /// path gets its leading slash (`C:\w` → `file:///C:/w`), and bytes outside
-/// the URI path character set are percent-encoded.
+/// the URI path character set are percent-encoded. Verbatim paths — what
+/// `Path::canonicalize` returns on Windows — map to the same URI as their
+/// plain spelling (`\\?\C:\w` → `file:///C:/w`, `\\?\UNC\srv\sh` →
+/// `file:////srv/sh`): no client understands a percent-encoded `?` host.
 pub fn fs_path_to_uri(path: &std::path::Path) -> String {
     use std::fmt::Write;
 
-    let raw = path.to_string_lossy().replace('\\', "/");
+    let mut raw = path.to_string_lossy().replace('\\', "/");
+    if let Some(rest) = raw.strip_prefix("//?/UNC/") {
+        raw = format!("//{rest}");
+    } else if let Some(rest) = raw.strip_prefix("//?/") {
+        raw = rest.to_string();
+    }
     let mut out = String::with_capacity(raw.len() + 8);
     out.push_str("file://");
     if !raw.starts_with('/') {
@@ -360,6 +368,20 @@ mod tests {
         assert_eq!(
             fs_path_to_uri(Path::new(r"C:\work\proj")),
             "file:///C:/work/proj"
+        );
+        // canonicalize() on Windows hands back verbatim paths: same URI
+        // as the plain spelling, drive and UNC forms alike
+        assert_eq!(
+            fs_path_to_uri(Path::new(r"\\?\C:\work\proj")),
+            "file:///C:/work/proj"
+        );
+        assert_eq!(
+            fs_path_to_uri(Path::new(r"\\?\UNC\srv\share\proj")),
+            "file:////srv/share/proj"
+        );
+        assert_eq!(
+            fs_path_to_uri(Path::new(r"\\srv\share\proj")),
+            "file:////srv/share/proj"
         );
         // round-trips through the decoder
         assert_eq!(
