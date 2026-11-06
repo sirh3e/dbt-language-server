@@ -479,7 +479,12 @@ for every e2e test:
   sandboxed `HOME`/`USERPROFILE`/`XDG_*`/`DBT_PROFILES_DIR`). Nothing
   boots on the shared `testdata/` tree; the server's own
   `target/.cogitator-cache` persistence therefore never leaks between
-  tests or into git status.
+  tests or into git status. The fixture root is canonicalized (macOS
+  tempdirs live behind the /var symlink) and then *simplified*: the
+  `\\?\` verbatim prefix Windows `canonicalize` adds is stripped,
+  because no editor ever sends verbatim paths over LSP and `Path`
+  equality treats `\\?\C:\…` and `C:\…` as different prefixes. Tests
+  speak to the server like an editor, in plain paths.
 - **Server→client requests are auto-answered** (`showDocument` →
   success, `applyEdit` → applied, progress-create/registration →
   null) and recorded; tests assert them via
