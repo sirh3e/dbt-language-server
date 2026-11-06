@@ -25,9 +25,9 @@ changelog is generated from the history (`just changelog`).
      freshness) — this is exactly what CI runs. `just test` passes
      `--features cogitator/e2e` (the fake-dbt test bin); a bare
      `cargo test --workspace` skips the job e2e tests.
-   - `just system-test` (or `just nvim-test` / `just emacs-test` for a
-     quick dev loop) when `editors/` changed, `just zed-build` when the
-     Zed extension changed. The suites self-sandbox on a temp copy of
+   - `just system-test` (or `just nvim-test` / `just emacs-test` /
+     `just vscode-test` for a quick dev loop) when `editors/` changed,
+     `just zed-build` when the Zed extension changed. The suites self-sandbox on a temp copy of
      the fixture; `COGITATOR_E2E_DEADLINE_MS` widens the e2e deadlines
      on slow machines.
    - The specs are **binding**: a change to wire behavior updates

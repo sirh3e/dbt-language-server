@@ -25,9 +25,12 @@ editor integrations live under `editors/`.
   `fixture::jaffle()`, `wait_refresh(n)` (dbt.status refresh.count) as
   the refresh barrier, fake dbt via `harness::fake::install`
 - **Editor suites** (self-sandboxing, per-run fixture COPIES):
-  `just system-test` (the Rust orchestrator driving both; what CI runs),
-  `just nvim-test` (Neovim ≥ 0.11 headless), `just emacs-test` (Emacs ≥ 29
-  batch/eglot), `just zed-build` (wasm32-wasip1 compile check)
+  `just system-test` (the Rust orchestrator driving nvim + emacs +
+  the VS Code extension host; what CI runs), `just nvim-test`
+  (Neovim ≥ 0.11 headless), `just emacs-test` (Emacs ≥ 29 batch/eglot),
+  `just vscode-test` (extension host via @vscode/test-electron, VS Code
+  cached under editors/vscode/.vscode-test), `just zed-build`
+  (wasm32-wasip1 compile check)
 - **DuckDB feature** (bundled C++ build, slow): `cargo check -p cogitator --features duckdb-parser`
 - **Release cross-builds**: cargo-zigbuild via the Zig toolchain
   (specs/rust-port/07 §5; .github/workflows/release.yml — linux-amd64,

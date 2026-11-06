@@ -540,13 +540,24 @@ Report, in order:
   `:DbtSchema`, lenses (`… downstream`, `dbt run`), rename →
   `RenameFile`, commands, code actions + quickfix, formatting, both
   browsers, the DAG, profiles.
+- VS Code: `editors/vscode/src/test/` is the extension-host suite on
+  the same contract — `runTest.ts` (@vscode/test-electron ≥ 3.1;
+  downloads a cached VS Code under `.vscode-test/`) copies the fixture,
+  points `cogitator.serverPath` at the cargo-built binary via workspace
+  settings, and `suite/index.ts` (no mocha) prints the same `ok`/`FAIL`
+  steps: activation, client Running, the dbt.status barrier,
+  hover/definition through VS Code's provider pipeline, the dbt.*
+  command surface. `activate()` returns `{ client() }` so the suite
+  (and other extensions) can reach the live LanguageClient.
 - One code-executed entry point: `just system-test` runs
   `crates/cogitator/tests/system_editors.rs` (`#[ignore]`d otherwise),
-  which drives both suites with `COGITATOR_BIN` set to the exact
+  which drives all three suites with `COGITATOR_BIN` set to the exact
   cargo-built binary and parses their `ok`/`FAIL` lines; a missing
   editor SKIPs locally and FAILS in CI (`COGITATOR_REQUIRE_EDITORS=1`).
-- CI: the `editors` job in ci.yml (ubuntu, neovim stable + emacs-nox,
-  path-filtered on `editors/**` and the Rust side) runs exactly that.
+  Dev loops: `just nvim-test` / `just emacs-test` / `just vscode-test`.
+- CI: the `editors` job in ci.yml (ubuntu, neovim stable + emacs-nox +
+  xvfb for the extension host, path-filtered on `editors/**` and the
+  Rust side) runs exactly that under `xvfb-run`.
 
 ---
 
