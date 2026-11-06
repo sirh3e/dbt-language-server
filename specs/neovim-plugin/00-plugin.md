@@ -56,7 +56,9 @@ writer wins).
 ### 1.4 Advertised capabilities (initialize result)
 
 - `textDocumentSync: 2` (incremental)
-- `hoverProvider`, `definitionProvider`, `referencesProvider`,
+- `hoverProvider`, `definitionProvider` (incl. SQL built-ins → their
+  bundled docs materialized under `target/.cogitator/docs/`),
+  `referencesProvider`,
   `documentSymbolProvider`, `workspaceSymbolProvider`,
   `documentHighlightProvider`, `foldingRangeProvider`,
   `selectionRangeProvider`, `renameProvider`: `true`

@@ -109,7 +109,7 @@ pub fn resolve_completion_documentation(
                 .map(|m| m.description.clone())
         }
         cogitator_lsp::CompletionData::Function { name } => {
-            ctx.dialect.function_docs().get(&name).cloned()
+            ctx.dialect.function_doc(&name).map(str::to_string)
         }
     }
 }

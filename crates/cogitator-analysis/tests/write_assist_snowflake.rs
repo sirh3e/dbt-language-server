@@ -102,3 +102,89 @@ fn snowflake_functions_documented_and_completable() {
         .iter()
         .any(|i| i.label == "qualify" || i.label == "listagg"));
 }
+
+/// A default context carrying the snowflake dialect (no project scan).
+fn snowflake_ctx() -> cogitator_analysis::DbtContext {
+    cogitator_analysis::DbtContext {
+        dialect: Dialect::new("snowflake"),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn function_definition_targets_respect_cte_precedence() {
+    use cogitator_lsp::Position;
+
+    let ctx = snowflake_ctx();
+    let mut docs = cogitator_analysis::Documents::default();
+    let uri = "file:///p/models/fn_probe.sql";
+    docs.open(
+        uri.into(),
+        "with sum as (select 1 as v) select datediff(day, a, b) from sum",
+        &ctx.dialect,
+    );
+    let doc = docs.get(uri).unwrap();
+
+    // `datediff` is a documented built-in → a FunctionDoc target
+    let col = "with sum as (select 1 as v) select ".len() as u32 + 2;
+    let target = cogitator_analysis::features::function_doc_target(
+        &ctx,
+        doc,
+        Position {
+            line: 0,
+            character: col,
+        },
+    )
+    .expect("datediff targets its docs");
+    assert_eq!(target.dialect, "snowflake");
+    assert_eq!(target.name, "datediff");
+    assert!(target.markdown.to_lowercase().contains("datediff"));
+
+    // a CTE named `sum` beats the built-in — same precedence as the arm
+    assert!(
+        cogitator_analysis::features::function_doc_target(
+            &ctx,
+            doc,
+            Position {
+                line: 0,
+                character: 6
+            },
+        )
+        .is_none(),
+        "the CTE wins over the built-in"
+    );
+
+    // and duckdb (no bundled docs) never targets
+    let duck = cogitator_analysis::DbtContext::default();
+    let mut duck_docs = cogitator_analysis::Documents::default();
+    duck_docs.open(uri.into(), "select sum(a) from t", &duck.dialect);
+    assert!(cogitator_analysis::features::function_doc_target(
+        &duck,
+        duck_docs.get(uri).unwrap(),
+        Position {
+            line: 0,
+            character: 8
+        },
+    )
+    .is_none());
+}
+
+#[test]
+fn uppercase_function_hover_resolves() {
+    use cogitator_lsp::Position;
+
+    let ctx = snowflake_ctx();
+    let mut docs = cogitator_analysis::Documents::default();
+    let uri = "file:///p/models/upper_probe.sql";
+    docs.open(uri.into(), "select SUM(a) from t", &ctx.dialect);
+    let hover = cogitator_analysis::features::hover(
+        &ctx,
+        docs.get(uri).unwrap(),
+        Position {
+            line: 0,
+            character: 8,
+        },
+    );
+    assert!(!hover.is_empty(), "uppercase SUM hovers now");
+    assert!(hover.to_lowercase().contains("sum"), "{hover}");
+}

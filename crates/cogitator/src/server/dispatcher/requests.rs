@@ -61,17 +61,43 @@ impl Dispatcher {
     }
 
     pub(super) fn definition(&mut self, content: &[u8]) {
-        self.respond_position(
-            content,
-            "textDocument/definition",
-            |ctx, doc, uri, pos| match doc {
-                Some(doc) => features::definition(ctx, doc, uri, pos),
-                None => cogitator_lsp::Location {
-                    uri: uri.to_string(),
-                    range: cogitator_lsp::Range::zero_width(pos),
-                },
+        // a documented SQL function materializes its bundled docs as a
+        // cached Markdown file and jumps there (03 §9) — offloaded,
+        // since that touches the filesystem; everything else keeps the
+        // inline pure path
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            self.invalid_params(content, "textDocument/definition");
+            return;
+        };
+        let snap = self.snapshot_for(&uri);
+        let function = snap
+            .doc
+            .as_deref()
+            .and_then(|doc| features::function_doc_target(&snap.ctx, doc, pos));
+        if let (Some(function), Some(root)) = (function, snap.ctx.project_root.clone()) {
+            let fallback = cogitator_lsp::Location {
+                uri: uri.clone(),
+                range: cogitator_lsp::Range::zero_width(pos),
+            };
+            self.offload_blocking(id, "textDocument/definition", move || {
+                match super::super::function_docs::materialize(&root, &function) {
+                    Some(path) => super::super::reply::Reply::result(&cogitator_lsp::Location {
+                        uri: cogitator_lsp::fs_path_to_uri(&path),
+                        range: cogitator_lsp::Range::default(),
+                    }),
+                    None => super::super::reply::Reply::result(&fallback),
+                }
+            });
+            return;
+        }
+        let location = match snap.doc.as_deref() {
+            Some(doc) => features::definition(&snap.ctx, doc, &uri, pos),
+            None => cogitator_lsp::Location {
+                uri: uri.clone(),
+                range: cogitator_lsp::Range::zero_width(pos),
             },
-        );
+        };
+        self.send(&ResultResponse::new(id, location));
     }
 
     pub(super) fn completion(&mut self, content: &[u8]) {

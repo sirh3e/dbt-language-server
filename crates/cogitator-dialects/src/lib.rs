@@ -42,6 +42,15 @@ impl Dialect {
         }
     }
 
+    /// The documentation of ONE function, however the user spelled it —
+    /// every key is lowercase, so `SUM` and `sum` both resolve.
+    pub fn function_doc(&self, name: &str) -> Option<&'static str> {
+        let docs = self.function_docs();
+        docs.get(name)
+            .or_else(|| docs.get(&name.to_lowercase()))
+            .map(String::as_str)
+    }
+
     /// One completion item per documented function (04 §3).
     pub fn function_completion_items(&self) -> Vec<CompletionItem> {
         self.function_docs()
@@ -64,6 +73,19 @@ impl Dialect {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn function_doc_is_case_insensitive() {
+        let snowflake = Dialect::new("snowflake");
+        assert!(snowflake.function_doc("sum").is_some());
+        assert!(
+            snowflake.function_doc("SUM").is_some(),
+            "uppercase spells hit too"
+        );
+        assert!(snowflake.function_doc("DateDiff").is_some());
+        assert!(snowflake.function_doc("no_such_fn").is_none());
+        assert!(Dialect::new("duckdb").function_doc("sum").is_none());
+    }
 
     #[test]
     fn docs_load_and_lookup() {

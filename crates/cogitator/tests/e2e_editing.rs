@@ -326,3 +326,67 @@ fn editing_actions_convert_scaffold_inherit() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Go-to-definition on a built-in SQL function (03 §9): the bundled
+/// documentation materializes under target/.cogitator/docs/ and the
+/// Location jumps into it; plain unknown words keep the self-location
+/// fallback.
+#[test]
+fn function_definition_opens_materialized_docs() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-fndef-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+    // a snowflake target: the only dialects with bundled function docs
+    std::fs::write(
+        root.join(".dbt/profiles.yml"),
+        "jaffle_shop:\n  target: dev\n  outputs:\n    dev:\n      type: snowflake\n      account: a\n      user: u\n      password: p\n      database: d\n      schema: s\n",
+    )
+    .unwrap();
+
+    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fn_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
+            "text": "select datediff(day, a, b), somethingweird from t\n"}}),
+    );
+    // the dialect lands with a refresh; poll definition on `datediff`
+    let mut location = serde_json::Value::Null;
+    for _ in 0..100 {
+        let definition = lsp.request(
+            "textDocument/definition",
+            serde_json::json!({"textDocument": {"uri": probe_uri},
+                               "position": {"line": 0, "character": 10}}),
+        );
+        location = definition["result"].clone();
+        if location["uri"]
+            .as_str()
+            .is_some_and(|u| u.contains(".cogitator/docs/"))
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let uri = location["uri"].as_str().expect("uri");
+    assert!(
+        uri.ends_with("target/.cogitator/docs/snowflake/datediff.md"),
+        "{location}"
+    );
+    let path = cogitator_lsp::uri_to_fs_path(uri).expect("fs path");
+    let content = std::fs::read_to_string(&path).expect("materialized file exists");
+    assert!(content.to_lowercase().contains("datediff"), "{content}");
+
+    // an unknown word still answers the plain self-location fallback
+    let character = "select datediff(day, a, b), so".len() as u32;
+    let fallback = lsp.request(
+        "textDocument/definition",
+        serde_json::json!({"textDocument": {"uri": probe_uri},
+                           "position": {"line": 0, "character": character}}),
+    );
+    assert_eq!(fallback["result"]["uri"], probe_uri, "{fallback}");
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

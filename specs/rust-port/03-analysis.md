@@ -524,3 +524,16 @@ source item's middle quotes.)
   header, ignore-on-any-error, atomic same-dir rename). This supersedes
   the earlier "no on-disk persistence by design" note — scope is the
   SCAN cache only; the derived cache stays memory-only.
+
+## Addendum: §9.2 definition on SQL functions
+
+Definition on a documented built-in function (snowflake/bigquery
+bundles, 04 §3) materializes the bundled markdown at
+`target/.cogitator/docs/<dialect>/<name>.md` (rewritten only when the
+content drifted — the docs are static per binary) and answers a
+Location into it: the stdlib-sources move, in Markdown. Precedence
+matches the `_` arm — a CTE or resolvable column named like the
+function still wins. The write happens off the dispatcher task; any
+write failure falls back to the plain self-location, never an error.
+Function-doc lookups are case-insensitive everywhere (`SUM` hovers
+and resolves like `sum`).

@@ -11,6 +11,7 @@ mod config_watcher;
 mod derived_cache;
 mod diagnostics;
 mod dispatcher;
+mod function_docs;
 mod fusion;
 mod handlers;
 mod jobs;

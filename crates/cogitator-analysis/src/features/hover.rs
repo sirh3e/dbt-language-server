@@ -101,9 +101,8 @@ pub fn hover(ctx: &DbtContext, doc: &Document, pos: Position) -> String {
                 return text;
             }
             ctx.dialect
-                .function_docs()
-                .get(literal)
-                .cloned()
+                .function_doc(literal)
+                .map(str::to_string)
                 .unwrap_or_default()
         }
     }

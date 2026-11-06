@@ -91,6 +91,45 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
     }
 }
 
+/// What definition-on-a-SQL-function materializes (03 §9): the
+/// bundled documentation, bound for a cached Markdown file the shell
+/// writes under target/.cogitator/docs/.
+#[derive(Debug)]
+pub struct FunctionDoc {
+    pub dialect: String,
+    /// Lowercased — the doc map's key and the cache file's stem.
+    pub name: String,
+    pub markdown: &'static str,
+}
+
+/// Is the cursor on a documented SQL function? Same precedence as the
+/// definition `_` arm: a CTE or resolvable column named `sum` still
+/// wins over the built-in.
+pub fn function_doc_target(ctx: &DbtContext, doc: &Document, pos: Position) -> Option<FunctionDoc> {
+    let parsed = &doc.parsed;
+    let idx = parsed.find_token_at_cursor(pos.line, pos.character)?;
+    let token = &parsed.tokens[idx];
+    if !matches!(token.kind, TokenKind::Word(_) | TokenKind::Ident) {
+        return None;
+    }
+    let literal = parsed.literal(token);
+    if parsed.def_tokens.contains_key(literal) {
+        return None;
+    }
+    if super::completion::scope::resolve_column(ctx, doc, literal)
+        .and_then(|hit| hit.yaml)
+        .is_some()
+    {
+        return None;
+    }
+    let markdown = ctx.dialect.function_doc(literal)?;
+    Some(FunctionDoc {
+        dialect: ctx.dialect.as_str().to_string(),
+        name: literal.to_lowercase(),
+        markdown,
+    })
+}
+
 /// `dbt.goToSchema` (03 §9.3). `None` serializes as a null result.
 pub fn go_to_schema(
     ctx: &DbtContext,
