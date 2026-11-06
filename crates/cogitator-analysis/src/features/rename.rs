@@ -14,6 +14,18 @@ use cogitator_parser::{DocumentParser, JinjaSqlParser, TokenKind};
 
 use super::{file_uri, model_name_from_uri, token_range, DbtContext, Document};
 
+/// textDocument/prepareRename: only a `ref('…')` literal under the
+/// cursor is renameable from anywhere; everything else answers null
+/// and the client never opens the rename box.
+pub fn prepare_rename(doc: &Document, pos: Position) -> Option<cogitator_lsp::PrepareRenameResult> {
+    let idx = doc.parsed.find_token_at_cursor(pos.line, pos.character)?;
+    let token = &doc.parsed.tokens[idx];
+    (token.kind == TokenKind::Ref).then(|| cogitator_lsp::PrepareRenameResult {
+        range: token_range(token),
+        placeholder: doc.parsed.literal(token).to_string(),
+    })
+}
+
 pub fn rename_model(
     ctx: &DbtContext,
     doc: Option<&Document>,

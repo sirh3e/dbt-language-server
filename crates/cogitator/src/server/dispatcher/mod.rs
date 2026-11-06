@@ -203,6 +203,12 @@ impl Dispatcher {
             "textDocument/semanticTokens/full" => self.semantic_tokens(content),
             "textDocument/signatureHelp" => self.signature_help(content),
             "textDocument/rename" => self.rename(content),
+            "textDocument/prepareRename" => self.prepare_rename(content),
+            "textDocument/prepareCallHierarchy" => self.prepare_call_hierarchy(content),
+            "callHierarchy/incomingCalls" => self.call_hierarchy_incoming(content),
+            // outgoing calls: deliberately empty — the macro hierarchy is
+            // one level deep today, and clients probe both directions
+            "callHierarchy/outgoingCalls" => self.call_hierarchy_outgoing(content),
             "textDocument/codeLens" => self.code_lens(content),
             "textDocument/codeAction" => self.code_action(content),
             "textDocument/inlayHint" => self.inlay_hint(content),

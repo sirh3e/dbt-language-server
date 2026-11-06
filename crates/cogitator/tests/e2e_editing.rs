@@ -390,3 +390,56 @@ fn function_definition_opens_materialized_docs() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// prepareRename + the macro call hierarchy over the live server:
+/// ref tokens prepare with a placeholder, non-targets answer null,
+/// and incomingCalls locates the fixture's full_name callers.
+#[test]
+fn prepare_rename_and_call_hierarchy() {
+    let (mut lsp, _uri) = booted(&[]);
+    let scratch = "file:///tmp/prepare.sql";
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": scratch, "languageId": "sql", "version": 1,
+            "text": "select {{ full_name('a', 'b') }} from {{ ref('customers') }}"}}),
+    );
+
+    let prep = lsp.request(
+        "textDocument/prepareRename",
+        serde_json::json!({"textDocument": {"uri": scratch},
+                           "position": {"line": 0, "character": 47}}),
+    );
+    assert_eq!(prep["result"]["placeholder"], "customers", "{prep}");
+
+    let null = lsp.request(
+        "textDocument/prepareRename",
+        serde_json::json!({"textDocument": {"uri": scratch},
+                           "position": {"line": 0, "character": 2}}),
+    );
+    assert!(null["result"].is_null(), "{null}");
+
+    let items = lsp.request(
+        "textDocument/prepareCallHierarchy",
+        serde_json::json!({"textDocument": {"uri": scratch},
+                           "position": {"line": 0, "character": 12}}),
+    );
+    let item = items["result"][0].clone();
+    assert_eq!(item["name"], "full_name", "{items}");
+
+    let calls = lsp.request(
+        "callHierarchy/incomingCalls",
+        serde_json::json!({"item": item}),
+    );
+    assert!(
+        calls["result"]
+            .as_array()
+            .is_some_and(|c| c.iter().any(|x| x["from"]["name"] == "customers")),
+        "{calls}"
+    );
+
+    let outgoing = lsp.request(
+        "callHierarchy/outgoingCalls",
+        serde_json::json!({"item": item}),
+    );
+    assert_eq!(outgoing["result"], serde_json::json!([]), "{outgoing}");
+}

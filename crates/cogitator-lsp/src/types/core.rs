@@ -35,3 +35,37 @@ pub struct Location {
     pub uri: String,
     pub range: Range,
 }
+
+/// textDocument/prepareRename answer: the renameable range plus the
+/// text the client pre-fills.
+#[derive(Debug, Clone, Serialize)]
+pub struct PrepareRenameResult {
+    pub range: Range,
+    pub placeholder: String,
+}
+
+/// One call-hierarchy node (3.16): macros are Function-kind items; the
+/// item round-trips through the client between prepare and the calls
+/// requests, so it is Deserialize too.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallHierarchyItem {
+    pub name: String,
+    pub kind: i32,
+    pub uri: String,
+    pub range: Range,
+    #[serde(rename = "selectionRange")]
+    pub selection_range: Range,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CallHierarchyIncomingCall {
+    pub from: CallHierarchyItem,
+    #[serde(rename = "fromRanges")]
+    pub from_ranges: Vec<Range>,
+}
+
+/// callHierarchy/incomingCalls (and outgoingCalls) params.
+#[derive(Debug, Deserialize)]
+pub struct CallHierarchyCallsParams {
+    pub item: CallHierarchyItem,
+}

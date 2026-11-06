@@ -3,6 +3,7 @@
 //! (functional core / imperative shell, 05 §3).
 
 mod artifact_status;
+mod call_hierarchy;
 mod code_actions;
 mod compiled;
 mod completion;
@@ -31,6 +32,7 @@ mod tests_nav;
 mod workspace_diagnostics;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
+pub use call_hierarchy::{macro_incoming_calls, prepare_macro_hierarchy};
 pub use code_actions::convert_relation::{convert_literal_relations, RelationCatalog};
 pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_action};
 pub use code_actions::{code_actions, model_entry_at, TargetChoice};
@@ -54,7 +56,7 @@ pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
 pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
-pub use rename::rename_model;
+pub use rename::{prepare_rename, rename_model};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};

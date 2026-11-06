@@ -218,6 +218,55 @@ impl Dispatcher {
         });
     }
 
+    pub(super) fn prepare_rename(&mut self, content: &[u8]) {
+        self.respond_position(content, "textDocument/prepareRename", |_, doc, _, pos| {
+            doc.and_then(|d| features::prepare_rename(d, pos))
+        });
+    }
+
+    /// prepare answers `[item]` for a macro call under the cursor, null
+    /// anywhere else (the LSP contract for "nothing here").
+    pub(super) fn prepare_call_hierarchy(&mut self, content: &[u8]) {
+        self.respond_position(
+            content,
+            "textDocument/prepareCallHierarchy",
+            |ctx, doc, _, pos| {
+                doc.and_then(|d| features::prepare_macro_hierarchy(ctx, d, pos))
+                    .map(|item| vec![item])
+            },
+        );
+    }
+
+    pub(super) fn call_hierarchy_incoming(&mut self, content: &[u8]) {
+        let Ok(req) =
+            serde_json::from_slice::<Envelope<cogitator_lsp::CallHierarchyCallsParams>>(content)
+        else {
+            self.invalid_params(content, "callHierarchy/incomingCalls");
+            return;
+        };
+        let Some(params) = req.params else {
+            self.invalid_params(content, "callHierarchy/incomingCalls");
+            return;
+        };
+        let ctx = self.snapshot();
+        // offloaded: every caller file is re-read from disk
+        self.offload_blocking(req.id, "callHierarchy/incomingCalls", move || {
+            let calls = features::macro_incoming_calls(&ctx, &params.item);
+            crate::server::reply::Reply::result(&calls)
+        });
+    }
+
+    pub(super) fn call_hierarchy_outgoing(&mut self, content: &[u8]) {
+        let Ok(req) =
+            serde_json::from_slice::<Envelope<cogitator_lsp::CallHierarchyCallsParams>>(content)
+        else {
+            self.invalid_params(content, "callHierarchy/outgoingCalls");
+            return;
+        };
+        let empty: Vec<cogitator_lsp::CallHierarchyIncomingCall> = Vec::new();
+        self.send(&ResultResponse::new(req.id, empty));
+    }
+
     pub(super) fn code_lens(&mut self, content: &[u8]) {
         // offloaded since the artifact batch: the run-status lens stats
         // target/ files (05 §6.1 keeps fs off this task)

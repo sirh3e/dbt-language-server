@@ -279,3 +279,18 @@ diagnostics for file B change when file A changes.
 `$/setTrace {value}` and the `trace` field of initialize are handled
 (05 §6.3 addendum): they tune the window/logMessage verbosity.
 `$/logTrace` is not emitted by decision.
+
+## Addendum: prepareRename and the macro call hierarchy
+
+- `renameProvider` advertises `{prepareProvider: true}`:
+  `textDocument/prepareRename` answers `{range, placeholder}` on a
+  `ref('…')` literal and null anywhere else, so clients never open a
+  rename box the server would ignore.
+- `callHierarchyProvider: true`: `textDocument/prepareCallHierarchy`
+  answers one Function-kind item for the macro call under the cursor
+  (resolution order 03 §5, own project first), null otherwise.
+  `callHierarchy/incomingCalls` walks the graph's MacroCall edges and
+  re-reads each caller from disk for the exact call-token ranges
+  (stale edges whose call vanished are dropped). `outgoingCalls` is
+  deliberately empty — the macro hierarchy is one level deep today,
+  and clients probe both directions.

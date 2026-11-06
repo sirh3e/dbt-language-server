@@ -48,7 +48,9 @@ pub struct ServerCapabilities {
     #[serde(rename = "diagnosticProvider")]
     pub diagnostic_provider: DiagnosticOptions,
     #[serde(rename = "renameProvider")]
-    pub rename_provider: bool,
+    pub rename_provider: RenameOptions,
+    #[serde(rename = "callHierarchyProvider")]
+    pub call_hierarchy_provider: bool,
     #[serde(rename = "codeLensProvider")]
     pub code_lens_provider: CodeLensOptions,
     /// Plain bool: command-only actions, no kinds, no resolve.
@@ -100,6 +102,12 @@ pub struct DiagnosticOptions {
     pub inter_file_dependencies: bool,
     #[serde(rename = "workspaceDiagnostics")]
     pub workspace_diagnostics: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RenameOptions {
+    #[serde(rename = "prepareProvider")]
+    pub prepare_provider: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -204,7 +212,10 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                     inter_file_dependencies: false,
                     workspace_diagnostics: true,
                 },
-                rename_provider: true,
+                rename_provider: RenameOptions {
+                    prepare_provider: true,
+                },
+                call_hierarchy_provider: true,
                 code_lens_provider: CodeLensOptions {
                     resolve_provider: false,
                 },
