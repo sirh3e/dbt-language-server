@@ -54,6 +54,14 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 range: v.range,
             })
             .unwrap_or(fallback),
+        TokenKind::Doc => ctx
+            .doc_detail_map
+            .get(literal)
+            .map(|d| Location {
+                uri: file_uri(&d.uri),
+                range: d.range,
+            })
+            .unwrap_or(fallback),
         TokenKind::Macro => {
             let package = parsed
                 .lookback_find(idx, TokenKind::Package, 2)

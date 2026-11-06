@@ -1,6 +1,7 @@
 //! dbt project context building (specs/rust-port/03 §1.2): the snapshot
 //! types, the build orchestrator, and one submodule per detail-map builder.
 
+pub mod docs;
 pub mod exposures;
 mod macros;
 mod models;
@@ -99,6 +100,8 @@ pub struct DbtContext {
     pub exposure_detail_map: HashMap<String, exposures::CitizenDetails>,
     pub metric_detail_map: HashMap<String, exposures::CitizenDetails>,
     pub semantic_model_detail_map: HashMap<String, exposures::CitizenDetails>,
+    /// `{% docs %}` blocks by name (03 §6.4): own project wins on collision.
+    pub doc_detail_map: HashMap<String, docs::DocDetails>,
     pub graph: ProjectGraph,
 }
 
@@ -147,6 +150,7 @@ impl ContextBuilder {
         // scoped threads — CPU + fs work stays off the async runtime (05 §6.2).
         let mut models = HashMap::new();
         let mut sources = HashMap::new();
+        let mut doc_details = HashMap::new();
         let mut macros = HashMap::new();
         let mut variables = HashMap::new();
         let mut graph = ProjectGraph::default();
@@ -186,7 +190,7 @@ impl ContextBuilder {
                 let _span = tracing::info_span!(parent: &parent, "build_graph").entered();
                 ProjectGraph::build(&root, &project, &dialect, edges_cache)
             });
-            (models, sources) = models_sources.join().unwrap_or_default();
+            (models, sources, doc_details) = models_sources.join().unwrap_or_default();
             macros = macros_handle.join().unwrap_or_default();
             variables = vars_handle.join().unwrap_or_default();
             graph = graph_handle.join().unwrap_or_default();
@@ -244,6 +248,7 @@ impl ContextBuilder {
             exposure_detail_map,
             metric_detail_map,
             semantic_model_detail_map,
+            doc_detail_map: doc_details,
             graph,
         }
     }

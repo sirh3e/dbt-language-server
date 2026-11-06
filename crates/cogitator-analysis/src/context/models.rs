@@ -32,14 +32,20 @@ pub(super) fn build_model_details(
 ) -> (
     HashMap<String, ModelDetails>,
     HashMap<String, SourceDetails>,
+    HashMap<String, super::docs::DocDetails>,
 ) {
     let mut models = HashMap::new();
     let mut sources = HashMap::new();
+    let mut doc_details: HashMap<String, super::docs::DocDetails> = HashMap::new();
 
     for p in process_list {
         let path_map = util::create_file_name_map(&[".sql", ".py"], &p.root, &p.file.model_paths);
-        let docs_map = build_docs_map(&p.root, &p.file, docs);
+        let docs_map = super::docs::build_doc_details(&p.root, &p.file, docs);
         let (schema_models, project_sources) = schema_entries(&p.root, &p.file, &docs_map, props);
+        // first definition wins: the own project is scanned first
+        for (name, details) in docs_map {
+            doc_details.entry(name).or_insert(details);
+        }
 
         sources.extend(project_sources);
 
@@ -116,7 +122,7 @@ pub(super) fn build_model_details(
     docs.sweep();
     sql_tags.sweep();
     snapshots.sweep();
-    (models, sources)
+    (models, sources, doc_details)
 }
 
 /// Every `{% snapshot %}` block under a project's snapshot paths,
@@ -161,11 +167,13 @@ pub(super) struct SchemaModel {
 fn schema_entries(
     root: &Path,
     project: &ProjectFile,
-    docs_map: &HashMap<String, String>,
+    docs_map: &HashMap<String, super::docs::DocDetails>,
     props: &mut PropsCache,
 ) -> (HashMap<String, SchemaModel>, HashMap<String, SourceDetails>) {
     let expand = |description: &str| {
-        jinja_scan::replace_doc_refs(description, |name| docs_map.get(name).cloned())
+        jinja_scan::replace_doc_refs(description, |name| {
+            docs_map.get(name).map(|d| d.content.clone())
+        })
     };
 
     let mut models = HashMap::new();
@@ -243,28 +251,4 @@ fn source_details(
 /// `env_var()`-resolve an optional raw YAML string from the schemas layer.
 fn resolve_opt(raw: Option<&str>) -> Option<String> {
     raw.map(crate::util::resolve_env_vars)
-}
-
-/// `{% docs %}` blocks from the docs paths (03 §6.4; Q4 fixed), cached.
-fn build_docs_map(
-    root: &Path,
-    project: &ProjectFile,
-    cache: &mut DocsCache,
-) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    for rel in &project.docs_paths {
-        let dir = root.join(rel);
-        if std::fs::read_dir(&dir).is_err() {
-            continue;
-        }
-        for file in util::walk_filepath(&dir, ".md") {
-            let Some(blocks) =
-                cache.get_or_parse(&file, |text, _| Some(jinja_scan::extract_docs_blocks(text)))
-            else {
-                continue;
-            };
-            map.extend(blocks.iter().map(|b| (b.name.clone(), b.content.clone())));
-        }
-    }
-    map
 }
