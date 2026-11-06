@@ -56,6 +56,15 @@ impl Dispatcher {
                 self.run_dbt(req.id, "source freshness", &uri);
                 return;
             }
+            "dbt.preview" => {
+                let limit = arg
+                    .get("limit")
+                    .and_then(|l| l.as_u64())
+                    .filter(|&l| l > 0)
+                    .unwrap_or(50);
+                self.preview(req.id, &uri, limit);
+                return;
+            }
             "dbt.cancel" => {
                 let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
                 match self.jobs.cancel(token) {

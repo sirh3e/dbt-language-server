@@ -47,7 +47,26 @@ impl Dispatcher {
 
     /// `dbt.run` / `dbt.test` / `dbt.compile` for one model, asynchronously.
     pub(super) fn run_dbt(&mut self, id: i64, kind: &'static str, uri: &str) {
-        self.run_dbt_selected(id, kind, uri, None);
+        self.run_dbt_full(id, kind, uri, None, Vec::new(), None);
+    }
+
+    /// `dbt.preview`: `dbt show --select <model> --limit N`; the result
+    /// table lands in target/.cogitator/preview/<selector>.txt and opens
+    /// via showDocument.
+    pub(super) fn preview(&mut self, id: i64, uri: &str, limit: u64) {
+        let selector = crate::server::fusion::model_selector_from_uri(uri);
+        let capture = self.snapshot().project_root.clone().map(|root| {
+            root.join("target/.cogitator/preview")
+                .join(format!("{selector}.txt"))
+        });
+        self.run_dbt_full(
+            id,
+            "show",
+            uri,
+            None,
+            vec!["--limit".to_string(), limit.to_string()],
+            capture,
+        );
     }
 
     /// `selector`: Some overrides the uri-derived model selector
@@ -58,6 +77,18 @@ impl Dispatcher {
         kind: &'static str,
         uri: &str,
         selector_override: Option<String>,
+    ) {
+        self.run_dbt_full(id, kind, uri, selector_override, Vec::new(), None);
+    }
+
+    fn run_dbt_full(
+        &mut self,
+        id: i64,
+        kind: &'static str,
+        uri: &str,
+        selector_override: Option<String>,
+        extra_args: Vec<String>,
+        capture_to: Option<std::path::PathBuf>,
     ) {
         let ctx = self.snapshot();
         let Some(root) = ctx.project_root.clone() else {
@@ -115,6 +146,8 @@ impl Dispatcher {
                 profiles_dir,
                 profile,
                 refresh,
+                extra_args,
+                capture_to,
             },
             self.jobs.clone(),
         );

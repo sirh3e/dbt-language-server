@@ -55,6 +55,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtTest       dbt test for the current model      <leader>dt
   :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
   :DbtParse      dbt parse; refreshes the context
+  :DbtPreview    dbt show result rows ([limit], default 50)
   :DbtRelation   yank database.schema.identifier     <leader>dR
   :DbtProjects   pick a known dbt project            <leader>dP
   :DbtQuery      bounded SELECT on the relation      <leader>dx

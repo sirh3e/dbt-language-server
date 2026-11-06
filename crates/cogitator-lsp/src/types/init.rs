@@ -164,6 +164,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.impact",
     "dbt.expandJinja",
     "dbt.doctor",
+    "dbt.preview",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

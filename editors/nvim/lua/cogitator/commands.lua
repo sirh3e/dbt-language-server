@@ -52,6 +52,22 @@ function M.source_freshness()
   exec("dbt.sourceFreshness", false) -- project-wide; sources.json feeds the lenses
 end
 
+--- :DbtPreview [limit] — `dbt show` for the current model; the result
+--- table opens via showDocument when the run succeeds.
+function M.preview(opts)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local arg = M.build_argument(bufnr, false)
+  local limit = tonumber(opts and opts.args or "")
+  if limit then
+    arg.limit = limit
+  end
+  client:exec_cmd({ command = "dbt.preview", arguments = { arg } }, { bufnr = bufnr })
+end
+
 --- :DbtImpact [column] — downstream closure of this model, with
 --- column-level hits when a column is given; quickfix list + summary.
 function M.impact(opts)

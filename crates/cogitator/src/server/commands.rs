@@ -28,6 +28,11 @@ pub struct DbtInvocation {
     /// Context refresh to trigger on success (sender + workspace root):
     /// dbt.parse refreshes the project context, run/test/compile do not.
     pub refresh: Option<(mpsc::UnboundedSender<String>, String)>,
+    /// Extra argv after the standard flags (dbt.preview: `--limit N`).
+    pub extra_args: Vec<String>,
+    /// On success, write the subprocess stdout here and open it in the
+    /// editor (dbt.preview's result table).
+    pub capture_to: Option<PathBuf>,
 }
 
 /// The dbt CLI argument list for one invocation — pure, so the exact
@@ -38,6 +43,7 @@ fn dbt_args(
     target: Option<&str>,
     profiles_dir: Option<&str>,
     profile: Option<&str>,
+    extra_args: &[String],
 ) -> Vec<String> {
     // "source freshness" is one kind, two argv words
     let mut args: Vec<String> = kind.split_whitespace().map(str::to_string).collect();
@@ -57,6 +63,7 @@ fn dbt_args(
         args.push("--profile".to_string());
         args.push(profile.to_string());
     }
+    args.extend(extra_args.iter().cloned());
     args
 }
 
@@ -98,6 +105,8 @@ pub fn spawn_dbt(
                 profiles_dir,
                 profile,
                 refresh,
+                extra_args,
+                capture_to,
             } = invocation;
             // what the messages call the invocation: the model selector, or the
             // project for selector-less kinds (parse)
@@ -122,6 +131,7 @@ pub fn spawn_dbt(
                 target.as_deref(),
                 profiles_dir.as_deref(),
                 profile.as_deref(),
+                &extra_args,
             );
             let mut command = tokio::process::Command::new(&binary);
             // aborting this task (dbt.cancel) must kill the child too
@@ -212,6 +222,9 @@ pub fn spawn_dbt(
             if let Some((refresh_tx, root)) = refresh {
                 let _ = refresh_tx.send(root);
             }
+            if let Some(path) = capture_to {
+                capture_output(&link, &path, &output.stdout).await;
+            }
             if kind == "compile" {
                 open_compiled(&link, &project_root, &project_name, &model_path);
             }
@@ -221,6 +234,26 @@ pub fn spawn_dbt(
     jobs.register(token, job_label, handle.abort_handle());
     // the entry self-cleans on completion through the registry's retain sweeps
     token
+}
+
+/// dbt.preview's landing: the subprocess stdout becomes a file the
+/// editor opens — a write failure explains itself instead of silently
+/// dropping the result.
+async fn capture_output(link: &ClientLink, path: &Path, stdout: &[u8]) {
+    if let Some(parent) = path.parent() {
+        let _ = tokio::fs::create_dir_all(parent).await;
+    }
+    match tokio::fs::write(path, stdout).await {
+        Ok(()) => link.show_document(cogitator_lsp::fs_path_to_uri(path), None),
+        Err(err) => link.show_message(
+            message_type::WARNING,
+            cogitator_error::guidance::Guidance::new("dbt preview succeeded but saving failed.")
+                .at(path.display().to_string())
+                .because(format!("{err}."))
+                .fix("check that the target/ directory is writable.")
+                .to_message(),
+        ),
+    }
 }
 
 /// After a successful compile: locate target/compiled/<project>/<model path>
@@ -266,21 +299,44 @@ mod tests {
     #[test]
     fn selector_and_target_build_the_run_line() {
         assert_eq!(
-            dbt_args("run", Some("customers"), Some("prod"), None, None),
+            dbt_args("run", Some("customers"), Some("prod"), None, None, &[]),
             ["run", "--select", "customers", "--target", "prod"]
         );
         assert_eq!(
-            dbt_args("compile", Some("staging.stg_orders"), None, None, None),
+            dbt_args("compile", Some("staging.stg_orders"), None, None, None, &[]),
             ["compile", "--select", "staging.stg_orders"]
         );
     }
 
     #[test]
     fn parse_runs_project_wide_without_select() {
-        assert_eq!(dbt_args("parse", None, None, None, None), ["parse"]);
+        assert_eq!(dbt_args("parse", None, None, None, None, &[]), ["parse"]);
         assert_eq!(
-            dbt_args("parse", None, Some("dev"), None, None),
+            dbt_args("parse", None, Some("dev"), None, None, &[]),
             ["parse", "--target", "dev"]
+        );
+    }
+
+    #[test]
+    fn preview_appends_extra_args_last() {
+        assert_eq!(
+            dbt_args(
+                "show",
+                Some("customers"),
+                Some("dev"),
+                None,
+                None,
+                &["--limit".to_string(), "20".to_string()]
+            ),
+            [
+                "show",
+                "--select",
+                "customers",
+                "--target",
+                "dev",
+                "--limit",
+                "20"
+            ]
         );
     }
 
@@ -292,7 +348,8 @@ mod tests {
                 Some("customers"),
                 Some("prod"),
                 Some("/etc/dbt"),
-                Some("jaffle_shop")
+                Some("jaffle_shop"),
+                &[]
             ),
             [
                 "run",

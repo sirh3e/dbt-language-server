@@ -140,3 +140,57 @@ fn dbt_jobs_start_and_cancel_by_token() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// dbt.preview: `dbt show --select <model> --limit N` through the job
+/// registry; the fake dbt's stdout lands in target/.cogitator/preview/
+/// and the exact argv is provable from the capture.
+#[cfg(unix)]
+#[test]
+fn dbt_preview_captures_the_show_table() {
+    use std::os::unix::fs::PermissionsExt;
+    let base = std::env::temp_dir().join(format!("cogitator-e2e-preview-{}", std::process::id()));
+    let _cleanup = RemoveOnDrop(base.clone());
+    let root = base.join("project");
+    copy_fixture(&fixture_root(), &root);
+
+    let bin_dir = base.join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    let fake = bin_dir.join("dbt");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\necho \"$@\" > {}/argv.txt\necho '| id | name |'\n",
+            base.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let path_env = format!(
+        "{}:{}",
+        bin_dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
+
+    let (mut lsp, uri) = booted_in(&root, &[("PATH", &path_env)]);
+    let started = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.preview", "arguments": [{"uri": uri, "limit": 7}]}),
+    );
+    assert!(started["result"]["token"].as_u64().is_some(), "{started}");
+
+    // the capture file appears once the job finishes
+    let preview = root.join("target/.cogitator/preview/customers.txt");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !preview.is_file() && std::time::Instant::now() < deadline {
+        // keep draining server traffic so the writer never blocks
+        let _ = lsp.request("workspace/symbol", serde_json::json!({"query": "zz"}));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let table = std::fs::read_to_string(&preview).expect("preview file");
+    assert!(table.contains("| id | name |"), "{table}");
+    let argv = std::fs::read_to_string(base.join("argv.txt")).unwrap();
+    assert!(
+        argv.trim().starts_with("show --select customers") && argv.contains("--limit 7"),
+        "{argv}"
+    );
+}
