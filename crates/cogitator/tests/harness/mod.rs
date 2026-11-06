@@ -1,6 +1,19 @@
 //! Shared e2e harness: a framed-LSP client over the compiled binary,
 //! fixture helpers and the polling utilities every themed suite uses.
+//!
+//! v2 (05 §7): deadline-bounded client + per-test fixtures + fake dbt.
+//! The v1 API below it is being migrated off suite by suite.
 #![allow(dead_code)] // each test crate consumes a subset
+
+pub mod client;
+pub mod fake;
+pub mod fixture;
+pub mod wire;
+
+#[allow(unused_imports)]
+pub use client::{Lsp as Lsp2, ServerBuilder};
+#[allow(unused_imports)]
+pub use fixture::{jaffle, TestProject};
 
 use std::io::{BufReader, Read, Write};
 use std::path::PathBuf;

@@ -8,10 +8,21 @@ license.workspace = true
 name = "cogitator"
 path = "src/main.rs"
 
+# Test-only stand-in for the dbt CLI (05 §7): built when the `e2e`
+# feature is on, which `just test`/`check` and CI always pass. Never
+# part of release artifacts.
+[[bin]]
+name = "fake-dbt"
+path = "src/bin/fake_dbt.rs"
+required-features = ["e2e"]
+
 [features]
 default = []
 duckdb-parser = ["cogitator-duckdb/duckdb-parser"]
 tokio-console = ["dep:console-subscriber"]
+# enables the fake-dbt bin + the e2e tests that script it; no effect
+# on the shipped cogitator binary
+e2e = []
 
 [dependencies]
 cogitator-error = { workspace = true }
@@ -40,3 +51,4 @@ console-subscriber = { workspace = true, optional = true }
 [dev-dependencies]
 insta = { workspace = true }
 pretty_assertions = { workspace = true }
+tempfile = { workspace = true }

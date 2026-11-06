@@ -23,10 +23,11 @@ zigbuild target:
 
 # ----------------------------------------------------------------- test
 
-# run the full test suite
+# run the full test suite (the e2e feature builds the fake-dbt test
+# bin; a plain `cargo test --workspace` would skip the job e2e tests)
 [group('test')]
 test:
-    cargo test --workspace
+    cargo test --workspace --features cogitator/e2e
 
 # type-check the feature-gated DuckDB engine (bundled C++ build — slow cold)
 [group('test')]
@@ -60,7 +61,7 @@ lua-fmt-check:
 # lint; warnings are errors (the workspace stays at zero)
 [group('lint')]
 lint:
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --all-targets --features cogitator/e2e -- -D warnings
 
 # Lint our own shell scripts (the testdata fixture is third-party)
 [group('lint')]

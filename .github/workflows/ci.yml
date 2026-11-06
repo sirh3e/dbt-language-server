@@ -60,7 +60,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Test
-        run: cargo test --workspace
+        # the e2e feature builds the fake-dbt test bin (job e2e tests)
+        run: cargo test --workspace --features cogitator/e2e
 
   lint:
     needs: changes
@@ -83,7 +84,7 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --features cogitator/e2e -- -D warnings
       - uses: taiki-e/install-action@v2
         with:
           tool: just

@@ -456,6 +456,46 @@ copied verbatim.
 - Pure-function discipline from §3 is what keeps all of this cheap: no mocking
   framework is needed anywhere.
 
+### §7.1 Addendum — the deterministic e2e harness (binding)
+
+The e2e suites in `crates/cogitator/tests/` run on the harness v2 in
+`tests/harness/{wire,client,fixture,fake}.rs`. Its rules are binding
+for every e2e test:
+
+- **Every wait is a named predicate with a deadline.** The client
+  (`harness::client::Lsp`) reads frames on a reader thread and every
+  receive is bounded (default 30 s; `COGITATOR_E2E_DEADLINE_MS`
+  overrides — raise on slow CI, lower to probe failure output). A
+  timed-out wait panics naming what it waited for, with the server's
+  captured stderr and the undrained frames attached. Assertions on
+  elapsed wall-clock time are forbidden: ordering tests assert
+  *order*, never margins.
+- **The refresh barrier is `dbt.status` → `refresh.count >= n`.** The
+  counter is monotonic and protocol-visible; `wait_refresh(n)` is the
+  only sanctioned way to know a project refresh completed. Readiness
+  proxies (lenses appearing, hover answering) are not barriers.
+- **Every test boots on its own fixture copy** (`fixture::jaffle()`:
+  a tempfile-backed jaffle_shop_duckdb copy minus `target/`, plus a
+  sandboxed `HOME`/`USERPROFILE`/`XDG_*`/`DBT_PROFILES_DIR`). Nothing
+  boots on the shared `testdata/` tree; the server's own
+  `target/.cogitator-cache` persistence therefore never leaks between
+  tests or into git status.
+- **Server→client requests are auto-answered** (`showDocument` →
+  success, `applyEdit` → applied, progress-create/registration →
+  null) and recorded; tests assert them via
+  `wait_server_request`/`wait_notification`, never by scanning a
+  stash after the fact.
+- **The dbt CLI in tests is the `fake-dbt` bin**
+  (`src/bin/fake_dbt.rs`, behind the `e2e` cargo feature — a
+  test-only target that never ships), scripted via `FAKE_DBT_*` env
+  vars and installed on PATH by `harness::fake::install`. Shell shims
+  are gone, so the job e2e tests run on Windows too. `just test`,
+  `just lint` and CI pass `--features cogitator/e2e`; a plain
+  `cargo test --workspace` skips only the fake-dbt-dependent tests.
+- `COGITATOR_E2E_DELAY` (§6.2) stays the only slow-request seam; the
+  config watcher keeps its fixed 2 s tick and tests force passes with
+  `dbt.reloadConfig` instead of waiting on the tick.
+
 ## 8. File layout delta vs. 00
 
 Changes to the tree in 00 §"Proposed module layout" (paths are logical; each
