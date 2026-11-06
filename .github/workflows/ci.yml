@@ -101,10 +101,11 @@ jobs:
         run: just gen-schemas-check
 
 
-  # The editor system suites (specs/neovim-plugin §8): headless Neovim +
-  # batch Emacs through the system_editors orchestrator, which fails on
-  # a missing editor here (COGITATOR_REQUIRE_EDITORS) instead of
-  # skipping — CI can never go silently green.
+  # The editor system suites (specs/neovim-plugin §8): headless Neovim,
+  # batch Emacs and the VS Code extension host through the
+  # system_editors orchestrator, which fails on a missing editor here
+  # (COGITATOR_REQUIRE_EDITORS) instead of skipping — CI can never go
+  # silently green. xvfb gives the downloaded VS Code its display.
   editors:
     name: editors (ubuntu)
     needs: changes
@@ -116,8 +117,8 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install mold (the linker .cargo/config.toml selects on Linux) and Emacs
-        run: sudo apt-get update && sudo apt-get install -y mold clang emacs-nox
+      - name: Install mold (the linker .cargo/config.toml selects on Linux), Emacs and xvfb
+        run: sudo apt-get update && sudo apt-get install -y mold clang emacs-nox xvfb
 
       - name: Install Neovim (stable >= 0.11)
         uses: rhysd/action-setup-vim@v1
@@ -127,7 +128,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Editor system suites
-        run: cargo test -p cogitator --features e2e --test system_editors -- --ignored --nocapture
+        run: xvfb-run -a cargo test -p cogitator --features e2e --test system_editors -- --ignored --nocapture
         env:
           COGITATOR_REQUIRE_EDITORS: "1"
 
