@@ -289,8 +289,14 @@ impl Lsp {
     }
 
     /// shutdown → exit → reaped exit status, bounded by the deadline.
+    /// Also asserts the deliberate wire deviation: shutdown answers
+    /// `"result": null` (a bare reply breaks Neovim, 01 §3).
     pub fn shutdown(mut self) -> ExitStatus {
-        let _ = self.request("shutdown", serde_json::Value::Null);
+        let reply = self.request("shutdown", serde_json::Value::Null);
+        assert!(
+            reply.get("result").is_some_and(|r| r.is_null()),
+            "shutdown must answer result: null — got {reply}"
+        );
         self.notify("exit", serde_json::json!({}));
         let due = Instant::now() + self.deadline;
         loop {
@@ -307,8 +313,8 @@ impl Lsp {
 
     /// One receive off the reader, auto-answering server→client
     /// requests. `None` means a server request was admitted (answered
-    /// + recorded in `server_requests`) — callers waiting on one must
-    /// re-scan that list before pulling again.
+    /// and recorded in `server_requests`) — callers waiting on one
+    /// must re-scan that list before pulling again.
     fn pull(&mut self, due: Instant, waiting_for: &str) -> Option<serde_json::Value> {
         let left = due.saturating_duration_since(Instant::now());
         match self.rx.recv_timeout(left) {

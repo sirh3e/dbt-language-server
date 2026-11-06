@@ -2,18 +2,14 @@
 //! the framed-LSP harness lives in tests/harness/.
 
 mod harness;
-#[allow(unused_imports)]
-use harness::*;
+use harness::jaffle;
 
 /// Exposures as graph citizens (03 §10): symbol search, the project
 /// DAG, and dangling-target warnings on the YAML entry.
 #[test]
 fn exposures_join_the_graph() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-exposures-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let exposures_yml = root.join("models/exposures.yml");
     std::fs::write(
         &exposures_yml,
@@ -21,7 +17,7 @@ fn exposures_join_the_graph() {
     )
     .unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
 
     // workspace/symbol with the exposure: prefix
     let symbols = lsp.request(
@@ -127,8 +123,7 @@ fn exposures_join_the_graph() {
     assert!(names.contains(&"customer_orders"), "{names:?}");
     assert!(!names.contains(&"customers"), "{names:?}");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Package awareness (03 §10): two-arg ref('pkg','model') resolves to
@@ -136,11 +131,8 @@ fn exposures_join_the_graph() {
 /// declared-but-not-installed package warns in packages.yml.
 #[test]
 fn package_awareness_two_arg_ref_and_deps() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-packages-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let packages_yml = root.join("packages.yml");
     std::fs::write(
         &packages_yml,
@@ -148,7 +140,7 @@ fn package_awareness_two_arg_ref_and_deps() {
     )
     .unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
 
     // a probe model using the two-arg form
     let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/pkg_probe.sql"));
@@ -204,8 +196,7 @@ fn package_awareness_two_arg_ref_and_deps() {
         "{items:?}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// workspace/diagnostic (01 §6.4): project-wide dangling findings,
@@ -213,18 +204,15 @@ fn package_awareness_two_arg_ref_and_deps() {
 /// answering an empty full report.
 #[test]
 fn workspace_diagnostics_full_then_unchanged() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-wsdiag-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     std::fs::write(
         root.join("models/dangler.sql"),
         "select * from {{ ref('customrs') }}\n",
     )
     .unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
     let report = lsp.request("workspace/diagnostic", serde_json::json!({}));
     let items = report["result"]["items"].as_array().expect("items").clone();
     let dangler = items
@@ -270,6 +258,5 @@ fn workspace_diagnostics_full_then_unchanged() {
         "{cleared}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }

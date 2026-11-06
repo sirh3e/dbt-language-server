@@ -1,20 +1,21 @@
 //! End-to-end suite (specs/rust-port/05 §7) — this file's theme only;
-//! the framed-LSP harness lives in tests/harness/.
+//! the deterministic harness lives in tests/harness/.
 
 mod harness;
-#[allow(unused_imports)]
-use harness::*;
-use std::io::Write;
+use harness::jaffle;
+
 #[test]
 fn full_session() {
-    let root = fixture_root().canonicalize().unwrap();
+    let project = jaffle();
+    let root = project.root.clone();
     let model = root.join("models/customers.sql");
     let text = std::fs::read_to_string(&model).unwrap();
     let uri = cogitator_lsp::fs_path_to_uri(&model);
 
-    let mut lsp = Lsp::start();
+    let mut lsp = project.server().spawn();
 
-    // 1. initialize (01 §3.1)
+    // 1. initialize (01 §3.1) — by hand, because the capability shape
+    // itself is under test here
     let init = lsp.request(
         "initialize",
         serde_json::json!({
@@ -39,14 +40,16 @@ fn full_session() {
         .is_some_and(|chars| chars.iter().any(|c| c == "'")));
     assert_eq!(caps["codeActionProvider"], true);
     assert_eq!(init["result"]["serverInfo"]["name"], "cogitator");
+    lsp.notify("initialized", serde_json::json!({}));
 
-    // 2. didOpen, then give the background refresh a moment
+    // 2. didOpen + the refresh barrier (no definition retry loop)
     lsp.notify(
         "textDocument/didOpen",
         serde_json::json!({
             "textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": text}
         }),
     );
+    lsp.wait_refresh(1);
 
     // locate a ref target in the real model
     let target_off = text
@@ -55,28 +58,18 @@ fn full_session() {
     let line = text[..target_off].matches('\n').count();
     let col = target_off - text[..target_off].rfind('\n').map(|p| p + 1).unwrap_or(0);
 
-    // 3. definition on the ref — retry while the first context refresh runs
-    let mut def_uri = String::new();
-    for _ in 0..50 {
-        let def = lsp.request(
-            "textDocument/definition",
-            serde_json::json!({
-                "textDocument": {"uri": uri},
-                "position": {"line": line, "character": col + 1}
-            }),
-        );
-        def_uri = def["result"]["uri"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string();
-        if def_uri.ends_with("stg_customers.sql") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    // 3. definition on the ref answers right after the barrier
+    let def = lsp.request(
+        "textDocument/definition",
+        serde_json::json!({
+            "textDocument": {"uri": uri},
+            "position": {"line": line, "character": col + 1}
+        }),
+    );
+    let def_uri = def["result"]["uri"].as_str().unwrap_or_default();
     assert!(
         def_uri.ends_with("stg_customers.sql"),
-        "definition resolved: {def_uri}"
+        "definition resolved: {def}"
     );
 
     // 4. hover on the same ref returns the model description (may be empty
@@ -268,28 +261,22 @@ fn full_session() {
         "{switch_titles:?}"
     );
 
+    // openSchema navigates via window/showDocument — auto-answered by
+    // the harness (the response guard swallows the client's reply) and
+    // waited on as an EVENT, not a stash scan
     let _ = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.openSchema", "arguments": [{"uri": uri}]}),
     );
-    let show_doc = lsp
-        .stash
-        .iter()
-        .find(|m| m["method"] == "window/showDocument")
-        .cloned()
-        .expect("server sent window/showDocument");
+    let show_doc = lsp.wait_server_request("window/showDocument", |m| {
+        m["params"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with(".yml"))
+    });
     assert!(show_doc["params"]["uri"]
         .as_str()
         .unwrap()
         .ends_with(".yml"));
-    // answer the server's request: the response guard must swallow it
-    let reply = serde_json::json!({
-        "jsonrpc": "2.0", "id": show_doc["id"], "result": {"success": true}
-    });
-    let body = serde_json::to_vec(&reply).unwrap();
-    write!(lsp.stdin, "Content-Length: {}\r\n\r\n", body.len()).unwrap();
-    lsp.stdin.write_all(&body).unwrap();
-    lsp.stdin.flush().unwrap();
 
     // 6b. references on the open model (graph-backed)
     let refs = lsp.request(
@@ -316,42 +303,28 @@ fn full_session() {
         .as_array()
         .is_some_and(|d| !d.is_empty()));
 
-    // 6d. unknown request gets MethodNotFound; a known request with bad
-    // params gets InvalidParams
-    // 6a5. the context refresh reported itself through $/progress
-    //      (asserted before the later sections clear the stash)
-    assert!(
-        lsp.stash
-            .iter()
-            .any(|m| m["method"] == "window/workDoneProgress/create"),
-        "progress token created: {:?}",
-        lsp.stash
-    );
-    assert!(
-        lsp.stash.iter().any(|m| m["method"] == "$/progress"
-            && m["params"]["value"]["kind"] == "end"
+    // 6a5. the context refresh reported itself through $/progress: the
+    // create request was auto-answered + recorded, the end notification
+    // is waited on (arrival order no longer matters)
+    lsp.wait_server_request("window/workDoneProgress/create", |_| true);
+    let end = lsp.wait_notification("$/progress", |m| {
+        m["params"]["value"]["kind"] == "end"
             && m["params"]["value"]["message"]
                 .as_str()
-                .is_some_and(|s| s.contains("models"))),
-        "refresh reported via $/progress"
-    );
+                .is_some_and(|s| s.contains("models"))
+    });
+    assert_eq!(end["params"]["value"]["kind"], "end", "{end}");
 
     // 6a5b. dbt.openModel navigates via window/showDocument
-    lsp.stash.clear();
     let _ = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.openModel", "arguments": [{"model": "customers"}]}),
     );
-    assert!(
-        lsp.stash
-            .iter()
-            .any(|m| m["method"] == "window/showDocument"
-                && m["params"]["uri"]
-                    .as_str()
-                    .is_some_and(|u| u.ends_with("customers.sql"))),
-        "dbt.openModel sent showDocument: {:?}",
-        lsp.stash
-    );
+    lsp.wait_server_request("window/showDocument", |m| {
+        m["params"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("customers.sql"))
+    });
 
     // 6a6. yaml workflow: tests navigation + extract-to-version
     let tests = lsp.request(
@@ -366,32 +339,23 @@ fn full_session() {
         "{tests}"
     );
 
-    lsp.stash.clear();
     let goto = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({ "command": "dbt.goToTests", "arguments": [{ "uri": uri }] }),
     );
     assert!(goto["result"].is_null());
-    assert!(
-        lsp.stash
-            .iter()
-            .any(|m| m["method"] == "window/showDocument"
-                && m["params"]["uri"].as_str().unwrap().ends_with("schema.yml")),
-        "goToTests must navigate: {:?}",
-        lsp.stash
-    );
+    lsp.wait_server_request("window/showDocument", |m| {
+        m["params"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("schema.yml"))
+    });
 
-    lsp.stash.clear();
     let extract = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({ "command": "dbt.extractModelYaml", "arguments": [{ "uri": uri }] }),
     );
     assert!(extract["result"].is_null());
-    let apply = lsp
-        .stash
-        .iter()
-        .find(|m| m["method"] == "workspace/applyEdit")
-        .expect("extract must send workspace/applyEdit");
+    let apply = lsp.wait_server_request("workspace/applyEdit", |_| true);
     let new_text = apply["params"]["edit"]["documentChanges"][0]["edits"][0]["newText"]
         .as_str()
         .unwrap_or_default();
@@ -405,11 +369,11 @@ fn full_session() {
     let report = &profiles["result"];
     assert_eq!(report["activeProfile"], "jaffle_shop", "{report}");
     assert_eq!(report["activeTarget"], "dev", "{report}");
-    let jaffle = &report["profiles"][0];
-    assert_eq!(jaffle["name"], "jaffle_shop");
-    assert_eq!(jaffle["allowed"], true);
-    assert_eq!(jaffle["targets"][0]["type"], "duckdb");
-    assert!(jaffle["targets"][0]["auth"]["method"].is_string());
+    let jaffle_profile = &report["profiles"][0];
+    assert_eq!(jaffle_profile["name"], "jaffle_shop");
+    assert_eq!(jaffle_profile["allowed"], true);
+    assert_eq!(jaffle_profile["targets"][0]["type"], "duckdb");
+    assert!(jaffle_profile["targets"][0]["auth"]["method"].is_string());
 
     let switched = lsp.request(
         "workspace/executeCommand",
@@ -458,13 +422,12 @@ fn full_session() {
         .as_array()
         .is_some_and(|e| !e.is_empty()));
 
-    // 6c. modelInfo: neighbors + tests + versions + compiled SQL in one trip.
-    // dbt would write target/compiled/ at runtime; fake it (gitignored) and
-    // clean up even on assertion failure.
+    // 6c. modelInfo: neighbors + tests + versions + compiled SQL in one
+    // trip. dbt would write target/compiled/ at runtime; fake it inside
+    // OUR copy (the tempdir cleans itself, nothing shared is touched).
     let compiled_dir = root.join("target/compiled/jaffle_shop/models");
     std::fs::create_dir_all(&compiled_dir).unwrap();
     std::fs::write(compiled_dir.join("customers.sql"), "select 1 as id\n").unwrap();
-    let _compiled_cleanup = RemoveOnDrop(root.join("target"));
 
     let info = lsp.request(
         "workspace/executeCommand",
@@ -571,15 +534,13 @@ fn full_session() {
     // 6e. dbt.setProfilesDir: live switch to another profiles directory —
     //     the report follows without a client restart, and the stale
     //     target override resets (last profiles assertions of the session)
-    let other_dir =
-        std::env::temp_dir().join(format!("cogitator-e2e-profiles-{}", std::process::id()));
+    let other_dir = project.home.join("other-profiles");
     std::fs::create_dir_all(&other_dir).unwrap();
     std::fs::write(
         other_dir.join("profiles.yml"),
         "jaffle_shop:\n  target: dev\n  outputs:\n    dev:\n      type: snowflake\n",
     )
     .unwrap();
-    let _profiles_cleanup = RemoveOnDrop(other_dir.clone());
     let switched_dir = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({ "command": "dbt.setProfilesDir",
@@ -608,15 +569,9 @@ fn full_session() {
     );
     assert!(empty_dir["result"].is_null(), "{empty_dir}");
 
-    // 7. shutdown must carry "result": null (deliberate deviation from the
-    //    Go bare shape — Neovim rejects it as INVALID_SERVER_MESSAGE)
-    let shutdown = lsp.request("shutdown", serde_json::json!({}));
-    assert!(
-        shutdown.get("result").is_some_and(|r| r.is_null()),
-        "result: null expected: {shutdown}"
-    );
-    lsp.notify("exit", serde_json::json!({}));
-    let status = lsp.child.wait().unwrap();
+    // 7. shutdown carries "result": null (asserted inside shutdown(),
+    //    the deliberate deviation from the Go bare shape) and exits 0
+    let status = lsp.shutdown();
     assert_eq!(status.code(), Some(0));
 }
 
@@ -624,107 +579,70 @@ fn full_session() {
 /// already surfaces the INFO overview lines as window/logMessage.
 #[test]
 fn server_logs_reach_the_editor() {
-    let (mut lsp, _uri) = booted(&[]);
-    // stir once more so any straggling notifications get stashed
-    let _ = lsp.request(
-        "workspace/executeCommand",
-        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
-    );
-    let logs: Vec<&str> = lsp
-        .stash
-        .iter()
-        .filter(|m| m["method"] == "window/logMessage")
-        .filter_map(|m| m["params"]["message"].as_str())
-        .collect();
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
+    // the overview line is waited on as an event, not scanned for
+    let overview = lsp.wait_notification("window/logMessage", |m| {
+        m["params"]["message"]
+            .as_str()
+            .is_some_and(|s| s.contains("context refreshed"))
+    });
+    assert_eq!(overview["params"]["type"], 3, "{overview}");
+    // and at the default info level, nothing debug-typed is in the rest
+    let logs = lsp.take_notifications("window/logMessage");
     assert!(
-        logs.iter().any(|m| m.contains("context refreshed")),
-        "no overview line in {logs:?}"
-    );
-    assert!(
-        lsp.stash
-            .iter()
-            .filter(|m| m["method"] == "window/logMessage")
-            .all(|m| m["params"]["type"]
-                .as_i64()
-                .is_some_and(|t| (1..=3).contains(&t))),
+        logs.iter().all(|m| m["params"]["type"]
+            .as_i64()
+            .is_some_and(|t| (1..=3).contains(&t))),
         "default level is info — no debug lines: {logs:?}"
     );
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Verbosity is hot: cogitator.yml log.client_level and $/setTrace
 /// both tune the editor-visible stream, last writer wins.
 #[test]
 fn log_verbosity_tunes_hot() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-loglvl-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
-
-    let (mut lsp, uri) = booted_in(&root, &[]);
+    let project = jaffle();
+    let (mut lsp, uri) = project.booted();
     let saved = serde_json::json!({"textDocument": {"uri": uri}});
-    let debug_logs = |lsp: &Lsp| {
-        lsp.stash
+
+    // default info: a didSave produces no debug lines (the status
+    // round trip orders the drain after the didSave's log output)
+    lsp.notify("textDocument/didSave", saved.clone());
+    lsp.wait_status(|_| true);
+    assert!(
+        lsp.take_notifications("window/logMessage")
             .iter()
-            .filter(|m| m["method"] == "window/logMessage" && m["params"]["type"] == 4)
-            .count()
-    };
+            .all(|m| m["params"]["type"] != 4),
+        "info level shows no debug lines"
+    );
 
-    // default info: a didSave produces no debug lines
+    // cogitator.yml log.client_level: debug — config.loaded flipping
+    // true in dbt.status marks the hot apply as COMPLETE
+    std::fs::write(
+        project.root.join("cogitator.yml"),
+        "log:\n  client_level: debug\n",
+    )
+    .unwrap();
+    lsp.reload_config();
+    lsp.wait_status(|s| s["config"]["loaded"] == true);
     lsp.notify("textDocument/didSave", saved.clone());
-    let _ = lsp.request(
-        "workspace/executeCommand",
-        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
-    );
-    assert_eq!(debug_logs(&lsp), 0, "info level shows no debug lines");
+    let debug_line = lsp.wait_notification("window/logMessage", |m| m["params"]["type"] == 4);
+    assert_eq!(debug_line["params"]["type"], 4, "{debug_line}");
 
-    // cogitator.yml log.client_level: debug → "handled" lines appear
-    std::fs::write(root.join("cogitator.yml"), "log:\n  client_level: debug\n").unwrap();
-    let reply = lsp.request(
-        "workspace/executeCommand",
-        serde_json::json!({"command": "dbt.reloadConfig", "arguments": [{}]}),
-    );
-    assert!(reply.get("result").is_some(), "{reply}");
-    let mut saw_debug = 0;
-    for _ in 0..100 {
-        lsp.notify("textDocument/didSave", saved.clone());
-        let _ = lsp.request(
-            "workspace/executeCommand",
-            serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
-        );
-        saw_debug = debug_logs(&lsp);
-        if saw_debug > 0 {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    assert!(saw_debug > 0, "debug level never surfaced");
-
-    // $/setTrace off: only errors from here — no new info/debug lines
+    // $/setTrace off: only errors from here — the setTrace is ordered
+    // before the flush request, so everything after the drain is quiet
     lsp.notify("$/setTrace", serde_json::json!({"value": "off"}));
-    let _ = lsp.request(
-        "workspace/executeCommand",
-        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
-    );
-    let baseline: usize = lsp
-        .stash
-        .iter()
-        .filter(|m| m["method"] == "window/logMessage" && m["params"]["type"] != 1)
-        .count();
+    lsp.wait_status(|_| true);
+    let _ = lsp.take_notifications("window/logMessage");
     lsp.notify("textDocument/didSave", saved.clone());
-    let _ = lsp.request(
-        "workspace/executeCommand",
-        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    lsp.wait_status(|_| true);
+    let after = lsp.take_notifications("window/logMessage");
+    assert!(
+        after.iter().all(|m| m["params"]["type"] == 1),
+        "setTrace off silences non-errors: {after:?}"
     );
-    let after: usize = lsp
-        .stash
-        .iter()
-        .filter(|m| m["method"] == "window/logMessage" && m["params"]["type"] != 1)
-        .count();
-    assert_eq!(after, baseline, "setTrace off silences non-errors");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
