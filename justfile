@@ -132,6 +132,11 @@ fuzz-check:
 
 # -------------------------------------------------------------- editors
 
+# compile the VS Code extension (needs node/npm; thin stdio client)
+[group('editors')]
+vscode-build:
+    cd editors/vscode && npm install --no-audit --no-fund && npm run compile
+
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
 [group('editors')]
 nvim-test:

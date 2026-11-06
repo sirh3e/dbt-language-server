@@ -21,3 +21,9 @@ fuzz/corpus/
 fuzz/artifacts/
 fuzz/coverage/
 fuzz/Cargo.lock
+
+# VS Code extension build state
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
+editors/vscode/package-lock.json
