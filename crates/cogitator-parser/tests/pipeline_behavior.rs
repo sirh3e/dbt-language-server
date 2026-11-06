@@ -138,3 +138,20 @@ fn doc_refs_replaced_in_descriptions() {
     );
     assert_eq!(out, "Status: the docs text and {{ doc('missing') }}.");
 }
+
+#[test]
+fn snapshot_blocks_extracted_by_name() {
+    let text = concat!(
+        "{% snapshot orders_snapshot %}\n",
+        "select * from {{ ref('stg_orders') }}\n",
+        "{% endsnapshot %}\n\n",
+        "{% snapshot customers_snapshot %}\nselect 1\n{% endsnapshot %}\n",
+    );
+    let snaps = jinja_scan::extract_snapshots(text);
+    let names: Vec<&str> = snaps.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, vec!["orders_snapshot", "customers_snapshot"]);
+    assert_eq!(snaps[0].start.0, 0, "first block starts on line 0");
+    // a macro block is not a snapshot; broken jinja degrades to empty
+    assert!(jinja_scan::extract_snapshots("{% macro m() %}{% endmacro %}").is_empty());
+    assert!(jinja_scan::extract_snapshots("{% snapshot %}").is_empty());
+}

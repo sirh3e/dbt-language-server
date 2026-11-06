@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use cogitator_parser::jinja_scan::{RawDocsBlock, RawMacro};
+use cogitator_parser::jinja_scan::{RawDocsBlock, RawMacro, RawSnapshot};
 use cogitator_schemas::properties::PropertiesFile;
 use serde::{Deserialize, Serialize};
 
@@ -22,6 +22,9 @@ pub struct PersistedScan {
     pub props: Entries<PropertiesFile>,
     pub citizens: Entries<CitizenFile>,
     pub macros: Entries<Vec<RawMacro>>,
+    /// Added after format 1 shipped: absent in older cache files.
+    #[serde(default)]
+    pub snapshots: Entries<Vec<RawSnapshot>>,
     pub docs: Entries<Vec<RawDocsBlock>>,
     pub edges: Entries<Vec<EdgeSeed>>,
     pub sql_tags: Entries<Vec<String>>,
@@ -39,6 +42,7 @@ impl ContextBuilder {
             props: self.props.export(),
             citizens: self.citizens.export(),
             macros: self.macros.export(),
+            snapshots: self.snapshots.export(),
             docs: self.docs.export(),
             edges: self.edges.export(),
             sql_tags: self.sql_tags.export(),
@@ -51,6 +55,7 @@ impl ContextBuilder {
         self.props.seed(scan.props);
         self.citizens.seed(scan.citizens);
         self.macros.seed(scan.macros);
+        self.snapshots.seed(scan.snapshots);
         self.docs.seed(scan.docs);
         self.edges.seed(scan.edges);
         self.sql_tags.seed(scan.sql_tags);

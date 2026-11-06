@@ -47,6 +47,42 @@ fn ident_is<'a>(tok: &'a JToken<'a>, want: &str) -> bool {
     matches!(tok, JToken::Ident(s) if *s == want)
 }
 
+/// One `{% snapshot name %}` block (03 §6 addendum): snapshots are
+/// ref-able like models; only the name and where it sits matter.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RawSnapshot {
+    pub name: String,
+    pub start: (u32, u32),
+}
+
+/// Extract `{% snapshot name %}` definitions. Tokenize failures fall
+/// back to an empty list — a broken snapshot file degrades locally.
+pub fn extract_snapshots(text: &str) -> Vec<RawSnapshot> {
+    let Ok(tokens) = tokenize_all(text) else {
+        return Vec::new();
+    };
+    let table = LineTable::new(text);
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        if matches!(tokens[i].0, JToken::BlockStart)
+            && tokens
+                .get(i + 1)
+                .is_some_and(|(t, _)| ident_is(t, "snapshot"))
+        {
+            if let Some((JToken::Ident(name), span)) = tokens.get(i + 2).map(|(t, s)| (t, s)) {
+                out.push(RawSnapshot {
+                    name: (*name).to_string(),
+                    start: table.line_col(span.start_offset),
+                });
+                i += 2;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 /// Extract `{% macro name(args…) %}` definitions (06 §2.2).
 pub fn extract_macros(text: &str) -> Vec<RawMacro> {
     match tokenize_all(text) {

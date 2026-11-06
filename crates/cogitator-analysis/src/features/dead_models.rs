@@ -37,8 +37,10 @@ pub fn dead_models(ctx: &DbtContext) -> Vec<DeadModel> {
 
 /// Is this model dead? (Also the lint.dead_models per-file check.)
 pub fn is_dead(ctx: &DbtContext, name: &str, details: &crate::context::ModelDetails) -> bool {
-    // seeds (csv) and package models stay out — their "unused" is normal
-    if details.uri.extension().is_some_and(|e| e == "csv") {
+    // seeds and snapshots stay out — their "unused" is normal (a seed
+    // backs ad-hoc queries; a snapshot is its own end product) — and so
+    // do package models
+    if details.kind != crate::context::ModelKind::Model {
         return false;
     }
     if details.project_name != ctx.project.name {

@@ -19,7 +19,7 @@ use cogitator_schemas::project::{apply_defaults, parse_dbt_project, ProjectFile}
 use crate::graph::{NodeKind, ProjectGraph};
 use crate::util;
 
-use cogitator_parser::jinja_scan::{RawDocsBlock, RawMacro};
+use cogitator_parser::jinja_scan::{RawDocsBlock, RawMacro, RawSnapshot};
 use cogitator_schemas::properties::PropertiesFile;
 
 use crate::cache::FileCache;
@@ -36,6 +36,7 @@ pub struct ContextBuilder {
     props: FileCache<PropertiesFile>,
     citizens: FileCache<exposures::CitizenFile>,
     macros: FileCache<Vec<RawMacro>>,
+    snapshots: FileCache<Vec<RawSnapshot>>,
     docs: FileCache<Vec<RawDocsBlock>>,
     edges: FileCache<Vec<EdgeSeed>>,
     /// `{{ config(tags=…) }}` per model file (tag search).
@@ -67,6 +68,7 @@ impl ContextBuilder {
         [
             self.props.stats(),
             self.macros.stats(),
+            self.snapshots.stats(),
             self.docs.stats(),
             self.edges.stats(),
             self.sql_tags.stats(),
@@ -77,7 +79,8 @@ impl ContextBuilder {
 }
 
 pub use types::{
-    MacroDetails, ModelDetails, SelectorDetails, SourceDetails, SourceTableDetails, VariableDetails,
+    MacroDetails, ModelDetails, ModelKind, SelectorDetails, SourceDetails, SourceTableDetails,
+    VariableDetails,
 };
 
 #[derive(Debug, Default)]
@@ -154,6 +157,7 @@ impl ContextBuilder {
             &mut self.edges,
             &mut self.sql_tags,
         );
+        let snapshots_cache = &mut self.snapshots;
         // scoped threads lose the span context: hand each builder the
         // parent explicitly so per-builder child spans nest (05 §6.3)
         let parent = tracing::Span::current();
@@ -167,6 +171,7 @@ impl ContextBuilder {
                     props_cache,
                     docs_cache,
                     sql_tags_cache,
+                    snapshots_cache,
                 )
             });
             let macros_handle = scope.spawn(|| {
@@ -186,6 +191,11 @@ impl ContextBuilder {
             variables = vars_handle.join().unwrap_or_default();
             graph = graph_handle.join().unwrap_or_default();
         });
+
+        // Refs to seeds and snapshots created empty-uri graph nodes during
+        // the model-file scan; give them their real files so dangling-ref
+        // detection and navigation treat them as present (05 §5).
+        graph.fill_model_uris(|name| models.get(name).map(|d| d.uri.clone()));
 
         let selector_detail_map = load_selectors(&root);
         let declared_packages = packages::declared_packages(&root);

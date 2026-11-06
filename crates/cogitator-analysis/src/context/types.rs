@@ -7,8 +7,18 @@ use std::path::PathBuf;
 
 use cogitator_lsp::Range;
 
+/// What produced a `model_detail_map` entry — everything `ref()`-able.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ModelKind {
+    #[default]
+    Model,
+    Seed,
+    Snapshot,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ModelDetails {
+    pub kind: ModelKind,
     pub uri: PathBuf,
     pub project_name: String,
     pub description: String,

@@ -537,3 +537,28 @@ function still wins. The write happens off the dispatcher task; any
 write failure falls back to the plain self-location, never an error.
 Function-doc lookups are case-insensitive everywhere (`SUM` hovers
 and resolves like `sum`).
+
+## Addendum: §6 snapshots, singular tests and analyses
+
+The scan covers three more dbt path lists (`snapshot-paths`,
+`test-paths`, `analysis-paths`; defaults `snapshots`, `tests`,
+`analyses`/`analysis`, each only when the directory exists):
+
+- **Snapshots** are ref-able: every `{% snapshot name %}` block under a
+  project's snapshot paths (scan-cached per file, persisted like the
+  other caches) joins `model_detail_map` by **block name** with
+  `ModelKind::Snapshot` and description `Snapshot File`. A name
+  collision with a real model keeps the model. Completion, hover,
+  definition and dangling-ref checks then cover snapshot refs for free.
+- `ModelDetails` carries a `ModelKind` (`Model`/`Seed`/`Snapshot`);
+  dead-model detection excludes every non-`Model` kind (a seed backs
+  ad-hoc queries, a snapshot is its own end product) instead of the old
+  `.csv`-extension probe.
+- **Singular tests and analyses** (own project only) join the project
+  graph as leaf dependents (`NodeKind::Test`/`Analysis`, named by file
+  stem, same edge-seed cache): find-references, impact, the DAG and
+  workspace dangling-ref coverage see them; they are never ref-able and
+  never in `model_detail_map`.
+- After the model scan the graph back-fills empty-uri model nodes from
+  `model_detail_map` (`fill_model_uris`): refs to seeds and snapshots —
+  first seen as bare edge targets — stop counting as dangling.

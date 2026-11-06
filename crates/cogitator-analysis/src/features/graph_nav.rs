@@ -17,6 +17,8 @@ pub enum GraphNodeKind {
     Exposure,
     Metric,
     SemanticModel,
+    Test,
+    Analysis,
 }
 
 impl GraphNodeKind {
@@ -26,6 +28,8 @@ impl GraphNodeKind {
             NodeKind::Exposure => GraphNodeKind::Exposure,
             NodeKind::Metric => GraphNodeKind::Metric,
             NodeKind::SemanticModel => GraphNodeKind::SemanticModel,
+            NodeKind::Test => GraphNodeKind::Test,
+            NodeKind::Analysis => GraphNodeKind::Analysis,
             NodeKind::Model | NodeKind::Macro => GraphNodeKind::Model,
         }
     }

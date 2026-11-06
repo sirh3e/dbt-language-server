@@ -20,6 +20,9 @@ pub struct ProjectFile {
     pub profile: String,
     pub model_paths: Vec<String>,
     pub seed_paths: Vec<String>,
+    pub snapshot_paths: Vec<String>,
+    pub test_paths: Vec<String>,
+    pub analysis_paths: Vec<String>,
     pub macro_paths: Vec<String>,
     pub packages_install_path: String,
     pub docs_paths: Vec<String>,
@@ -51,6 +54,9 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         "profile",
         "model-paths",
         "seed-paths",
+        "snapshot-paths",
+        "test-paths",
+        "analysis-paths",
         "macro-paths",
         "packages-install-path",
         "docs-paths",
@@ -66,6 +72,9 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         profile: project.profile.clone().unwrap_or_default(),
         model_paths: paths_of(project.model_paths.as_ref()),
         seed_paths: paths_of(project.seed_paths.as_ref()),
+        snapshot_paths: paths_of(project.snapshot_paths.as_ref()),
+        test_paths: paths_of(project.test_paths.as_ref()),
+        analysis_paths: paths_of(project.analysis_paths.as_ref()),
         macro_paths: paths_of(project.macro_paths.as_ref()),
         packages_install_path: project.packages_install_path.clone().unwrap_or_default(),
         docs_paths: paths_of(project.docs_paths.as_ref()),
@@ -106,6 +115,20 @@ pub fn apply_defaults(file: &mut ProjectFile, available_dirs: &[String]) {
     }
     if file.seed_paths.is_empty() && has("seeds") {
         file.seed_paths = vec!["seeds".into()];
+    }
+    if file.snapshot_paths.is_empty() && has("snapshots") {
+        file.snapshot_paths = vec!["snapshots".into()];
+    }
+    if file.test_paths.is_empty() && has("tests") {
+        file.test_paths = vec!["tests".into()];
+    }
+    if file.analysis_paths.is_empty() {
+        for dir in ["analyses", "analysis"] {
+            if has(dir) {
+                file.analysis_paths = vec![dir.into()];
+                break;
+            }
+        }
     }
     if file.macro_paths.is_empty() && has("macros") {
         file.macro_paths = vec!["macros".into()];

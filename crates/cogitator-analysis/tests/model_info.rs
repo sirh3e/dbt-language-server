@@ -94,7 +94,8 @@ fn unversioned_model_and_unknown_names() {
     assert!(info["versions"].is_null());
     assert!(!info["tests"].as_array().unwrap().is_empty());
     assert!(names(&info["upstream"]).contains(&"stg_customers"));
-    assert!(names(&info["downstream"]).is_empty());
+    // no model depends on customers; the fixture analysis file does
+    assert_eq!(names(&info["downstream"]), vec!["order_counts"]);
 
     assert!(model_info(&ctx, "", Some("does_not_exist")).is_none());
     assert!(model_info(&ctx, "", None).is_none());

@@ -30,6 +30,10 @@ pub enum NodeKind {
     Exposure,
     Metric,
     SemanticModel,
+    /// A singular test file (test-paths) — refs models, never ref'd.
+    Test,
+    /// An analysis file (analysis-paths) — refs models, never ref'd.
+    Analysis,
 }
 
 impl NodeKind {
@@ -42,6 +46,8 @@ impl NodeKind {
             NodeKind::Exposure => "exposure",
             NodeKind::Metric => "metric",
             NodeKind::SemanticModel => "semantic_model",
+            NodeKind::Test => "test",
+            NodeKind::Analysis => "analysis",
         }
     }
 }
@@ -94,6 +100,28 @@ impl ProjectGraph {
                 graph.graph.update_edge(from, to, *edge);
             }
         }
+
+        // Singular tests and analyses (own project only): they ref models
+        // and sources but are never ref'd themselves, so they join as leaf
+        // dependents — find-references, impact and dangling-ref coverage.
+        for (node_kind, paths) in [
+            (NodeKind::Test, &project.test_paths),
+            (NodeKind::Analysis, &project.analysis_paths),
+        ] {
+            let files = util::create_file_name_map(&[".sql"], root, paths);
+            for (name, path) in &files {
+                let Some(seeds) =
+                    cache.get_or_parse(path, |text, _| Some(extract_edge_seeds(text, dialect)))
+                else {
+                    continue;
+                };
+                let from = graph.ensure_node(node_kind, name.clone(), path.clone());
+                for (kind, edge, target) in seeds.iter() {
+                    let to = graph.ensure_node(*kind, target.clone(), PathBuf::new());
+                    graph.graph.update_edge(from, to, *edge);
+                }
+            }
+        }
         cache.sweep();
         graph
     }
@@ -134,6 +162,21 @@ impl ProjectGraph {
                     ),
                 };
                 self.graph.update_edge(from, to, edge);
+            }
+        }
+    }
+
+    /// Give placeholder model nodes (ref targets first seen as edge
+    /// endpoints: seeds, snapshots) their real file, so dangling-ref
+    /// detection only flags refs with nothing on disk behind them.
+    pub fn fill_model_uris(&mut self, lookup: impl Fn(&str) -> Option<PathBuf>) {
+        let indices: Vec<NodeIndex> = self.graph.node_indices().collect();
+        for idx in indices {
+            let node = &self.graph[idx];
+            if node.kind == NodeKind::Model && node.uri.as_os_str().is_empty() {
+                if let Some(uri) = lookup(&node.name) {
+                    self.graph[idx].uri = uri;
+                }
             }
         }
     }

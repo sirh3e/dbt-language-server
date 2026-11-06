@@ -13,12 +13,13 @@ use cogitator_schemas::properties::{parse_properties, PropertiesFile, SourceEntr
 use crate::cache::FileCache;
 use crate::util;
 
-use super::{ModelDetails, ProjectDetails, SourceDetails, SourceTableDetails};
+use super::{ModelDetails, ModelKind, ProjectDetails, SourceDetails, SourceTableDetails};
 
 pub(super) type PropsCache = FileCache<PropertiesFile>;
 pub(super) type DocsCache = FileCache<Vec<RawDocsBlock>>;
 
 pub(super) type SqlTagsCache = FileCache<Vec<String>>;
+pub(super) type SnapshotsCache = FileCache<Vec<jinja_scan::RawSnapshot>>;
 
 pub(super) fn build_model_details(
     root: &Path,
@@ -27,6 +28,7 @@ pub(super) fn build_model_details(
     props: &mut PropsCache,
     docs: &mut DocsCache,
     sql_tags: &mut SqlTagsCache,
+    snapshots: &mut SnapshotsCache,
 ) -> (
     HashMap<String, ModelDetails>,
     HashMap<String, SourceDetails>,
@@ -59,6 +61,7 @@ pub(super) fn build_model_details(
             models.insert(
                 key,
                 ModelDetails {
+                    kind: ModelKind::Model,
                     uri: file_path,
                     project_name: p.file.name.clone(),
                     description: schema.map(|m| m.description.clone()).unwrap_or_default(),
@@ -79,6 +82,7 @@ pub(super) fn build_model_details(
         models.insert(
             stem,
             ModelDetails {
+                kind: ModelKind::Seed,
                 uri: file_path,
                 project_name: project.name.clone(),
                 description: "Seed File".to_string(),
@@ -90,10 +94,57 @@ pub(super) fn build_model_details(
         );
     }
 
+    // Snapshots (03 §6 addendum): `{% snapshot name %}` blocks are
+    // ref()-able by block name, never by file stem. A name collision
+    // with a real model keeps the model (or_insert — dbt itself errors
+    // on duplicates; we degrade to the model).
+    for p in process_list {
+        for (file_path, raw) in snapshot_blocks(&p.root, &p.file, snapshots) {
+            models
+                .entry(raw.name.clone())
+                .or_insert_with(|| ModelDetails {
+                    kind: ModelKind::Snapshot,
+                    uri: file_path.clone(),
+                    project_name: p.file.name.clone(),
+                    description: "Snapshot File".to_string(),
+                    schema_uri: None,
+                    schema_range: Range::default(),
+                    columns: Vec::new(),
+                    tags: Vec::new(),
+                });
+        }
+    }
+
     props.sweep();
     docs.sweep();
     sql_tags.sweep();
+    snapshots.sweep();
     (models, sources)
+}
+
+/// Every `{% snapshot %}` block under a project's snapshot paths,
+/// with the file that holds it (scan-cached per file).
+fn snapshot_blocks(
+    root: &Path,
+    project: &ProjectFile,
+    cache: &mut SnapshotsCache,
+) -> Vec<(PathBuf, jinja_scan::RawSnapshot)> {
+    let mut out = Vec::new();
+    for rel in &project.snapshot_paths {
+        let dir = root.join(rel);
+        if std::fs::read_dir(&dir).is_err() {
+            continue;
+        }
+        for file in util::walk_filepath(&dir, ".sql") {
+            let Some(blocks) =
+                cache.get_or_parse(&file, |text, _| Some(jinja_scan::extract_snapshots(text)))
+            else {
+                continue;
+            };
+            out.extend(blocks.iter().map(|b| (file.clone(), b.clone())));
+        }
+    }
+    out
 }
 
 pub(super) struct SchemaModel {
