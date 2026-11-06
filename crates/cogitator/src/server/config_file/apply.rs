@@ -18,6 +18,7 @@ pub enum Change {
     ArtifactCapMib(u64),
     LintFlags(u32),
     WarehouseColumns(bool),
+    ClientLogLevel(u8),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -84,6 +85,17 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
             new.warehouse.columns.unwrap_or(baseline.warehouse_columns),
         ));
     }
+    if old.log != new.log {
+        // an unrecognized level name keeps the launch value — the
+        // cogitator.yml diagnostics flag the typo separately
+        out.push(Change::ClientLogLevel(
+            new.log
+                .client_level
+                .as_deref()
+                .and_then(crate::client_log::level_from_name)
+                .unwrap_or(baseline.client_log_level),
+        ));
+    }
     out
 }
 
@@ -103,7 +115,8 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::DebounceMs(_)
             | Change::ArtifactCapMib(_)
             | Change::LintFlags(_)
-            | Change::WarehouseColumns(_) => true,
+            | Change::WarehouseColumns(_)
+            | Change::ClientLogLevel(_) => true,
         })
         .collect()
 }
@@ -117,6 +130,7 @@ pub struct Baseline {
     pub artifact_mib: u64,
     pub lint_flags: u32,
     pub warehouse_columns: bool,
+    pub client_log_level: u8,
 }
 
 /// Apply changes to the live state; returns the key names for the one
@@ -172,6 +186,10 @@ pub fn apply(
                 toggles.warehouse_columns.store(*on, Ordering::Relaxed);
                 applied.push("warehouse.columns");
             }
+            Change::ClientLogLevel(level) => {
+                crate::client_log::set_level(*level);
+                applied.push("log.client_level");
+            }
         }
     }
     applied
@@ -192,6 +210,7 @@ mod tests {
             artifact_mib: 64,
             lint_flags: 0,
             warehouse_columns: false,
+            client_log_level: crate::client_log::level::INFO,
         }
     }
 

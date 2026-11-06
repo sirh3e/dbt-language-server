@@ -217,6 +217,22 @@ impl Dispatcher {
                 // registration, which this server does not request yet
                 let _ = self.refresh_tx.send(self.root_path.clone());
             }
+            "$/setTrace" => {
+                #[derive(serde::Deserialize)]
+                struct SetTraceParams {
+                    value: String,
+                }
+                if let Ok(req) = serde_json::from_slice::<Envelope<SetTraceParams>>(content) {
+                    if let Some(wanted) = req
+                        .params
+                        .as_ref()
+                        .and_then(|p| crate::client_log::level_from_trace_value(&p.value))
+                    {
+                        crate::client_log::set_level(wanted);
+                        tracing::debug!(value = %req.params.unwrap().value, "trace level set");
+                    }
+                }
+            }
             "$/cancelRequest" => {
                 #[derive(serde::Deserialize)]
                 struct CancelParams {
@@ -274,6 +290,13 @@ impl Dispatcher {
         let params = req.params.unwrap_or_default();
         if let Some(info) = &params.client_info {
             tracing::info!(client = %info.name, version = %info.version, "connected");
+        }
+        if let Some(wanted) = params
+            .trace
+            .as_deref()
+            .and_then(crate::client_log::level_from_trace_value)
+        {
+            crate::client_log::set_level(wanted);
         }
         self.root_path = params.workspace_root().unwrap_or_default();
         self.progress_supported

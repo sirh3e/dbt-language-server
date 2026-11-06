@@ -273,3 +273,9 @@ current revision answers `kind: "unchanged"`; anything else answers a
 full report. Stateless and always correct — a full report is a legal
 response at any time. Per-file stamps were rejected: graph-derived
 diagnostics for file B change when file A changes.
+
+### 6.5 $/setTrace and the log stream
+
+`$/setTrace {value}` and the `trace` field of initialize are handled
+(05 §6.3 addendum): they tune the window/logMessage verbosity.
+`$/logTrace` is not emitted by decision.

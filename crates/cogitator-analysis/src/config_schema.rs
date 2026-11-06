@@ -77,6 +77,15 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
         ],
     },
     SectionSchema {
+        name: "log",
+        doc: "What reaches the editor's log view (window/logMessage).",
+        keys: &[key(
+            "client_level",
+            "Verbosity of the editor-visible log stream; $/setTrace adjusts it too (last writer wins).",
+            "off|error|warn|info|debug",
+        )],
+    },
+    SectionSchema {
         name: "warehouse",
         doc: "Warehouse introspection (duckdb builds only).",
         keys: &[key(

@@ -69,6 +69,7 @@ impl ConfigWatcher {
             artifact_mib: self.limits.artifact_cap_bytes.load(Ordering::Relaxed) / (1024 * 1024),
             lint_flags: self.toggles.lints.load(Ordering::Relaxed),
             warehouse_columns: self.toggles.warehouse_columns.load(Ordering::Relaxed),
+            client_log_level: crate::client_log::current_level(),
         };
         let mut last = FileConfig::default();
         let mut last_stamp: Option<(PathBuf, derived_cache::FileStamp)> = None;

@@ -84,6 +84,11 @@ appear in |vim.lsp.status()| and plugins like fidget.nvim.
 A `cogitator.yml` at the project root configures the server and is
 hot-reloaded on save (see the server README's "Configuration file");
 `:DbtStatus` shows whether one is loaded and any parse error.
+
+The server logs what it is doing to |vim.lsp.log| (`:LspLog`): context
+refreshes and warnings at the default info level; set
+`log.client_level: debug` in cogitator.yml (hot) or send `$/setTrace`
+for per-request timing lines.
                  run the code lens on this line      <leader>dL
 
 `:DbtProfiles` without an argument prints the server's profiles.yml

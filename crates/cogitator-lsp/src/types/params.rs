@@ -22,6 +22,9 @@ pub struct Envelope<P> {
 
 #[derive(Debug, Default, Deserialize)]
 pub struct InitializeParams<'a> {
+    /// LSP trace value: "off" | "messages" | "verbose".
+    #[serde(borrow, default)]
+    pub trace: Option<std::borrow::Cow<'a, str>>,
     #[serde(borrow, rename = "clientInfo", default)]
     pub client_info: Option<ClientInfo<'a>>,
     #[serde(borrow, rename = "rootPath", default)]

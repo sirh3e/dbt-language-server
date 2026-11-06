@@ -22,7 +22,6 @@ use tracing_subscriber::Layer;
 
 /// 0 = off, 1 = error, 2 = warn, 3 = info, 4 = debug. TRACE never
 /// forwards, whatever the setting.
-#[allow(dead_code)] // OFF joins in with $/setTrace (next commit)
 pub mod level {
     pub const OFF: u8 = 0;
     pub const ERROR: u8 = 1;
@@ -39,18 +38,27 @@ pub fn set_sink(sender: UnboundedSender<Vec<u8>>) {
     let _ = SINK.set(sender);
 }
 
-#[allow(dead_code)] // $/setTrace + log.client_level land next commit
 pub fn set_level(new: u8) {
     LEVEL.store(new.min(level::DEBUG), Ordering::Relaxed);
 }
 
-#[allow(dead_code)] // $/setTrace + log.client_level land next commit
 pub fn current_level() -> u8 {
     LEVEL.load(Ordering::Relaxed)
 }
 
+/// The LSP `$/setTrace` / initialize `trace` values. "off" still
+/// surfaces errors — the protocol tunes verbosity; only cogitator.yml
+/// `log.client_level: off` blinds the stream entirely.
+pub fn level_from_trace_value(value: &str) -> Option<u8> {
+    Some(match value {
+        "off" => level::ERROR,
+        "messages" => level::INFO,
+        "verbose" => level::DEBUG,
+        _ => return None,
+    })
+}
+
 /// cogitator.yml `log.client_level` / `$/setTrace` value names.
-#[allow(dead_code)] // $/setTrace + log.client_level land next commit
 pub fn level_from_name(name: &str) -> Option<u8> {
     Some(match name {
         "off" => level::OFF,

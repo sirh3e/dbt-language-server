@@ -652,3 +652,79 @@ fn server_logs_reach_the_editor() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Verbosity is hot: cogitator.yml log.client_level and $/setTrace
+/// both tune the editor-visible stream, last writer wins.
+#[test]
+fn log_verbosity_tunes_hot() {
+    let src = fixture_root().canonicalize().unwrap();
+    let root = std::env::temp_dir().join(format!("cogitator-e2e-loglvl-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    copy_fixture(&src, &root);
+    let _cleanup = RemoveOnDrop(root.clone());
+
+    let (mut lsp, uri) = booted_in(&root, &[]);
+    let saved = serde_json::json!({"textDocument": {"uri": uri}});
+    let debug_logs = |lsp: &Lsp| {
+        lsp.stash
+            .iter()
+            .filter(|m| m["method"] == "window/logMessage" && m["params"]["type"] == 4)
+            .count()
+    };
+
+    // default info: a didSave produces no debug lines
+    lsp.notify("textDocument/didSave", saved.clone());
+    let _ = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    );
+    assert_eq!(debug_logs(&lsp), 0, "info level shows no debug lines");
+
+    // cogitator.yml log.client_level: debug → "handled" lines appear
+    std::fs::write(root.join("cogitator.yml"), "log:\n  client_level: debug\n").unwrap();
+    let reply = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.reloadConfig", "arguments": [{}]}),
+    );
+    assert!(reply.get("result").is_some(), "{reply}");
+    let mut saw_debug = 0;
+    for _ in 0..100 {
+        lsp.notify("textDocument/didSave", saved.clone());
+        let _ = lsp.request(
+            "workspace/executeCommand",
+            serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+        );
+        saw_debug = debug_logs(&lsp);
+        if saw_debug > 0 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(saw_debug > 0, "debug level never surfaced");
+
+    // $/setTrace off: only errors from here — no new info/debug lines
+    lsp.notify("$/setTrace", serde_json::json!({"value": "off"}));
+    let _ = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    );
+    let baseline: usize = lsp
+        .stash
+        .iter()
+        .filter(|m| m["method"] == "window/logMessage" && m["params"]["type"] != 1)
+        .count();
+    lsp.notify("textDocument/didSave", saved.clone());
+    let _ = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    );
+    let after: usize = lsp
+        .stash
+        .iter()
+        .filter(|m| m["method"] == "window/logMessage" && m["params"]["type"] != 1)
+        .count();
+    assert_eq!(after, baseline, "setTrace off silences non-errors");
+
+    let _ = lsp.request("shutdown", serde_json::json!({}));
+    lsp.notify("exit", serde_json::json!({}));
+}

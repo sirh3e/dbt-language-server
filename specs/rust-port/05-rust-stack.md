@@ -508,3 +508,20 @@ stands as written.
   `information_schema` prefetch, NEVER on a request path; doubly gated
   behind the `duckdb-parser` cargo feature and the `warehouse.columns`
   config flag.
+
+## Addendum: §6.3 editor-visible log stream
+
+A `ClientLogLayer` forwards tracing events to the client as
+`window/logMessage` (every editor renders that stream natively). It
+installs with the subscriber before the stdout writer exists — the
+sink arrives later via OnceLock — and gates on ONE atomic level
+(default info), not an EnvFilter, so the per-layer-filter rule above
+is untouched. TRACE never forwards, and events targeting
+`cogitator::wire` (the writer task's own per-frame trace) are dropped
+unconditionally: forwarding them would emit a frame per frame.
+Verbosity sources, last writer wins: cogitator.yml
+`log.client_level` (off|error|warn|info|debug, hot) and the LSP
+protocol (`initialize.trace`, `$/setTrace`: off→error — the protocol
+tunes verbosity, only the config file may blind the stream —
+messages→info, verbose→debug). `$/logTrace` is deliberately not
+emitted: logMessage is the one stream editors actually show.

@@ -26,6 +26,8 @@ pub struct FileConfig {
     pub lint: LintSection,
     #[serde(default)]
     pub warehouse: WarehouseSection,
+    #[serde(default)]
+    pub log: LogSection,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -74,6 +76,13 @@ impl LintSection {
         bit(self.dead_models, lint_flags::DEAD_MODELS);
         flags
     }
+}
+
+/// The editor-visible log stream (05 §6.3 addendum).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct LogSection {
+    /// off | error | warn | info | debug.
+    pub client_level: Option<String>,
 }
 
 /// Warehouse introspection switches (duckdb builds only; harmless and
@@ -137,6 +146,7 @@ const ROOT_KEYS: &[&str] = &[
     "refresh",
     "startup",
     "lint",
+    "log",
     "warehouse",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
@@ -150,6 +160,7 @@ const LINT_KEYS: &[&str] = &[
     "undocumented_columns",
     "dead_models",
 ];
+const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 
 /// Unknown keys warn with did-you-mean — never a hard error, so a
@@ -187,6 +198,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("refresh", REFRESH_KEYS),
         ("startup", STARTUP_KEYS),
         ("lint", LINT_KEYS),
+        ("log", LOG_KEYS),
         ("warehouse", WAREHOUSE_KEYS),
     ] {
         if let Some(node) = get(root, section) {
@@ -217,6 +229,7 @@ mod tests {
             (REFRESH_KEYS, "refresh"),
             (STARTUP_KEYS, "startup"),
             (LINT_KEYS, "lint"),
+            (LOG_KEYS, "log"),
             (WAREHOUSE_KEYS, "warehouse"),
         ] {
             let schema: Vec<&str> = section(name)
