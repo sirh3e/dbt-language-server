@@ -109,6 +109,28 @@ gen-schemas-check: gen-schemas
 gen-config-schema:
     cargo run -q -p cogitator -- schema > schemas/cogitator.schema.json
 
+# ---------------------------------------------------------- perf & fuzz
+
+# run the criterion benches (parser pipeline, context build, lineage)
+[group('perf')]
+bench:
+    cargo bench --workspace
+
+# CI-grade proof that every bench still compiles
+[group('perf')]
+bench-check:
+    cargo bench --workspace --no-run
+
+# run one libFuzzer target (needs nightly + `cargo install cargo-fuzz`)
+[group('perf')]
+fuzz target='parse_document' time='60':
+    cargo +nightly fuzz run {{target}} --fuzz-dir fuzz -- -max_total_time={{time}}
+
+# prove the fuzz package compiles without nightly or cargo-fuzz
+[group('perf')]
+fuzz-check:
+    cargo check --manifest-path fuzz/Cargo.toml
+
 # -------------------------------------------------------------- editors
 
 # The whole system layer: both editor suites driven by the Rust
@@ -117,6 +139,11 @@ gen-config-schema:
 [group('test')]
 system-test:
     cargo test -p cogitator --features e2e --test system_editors -- --ignored --nocapture
+
+# compile the VS Code extension (needs node/npm; thin stdio client)
+[group('editors')]
+vscode-build:
+    cd editors/vscode && npm install --no-audit --no-fund && npm run compile
 
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
 [group('editors')]

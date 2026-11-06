@@ -53,6 +53,12 @@ pub struct Dispatcher {
     jobs: Arc<super::jobs::DbtJobs>,
     /// Bumped per context rebuild — the workspace/diagnostic resultId.
     context_revision: Arc<std::sync::atomic::AtomicU64>,
+    /// Secondary project contexts (multi-root): picked per URI by the
+    /// longest project-root prefix; the primary root stays on ctx_rx.
+    extra: Arc<super::multi_root::ExtraContexts>,
+    /// Shared with the refresh task so it can tell primary refreshes
+    /// (watch publish) from secondary ones (extra map).
+    primary_root: Arc<std::sync::Mutex<String>>,
 }
 
 mod commands_exec;
@@ -83,6 +89,8 @@ impl Dispatcher {
         toggles: Arc<super::SharedToggles>,
         jobs: Arc<super::jobs::DbtJobs>,
         context_revision: Arc<std::sync::atomic::AtomicU64>,
+        extra: Arc<super::multi_root::ExtraContexts>,
+        primary_root: Arc<std::sync::Mutex<String>>,
     ) -> Self {
         Dispatcher {
             documents,
@@ -105,6 +113,8 @@ impl Dispatcher {
             toggles,
             jobs,
             context_revision,
+            extra,
+            primary_root,
         }
     }
 
@@ -112,11 +122,46 @@ impl Dispatcher {
         self.ctx_rx.borrow().clone()
     }
 
+    /// The context covering this URI: a secondary project's when its
+    /// root prefixes the file more specifically than the primary's
+    /// (multi-root); the primary context otherwise.
+    fn ctx_for(&self, uri: &str) -> Arc<DbtContext> {
+        let primary = self.snapshot();
+        let Some((extra_root, extra_ctx)) = self.extra.for_uri(uri) else {
+            return primary;
+        };
+        let primary_depth = primary
+            .project_root
+            .as_deref()
+            .filter(|root| super::multi_root::root_contains(&root.display().to_string(), uri))
+            .map(|root| root.components().count())
+            .unwrap_or(0);
+        let extra_depth = std::path::Path::new(&extra_root).components().count();
+        if extra_depth > primary_depth {
+            extra_ctx
+        } else {
+            primary
+        }
+    }
+
+    /// The refresh-channel key covering this URI: a secondary root when
+    /// one matches, else the primary workspace root.
+    fn refresh_root_for(&self, uri: &str) -> String {
+        match self.extra.for_uri(uri) {
+            Some((root, _)) => root,
+            None => self.root_path.clone(),
+        }
+    }
+
     /// The per-message snapshot handed to pure handlers (and, from the
     /// offload commit, to spawned tasks): Arc clones + a tight cfg lock.
     fn snapshot_for(&self, uri: &str) -> super::snapshot::Snapshot {
         super::snapshot::Snapshot {
-            ctx: self.snapshot(),
+            ctx: if uri.is_empty() {
+                self.snapshot()
+            } else {
+                self.ctx_for(uri)
+            },
             doc: (!uri.is_empty())
                 .then(|| self.documents.get_arc(uri))
                 .flatten(),
@@ -305,6 +350,7 @@ impl Dispatcher {
             crate::client_log::set_level(wanted);
         }
         self.root_path = params.workspace_root().unwrap_or_default();
+        *self.primary_root.lock().expect("primary root lock") = self.root_path.clone();
         self.progress_supported
             .store(params.work_done_progress(), Ordering::Relaxed);
         {
@@ -330,6 +376,12 @@ impl Dispatcher {
         self.send(&response);
         // first refresh so hover works before the first save (05 §6.2)
         let _ = self.refresh_tx.send(self.root_path.clone());
+        // multi-root: every further workspace folder refreshes as its
+        // own secondary project (01 §3 addendum)
+        for folder in params.workspace_folder_paths().into_iter().skip(1) {
+            tracing::info!(%folder, "secondary workspace folder");
+            let _ = self.refresh_tx.send(folder);
+        }
         // the config watcher waits on the root; its first pass is immediate
         let _ = self.config_root_tx.send(Some(self.root_path.clone()));
     }

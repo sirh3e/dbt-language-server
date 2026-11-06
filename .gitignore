@@ -14,3 +14,16 @@ logs/
 .direnv/
 .devenv/
 devenv.lock
+
+# cargo-fuzz working state (fuzz/ is its own workspace)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+fuzz/Cargo.lock
+
+# VS Code extension build state
+editors/vscode/node_modules/
+editors/vscode/out/
+editors/vscode/*.vsix
+editors/vscode/package-lock.json

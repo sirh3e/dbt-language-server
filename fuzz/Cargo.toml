@@ -1,0 +1,40 @@
+# cargo-fuzz package (09 §5): its own workspace so the nightly +
+# sanitizer build flags never leak into ordinary builds.
+[package]
+name = "cogitator-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cogitator-parser = { path = "../crates/cogitator-parser" }
+cogitator-dialects = { path = "../crates/cogitator-dialects" }
+cogitator-schemas = { path = "../crates/cogitator-schemas" }
+
+[[bin]]
+name = "parse_document"
+path = "fuzz_targets/parse_document.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jinja_scan"
+path = "fuzz_targets/jinja_scan.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "properties_yaml"
+path = "fuzz_targets/properties_yaml.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]
+members = ["."]

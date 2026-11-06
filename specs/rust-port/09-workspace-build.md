@@ -147,3 +147,18 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 | lint | `cargo fmt --check`, `clippy --workspace --all-features` |
 | schema-gen check | rerun `schemas/dbt/preprocess.py`; fail on `schemas/dbt/processed/` diffs (08 §2.2) |
 | release | `cargo-zigbuild` matrix per 07 §5 (zig linker; mold not involved) |
+
+## Addendum: §5 benches and fuzzing
+
+- **Criterion benches** (`just bench`; `just bench-check` compiles
+  them): `cogitator-parser/benches/parse.rs` (phase-1 pipeline over a
+  realistic model, jinja block scans) and
+  `cogitator-analysis/benches/lineage.rs` (context build cold vs
+  scan-cache-warm, column lineage). criterion is a workspace dev
+  dependency; CI never runs timings.
+- **cargo-fuzz** (`just fuzz [target] [seconds]`; `just fuzz-check`
+  compiles without nightly): `fuzz/` is its own excluded workspace so
+  sanitizer flags never leak. Targets cover the three untrusted-input
+  fronts: `parse_document` (every keystroke), `jinja_scan` (every
+  macro/docs/snapshot file), `properties_yaml` (every schema file).
+  Corpora and artifacts stay untracked.

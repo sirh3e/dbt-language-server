@@ -1,0 +1,90 @@
+{
+  "name": "cogitator",
+  "displayName": "cogitator (dbt language server)",
+  "description": "dbt SQL/YAML intelligence via the cogitator language server: navigation, lineage, diagnostics, dbt run/test/compile/preview.",
+  "version": "0.1.0",
+  "publisher": "sirh3e",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sirh3e/dbt-language-server"
+  },
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/dbt_project.yml"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "cogitator",
+      "properties": {
+        "cogitator.serverPath": {
+          "type": "string",
+          "default": "cogitator",
+          "description": "Path to the cogitator executable (default: resolved on PATH)."
+        },
+        "cogitator.serverArguments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra CLI arguments (e.g. --profiles-dir, --target, --fusion)."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "cogitator.run",
+        "title": "dbt: Run current model"
+      },
+      {
+        "command": "cogitator.test",
+        "title": "dbt: Test current model"
+      },
+      {
+        "command": "cogitator.compile",
+        "title": "dbt: Compile current model"
+      },
+      {
+        "command": "cogitator.preview",
+        "title": "dbt: Preview current model (dbt show)"
+      },
+      {
+        "command": "cogitator.parse",
+        "title": "dbt: Parse project (refresh context)"
+      },
+      {
+        "command": "cogitator.lineage",
+        "title": "dbt: Show column lineage"
+      },
+      {
+        "command": "cogitator.status",
+        "title": "dbt: Language server status"
+      },
+      {
+        "command": "cogitator.restart",
+        "title": "dbt: Restart language server"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.82.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -14,6 +14,11 @@ tracing = { workspace = true }
 regex = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 insta = { workspace = true }
+
+[[bench]]
+name = "parse"
+harness = false
