@@ -22,6 +22,11 @@ sqlparser = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 insta = { workspace = true }
+
+[[bench]]
+name = "lineage"
+harness = false

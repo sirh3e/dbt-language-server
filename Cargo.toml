@@ -1,6 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
+# fuzz is its own workspace: cargo-fuzz builds it with nightly +
+# sanitizer flags that must never leak into ordinary builds
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
@@ -50,6 +53,7 @@ opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "metrics"] }
 console-subscriber = "0.5"
 
 # dev
+criterion = "0.5"   # benches (09 §5): parser pipeline + column lineage
 insta = { version = "1", features = ["json"] }
 rstest = "0.28"
 pretty_assertions = "1"

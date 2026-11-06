@@ -14,3 +14,10 @@ logs/
 .direnv/
 .devenv/
 devenv.lock
+
+# cargo-fuzz working state (fuzz/ is its own workspace)
+fuzz/target/
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+fuzz/Cargo.lock

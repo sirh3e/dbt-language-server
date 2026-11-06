@@ -108,6 +108,28 @@ gen-schemas-check: gen-schemas
 gen-config-schema:
     cargo run -q -p cogitator -- schema > schemas/cogitator.schema.json
 
+# ---------------------------------------------------------- perf & fuzz
+
+# run the criterion benches (parser pipeline, context build, lineage)
+[group('perf')]
+bench:
+    cargo bench --workspace
+
+# CI-grade proof that every bench still compiles
+[group('perf')]
+bench-check:
+    cargo bench --workspace --no-run
+
+# run one libFuzzer target (needs nightly + `cargo install cargo-fuzz`)
+[group('perf')]
+fuzz target='parse_document' time='60':
+    cargo +nightly fuzz run {{target}} --fuzz-dir fuzz -- -max_total_time={{time}}
+
+# prove the fuzz package compiles without nightly or cargo-fuzz
+[group('perf')]
+fuzz-check:
+    cargo check --manifest-path fuzz/Cargo.toml
+
 # -------------------------------------------------------------- editors
 
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
