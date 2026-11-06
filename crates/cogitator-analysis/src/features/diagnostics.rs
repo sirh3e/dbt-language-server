@@ -60,6 +60,35 @@ pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnos
         };
         out.extend(diagnostic.flatten());
     }
+    out.extend(dangling_doc_diagnostics(ctx, doc));
+    out
+}
+
+/// `doc('name')` with no docs block anywhere renders verbatim in dbt
+/// docs — flag it with the closest block names. Separate from the ref
+/// pass because doc() mostly lives in properties YAML, which skips
+/// the SQL dangling checks.
+pub fn dangling_doc_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnostic> {
+    if ctx.doc_detail_map.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for t in &doc.parsed.tokens {
+        if t.kind != TokenKind::Doc {
+            continue;
+        }
+        let literal = doc.parsed.literal(t);
+        if ctx.doc_detail_map.contains_key(literal) {
+            continue;
+        }
+        out.extend(entry(
+            t,
+            "dangling-doc",
+            Guidance::new(format!("docs block '{literal}' not found in any docs path")).suggest(
+                closest_matches(literal, ctx.doc_detail_map.keys().map(String::as_str)),
+            ),
+        ));
+    }
     out
 }
 

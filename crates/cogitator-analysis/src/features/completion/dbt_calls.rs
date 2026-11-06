@@ -59,6 +59,21 @@ pub fn var_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
         .collect()
 }
 
+pub fn doc_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
+    ctx.doc_detail_map
+        .iter()
+        .map(|(name, d)| CompletionItem {
+            label: name.clone(),
+            detail: format!("Project: {}", d.project_name),
+            documentation: String::new(),
+            kind: completion_kind::REFERENCE,
+            insert_text: format!("{name}{suffix}"),
+            sort_text: name.clone(),
+            data: Some(CompletionData::Doc { name: name.clone() }.into_value()),
+        })
+        .collect()
+}
+
 pub fn macro_items(ctx: &DbtContext) -> Vec<CompletionItem> {
     ctx.macro_detail_map
         .values()

@@ -24,6 +24,7 @@ pub fn static_diagnostics(
         let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
         items.extend(features::citizen_diagnostics(ctx, uri));
         items.extend(features::packages_diagnostics(ctx, uri));
+        items.extend(features::dangling_doc_diagnostics(ctx, doc));
         items
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);

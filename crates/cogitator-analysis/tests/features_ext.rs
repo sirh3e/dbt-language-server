@@ -231,6 +231,38 @@ fn yaml_completion_offers_schema_keys() {
 }
 
 #[test]
+fn dangling_doc_flagged_with_suggestion_in_yaml() {
+    let ctx = ctx();
+    let uri = "file:///tmp/props.yml".to_string();
+    let text = concat!(
+        "version: 2\n",
+        "models:\n",
+        "  - name: orders\n",
+        "    description: '{{ doc(\"orders_statuss\") }}'\n",
+    );
+    let mut docs = Documents::default();
+    docs.open(uri.clone(), text, &ctx.dialect);
+    let diags = features::dangling_doc_diagnostics(&ctx, docs.get(&uri).unwrap());
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(diags[0].code, "dangling-doc");
+    assert!(
+        diags[0].message.contains("did you mean 'orders_status'"),
+        "{}",
+        diags[0].message
+    );
+
+    // a doc() that resolves stays quiet
+    let ok_uri = "file:///tmp/ok.yml".to_string();
+    docs.open(
+        ok_uri.clone(),
+        "description: '{{ doc(\"orders_status\") }}'\n",
+        &ctx.dialect,
+    );
+    let ok = features::dangling_doc_diagnostics(&ctx, docs.get(&ok_uri).unwrap());
+    assert!(ok.is_empty(), "{ok:?}");
+}
+
+#[test]
 fn dangling_diagnostics_suggest_and_cover_sources_and_vars() {
     let ctx = ctx();
     let uri = "file:///tmp/dangling.sql".to_string();
