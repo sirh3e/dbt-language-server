@@ -2,28 +2,23 @@
 //! the framed-LSP harness lives in tests/harness/.
 
 mod harness;
-#[allow(unused_imports)]
-use harness::*;
+use harness::jaffle;
 
 /// live (the compiledSql wire cap), a parse failure keeps the old values
 /// and surfaces as Guidance, and deleting the file reverts to launch
 /// values — all driven through dbt.reloadConfig, never the 2 s poll.
 #[test]
 fn config_file_hot_reload() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-config-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let config = root.join("cogitator.yml");
     std::fs::write(&config, "profiles:\n  target: dev\n").unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
 
     // 1. the boot pass loaded the file and applied profiles.target
-    let status = status_until(&mut lsp, |s| {
-        s["config"]["loaded"] == true && s["profiles"]["activeTarget"] == "dev"
-    });
+    let status = lsp
+        .wait_status(|s| s["config"]["loaded"] == true && s["profiles"]["activeTarget"] == "dev");
     assert!(
         status["config"]["path"]
             .as_str()
@@ -41,53 +36,44 @@ fn config_file_hot_reload() {
         "profiles:\n  target: dev\nlimits:\n  compiled_sql_mib: 0\n",
     )
     .unwrap();
-    reload_config(&mut lsp);
-    let mut capped = serde_json::Value::Null;
-    for _ in 0..100 {
+    lsp.reload_config();
+    let capped = lsp.wait_until("the 0 MiB wire cap applies to compiledSql", |lsp| {
         let reply = lsp.request(
             "workspace/executeCommand",
             serde_json::json!({"command": "dbt.compiledSql",
                                "arguments": [{"model": "customers"}]}),
         );
-        if reply["result"]["content"].is_null() && reply["result"]["uri"].is_string() {
-            capped = reply;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+        (reply["result"]["content"].is_null() && reply["result"]["uri"].is_string())
+            .then_some(reply)
+    });
     assert!(
         capped["result"]["uri"]
             .as_str()
             .is_some_and(|u| u.ends_with("customers.sql")),
-        "cap never applied: {capped}"
+        "{capped}"
     );
     // the cap explanation reached the client as a showMessage
-    assert!(
-        lsp.stash.iter().any(|m| {
-            m["method"] == "window/showMessage"
-                && m["params"]["message"]
-                    .as_str()
-                    .is_some_and(|t| t.contains("wire cap"))
-        }),
-        "{:?}",
-        lsp.stash
-    );
+    let cap_note = lsp.wait_notification("window/showMessage", |m| {
+        m["params"]["message"]
+            .as_str()
+            .is_some_and(|t| t.contains("wire cap"))
+    });
+    assert_eq!(cap_note["params"]["type"], 2, "a warning: {cap_note}");
 
     // 3. a file that stops parsing: error surfaces, old values stay
     std::fs::write(&config, "profiles:\n  dir: [unclosed\n").unwrap();
-    reload_config(&mut lsp);
-    let broken = status_until(&mut lsp, |s| s["config"]["error"].is_string());
+    lsp.reload_config();
+    let broken = lsp.wait_status(|s| s["config"]["error"].is_string());
     assert_eq!(broken["profiles"]["activeTarget"], "dev", "{broken}");
 
     // 4. deleting the file reverts its keys to the launch values
     std::fs::remove_file(&config).unwrap();
-    reload_config(&mut lsp);
-    let reverted = status_until(&mut lsp, |s| s["config"]["loaded"] == false);
+    lsp.reload_config();
+    let reverted = lsp.wait_status(|s| s["config"]["loaded"] == false);
     assert!(reverted["config"]["path"].is_null(), "{reverted}");
     assert_eq!(reverted["profiles"]["activeTarget"], "", "{reverted}");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// cogitator.yml intelligence (03 §10): an open config file gets its
@@ -95,16 +81,13 @@ fn config_file_hot_reload() {
 /// never the dbt-properties pass that used to flag every root key.
 #[test]
 fn cogitator_yml_gets_config_intelligence() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-yamlcfg-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let config = root.join("cogitator.yml");
     let text = "lint:\n  select_star: true\n  bogus: 1\n";
     std::fs::write(&config, text).unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
     let config_uri = cogitator_lsp::fs_path_to_uri(&config);
     lsp.notify(
         "textDocument/didOpen",
@@ -149,8 +132,7 @@ fn cogitator_yml_gets_config_intelligence() {
         "{hover}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Opt-in lint, hot: no items while `lint:` is absent; writing
@@ -158,13 +140,10 @@ fn cogitator_yml_gets_config_intelligence() {
 /// next pull carry the warning (with its column-list quickfix data).
 #[test]
 fn lint_toggles_hot_through_cogitator_yml() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-lint-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
     let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/mart_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
@@ -183,27 +162,21 @@ fn lint_toggles_hot_through_cogitator_yml() {
     );
 
     std::fs::write(root.join("cogitator.yml"), "lint:\n  select_star: true\n").unwrap();
-    reload_config(&mut lsp);
-    let mut flagged = serde_json::Value::Null;
-    for _ in 0..100 {
+    lsp.reload_config();
+    let flagged = lsp.wait_until("the select_star lint switches on", |lsp| {
         let pulled = lsp.request(
             "textDocument/diagnostic",
             serde_json::json!({"textDocument": {"uri": probe_uri}}),
         );
-        if let Some(item) = pulled["result"]["items"]
+        pulled["result"]["items"]
             .as_array()
-            .and_then(|i| i.iter().find(|d| d["code"] == "lint-select-star"))
-        {
-            flagged = item.clone();
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+            .and_then(|i| i.iter().find(|d| d["code"] == "lint-select-star").cloned())
+    });
     assert!(
         flagged["message"]
             .as_str()
             .is_some_and(|m| m.contains("SELECT *")),
-        "lint never switched on: {flagged}"
+        "{flagged}"
     );
     assert!(
         flagged["data"]["suggestions"][0]
@@ -212,8 +185,7 @@ fn lint_toggles_hot_through_cogitator_yml() {
         "{flagged}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Persisted scan cache (03 §10): the first session writes
@@ -221,18 +193,12 @@ fn lint_toggles_hot_through_cogitator_yml() {
 /// first refresh serves stamp hits instead of re-reading the project.
 #[test]
 fn scan_cache_persists_across_sessions() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-cache-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
 
     {
-        let (mut lsp, _uri) = booted_in(&root, &[]);
-        let _ = lsp.request("shutdown", serde_json::json!({}));
-        lsp.notify("exit", serde_json::json!({}));
-        let status = lsp.child.wait().unwrap();
-        assert_eq!(status.code(), Some(0));
+        let (lsp, _uri) = project.booted();
+        assert_eq!(lsp.shutdown().code(), Some(0));
     }
     let cache = root.join("target/.cogitator-cache");
     assert!(cache.is_file(), "first session persisted the scan cache");
@@ -244,7 +210,7 @@ fn scan_cache_persists_across_sessions() {
     );
 
     // second session: the first refresh hits instead of re-reading
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
     let status = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
@@ -254,6 +220,5 @@ fn scan_cache_persists_across_sessions() {
         .unwrap_or(0);
     assert!(hits > 0, "warm start served no scan-cache hits: {status}");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }

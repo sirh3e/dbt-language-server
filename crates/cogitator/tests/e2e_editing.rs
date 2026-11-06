@@ -2,16 +2,16 @@
 //! the framed-LSP harness lives in tests/harness/.
 
 mod harness;
-#[allow(unused_imports)]
-use harness::*;
+use harness::jaffle;
 
 /// diagnostic carries typed data; echoed back through the codeAction
 /// context it yields an edit-bearing quickfix, and `only: ["quickfix"]`
 /// now filters instead of blanking the response.
 #[test]
 fn dangling_ref_quickfix_carries_an_edit() {
-    let (mut lsp, _uri) = booted(&[]);
-    let root = fixture_root().canonicalize().unwrap();
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
+    let root = project.root.clone();
     let bad_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/quickfix_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
@@ -49,15 +49,15 @@ fn dangling_ref_quickfix_carries_an_edit() {
         "{first}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Inlay hints, document links and linked editing (01 §6.3) over the
 /// shared fixture — read-only requests, no fixture mutation.
 #[test]
 fn inlay_links_and_linked_editing() {
-    let (mut lsp, customers_uri) = booted(&[]);
+    let project = jaffle();
+    let (mut lsp, customers_uri) = project.booted();
 
     // document links: every ref in customers.sql targets its model file
     let links = lsp.request(
@@ -79,12 +79,7 @@ fn inlay_links_and_linked_editing() {
 
     // inlay hints: the ref resolves to its warehouse relation, and a
     // macro call site names its positional parameters
-    let probe_uri = cogitator_lsp::fs_path_to_uri(
-        &fixture_root()
-            .canonicalize()
-            .unwrap()
-            .join("models/inlay_probe.sql"),
-    );
+    let probe_uri = cogitator_lsp::fs_path_to_uri(&project.root.join("models/inlay_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
         serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
@@ -112,12 +107,7 @@ fn inlay_links_and_linked_editing() {
     assert!(labels.contains(&"last_name:"), "{labels:?}");
 
     // linked editing: a CTE name edits together with its uses
-    let le_uri = cogitator_lsp::fs_path_to_uri(
-        &fixture_root()
-            .canonicalize()
-            .unwrap()
-            .join("models/le_probe.sql"),
-    );
+    let le_uri = cogitator_lsp::fs_path_to_uri(&project.root.join("models/le_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
         serde_json::json!({"textDocument": {"uri": le_uri, "languageId": "sql", "version": 1,
@@ -141,8 +131,7 @@ fn inlay_links_and_linked_editing() {
     );
     assert!(not_linked["result"].is_null(), "{not_linked}");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Formatting (05 §9): one whole-document edit, Jinja expressions
@@ -150,8 +139,9 @@ fn inlay_links_and_linked_editing() {
 /// with an empty edit list.
 #[test]
 fn formatting_reflows_sql_and_keeps_jinja() {
-    let (mut lsp, _uri) = booted(&[]);
-    let root = fixture_root().canonicalize().unwrap();
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
+    let root = project.root.clone();
     let fmt_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fmt_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
@@ -189,16 +179,16 @@ fn formatting_reflows_sql_and_keeps_jinja() {
         "{declined}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// dbt.expandJinja (05 §9): loops unroll, refs resolve to relations,
 /// fixture macros render; unsupported constructs answer Guidance.
 #[test]
 fn expand_jinja_renders_the_stubbed_subset() {
-    let (mut lsp, _uri) = booted(&[]);
-    let root = fixture_root().canonicalize().unwrap();
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
+    let root = project.root.clone();
     let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/expand_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
@@ -213,8 +203,7 @@ fn expand_jinja_renders_the_stubbed_subset() {
     assert!(sql.contains("0 as c0, 5 as c1"), "{sql}");
     assert!(sql.contains("from jaffle_shop.main.stg_customers"), "{sql}");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// The editing-action trio (03 §10): convert literal relation →
@@ -222,11 +211,8 @@ fn expand_jinja_renders_the_stubbed_subset() {
 /// description — all edit-bearing, all through textDocument/codeAction.
 #[test]
 fn editing_actions_convert_scaffold_inherit() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-actions-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     std::fs::write(
         root.join("models/probe_actions.sql"),
         "select customer_id, order_count from {{ ref('orders') }}\n",
@@ -236,7 +222,7 @@ fn editing_actions_convert_scaffold_inherit() {
     let yml_text = "version: 2\n\nmodels:\n  - name: probe_actions\n    columns:\n      - name: customer_id\n      - name: something_id\n";
     std::fs::write(&probe_yml, yml_text).unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
 
     // 1. convert literal relation (duckdb target: jaffle_shop.main.*)
     let convert_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/convert_probe.sql"));
@@ -323,8 +309,7 @@ fn editing_actions_convert_scaffold_inherit() {
         "{inherit}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Go-to-definition on a built-in SQL function (03 §9): the bundled
@@ -333,11 +318,8 @@ fn editing_actions_convert_scaffold_inherit() {
 /// fallback.
 #[test]
 fn function_definition_opens_materialized_docs() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-fndef-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     // a snowflake target: the only dialects with bundled function docs
     std::fs::write(
         root.join(".dbt/profiles.yml"),
@@ -345,30 +327,26 @@ fn function_definition_opens_materialized_docs() {
     )
     .unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
     let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fn_probe.sql"));
     lsp.notify(
         "textDocument/didOpen",
         serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
             "text": "select datediff(day, a, b), somethingweird from t\n"}}),
     );
-    // the dialect lands with a refresh; poll definition on `datediff`
-    let mut location = serde_json::Value::Null;
-    for _ in 0..100 {
+    // the dialect lands with a refresh; definition converges on it
+    let location = lsp.wait_until("the snowflake dialect backs definition", |lsp| {
         let definition = lsp.request(
             "textDocument/definition",
             serde_json::json!({"textDocument": {"uri": probe_uri},
                                "position": {"line": 0, "character": 10}}),
         );
-        location = definition["result"].clone();
-        if location["uri"]
+        let location = definition["result"].clone();
+        location["uri"]
             .as_str()
             .is_some_and(|u| u.contains(".cogitator/docs/"))
-        {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+            .then_some(location)
+    });
     let uri = location["uri"].as_str().expect("uri");
     assert!(
         uri.ends_with("target/.cogitator/docs/snowflake/datediff.md"),
@@ -387,8 +365,7 @@ fn function_definition_opens_materialized_docs() {
     );
     assert_eq!(fallback["result"]["uri"], probe_uri, "{fallback}");
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// prepareRename + the macro call hierarchy over the live server:
@@ -396,7 +373,8 @@ fn function_definition_opens_materialized_docs() {
 /// and incomingCalls locates the fixture's full_name callers.
 #[test]
 fn prepare_rename_and_call_hierarchy() {
-    let (mut lsp, _uri) = booted(&[]);
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
     let scratch = "file:///tmp/prepare.sql";
     lsp.notify(
         "textDocument/didOpen",
@@ -442,4 +420,6 @@ fn prepare_rename_and_call_hierarchy() {
         serde_json::json!({"item": item}),
     );
     assert_eq!(outgoing["result"], serde_json::json!([]), "{outgoing}");
+
+    lsp.shutdown();
 }

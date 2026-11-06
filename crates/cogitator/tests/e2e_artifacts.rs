@@ -2,19 +2,15 @@
 //! the framed-LSP harness lives in tests/harness/.
 
 mod harness;
-#[allow(unused_imports)]
-use harness::*;
+use harness::jaffle;
 
 /// dbt artifacts end to end: fake target/ JSONs feed the last-run
 /// lens, run/test-failure diagnostics, the drift hint, and the stamp
 /// check picks up a rewrite without restart (03 §10).
 #[test]
 fn artifact_backed_lenses_and_diagnostics() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-artifacts-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let target = root.join("target");
     std::fs::create_dir_all(&target).unwrap();
     std::fs::write(
@@ -39,7 +35,7 @@ fn artifact_backed_lenses_and_diagnostics() {
     )
     .unwrap();
 
-    let (mut lsp, customers_uri) = booted_in(&root, &[]);
+    let (mut lsp, customers_uri) = project.booted();
 
     // 1. the last-run lens on a green model
     let lenses = lsp.request(
@@ -123,13 +119,12 @@ fn artifact_backed_lenses_and_diagnostics() {
                          "status": "pass", "snapshotted_at": "2026-11-03T09:00:00Z"}]}"#,
     )
     .unwrap();
-    let mut fresh_titles: Vec<String> = Vec::new();
-    for _ in 0..100 {
+    let fresh_titles = lsp.wait_until("the freshness lens surfaces", |lsp| {
         let lenses = lsp.request(
             "textDocument/codeLens",
             serde_json::json!({"textDocument": {"uri": schema_uri}}),
         );
-        fresh_titles = lenses["result"]
+        let titles: Vec<String> = lenses["result"]
             .as_array()
             .map(|l| {
                 l.iter()
@@ -137,14 +132,11 @@ fn artifact_backed_lenses_and_diagnostics() {
                     .collect()
             })
             .unwrap_or_default();
-        if fresh_titles
+        titles
             .iter()
             .any(|t| t.starts_with("freshness: pass"))
-        {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+            .then_some(titles)
+    });
     assert!(
         fresh_titles
             .iter()
@@ -159,36 +151,26 @@ fn artifact_backed_lenses_and_diagnostics() {
                          "message": "late failure"}]}"#,
     )
     .unwrap();
-    let mut changed = false;
-    for _ in 0..100 {
+    lsp.wait_until("the stamp check surfaces the rewrite", |lsp| {
         let lenses = lsp.request(
             "textDocument/codeLens",
             serde_json::json!({"textDocument": {"uri": customers_uri}}),
         );
-        if lenses["result"]
+        lenses["result"]
             .as_array()
             .is_some_and(|l| l.iter().any(|x| x["command"]["title"] == "last run: ERROR"))
-        {
-            changed = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
-    assert!(changed, "stamp refresh never surfaced the rewrite");
+            .then_some(())
+    });
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// dbt.doctor (05 §9): the merged health report over a project with
 /// synthesized artifacts.
 #[test]
 fn doctor_reports_the_whole_picture() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-doctor-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let target = root.join("target");
     std::fs::create_dir_all(&target).unwrap();
     std::fs::write(
@@ -203,23 +185,20 @@ fn doctor_reports_the_whole_picture() {
     )
     .unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
-    let mut report = serde_json::Value::Null;
-    for _ in 0..100 {
+    let (mut lsp, _uri) = project.booted();
+    // the hot config applies asynchronously after boot; the doctor
+    // report converges once the lint flag is on
+    let report = lsp.wait_until("dbt.doctor reflects the hot lint flag", |lsp| {
         let answer = lsp.request(
             "workspace/executeCommand",
             serde_json::json!({"command": "dbt.doctor", "arguments": [{}]}),
         );
-        report = answer["result"].clone();
-        // wait until the hot config applied the lint flag
-        if report["lintEnabled"]
+        let report = answer["result"].clone();
+        report["lintEnabled"]
             .as_array()
             .is_some_and(|l| l.iter().any(|x| x == "select_star"))
-        {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+            .then_some(report)
+    });
     assert!(report["artifacts"]["catalogAgeS"].is_u64(), "{report}");
     assert_eq!(report["projectName"], "jaffle_shop", "{report}");
     assert_eq!(report["dialect"], "duckdb", "{report}");
@@ -239,8 +218,7 @@ fn doctor_reports_the_whole_picture() {
         "{report}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// catalog.json (dbt docs generate) backs source-column completion for
@@ -248,11 +226,8 @@ fn doctor_reports_the_whole_picture() {
 /// landing with the next context refresh (03 §10).
 #[test]
 fn catalog_backs_source_columns() {
-    let src = fixture_root().canonicalize().unwrap();
-    let root = std::env::temp_dir().join(format!("cogitator-e2e-catalog-{}", std::process::id()));
-    std::fs::remove_dir_all(&root).ok();
-    copy_fixture(&src, &root);
-    let _cleanup = RemoveOnDrop(root.clone());
+    let project = jaffle();
+    let root = project.root.clone();
     let target = root.join("target");
     std::fs::create_dir_all(&target).unwrap();
     std::fs::write(
@@ -265,7 +240,7 @@ fn catalog_backs_source_columns() {
     )
     .unwrap();
 
-    let (mut lsp, _uri) = booted_in(&root, &[]);
+    let (mut lsp, _uri) = project.booted();
     // a probe selecting from the undeclared-in-YAML source table
     let probe_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/catalog_probe.sql"));
     lsp.notify(
@@ -273,15 +248,14 @@ fn catalog_backs_source_columns() {
         serde_json::json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1,
             "text": "select p. from {{ source('stripe', 'payments') }} p\n"}}),
     );
-    // enrichment lands on a refresh; poll completion after the dot
-    let mut labels: Vec<String> = Vec::new();
-    for _ in 0..100 {
+    // enrichment lands on a refresh; the completion converges on it
+    let labels = lsp.wait_until("catalog columns reach completion", |lsp| {
         let completion = lsp.request(
             "textDocument/completion",
             serde_json::json!({"textDocument": {"uri": probe_uri},
                                "position": {"line": 0, "character": 9}}),
         );
-        labels = completion["result"]
+        let labels: Vec<String> = completion["result"]
             .as_array()
             .map(|items| {
                 items
@@ -290,11 +264,8 @@ fn catalog_backs_source_columns() {
                     .collect()
             })
             .unwrap_or_default();
-        if labels.iter().any(|l| l == "amount") {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-    }
+        labels.iter().any(|l| l == "amount").then_some(labels)
+    });
     assert!(labels.iter().any(|l| l == "amount"), "{labels:?}");
     assert!(labels.iter().any(|l| l == "payment_id"), "{labels:?}");
 
@@ -316,6 +287,5 @@ fn catalog_backs_source_columns() {
         "{hover}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }

@@ -253,6 +253,25 @@ impl Lsp {
         out
     }
 
+    /// Poll `probe` (which may itself issue requests) until it yields
+    /// Some, within the deadline. The label names the wait on failure.
+    pub fn wait_until<T>(
+        &mut self,
+        label: &str,
+        mut probe: impl FnMut(&mut Lsp) -> Option<T>,
+    ) -> T {
+        let due = Instant::now() + self.deadline;
+        loop {
+            if let Some(out) = probe(self) {
+                return out;
+            }
+            if Instant::now() >= due {
+                self.fail(&format!("deadline waiting until {label}"));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
     /// Poll dbt.status until `good` holds, within the deadline.
     pub fn wait_status(&mut self, good: impl Fn(&serde_json::Value) -> bool) -> serde_json::Value {
         let due = Instant::now() + self.deadline;
