@@ -243,7 +243,7 @@ async fn capture_output(link: &ClientLink, path: &Path, stdout: &[u8]) {
     if let Some(parent) = path.parent() {
         let _ = tokio::fs::create_dir_all(parent).await;
     }
-    match tokio::fs::write(path, stdout).await {
+    match write_atomic(path, stdout).await {
         Ok(()) => link.show_document(cogitator_lsp::fs_path_to_uri(path), None),
         Err(err) => link.show_message(
             message_type::WARNING,
@@ -253,6 +253,20 @@ async fn capture_output(link: &ClientLink, path: &Path, stdout: &[u8]) {
                 .fix("check that the target/ directory is writable.")
                 .to_message(),
         ),
+    }
+}
+
+/// Write-then-rename so a concurrent reader (an editor reopening the
+/// capture, a test polling for it) never sees a half-written file.
+async fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    tokio::fs::write(&tmp, bytes).await?;
+    match tokio::fs::rename(&tmp, path).await {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            Err(err)
+        }
     }
 }
 
