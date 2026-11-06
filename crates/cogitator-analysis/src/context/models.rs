@@ -71,6 +71,9 @@ pub(super) fn build_model_details(
                         .unwrap_or_default(),
                     columns: schema.map(|m| m.columns.clone()).unwrap_or_default(),
                     tags,
+                    access: schema.and_then(|m| m.access.clone()),
+                    group: schema.and_then(|m| m.group.clone()),
+                    contract_enforced: schema.is_some_and(|m| m.contract_enforced),
                 },
             );
         }
@@ -86,10 +89,7 @@ pub(super) fn build_model_details(
                 uri: file_path,
                 project_name: project.name.clone(),
                 description: "Seed File".to_string(),
-                schema_uri: None,
-                schema_range: Range::default(),
-                columns: Vec::new(),
-                tags: Vec::new(),
+                ..Default::default()
             },
         );
     }
@@ -107,10 +107,7 @@ pub(super) fn build_model_details(
                     uri: file_path.clone(),
                     project_name: p.file.name.clone(),
                     description: "Snapshot File".to_string(),
-                    schema_uri: None,
-                    schema_range: Range::default(),
-                    columns: Vec::new(),
-                    tags: Vec::new(),
+                    ..Default::default()
                 });
         }
     }
@@ -149,6 +146,9 @@ fn snapshot_blocks(
 
 pub(super) struct SchemaModel {
     pub(super) description: String,
+    pub(super) access: Option<String>,
+    pub(super) group: Option<String>,
+    pub(super) contract_enforced: bool,
     pub(super) alias: Option<String>,
     pub(super) schema_uri: PathBuf,
     pub(super) name_pos: Position,
@@ -186,6 +186,9 @@ fn schema_entries(
                     model.name.clone(),
                     SchemaModel {
                         description: expand(&model.description),
+                        access: model.access.clone(),
+                        group: model.group.clone(),
+                        contract_enforced: model.contract_enforced,
                         alias: model.alias.clone(),
                         schema_uri: file.clone(),
                         name_pos: model.name_pos,

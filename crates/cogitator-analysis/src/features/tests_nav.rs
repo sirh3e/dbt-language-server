@@ -14,6 +14,9 @@ pub struct ModelTest {
     pub name: String,
     pub column: Option<String>,
     pub version: Option<i64>,
+    /// True for a `unit_tests:` entry (dbt unit tests) — data tests
+    /// otherwise.
+    pub unit: bool,
     pub uri: String,
     pub range: Range,
 }
@@ -66,7 +69,9 @@ pub fn model_tests(ctx: &DbtContext, uri: &str) -> Option<(String, Vec<ModelTest
     let docs = MarkedYaml::load_from_str(&text).ok()?;
     let root = docs.first()?;
     let entry = model_entry(root, &model)?;
-    Some((model, collect_model_tests(entry, &schema_uri)))
+    let mut tests = collect_model_tests(entry, &schema_uri);
+    tests.extend(collect_unit_tests(root, &model, &schema_uri));
+    Some((model, tests))
 }
 
 /// Tests directly on `node` plus on each of its `columns:` entries.
@@ -91,6 +96,7 @@ fn collect_node_tests(
                 name,
                 column: column.map(str::to_string),
                 version,
+                unit: false,
                 uri: uri.to_string(),
                 range: Range::zero_width(position_of(item)),
             });
@@ -103,6 +109,32 @@ fn collect_node_tests(
             }
         }
     }
+}
+
+/// Top-level `unit_tests:` entries targeting `model` in the same
+/// properties file (dbt unit tests live beside the model's entry by
+/// convention; other files are out of scope by design).
+pub(crate) fn collect_unit_tests(
+    root: &MarkedYaml<'_>,
+    model: &str,
+    schema_uri: &str,
+) -> Vec<ModelTest> {
+    get(root, "unit_tests")
+        .into_iter()
+        .flat_map(items)
+        .filter(|entry| get(entry, "model").and_then(as_str) == Some(model))
+        .filter_map(|entry| {
+            let name = get(entry, "name").and_then(as_str)?;
+            Some(ModelTest {
+                name: name.to_string(),
+                column: None,
+                version: None,
+                unit: true,
+                uri: schema_uri.to_string(),
+                range: Range::zero_width(position_of(get(entry, "name")?)),
+            })
+        })
+        .collect()
 }
 
 /// The `dbt.modelTests` wire shape.

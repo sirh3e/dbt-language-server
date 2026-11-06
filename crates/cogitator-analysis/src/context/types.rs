@@ -28,6 +28,12 @@ pub struct ModelDetails {
     pub columns: Vec<cogitator_schemas::ColumnEntry>,
     /// Tags from the YAML entry and `{{ config(tags=…) }}` (tag search).
     pub tags: Vec<String>,
+    /// Governance (03 §10 addendum): `access:` of the YAML entry.
+    pub access: Option<String>,
+    /// Governance group of the YAML entry.
+    pub group: Option<String>,
+    /// `contract.enforced: true` on the YAML entry.
+    pub contract_enforced: bool,
 }
 
 /// One entry of the project-root `selectors.yml` (selector search).

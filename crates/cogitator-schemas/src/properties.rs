@@ -26,6 +26,12 @@ pub struct ModelEntry {
     pub columns: Vec<ColumnEntry>,
     /// `tags:` and `config.tags` of the entry (tag search, dbt.projectGraph).
     pub tags: Vec<String>,
+    /// `access:` (entry or config level): private | protected | public.
+    pub access: Option<String>,
+    /// `group:` (entry or config level) — the governance group.
+    pub group: Option<String>,
+    /// `config.contract.enforced: true` (or entry-level `contract:`).
+    pub contract_enforced: bool,
 }
 
 /// A documented column from the properties YAML (write-assist completion,
@@ -78,7 +84,13 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
     // so entries join positionally with the generated structs. The alias also
     // comes from the tree: dbt-jsonschema does not model `config.alias` on
     // properties-file models, but dbt (and the Go server) honor it (03 §6.3).
-    type ModelSide = (Position, Option<String>, Vec<String>, Vec<Position>);
+    type ModelSide = (
+        Position,
+        Option<String>,
+        Vec<String>,
+        Vec<Position>,
+        Governance,
+    );
     let model_positions: Vec<ModelSide> = yaml::get(&marked, "models")
         .map(|models| {
             yaml::items(models)
@@ -86,7 +98,13 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                     let alias = yaml::get(m, "config")
                         .and_then(|c| yaml::get(c, "alias"))
                         .and_then(|a| yaml::as_str(a).map(str::to_string));
-                    (name_position(m), alias, tags_of(m), column_positions(m))
+                    (
+                        name_position(m),
+                        alias,
+                        tags_of(m),
+                        column_positions(m),
+                        governance_of(m),
+                    )
                 })
                 .collect()
         })
@@ -114,7 +132,7 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
         .iter()
         .enumerate()
         .map(|(i, m)| {
-            let (name_pos, alias, tags, column_pos) =
+            let (name_pos, alias, tags, column_pos, governance) =
                 model_positions.get(i).cloned().unwrap_or_default();
             ModelEntry {
                 name: m.name.clone(),
@@ -123,6 +141,9 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                 alias,
                 columns: columns_of(&m.columns, &column_pos),
                 tags,
+                access: governance.access,
+                group: governance.group,
+                contract_enforced: governance.contract_enforced,
             }
         })
         .collect();
@@ -165,6 +186,33 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
         .collect();
 
     Ok(PropertiesFile { models, sources })
+}
+
+/// Governance keys of one model entry, entry- or config-level
+/// (dbt accepts both spellings).
+#[derive(Debug, Clone, Default)]
+struct Governance {
+    access: Option<String>,
+    group: Option<String>,
+    contract_enforced: bool,
+}
+
+fn governance_of(entry: &saphyr::MarkedYaml<'_>) -> Governance {
+    let either = |key: &str| {
+        yaml::get(entry, key)
+            .or_else(|| yaml::get(entry, "config").and_then(|config| yaml::get(config, key)))
+    };
+    let text = |key: &str| either(key).and_then(|n| yaml::as_str(n).map(str::to_string));
+    let contract_enforced = either("contract")
+        .and_then(|contract| yaml::get(contract, "enforced"))
+        .map(|node| yaml::to_json(node))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    Governance {
+        access: text("access"),
+        group: text("group"),
+        contract_enforced,
+    }
 }
 
 /// `tags:` on the entry plus `config.tags`, each a string or a list.

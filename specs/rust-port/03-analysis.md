@@ -562,3 +562,24 @@ The scan covers three more dbt path lists (`snapshot-paths`,
 - After the model scan the graph back-fills empty-uri model nodes from
   `model_detail_map` (`fill_model_uris`): refs to seeds and snapshots —
   first seen as bare edge targets — stop counting as dangling.
+
+## Addendum: §10 model governance
+
+Properties parsing carries the governance keys of each model entry —
+`access`, `group` (entry- or config-level) and
+`config.contract.enforced` — through `ModelEntry` into `ModelDetails`.
+Two diagnostics consume them:
+
+- **private-ref** (push + pull): a `ref()` whose target has
+  `access: private` and a group different from the referencing
+  model's warns at the ref token. A private model without a group
+  restricts nothing, matching dbt's group-scoped access rule.
+- **contract-drift** (pull path only — it needs lineage): with
+  `contract.enforced: true` and documented columns, the YAML column
+  set is compared by name (case-insensitive) against the produced
+  columns; both directions warn, and any `*` production disables the
+  check instead of guessing.
+
+`unit_tests:` entries targeting a model in its own properties file
+ride along in dbt.modelTests / dbt.goToTests with `unit: true` on the
+wire; data tests carry `unit: false`.

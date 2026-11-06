@@ -12,6 +12,7 @@ mod diagnostics;
 mod document_links;
 mod extract;
 pub mod formatting;
+mod governance;
 mod graph_nav;
 mod hover;
 mod impact;
@@ -40,6 +41,7 @@ pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc}
 pub use diagnostics::{citizen_diagnostics, dangling_ref_diagnostics, packages_diagnostics};
 pub use document_links::document_links;
 pub use extract::{extract_model_yaml, ExtractEdit};
+pub use governance::{contract_diagnostics, private_ref_diagnostics};
 pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };

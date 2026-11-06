@@ -27,6 +27,10 @@ pub fn static_diagnostics(
         items
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);
+        items.extend(features::private_ref_diagnostics(ctx, doc, uri));
+        if let Some(lineage) = lineage {
+            items.extend(features::contract_diagnostics(ctx, uri, lineage));
+        }
         if lints.any() {
             items.extend(features::lint::lint(ctx, doc, uri, lints, lineage));
         }
