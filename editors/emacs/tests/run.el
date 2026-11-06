@@ -3,24 +3,22 @@
 ;; Usage:  emacs -Q --batch -L editors/emacs -l editors/emacs/tests/run.el
 ;; Unit tests need only Emacs 29+; the integration half starts a real
 ;; server (COGITATOR_BIN, default target/debug/cogitator) through eglot
-;; against testdata/jaffle_shop_duckdb.
+;; against a per-run COPY of testdata/jaffle_shop_duckdb, inside a
+;; sandboxed HOME. Readiness is the dbt.status refresh barrier, and
+;; every wait is labeled with a deadline (tests/helpers.el).
 
 ;;; Code:
 
 (setq debug-on-error nil)
 
-(defvar run--failures 0)
-(defun check (ok label &optional detail)
-  (if ok
-      (princ (format "ok   %s\n" label))
-    (setq run--failures (1+ run--failures))
-    (princ (format "FAIL %s%s\n" label (if detail (format " — %S" detail) "")))))
-
 (defvar run--here (file-name-directory (or load-file-name buffer-file-name)))
 (defvar run--repo (expand-file-name "../../.." run--here))
 
+(load (expand-file-name "helpers.el" run--here) nil t)
 (require 'cogitator (expand-file-name "../cogitator.el" run--here))
 (require 'cogitator-graph (expand-file-name "../cogitator-graph.el" run--here))
+
+(defalias 'check #'cogitator-test-check)
 
 ;; ---------------------------------------------------------------------------
 ;; unit: flag assembly and the executeCommand argument (spec §1.2, §1.6)
@@ -63,16 +61,18 @@
        "client: lsp-mode hash tables normalize to plists")
 
 ;; ---------------------------------------------------------------------------
-;; integration: eglot against the live server and the jaffle fixture
+;; integration: eglot against the live server and a fixture COPY
 ;; ---------------------------------------------------------------------------
 
-(defvar run--bin (or (getenv "COGITATOR_BIN")
-                     (expand-file-name "target/debug/cogitator" run--repo)))
-(defvar run--fixture (expand-file-name "testdata/jaffle_shop_duckdb" run--repo))
-
+(defvar run--bin (cogitator-test-server-bin run--repo))
 (unless (file-exists-p run--bin)
   (princ (format "FAIL integration: server binary missing at %s\n" run--bin))
   (kill-emacs 1))
+
+;; sandbox FIRST: the eglot child inherits the environment, so HOME and
+;; friends must point into the throwaway dir before the server spawns
+(cogitator-test-sandbox)
+(defvar run--fixture (cogitator-test-copy-fixture run--repo))
 
 (require 'eglot)
 (setq cogitator-server-command (list run--bin)
@@ -81,29 +81,24 @@
 
 (find-file (expand-file-name "models/customers.sql" run--fixture))
 (unless (derived-mode-p 'sql-mode) (sql-mode))
-(apply #'eglot (append (eglot--guess-contact) '(nil)))
-(cl-loop repeat 100 until (eglot-managed-p) do (accept-process-output nil 0.1))
+(cogitator-test-eglot-start)
+(cogitator-test-wait "integration: eglot manages the model buffer" 15
+                     #'eglot-managed-p)
 (check (eglot-managed-p) "integration: eglot manages the model buffer")
 
-(defun run--exec (command argument)
-  (jsonrpc-request (eglot--current-server-or-lose)
-                   :workspace/executeCommand
-                   (list :command command :arguments (vector argument))))
+(defalias 'run--exec #'cogitator-test-exec)
 
-;; readiness: poll dbt.modelGraph until the first context refresh lands
-(defvar run--graph nil)
-(cl-loop repeat 75
-         do (setq run--graph
-                  (ignore-errors
-                    (run--exec "dbt.modelGraph" (cogitator--command-argument))))
-         until (and run--graph (plist-get run--graph :model))
-         do (sleep-for 0.2))
-(check (equal (plist-get run--graph :model) "customers")
-       "integration: dbt.modelGraph answers for customers" run--graph)
-(let ((upstream (mapcar (lambda (e) (plist-get e :name))
-                        (append (plist-get run--graph :upstream) nil))))
-  (check (member "stg_customers" upstream)
-         "integration: direct upstream lists stg_customers" upstream))
+;; THE readiness barrier (spec §8): refresh.count >= 1 means the first
+;; project scan completed — not the modelGraph-answers proxy
+(cogitator-test-wait-refresh 1 30)
+
+(let ((graph (run--exec "dbt.modelGraph" (cogitator--command-argument))))
+  (check (equal (plist-get graph :model) "customers")
+         "integration: dbt.modelGraph answers for customers" graph)
+  (let ((upstream (mapcar (lambda (e) (plist-get e :name))
+                          (append (plist-get graph :upstream) nil))))
+    (check (member "stg_customers" upstream)
+           "integration: direct upstream lists stg_customers" upstream)))
 
 (let ((location (run--exec "dbt.goToSchema" (cogitator--command-argument t))))
   (check (and location (string-suffix-p ".yml" (plist-get location :uri)))
@@ -113,9 +108,8 @@
 (goto-char (point-min))
 (kill-new "run--sentinel")
 (cogitator-relation)
-(cl-loop repeat 50
-         until (not (equal (current-kill 0) "run--sentinel"))
-         do (accept-process-output nil 0.1))
+(cogitator-test-wait "integration: cogitator-relation answers" 10
+                     (lambda () (not (equal (current-kill 0) "run--sentinel"))))
 (check (equal (current-kill 0) "jaffle_shop.main.customers")
        "integration: cogitator-relation copies the relation" (current-kill 0))
 
@@ -123,12 +117,13 @@
 (let ((orig (current-buffer)))
   (goto-char (point-min))
   (cogitator-query)
-  (cl-loop repeat 50
-           until (and (get-buffer "*cogitator-query*")
-                      (with-current-buffer "*cogitator-query*"
-                        (string-match-p "select \\* from jaffle_shop\\.main\\.customers limit 100"
-                                        (buffer-string))))
-           do (accept-process-output nil 0.1))
+  (cogitator-test-wait
+   "integration: cogitator-query scratch buffer" 10
+   (lambda ()
+     (and (get-buffer "*cogitator-query*")
+          (with-current-buffer "*cogitator-query*"
+            (string-match-p "select \\* from jaffle_shop\\.main\\.customers limit 100"
+                            (buffer-string))))))
   (check (and (get-buffer "*cogitator-query*")
               (with-current-buffer "*cogitator-query*"
                 (string-match-p "select \\* from jaffle_shop\\.main\\.customers limit 100"
@@ -231,9 +226,8 @@
 
 ;; the graph browser: three panes, re-centerable, restorable
 (cogitator-graph)
-(cl-loop repeat 50
-         until (plist-get cogitator-graph--state :data)
-         do (accept-process-output nil 0.1))
+(cogitator-test-wait "integration: graph browser fetches its data" 10
+                     (lambda () (plist-get cogitator-graph--state :data)))
 (check (plist-get cogitator-graph--state :data)
        "integration: graph browser fetched its data")
 (check (= 3 (length (cogitator-graph--pane-windows)))
@@ -248,10 +242,10 @@
 (select-window (nth 0 (cogitator-graph--pane-windows)))
 (goto-char (point-min))
 (cogitator-graph-recenter)
-(cl-loop repeat 50
-         until (not (equal (plist-get (plist-get cogitator-graph--state :data) :model)
-                           "customers"))
-         do (accept-process-output nil 0.1))
+(cogitator-test-wait
+ "integration: RET re-centers on the neighbor" 10
+ (lambda () (not (equal (plist-get (plist-get cogitator-graph--state :data) :model)
+                        "customers"))))
 (check (not (equal (plist-get (plist-get cogitator-graph--state :data) :model)
                    "customers"))
        "integration: RET re-centers on the neighbor"
@@ -261,8 +255,7 @@
 (check (null cogitator-graph--state) "integration: graph browser closes cleanly")
 
 ;; live profiles-dir switch (last: it changes the session's dialect state)
-(let ((other-dir (expand-file-name (format "cogitator-el-profiles-%d" (emacs-pid))
-                                   temporary-file-directory)))
+(let ((other-dir (expand-file-name "profiles-switch" cogitator-test-tmp)))
   (make-directory other-dir t)
   (with-temp-file (expand-file-name "profiles.yml" other-dir)
     (insert "jaffle_shop:\n  target: dev\n  outputs:\n    dev:\n      type: snowflake\n"))
@@ -270,18 +263,18 @@
     (check (equal (plist-get switched :dir) other-dir)
            "integration: dbt.setProfilesDir answers the new dir" switched))
   (let ((report nil))
-    (cl-loop repeat 50
-             do (setq report (ignore-errors
-                               (run--exec "dbt.profiles" (cogitator--command-argument))))
-             until (and report
-                        (string-prefix-p other-dir (or (plist-get report :path) "")))
-             do (sleep-for 0.2))
+    (cogitator-test-wait
+     "integration: dbt.profiles follows the live dir switch" 30
+     (lambda ()
+       (setq report (ignore-errors
+                      (run--exec "dbt.profiles" (cogitator--command-argument))))
+       (and report
+            (string-prefix-p other-dir (or (plist-get report :path) ""))))
+     (lambda () (and report (plist-get report :path))))
     (check (and report (string-prefix-p other-dir (or (plist-get report :path) "")))
            "integration: dbt.profiles follows the live dir switch"
            (and report (plist-get report :path)))))
 
-(princ (if (zerop run--failures) "ALL PASSED\n"
-         (format "%d failure(s)\n" run--failures)))
-(kill-emacs (if (zerop run--failures) 0 1))
+(cogitator-test-finish)
 
 ;;; run.el ends here
