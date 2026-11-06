@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      editors: ${{ steps.filter.outputs.editors }}
       shell: ${{ steps.filter.outputs.shell }}
       nix: ${{ steps.filter.outputs.nix }}
     steps:
@@ -28,6 +29,14 @@ jobs:
               - 'schemas/**'
               - 'testdata/**'
               - '.cargo/**'
+              - 'justfile'
+              - '.github/workflows/ci.yml'
+            editors:
+              - 'editors/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'testdata/**'
               - 'justfile'
               - '.github/workflows/ci.yml'
             shell:
@@ -91,6 +100,36 @@ jobs:
       - name: Generated schemas are fresh
         run: just gen-schemas-check
 
+
+  # The editor system suites (specs/neovim-plugin §8): headless Neovim +
+  # batch Emacs through the system_editors orchestrator, which fails on
+  # a missing editor here (COGITATOR_REQUIRE_EDITORS) instead of
+  # skipping — CI can never go silently green.
+  editors:
+    name: editors (ubuntu)
+    needs: changes
+    if: needs.changes.outputs.editors == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install mold (the linker .cargo/config.toml selects on Linux) and Emacs
+        run: sudo apt-get update && sudo apt-get install -y mold clang emacs-nox
+
+      - name: Install Neovim (stable >= 0.11)
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Editor system suites
+        run: cargo test -p cogitator --features e2e --test system_editors -- --ignored --nocapture
+        env:
+          COGITATOR_REQUIRE_EDITORS: "1"
 
   shellcheck:
     needs: changes
