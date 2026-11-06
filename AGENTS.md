@@ -8,16 +8,24 @@ editor integrations live under `editors/`.
 ## Build/Test Commands
 - **justfile**: `just --list` — `build` / `test` / `fmt` / `fmt-check` /
   `lint` / `lint-shell` (shellcheck; testdata fixtures excluded) /
-  `check` (the CI set) / `release` / `duckdb-check` /
+  `check` (the CI set) / `system-test` / `release` / `duckdb-check` /
   `gen-schemas(-check)` / `zigbuild` / `nvim-test` / `emacs-test` /
   `zed-build` / `changelog` / `hooks`
 - **Build**: `cargo build --workspace`
-- **Test all**: `cargo test --workspace`
+- **Test all**: `just test` = `cargo test --workspace --features
+  cogitator/e2e` (the `e2e` feature builds the fake-dbt test bin; a bare
+  `cargo test --workspace` skips the job e2e tests)
 - **Test one crate**: `cargo test -p cogitator-parser`
 - **Test one case**: `cargo test -p cogitator-analysis ref_source_var_refined`
-- **Lint/format**: `cargo clippy --workspace --all-targets` (zero warnings
-  enforced), `cargo fmt --all`
-- **Editor suites** (against a live server + testdata/jaffle_shop_duckdb):
+- **Lint/format**: `cargo clippy --workspace --all-targets --features
+  cogitator/e2e` (zero warnings enforced), `cargo fmt --all`
+- **e2e harness** (crates/cogitator/tests/harness/, binding rules in
+  specs/rust-port/05 §7.1): deadline-bounded waits only
+  (`COGITATOR_E2E_DEADLINE_MS` override), per-test fixture copies via
+  `fixture::jaffle()`, `wait_refresh(n)` (dbt.status refresh.count) as
+  the refresh barrier, fake dbt via `harness::fake::install`
+- **Editor suites** (self-sandboxing, per-run fixture COPIES):
+  `just system-test` (the Rust orchestrator driving both; what CI runs),
   `just nvim-test` (Neovim ≥ 0.11 headless), `just emacs-test` (Emacs ≥ 29
   batch/eglot), `just zed-build` (wasm32-wasip1 compile check)
 - **DuckDB feature** (bundled C++ build, slow): `cargo check -p cogitator --features duckdb-parser`

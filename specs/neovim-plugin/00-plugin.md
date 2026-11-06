@@ -517,17 +517,36 @@ Report, in order:
 
 ## 8. Testing
 
-- Unit (plenary busted): config validation, CLI-flag assembly from opts,
-  command-argument construction (uri + position shapes of §1.6).
-- Integration (headless `nvim -l`): against `testdata/jaffle_shop_duckdb`
-  from this repository with a locally built `target/debug/cogitator`:
-  1. attach on `models/customers.sql`, wait for the first context refresh,
-  2. hover over a `ref` returns contents,
-  3. `:DbtSchema` jumps to `schema.yml`,
-  4. codelens list contains `… downstream` and `dbt run`,
-  5. rename of a model produces a `RenameFile` documentChange.
-- CI: one ubuntu job installing neovim stable + `cargo build -p cogitator`,
-  running both suites.
+- Layout: `tests/run.lua` is a thin orchestrator over `tests/helpers.lua`
+  and five ordered step files (`tests/steps/01_unit.lua` … `05_profiles.lua`;
+  the state-mutating profiles-dir switch stays last). The Emacs suite
+  mirrors it with `tests/helpers.el` under a single `run.el`.
+- Determinism rules (binding, mirroring specs/rust-port/05 §7.1):
+  - the suites run on a per-run COPY of `testdata/jaffle_shop_duckdb`
+    inside a sandboxed `HOME`/`XDG_*` — the shared fixture is never
+    opened in place, mutated, or `target/`-wiped;
+  - readiness is the `dbt.status` refresh barrier
+    (`refresh.count >= n`), never a lens/modelGraph proxy;
+  - every wait is labeled and FAILS at its deadline (`H.wait` /
+    `cogitator-test-wait`) instead of surfacing later as a stale
+    assertion;
+  - the quickfix step rides Neovim's built-in pull diagnostics
+    (`vim.diagnostic` + `user_data.lsp`): Neovim ≥ 0.12 cancels
+    concurrent manual `textDocument/diagnostic` pulls on buffer
+    changes, and a cancelled `buf_request_sync` only times out;
+  - the server binary resolves via `COGITATOR_BIN`, then
+    `CARGO_TARGET_DIR`, with `.exe` on Windows.
+- Coverage (superset of the original five): attach + barrier, hover,
+  `:DbtSchema`, lenses (`… downstream`, `dbt run`), rename →
+  `RenameFile`, commands, code actions + quickfix, formatting, both
+  browsers, the DAG, profiles.
+- One code-executed entry point: `just system-test` runs
+  `crates/cogitator/tests/system_editors.rs` (`#[ignore]`d otherwise),
+  which drives both suites with `COGITATOR_BIN` set to the exact
+  cargo-built binary and parses their `ok`/`FAIL` lines; a missing
+  editor SKIPs locally and FAILS in CI (`COGITATOR_REQUIRE_EDITORS=1`).
+- CI: the `editors` job in ci.yml (ubuntu, neovim stable + emacs-nox,
+  path-filtered on `editors/**` and the Rust side) runs exactly that.
 
 ---
 
