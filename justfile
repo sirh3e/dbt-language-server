@@ -111,6 +111,13 @@ gen-config-schema:
 
 # -------------------------------------------------------------- editors
 
+# The whole system layer: both editor suites driven by the Rust
+# orchestrator against the exact binary cargo builds (a missing editor
+# prints SKIPPED; CI sets COGITATOR_REQUIRE_EDITORS=1 to forbid that)
+[group('test')]
+system-test:
+    cargo test -p cogitator --features e2e --test system_editors -- --ignored --nocapture
+
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
 [group('editors')]
 nvim-test:
