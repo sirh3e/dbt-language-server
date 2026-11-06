@@ -583,3 +583,15 @@ Two diagnostics consume them:
 `unit_tests:` entries targeting a model in its own properties file
 ride along in dbt.modelTests / dbt.goToTests with `unit: true` on the
 wire; data tests carry `unit: false`.
+
+## Addendum: §10 config JSON Schema export
+
+`config_schema::json::config_json_schema()` renders the KeyDoc table
+as a draft-07 JSON Schema (typed wire structs, no ad-hoc JSON); the
+`cogitator schema` subcommand prints it, `just gen-config-schema`
+writes the committed `schemas/cogitator.schema.json`, and a sync test
+fails the suite while the committed copy is stale. Editors point
+yaml-language-server at the file to validate cogitator.yml without
+the server running. value_hint drives the typing: `bool` → boolean,
+`MiB`/`ms` → integer ≥ 0, `[names]` → string array, `a|b|c` → closed
+string enum, anything else string.

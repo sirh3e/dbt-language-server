@@ -102,6 +102,12 @@ gen-schemas:
 gen-schemas-check: gen-schemas
     git diff --exit-code -- schemas/dbt/processed
 
+# regenerate the committed cogitator.yml JSON Schema (03 §10; a sync
+# test fails the suite while it is stale)
+[group('schemas')]
+gen-config-schema:
+    cargo run -q -p cogitator -- schema > schemas/cogitator.schema.json
+
 # -------------------------------------------------------------- editors
 
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)

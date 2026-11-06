@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/schemas/cogitator.schema.json",
+  "title": "cogitator.yml",
+  "description": "The cogitator dbt language server's per-project configuration file. Every section except 'startup:' hot-reloads; 'startup:' keys apply only via --config at launch.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "limits": {
+      "description": "Hot-tunable size caps.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "artifact_mib": {
+          "description": "target/ artifact files past this size are skipped. (MiB)",
+          "type": "integer",
+          "minimum": 0
+        },
+        "compiled_sql_mib": {
+          "description": "dbt.compiledSql wire cap; bigger files answer uri-only. (MiB)",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "lint": {
+      "description": "Opt-in style diagnostics; every check defaults to off.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dead_models": {
+          "description": "Hint on models nothing downstream uses. (bool)",
+          "type": "boolean"
+        },
+        "select_star": {
+          "description": "Warn on SELECT * outside staging models. (bool)",
+          "type": "boolean"
+        },
+        "trailing_comma": {
+          "description": "Warn on trailing commas the dialect rejects. (bool)",
+          "type": "boolean"
+        },
+        "unaliased_columns": {
+          "description": "Warn on bare columns in multi-relation FROM/JOINs. (bool)",
+          "type": "boolean"
+        },
+        "undocumented_columns": {
+          "description": "Hint on produced columns missing from the schema YAML. (bool)",
+          "type": "boolean"
+        }
+      }
+    },
+    "log": {
+      "description": "What reaches the editor's log view (window/logMessage).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "client_level": {
+          "description": "Verbosity of the editor-visible log stream; $/setTrace adjusts it too (last writer wins). (off|error|warn|info|debug)",
+          "type": "string",
+          "enum": [
+            "off",
+            "error",
+            "warn",
+            "info",
+            "debug"
+          ]
+        }
+      }
+    },
+    "profiles": {
+      "description": "dbt profiles overrides — hot: editing these re-resolves the active profile/target.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "description": "Profiles readable besides the project's own (like --profiles-allow). ([names])",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dir": {
+          "description": "Directory containing profiles.yml (like --profiles-dir). (path)",
+          "type": "string"
+        },
+        "profile": {
+          "description": "Active profile override; empty means the project's own. (name)",
+          "type": "string"
+        },
+        "target": {
+          "description": "Active target override (like --target). (name)",
+          "type": "string"
+        }
+      }
+    },
+    "refresh": {
+      "description": "Context-refresh scheduling.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "debounce_ms": {
+          "description": "Coalescing window for refresh triggers. (ms)",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "startup": {
+      "description": "Launch-only keys (install-once subsystems); honored via --config, a restart applies changes.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "debug": {
+          "description": "Plain-text logging to log.txt beside the executable. (bool)",
+          "type": "boolean"
+        },
+        "fusion": {
+          "description": "dbt Fusion binary path enabling compile diagnostics. (path)",
+          "type": "string"
+        },
+        "otlp": {
+          "description": "OTLP trace/metric export endpoint; empty uses the SDK default. (url)",
+          "type": "string"
+        },
+        "tree_sitter": {
+          "description": "Tree-sitter document backend (false: phase-1 pipeline). (bool)",
+          "type": "boolean"
+        }
+      }
+    },
+    "warehouse": {
+      "description": "Warehouse introspection (duckdb builds only).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "description": "Complete source columns from the warehouse when the YAML has none. (bool)",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

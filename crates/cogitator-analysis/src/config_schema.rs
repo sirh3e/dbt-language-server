@@ -110,3 +110,111 @@ pub mod lint_flags {
 pub fn section(name: &str) -> Option<&'static SectionSchema> {
     COGITATOR_SCHEMA.iter().find(|s| s.name == name)
 }
+
+/// The same table as a JSON Schema document (draft-07, the dialect
+/// yaml-language-server understands): editors validate cogitator.yml
+/// without the server running. Typed wire structs, one truth —
+/// regenerating can never drift from what the parser reads.
+pub mod json {
+    use std::collections::BTreeMap;
+
+    use serde::Serialize;
+
+    use super::{KeyDoc, COGITATOR_SCHEMA};
+
+    #[derive(Debug, Serialize)]
+    pub struct ConfigJsonSchema {
+        #[serde(rename = "$schema")]
+        pub dialect: &'static str,
+        #[serde(rename = "$id")]
+        pub id: &'static str,
+        pub title: &'static str,
+        pub description: &'static str,
+        #[serde(rename = "type")]
+        pub ty: &'static str,
+        #[serde(rename = "additionalProperties")]
+        pub additional: bool,
+        pub properties: BTreeMap<&'static str, Section>,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct Section {
+        pub description: &'static str,
+        #[serde(rename = "type")]
+        pub ty: &'static str,
+        #[serde(rename = "additionalProperties")]
+        pub additional: bool,
+        pub properties: BTreeMap<&'static str, Key>,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct Key {
+        pub description: String,
+        #[serde(rename = "type")]
+        pub ty: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub minimum: Option<u64>,
+        #[serde(rename = "enum", skip_serializing_if = "Option::is_none")]
+        pub variants: Option<Vec<&'static str>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub items: Option<Items>,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct Items {
+        #[serde(rename = "type")]
+        pub ty: &'static str,
+    }
+
+    /// value_hint → JSON type: sizes/durations are integers, `[names]`
+    /// a string array, `a|b|c` a closed string enum, all else string.
+    fn key_json(doc: &KeyDoc) -> Key {
+        let (ty, minimum, variants, items) = match doc.value_hint {
+            "bool" => ("boolean", None, None, None),
+            "MiB" | "ms" => ("integer", Some(0), None, None),
+            "[names]" => ("array", None, None, Some(Items { ty: "string" })),
+            hint if hint.contains('|') => ("string", None, Some(hint.split('|').collect()), None),
+            _ => ("string", None, None, None),
+        };
+        Key {
+            description: format!("{} ({})", doc.doc, doc.value_hint),
+            ty,
+            minimum,
+            variants,
+            items,
+        }
+    }
+
+    /// The whole cogitator.yml schema document.
+    pub fn config_json_schema() -> ConfigJsonSchema {
+        ConfigJsonSchema {
+            dialect: "http://json-schema.org/draft-07/schema#",
+            id: "https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/schemas/cogitator.schema.json",
+            title: "cogitator.yml",
+            description: "The cogitator dbt language server's per-project \
+                          configuration file. Every section except 'startup:' \
+                          hot-reloads; 'startup:' keys apply only via --config \
+                          at launch.",
+            ty: "object",
+            additional: false,
+            properties: COGITATOR_SCHEMA
+                .iter()
+                .map(|section| {
+                    (
+                        section.name,
+                        Section {
+                            description: section.doc,
+                            ty: "object",
+                            additional: false,
+                            properties: section
+                                .keys
+                                .iter()
+                                .map(|key| (key.key, key_json(key)))
+                                .collect(),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+}

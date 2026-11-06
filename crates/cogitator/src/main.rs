@@ -59,10 +59,18 @@ struct Cli {
 enum Command {
     /// Self-update via the install script
     Upgrade,
+    /// Print the cogitator.yml JSON Schema (draft-07) to stdout and exit
+    Schema,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if matches!(cli.command, Some(Command::Schema)) {
+        let schema = cogitator_analysis::config_schema::json::config_json_schema();
+        println!("{}", serde_json::to_string_pretty(&schema)?);
+        return Ok(());
+    }
 
     if matches!(cli.command, Some(Command::Upgrade)) {
         // Deliberately conservative: no self-mutating curl|sh from inside
