@@ -171,7 +171,9 @@ impl Lsp {
         }
         let due = Instant::now() + self.deadline;
         loop {
-            let frame = self.pull(due, &format!("reply to request {id}"));
+            let Some(frame) = self.pull(due, &format!("reply to request {id}")) else {
+                continue; // a server request was admitted meanwhile
+            };
             let is_reply = frame.get("id").and_then(|i| i.as_i64()) == Some(id)
                 && frame.get("method").is_none();
             if is_reply {
@@ -198,7 +200,9 @@ impl Lsp {
         }
         let due = Instant::now() + self.deadline;
         loop {
-            let frame = self.pull(due, &format!("notification {method}"));
+            let Some(frame) = self.pull(due, &format!("notification {method}")) else {
+                continue; // a server request was admitted meanwhile
+            };
             if matches(&frame) {
                 return frame;
             }
@@ -221,8 +225,11 @@ impl Lsp {
             if let Some(i) = self.server_requests.iter().position(matches) {
                 return self.server_requests.remove(i);
             }
-            let frame = self.pull(due, &format!("server request {method}"));
-            self.buffered.push_back(frame); // pull() records server requests
+            // pull() records admitted server requests (returning None),
+            // and the loop top re-scans them
+            if let Some(frame) = self.pull(due, &format!("server request {method}")) {
+                self.buffered.push_back(frame);
+            }
         }
     }
 
@@ -298,24 +305,19 @@ impl Lsp {
         }
     }
 
-    /// One frame off the reader, auto-answering server→client requests.
-    fn pull(&mut self, due: Instant, waiting_for: &str) -> serde_json::Value {
-        loop {
-            let left = due.saturating_duration_since(Instant::now());
-            let frame = match self.rx.recv_timeout(left) {
-                Ok(frame) => self.admit(frame, waiting_for),
-                Err(RecvTimeoutError::Timeout) => {
-                    self.fail(&format!("deadline waiting for {waiting_for}"))
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    self.fail(&format!("server stream ended waiting for {waiting_for}"))
-                }
-            };
-            // a server→client request was answered + recorded by admit();
-            // hand everything else to the caller
-            match frame {
-                Some(frame) => return frame,
-                None => continue,
+    /// One receive off the reader, auto-answering server→client
+    /// requests. `None` means a server request was admitted (answered
+    /// + recorded in `server_requests`) — callers waiting on one must
+    /// re-scan that list before pulling again.
+    fn pull(&mut self, due: Instant, waiting_for: &str) -> Option<serde_json::Value> {
+        let left = due.saturating_duration_since(Instant::now());
+        match self.rx.recv_timeout(left) {
+            Ok(frame) => self.admit(frame, waiting_for),
+            Err(RecvTimeoutError::Timeout) => {
+                self.fail(&format!("deadline waiting for {waiting_for}"))
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                self.fail(&format!("server stream ended waiting for {waiting_for}"))
             }
         }
     }

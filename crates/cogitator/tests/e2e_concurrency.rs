@@ -1,16 +1,20 @@
 //! End-to-end suite (specs/rust-port/05 §7) — this file's theme only;
-//! the framed-LSP harness lives in tests/harness/.
+//! the deterministic harness lives in tests/harness/.
 
 mod harness;
-#[allow(unused_imports)]
-use harness::*;
+use harness::jaffle;
 
 /// The concurrency proof: a delayed dbt.modelInfo must NOT block the
-/// hover sent right after it — three orders of magnitude of margin
-/// (1500 ms floor vs a sub-ms handler), no polling.
+/// hover sent right after it. The assertion is pure ORDER (the hover
+/// reply arrives while the delayed one is still pending) — never a
+/// wall-clock measurement (05 §7.1).
 #[test]
 fn slow_request_does_not_block_fast_ones() {
-    let (mut lsp, uri) = booted(&[("COGITATOR_E2E_DELAY", "dbt.modelInfo=1500")]);
+    let project = jaffle();
+    let (mut lsp, uri) = project.booted_with(
+        &[("COGITATOR_E2E_DELAY", "dbt.modelInfo=1500")],
+        serde_json::json!({}),
+    );
     let slow = lsp.request_nowait(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.modelInfo",
@@ -26,15 +30,18 @@ fn slow_request_does_not_block_fast_ones() {
     assert!(first.get("result").is_some(), "{first}");
     let slow_reply = lsp.response_for(slow);
     assert_eq!(slow_reply["result"]["model"], "customers", "{slow_reply}");
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Real cancellation: the delayed request answers RequestCancelled
 /// (-32800) and the server keeps serving.
 #[test]
 fn cancel_request_aborts_in_flight_work() {
-    let (mut lsp, uri) = booted(&[("COGITATOR_E2E_DELAY", "dbt.modelInfo=1500")]);
+    let project = jaffle();
+    let (mut lsp, uri) = project.booted_with(
+        &[("COGITATOR_E2E_DELAY", "dbt.modelInfo=1500")],
+        serde_json::json!({}),
+    );
     let slow = lsp.request_nowait(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.modelInfo",
@@ -50,15 +57,15 @@ fn cancel_request_aborts_in_flight_work() {
                            "position": {"line": 0, "character": 0}}),
     );
     assert!(hover.get("result").is_some(), "{hover}");
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// Silent drops are gone: a command with a non-object argument answers
 /// InvalidParams (this request used to hang the client forever).
 #[test]
 fn malformed_command_argument_answers_invalid_params() {
-    let (mut lsp, _uri) = booted(&[]);
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
     let bad = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.modelInfo", "arguments": [42]}),
@@ -70,31 +77,20 @@ fn malformed_command_argument_answers_invalid_params() {
             .is_some_and(|m| m.contains("argument OBJECT")),
         "{bad}"
     );
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// The job registry (05 §9): dbt.runSelection answers a token for a
-/// fake long-running dbt on PATH, dbt.cancel kills it, bad selectors
-/// and unknown tokens answer InvalidParams Guidance.
-#[cfg(unix)]
+/// long-running fake dbt on PATH (cross-platform now), dbt.cancel
+/// kills it, bad selectors and unknown tokens answer InvalidParams.
+#[cfg(feature = "e2e")]
 #[test]
 fn dbt_jobs_start_and_cancel_by_token() {
-    use std::os::unix::fs::PermissionsExt;
-    let bin_dir =
-        std::env::temp_dir().join(format!("cogitator-e2e-fakedbt-{}", std::process::id()));
-    std::fs::create_dir_all(&bin_dir).unwrap();
-    let fake = bin_dir.join("dbt");
-    std::fs::write(&fake, "#!/bin/sh\nsleep 30\n").unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let _cleanup = RemoveOnDrop(bin_dir.clone());
-    let path_env = format!(
-        "{}:{}",
-        bin_dir.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-
-    let (mut lsp, _uri) = booted(&[("PATH", &path_env)]);
+    let project = jaffle();
+    let fake = harness::fake::install(harness::fake::FakeDbt::sleeping(120_000));
+    let envs = fake.envs();
+    let env_refs: Vec<(&str, &str)> = envs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let (mut lsp, _uri) = project.booted_with(&env_refs, serde_json::json!({}));
 
     let started = lsp.request(
         "workspace/executeCommand",
@@ -137,60 +133,47 @@ fn dbt_jobs_start_and_cancel_by_token() {
         "{bad}"
     );
 
-    let _ = lsp.request("shutdown", serde_json::json!({}));
-    lsp.notify("exit", serde_json::json!({}));
+    lsp.shutdown();
 }
 
 /// dbt.preview: `dbt show --select <model> --limit N` through the job
 /// registry; the fake dbt's stdout lands in target/.cogitator/preview/
-/// and the exact argv is provable from the capture.
-#[cfg(unix)]
+/// (written atomically) and the exact argv is provable from its log.
+#[cfg(feature = "e2e")]
 #[test]
 fn dbt_preview_captures_the_show_table() {
-    use std::os::unix::fs::PermissionsExt;
-    let base = std::env::temp_dir().join(format!("cogitator-e2e-preview-{}", std::process::id()));
-    let _cleanup = RemoveOnDrop(base.clone());
-    let root = base.join("project");
-    copy_fixture(&fixture_root(), &root);
+    let project = jaffle();
+    let fake = harness::fake::install(harness::fake::FakeDbt::printing("| id | name |\n"));
+    let envs = fake.envs();
+    let env_refs: Vec<(&str, &str)> = envs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let (mut lsp, uri) = project.booted_with(&env_refs, serde_json::json!({}));
 
-    let bin_dir = base.join("bin");
-    std::fs::create_dir_all(&bin_dir).unwrap();
-    let fake = bin_dir.join("dbt");
-    std::fs::write(
-        &fake,
-        format!(
-            "#!/bin/sh\necho \"$@\" > {}/argv.txt\necho '| id | name |'\n",
-            base.display()
-        ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path_env = format!(
-        "{}:{}",
-        bin_dir.display(),
-        std::env::var("PATH").unwrap_or_default()
-    );
-
-    let (mut lsp, uri) = booted_in(&root, &[("PATH", &path_env)]);
     let started = lsp.request(
         "workspace/executeCommand",
         serde_json::json!({"command": "dbt.preview", "arguments": [{"uri": uri, "limit": 7}]}),
     );
     assert!(started["result"]["token"].as_u64().is_some(), "{started}");
 
-    // the capture file appears once the job finishes
-    let preview = root.join("target/.cogitator/preview/customers.txt");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while !preview.is_file() && std::time::Instant::now() < deadline {
-        // keep draining server traffic so the writer never blocks
-        let _ = lsp.request("workspace/symbol", serde_json::json!({"query": "zz"}));
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
+    // completion is OBSERVABLE: the capture lands via showDocument
+    let shown = lsp.wait_server_request("window/showDocument", |frame| {
+        frame["params"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.contains("preview") && u.contains("customers"))
+    });
+    let preview_uri = shown["params"]["uri"].as_str().unwrap();
+    assert!(
+        preview_uri.ends_with("customers.txt"),
+        "preview capture path: {preview_uri}"
+    );
+    let preview = project.root.join("target/.cogitator/preview/customers.txt");
     let table = std::fs::read_to_string(&preview).expect("preview file");
     assert!(table.contains("| id | name |"), "{table}");
-    let argv = std::fs::read_to_string(base.join("argv.txt")).unwrap();
+
+    let argv = fake.logged_args();
     assert!(
-        argv.trim().starts_with("show --select customers") && argv.contains("--limit 7"),
-        "{argv}"
+        argv.iter()
+            .any(|line| line.starts_with("show --select customers") && line.contains("--limit 7")),
+        "{argv:?}"
     );
+    lsp.shutdown();
 }
