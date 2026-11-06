@@ -294,3 +294,29 @@ diagnostics for file B change when file A changes.
   (stale edges whose call vanished are dropped). `outgoingCalls` is
   deliberately empty — the macro hierarchy is one level deep today,
   and clients probe both directions.
+
+## Addendum: multi-root workspaces
+
+The FIRST workspace folder is the primary root, exactly as before:
+its context lives on the watch channel and feeds every project-wide
+surface — workspace/symbol, workspace/diagnostic, the cogitator.yml
+watcher, dbt.status's project block, the refresh degradation
+warnings. Every OTHER dbt project gets a secondary context in a side
+map, keyed by resolved project root:
+
+- initialize refreshes each further `workspaceFolders` entry;
+- didOpen of a file outside every known root sends the file's
+  directory, which the refresh task resolves upward to
+  dbt_project.yml — foreign projects join lazily;
+- per-URI dispatch (snapshot_for, push diagnostics, dialect choice,
+  dbt run/test/compile/preview, fusion) picks the covering context by
+  longest project-root prefix, compared as Path components (08 §1);
+- the refresh task debounces per DISTINCT root and keeps one
+  ContextBuilder per secondary root (same scan-cache warm start and
+  persistence; no watch publish, no user-facing warnings);
+- dbt.status reports the live secondary roots as
+  `project.extraRoots`.
+
+Deliberate limits, documented here: profiles overrides (--target,
+dbt.setTarget, cogitator.yml) apply globally to every root, and the
+config watcher reads the primary root's cogitator.yml only.

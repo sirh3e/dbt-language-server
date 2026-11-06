@@ -728,3 +728,122 @@ fn log_verbosity_tunes_hot() {
     let _ = lsp.request("shutdown", serde_json::json!({}));
     lsp.notify("exit", serde_json::json!({}));
 }
+
+/// Multi-root (01 §3 addendum): the second workspace folder gets its
+/// own context — hover/definition and diagnostics for its files come
+/// from THAT project, dbt.status lists it, and a file from a third,
+/// unlisted project joins lazily on didOpen.
+#[test]
+fn multi_root_workspace_folders() {
+    let base = std::env::temp_dir().join(format!("cogitator-e2e-multiroot-{}", std::process::id()));
+    let _cleanup = RemoveOnDrop(base.clone());
+    let make_project = |name: &str| {
+        let root = base.join(name);
+        let models = root.join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        std::fs::write(
+            root.join("dbt_project.yml"),
+            format!("name: {name}\nprofile: {name}\nmodel-paths: [\"models\"]\n"),
+        )
+        .unwrap();
+        std::fs::write(models.join(format!("{name}_base.sql")), "select 1 as id").unwrap();
+        std::fs::write(
+            models.join(format!("{name}_top.sql")),
+            format!("select * from {{{{ ref('{name}_base') }}}}"),
+        )
+        .unwrap();
+        root
+    };
+    let second = make_project("beta");
+    let third = make_project("gamma");
+    let primary = fixture_root().canonicalize().unwrap();
+
+    let mut lsp = Lsp::start_with_env(&[]);
+    let _ = lsp.request(
+        "initialize",
+        serde_json::json!({
+            "workspaceFolders": [
+                {"uri": cogitator_lsp::fs_path_to_uri(&primary), "name": "jaffle"},
+                {"uri": cogitator_lsp::fs_path_to_uri(&second), "name": "beta"},
+            ],
+            "capabilities": {},
+            "initializationOptions": {"profilesDir": primary.join(".dbt").to_string_lossy()},
+        }),
+    );
+    lsp.notify("initialized", serde_json::json!({}));
+
+    // the secondary folder's context arrives and dbt.status lists it
+    let status = status_until(&mut lsp, |s| {
+        s["project"]["extraRoots"]
+            .as_array()
+            .is_some_and(|roots| !roots.is_empty())
+    });
+    assert!(
+        status["project"]["extraRoots"][0]
+            .as_str()
+            .is_some_and(|r| r.ends_with("beta")),
+        "{status}"
+    );
+
+    // definition inside the secondary project resolves within IT
+    let beta_top = second.join("models/beta_top.sql");
+    let beta_uri = cogitator_lsp::fs_path_to_uri(&beta_top);
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": beta_uri, "languageId": "sql", "version": 1,
+            "text": std::fs::read_to_string(&beta_top).unwrap()}}),
+    );
+    let def = lsp.request(
+        "textDocument/definition",
+        serde_json::json!({"textDocument": {"uri": beta_uri},
+                           "position": {"line": 0, "character": 25}}),
+    );
+    assert!(
+        def["result"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("beta_base.sql")),
+        "{def}"
+    );
+
+    // a file from a project NOBODY listed joins lazily on didOpen
+    let gamma_top = third.join("models/gamma_top.sql");
+    let gamma_uri = cogitator_lsp::fs_path_to_uri(&gamma_top);
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": gamma_uri, "languageId": "sql", "version": 1,
+            "text": std::fs::read_to_string(&gamma_top).unwrap()}}),
+    );
+    let status = status_until(&mut lsp, |s| {
+        s["project"]["extraRoots"].as_array().is_some_and(|roots| {
+            roots
+                .iter()
+                .any(|r| r.as_str().is_some_and(|r| r.ends_with("gamma")))
+        })
+    });
+    assert_eq!(
+        status["project"]["extraRoots"].as_array().map(|r| r.len()),
+        Some(2),
+        "{status}"
+    );
+    let def = lsp.request(
+        "textDocument/definition",
+        serde_json::json!({"textDocument": {"uri": gamma_uri},
+                           "position": {"line": 0, "character": 25}}),
+    );
+    assert!(
+        def["result"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("gamma_base.sql")),
+        "{def}"
+    );
+
+    // the primary project is untouched by all of it
+    let status = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.status", "arguments": [{}]}),
+    );
+    assert_eq!(
+        status["result"]["project"]["name"], "jaffle_shop",
+        "{status}"
+    );
+}

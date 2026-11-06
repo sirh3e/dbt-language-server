@@ -90,7 +90,11 @@ impl Dispatcher {
         extra_args: Vec<String>,
         capture_to: Option<std::path::PathBuf>,
     ) {
-        let ctx = self.snapshot();
+        let ctx = if uri.is_empty() {
+            self.snapshot()
+        } else {
+            self.ctx_for(uri)
+        };
         let Some(root) = ctx.project_root.clone() else {
             self.show_message(
                 cogitator_lsp::message_type::ERROR,
@@ -208,6 +212,7 @@ impl Dispatcher {
                 .lock()
                 .expect("config status lock")
                 .clone(),
+            self.extra.roots(),
         );
         self.send(&ResultResponse::new(id, report));
     }

@@ -68,6 +68,17 @@ impl InitializeParams<'_> {
         self.root_path.as_ref().map(|p| p.to_string())
     }
 
+    /// EVERY workspace folder as a filesystem path, first first — the
+    /// primary root plus the secondary dbt projects (multi-root).
+    pub fn workspace_folder_paths(&self) -> Vec<String> {
+        self.workspace_folders
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|folder| uri_to_fs_path(&folder.uri))
+            .collect()
+    }
+
     /// window.workDoneProgress from the client capabilities ($/progress).
     pub fn work_done_progress(&self) -> bool {
         self.capabilities

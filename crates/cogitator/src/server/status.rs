@@ -42,6 +42,8 @@ pub struct ProjectStatus {
     pub macro_packages: usize,
     pub graph_nodes: usize,
     pub graph_edges: usize,
+    /// Secondary project roots with a live context (multi-root).
+    pub extra_roots: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -74,6 +76,9 @@ pub struct SetProfilesDirResult {
     pub dir: String,
 }
 
+// one assembly point for the whole report: splitting the argument
+// list into a one-off struct would only rename the problem
+#[allow(clippy::too_many_arguments)]
 pub fn status_report(
     info: &StatusInfo,
     cfg: &ProfilesConfig,
@@ -82,6 +87,7 @@ pub fn status_report(
     progress_supported: bool,
     caches: CacheReport,
     config: ConfigStatus,
+    extra_roots: Vec<String>,
 ) -> StatusReport {
     let active_profile = if cfg.profile.is_empty() {
         ctx.project.profile.clone()
@@ -110,6 +116,7 @@ pub fn status_report(
             macro_packages: ctx.macro_detail_map.len(),
             graph_nodes: ctx.graph.node_count(),
             graph_edges: ctx.graph.edge_count(),
+            extra_roots,
         },
         profiles: ProfilesStatus {
             active_profile,

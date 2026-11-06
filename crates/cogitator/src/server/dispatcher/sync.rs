@@ -19,11 +19,11 @@ impl Dispatcher {
         };
         let Some(params) = req.params else { return };
         let uri = params.text_document.uri.into_owned();
-        let dialect = self.snapshot().dialect.clone();
+        let dialect = self.ctx_for(&uri).dialect.clone();
         self.documents
             .open(uri.clone(), &params.text_document.text, &dialect);
         tracing::debug!(%uri, "opened");
-        let _ = self.refresh_tx.send(self.root_path.clone());
+        let _ = self.refresh_tx.send(self.covering_or_lazy_root(&uri));
         if self.is_config_uri(&uri) {
             let _ = self.config_poke_tx.send(());
         }
@@ -47,7 +47,7 @@ impl Dispatcher {
         let Some(params) = req.params else { return };
         let uri = params.text_document.uri.into_owned();
         tracing::debug!(%uri, "saved");
-        let _ = self.refresh_tx.send(self.root_path.clone());
+        let _ = self.refresh_tx.send(self.refresh_root_for(&uri));
         if self.is_config_uri(&uri) {
             let _ = self.config_poke_tx.send(());
         }
@@ -60,7 +60,7 @@ impl Dispatcher {
             return;
         };
         let Some(params) = req.params else { return };
-        let dialect = self.snapshot().dialect.clone();
+        let dialect = self.ctx_for(&params.text_document.uri).dialect.clone();
         self.documents
             .change(&params.text_document.uri, &params.content_changes, &dialect);
     }
@@ -71,7 +71,7 @@ impl Dispatcher {
             features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
         // push stays inline and lineage-free; the pull path adds the
         // lineage-backed check
-        let ctx = self.snapshot();
+        let ctx = self.ctx_for(uri);
         let mut items = crate::server::diagnostics::static_diagnostics(
             &ctx,
             self.documents.get(uri),
@@ -102,6 +102,35 @@ impl Dispatcher {
         self.send(&note);
     }
 
+    /// The refresh key for a just-opened file: its covering secondary
+    /// root, the primary root when it owns the file, or — a file from a
+    /// FOREIGN dbt project (multi-root, lazy) — the file's own directory,
+    /// which the refresh task resolves upward to dbt_project.yml.
+    fn covering_or_lazy_root(&self, uri: &str) -> String {
+        if let Some((root, _)) = self.extra.for_uri(uri) {
+            return root;
+        }
+        let primary = self.snapshot();
+        let under_primary = primary
+            .project_root
+            .as_deref()
+            .map(|root| root.display().to_string())
+            .or_else(|| (!self.root_path.is_empty()).then(|| self.root_path.clone()))
+            .is_some_and(|root| crate::server::multi_root::root_contains(&root, uri));
+        if under_primary {
+            return self.root_path.clone();
+        }
+        // a real file outside every known root: let the refresh task
+        // look for its project; non-file uris stay on the primary
+        match cogitator_lsp::uri_to_fs_path(uri) {
+            Some(path) => std::path::Path::new(&path)
+                .parent()
+                .map(|dir| dir.display().to_string())
+                .unwrap_or_else(|| self.root_path.clone()),
+            None => self.root_path.clone(),
+        }
+    }
+
     /// Fusion compile per 04 §2, async + cancellable per URI (fixes Q9).
     pub(super) fn spawn_fusion(&mut self, uri: String) {
         if !self.fusion_enabled.load(Ordering::Relaxed) {
@@ -113,7 +142,7 @@ impl Dispatcher {
         if let Some(previous) = self.fusion_jobs.remove(&uri) {
             previous.abort();
         }
-        let ctx = self.snapshot();
+        let ctx = self.ctx_for(&uri);
         let job = fusion::FusionJob {
             fusion_path: self.fusion_path.clone(),
             project_name: ctx.project.name.clone(),

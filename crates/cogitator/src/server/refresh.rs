@@ -26,6 +26,11 @@ pub(super) struct RefreshTask {
     pub revision: Arc<AtomicU64>,
     pub builder: Arc<std::sync::Mutex<ContextBuilder>>,
     pub ctx_tx: watch::Sender<Arc<DbtContext>>,
+    /// Secondary project contexts (multi-root, 01 §3 addendum).
+    pub extra: Arc<super::multi_root::ExtraContexts>,
+    /// The first workspace folder: its refreshes publish on the watch
+    /// channel; every other root lands in `extra`.
+    pub primary_root: Arc<std::sync::Mutex<String>>,
 }
 
 impl RefreshTask {
@@ -40,169 +45,291 @@ impl RefreshTask {
         let refresh_revision = self.revision;
         let builder = self.builder;
         let ctx_tx = self.ctx_tx;
+        let extra = self.extra;
+        let primary_root = self.primary_root;
+        // one builder per secondary project root, keyed by resolved root
+        let secondary_builders: Arc<
+            std::sync::Mutex<std::collections::HashMap<String, ContextBuilder>>,
+        > = Arc::default();
         let mut warned: Option<String> = None;
         // scan-cache totals are cumulative across builds: keep the last
         // observation so the metrics see per-refresh deltas
         let (mut prev_hits, mut prev_misses) = (0u64, 0u64);
-        while let Some(mut root) = refresh_rx.recv().await {
-            // debounce: coalesce triggers within the (hot-tunable) window
+        while let Some(first) = refresh_rx.recv().await {
+            // debounce: coalesce triggers within the (hot-tunable) window —
+            // per DISTINCT root, so a secondary refresh never swallows a
+            // primary one (multi-root)
             let debounce = Duration::from_millis(
                 refresh_limits
                     .refresh_debounce_ms
                     .load(std::sync::atomic::Ordering::Relaxed),
             );
+            let mut roots = vec![first];
             while let Ok(Some(next)) = tokio::time::timeout(debounce, refresh_rx.recv()).await {
-                root = next;
+                if !roots.contains(&next) {
+                    roots.push(next);
+                }
             }
-            let cfg = refresh_profiles
-                .lock()
-                .expect("profiles config lock")
-                .clone();
-            let progress = refresh_link.progress_begin("dbt: refreshing project");
-            let started = std::time::Instant::now();
-            let built = tokio::task::spawn_blocking({
-                let root = root.clone();
-                let builder = builder.clone();
-                let cfg = cfg.clone();
-                #[cfg(feature = "duckdb-parser")]
-                let warehouse_toggles = refresh_toggles.clone();
-                let enrich_derived = refresh_derived.clone();
-                let enrich_limits = refresh_limits.clone();
-                move || {
-                    let span = tracing::info_span!("context_refresh", root = %root);
-                    let _enter = span.enter();
-                    let mut builder = builder.lock().expect("context builder lock");
-                    builder.set_profiles_dir(cfg.dir_override.clone());
-                    builder.set_profile_override(cfg.profile.clone());
-                    builder.set_target_override(cfg.target.clone());
-                    // cold process + persisted snapshot → warm start
-                    if builder.scan_is_cold() {
-                        if let Some(project_root) = cogitator_analysis::util::get_project_root(
-                            "dbt_project.yml",
-                            std::path::Path::new(&root),
-                        ) {
-                            if let Some(scan) = server_cache_load(&project_root) {
-                                builder.seed_scan(scan);
+            for root in roots {
+                let is_primary = {
+                    let primary = primary_root.lock().expect("primary root lock");
+                    primary.is_empty() || *primary == root
+                };
+                if !is_primary {
+                    secondary_refresh(
+                        &root,
+                        &refresh_profiles,
+                        &secondary_builders,
+                        &extra,
+                        &refresh_link,
+                        &refresh_status,
+                        &refresh_revision,
+                    )
+                    .await;
+                    continue;
+                }
+                let cfg = refresh_profiles
+                    .lock()
+                    .expect("profiles config lock")
+                    .clone();
+                let progress = refresh_link.progress_begin("dbt: refreshing project");
+                let started = std::time::Instant::now();
+                let built = tokio::task::spawn_blocking({
+                    let root = root.clone();
+                    let builder = builder.clone();
+                    let cfg = cfg.clone();
+                    #[cfg(feature = "duckdb-parser")]
+                    let warehouse_toggles = refresh_toggles.clone();
+                    let enrich_derived = refresh_derived.clone();
+                    let enrich_limits = refresh_limits.clone();
+                    move || {
+                        let span = tracing::info_span!("context_refresh", root = %root);
+                        let _enter = span.enter();
+                        let mut builder = builder.lock().expect("context builder lock");
+                        builder.set_profiles_dir(cfg.dir_override.clone());
+                        builder.set_profile_override(cfg.profile.clone());
+                        builder.set_target_override(cfg.target.clone());
+                        // cold process + persisted snapshot → warm start
+                        if builder.scan_is_cold() {
+                            if let Some(project_root) = cogitator_analysis::util::get_project_root(
+                                "dbt_project.yml",
+                                std::path::Path::new(&root),
+                            ) {
+                                if let Some(scan) = server_cache_load(&project_root) {
+                                    builder.seed_scan(scan);
+                                }
                             }
                         }
-                    }
-                    #[allow(unused_mut)]
-                    let mut ctx = builder.build(&root);
-                    let stats = builder.cache_stats();
-                    tracing::debug!(hits = stats.0, misses = stats.1, "scan cache totals");
-                    #[cfg(feature = "duckdb-parser")]
-                    if warehouse_toggles.warehouse_columns.load(Ordering::Relaxed) {
-                        enrich_warehouse_columns(&mut ctx, &root, &cfg, &enrich_derived);
-                    }
-                    // catalog.json columns fill whatever is still empty —
-                    // always on: one stamp-cached local file the user made
-                    // with `dbt docs generate`, adapter-agnostic (03 §10)
-                    if let Some(project_root) = ctx.project_root.clone() {
-                        let cap = enrich_limits
-                            .artifact_cap_bytes
-                            .load(std::sync::atomic::Ordering::Relaxed);
-                        let set = enrich_derived.artifacts(&project_root, cap);
-                        if let Some(catalog) = &set.catalog {
-                            enrich_catalog_columns(&mut ctx, catalog);
+                        #[allow(unused_mut)]
+                        let mut ctx = builder.build(&root);
+                        let stats = builder.cache_stats();
+                        tracing::debug!(hits = stats.0, misses = stats.1, "scan cache totals");
+                        #[cfg(feature = "duckdb-parser")]
+                        if warehouse_toggles.warehouse_columns.load(Ordering::Relaxed) {
+                            enrich_warehouse_columns(&mut ctx, &root, &cfg, &enrich_derived);
                         }
+                        // catalog.json columns fill whatever is still empty —
+                        // always on: one stamp-cached local file the user made
+                        // with `dbt docs generate`, adapter-agnostic (03 §10)
+                        if let Some(project_root) = ctx.project_root.clone() {
+                            let cap = enrich_limits
+                                .artifact_cap_bytes
+                                .load(std::sync::atomic::Ordering::Relaxed);
+                            let set = enrich_derived.artifacts(&project_root, cap);
+                            if let Some(catalog) = &set.catalog {
+                                enrich_catalog_columns(&mut ctx, catalog);
+                            }
+                        }
+                        if let Some(project_root) = ctx.project_root.as_deref() {
+                            cache_persist::save(project_root, builder.export_scan());
+                        }
+                        (ctx, stats)
                     }
-                    if let Some(project_root) = ctx.project_root.as_deref() {
-                        cache_persist::save(project_root, builder.export_scan());
-                    }
-                    (ctx, stats)
-                }
-            })
-            .await;
-            match built {
-                Ok((ctx, (hits, misses))) => {
-                    let elapsed_ms = started.elapsed().as_millis() as u64;
-                    {
-                        let mut info = refresh_status.lock().expect("status lock");
-                        info.refreshes += 1;
-                        info.last_refresh_ms = elapsed_ms;
-                        info.cache_hits = hits;
-                        info.cache_misses = misses;
-                    }
-                    crate::metrics::record_refresh(
-                        elapsed_ms as f64,
-                        hits.saturating_sub(prev_hits),
-                        misses.saturating_sub(prev_misses),
-                    );
-                    (prev_hits, prev_misses) = (hits, misses);
-                    progress.end(format!(
-                        "{} models, {} sources ({} ms)",
-                        ctx.model_detail_map.len(),
-                        ctx.source_detail_map.len(),
-                        elapsed_ms
-                    ));
-                    tracing::info!(
-                        models = ctx.model_detail_map.len(),
-                        sources = ctx.source_detail_map.len(),
-                        elapsed_ms,
-                        "context refreshed"
-                    );
-                    // proactive feedback: explain *why* features are degraded
-                    // and what fixes it — at most once per distinct cause
-                    let warning = if ctx.project_root.is_none() && !root.is_empty() {
-                        Some(
-                            cogitator_error::guidance::Guidance::new("No dbt project found.")
-                                .because(format!(
-                                    "dbt_project.yml was not located from '{root}' \
+                })
+                .await;
+                match built {
+                    Ok((ctx, (hits, misses))) => {
+                        let elapsed_ms = started.elapsed().as_millis() as u64;
+                        {
+                            let mut info = refresh_status.lock().expect("status lock");
+                            info.refreshes += 1;
+                            info.last_refresh_ms = elapsed_ms;
+                            info.cache_hits = hits;
+                            info.cache_misses = misses;
+                        }
+                        crate::metrics::record_refresh(
+                            elapsed_ms as f64,
+                            hits.saturating_sub(prev_hits),
+                            misses.saturating_sub(prev_misses),
+                        );
+                        (prev_hits, prev_misses) = (hits, misses);
+                        progress.end(format!(
+                            "{} models, {} sources ({} ms)",
+                            ctx.model_detail_map.len(),
+                            ctx.source_detail_map.len(),
+                            elapsed_ms
+                        ));
+                        tracing::info!(
+                            models = ctx.model_detail_map.len(),
+                            sources = ctx.source_detail_map.len(),
+                            elapsed_ms,
+                            "context refreshed"
+                        );
+                        // proactive feedback: explain *why* features are degraded
+                        // and what fixes it — at most once per distinct cause
+                        let warning = if ctx.project_root.is_none() && !root.is_empty() {
+                            Some(
+                                cogitator_error::guidance::Guidance::new("No dbt project found.")
+                                    .because(format!(
+                                        "dbt_project.yml was not located from '{root}' \
                                      (searched upward and downward)."
-                                ))
-                                .fix(
-                                    "open the folder containing dbt_project.yml; \
+                                    ))
+                                    .fix(
+                                        "open the folder containing dbt_project.yml; \
                                      hover/completion for refs stays empty until then.",
+                                    )
+                                    .to_message(),
+                            )
+                        } else if ctx.project_root.is_some()
+                            && ctx.dialect.as_str().is_empty()
+                            && !ctx.project.profile.is_empty()
+                        {
+                            let searched: Vec<String> =
+                                cogitator_analysis::util::profiles_candidates(
+                                    &cfg.dir_override,
+                                    &root,
                                 )
-                                .to_message(),
-                        )
-                    } else if ctx.project_root.is_some()
-                        && ctx.dialect.as_str().is_empty()
-                        && !ctx.project.profile.is_empty()
-                    {
-                        let searched: Vec<String> =
-                            cogitator_analysis::util::profiles_candidates(&cfg.dir_override, &root)
                                 .iter()
                                 .map(|p| p.display().to_string())
                                 .collect();
-                        Some(
-                            cogitator_error::guidance::Guidance::new(format!(
-                                "SQL dialect not resolved for profile '{}'.",
-                                ctx.project.profile
-                            ))
-                            .because(format!(
-                                "no profiles.yml with a matching target was found. \
+                            Some(
+                                cogitator_error::guidance::Guidance::new(format!(
+                                    "SQL dialect not resolved for profile '{}'.",
+                                    ctx.project.profile
+                                ))
+                                .because(format!(
+                                    "no profiles.yml with a matching target was found. \
                                  Searched: {}.",
-                                searched.join(", ")
-                            ))
-                            .fix(
-                                "create profiles.yml with this profile in one of those \
+                                    searched.join(", ")
+                                ))
+                                .fix(
+                                    "create profiles.yml with this profile in one of those \
                                  places, or point --profiles-dir, \
                                  initializationOptions.profilesDir or DBT_PROFILES_DIR \
                                  at its directory. Function docs and dialect keywords \
                                  are generic until resolved.",
+                                )
+                                .to_message(),
                             )
-                            .to_message(),
-                        )
-                    } else {
-                        // dialect fine: check the active target's auth next
-                        auth_warning(&cfg, &root, &ctx, &refresh_derived)
-                    };
-                    if warning != warned {
-                        if let Some(text) = &warning {
-                            refresh_link
-                                .show_message(cogitator_lsp::message_type::WARNING, text.clone());
+                        } else {
+                            // dialect fine: check the active target's auth next
+                            auth_warning(&cfg, &root, &ctx, &refresh_derived)
+                        };
+                        if warning != warned {
+                            if let Some(text) = &warning {
+                                refresh_link.show_message(
+                                    cogitator_lsp::message_type::WARNING,
+                                    text.clone(),
+                                );
+                            }
+                            warned = warning;
                         }
-                        warned = warning;
+                        refresh_revision.fetch_add(1, Ordering::Relaxed);
+                        let _ = ctx_tx.send(Arc::new(ctx));
                     }
-                    refresh_revision.fetch_add(1, Ordering::Relaxed);
-                    let _ = ctx_tx.send(Arc::new(ctx));
+                    Err(err) => {
+                        progress.end("refresh failed");
+                        tracing::warn!(%err, "context refresh panicked");
+                    }
                 }
-                Err(err) => {
-                    progress.end("refresh failed");
-                    tracing::warn!(%err, "context refresh panicked");
+            } // per-root loop
+        }
+    }
+}
+
+/// One secondary-root rebuild (multi-root): same scan-cache warm start
+/// and persistence as the primary, no watch publish, no degradation
+/// warnings (the primary owns the message stream), result into `extra`
+/// keyed by the resolved project root.
+#[allow(clippy::type_complexity)]
+async fn secondary_refresh(
+    root: &str,
+    profiles: &Arc<std::sync::Mutex<ProfilesConfig>>,
+    builders: &Arc<std::sync::Mutex<std::collections::HashMap<String, ContextBuilder>>>,
+    extra: &Arc<super::multi_root::ExtraContexts>,
+    link: &ClientLink,
+    status: &Arc<std::sync::Mutex<StatusInfo>>,
+    revision: &Arc<AtomicU64>,
+) {
+    let cfg = profiles.lock().expect("profiles config lock").clone();
+    let progress = link.progress_begin(format!("dbt: refreshing secondary project ({root})"));
+    let started = std::time::Instant::now();
+    let built = tokio::task::spawn_blocking({
+        let root = root.to_string();
+        let builders = builders.clone();
+        move || {
+            let span = tracing::info_span!("context_refresh", root = %root, secondary = true);
+            let _enter = span.enter();
+            let resolved = cogitator_analysis::util::get_project_root(
+                "dbt_project.yml",
+                std::path::Path::new(&root),
+            )
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| root.clone());
+            let mut map = builders.lock().expect("secondary builders lock");
+            let builder = map.entry(resolved).or_default();
+            builder.set_profiles_dir(cfg.dir_override.clone());
+            builder.set_profile_override(cfg.profile.clone());
+            builder.set_target_override(cfg.target.clone());
+            if builder.scan_is_cold() {
+                if let Some(project_root) = cogitator_analysis::util::get_project_root(
+                    "dbt_project.yml",
+                    std::path::Path::new(&root),
+                ) {
+                    if let Some(scan) = server_cache_load(&project_root) {
+                        builder.seed_scan(scan);
+                    }
                 }
             }
+            let ctx = builder.build(&root);
+            if let Some(project_root) = ctx.project_root.as_deref() {
+                cache_persist::save(project_root, builder.export_scan());
+            }
+            ctx
+        }
+    })
+    .await;
+    match built {
+        Ok(ctx) => {
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            {
+                let mut info = status.lock().expect("status lock");
+                info.refreshes += 1;
+                info.last_refresh_ms = elapsed_ms;
+            }
+            progress.end(format!(
+                "{} models, {} sources ({} ms, secondary)",
+                ctx.model_detail_map.len(),
+                ctx.source_detail_map.len(),
+                elapsed_ms
+            ));
+            tracing::info!(
+                models = ctx.model_detail_map.len(),
+                sources = ctx.source_detail_map.len(),
+                elapsed_ms,
+                secondary = true,
+                "context refreshed"
+            );
+            if let Some(project_root) = ctx.project_root.clone() {
+                revision.fetch_add(1, Ordering::Relaxed);
+                extra.insert(project_root.display().to_string(), Arc::new(ctx));
+            }
+            // a folder without dbt_project.yml stays silent: the primary
+            // root owns user-facing degradation messages
+        }
+        Err(err) => {
+            progress.end("secondary refresh failed");
+            tracing::warn!(%err, "secondary context refresh panicked");
         }
     }
 }

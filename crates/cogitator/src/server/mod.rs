@@ -15,6 +15,7 @@ mod function_docs;
 mod fusion;
 mod handlers;
 mod jobs;
+mod multi_root;
 mod offload;
 mod refresh;
 mod reply;
@@ -212,6 +213,11 @@ pub async fn run(
             .store(mib * 1024 * 1024, Ordering::Relaxed);
     }
     let jobs = Arc::new(jobs::DbtJobs::default());
+    // multi-root: secondary project contexts + the primary root marker
+    let extra_contexts = Arc::new(multi_root::ExtraContexts::default());
+    let refresh_extra = extra_contexts.clone();
+    let primary_root = Arc::new(std::sync::Mutex::new(String::new()));
+    let refresh_primary = primary_root.clone();
     // workspace/diagnostic result ids: one global revision per rebuild
     let context_revision = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let refresh_revision = context_revision.clone();
@@ -241,6 +247,8 @@ pub async fn run(
             revision: refresh_revision,
             builder,
             ctx_tx,
+            extra: refresh_extra,
+            primary_root: refresh_primary,
         }
         .run(refresh_rx),
     );
@@ -291,6 +299,8 @@ pub async fn run(
         toggles,
         jobs,
         context_revision,
+        extra_contexts,
+        primary_root,
     );
 
     let mut stdin = tokio::io::stdin();
