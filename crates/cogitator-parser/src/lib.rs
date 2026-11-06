@@ -36,6 +36,8 @@ pub enum TokenKind {
     Macro,
     Package,
     Config,
+    /// The name argument of a `doc('…')` call.
+    Doc,
     StringLit,
     Number,
     Symbol(char),
