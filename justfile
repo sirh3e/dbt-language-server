@@ -145,6 +145,13 @@ system-test:
 vscode-build:
     cd editors/vscode && npm install --no-audit --no-fund && npm run compile
 
+# Extension-host tests in a downloaded VS Code (cached under
+# editors/vscode/.vscode-test; needs node/npm and a debug server build)
+[group('editors')]
+vscode-test:
+    cargo build -p cogitator
+    cd editors/vscode && npm install --no-audit --no-fund && npm test
+
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
 [group('editors')]
 nvim-test:

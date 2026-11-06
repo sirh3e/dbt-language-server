@@ -31,13 +31,22 @@ fn suite_deadline() -> Duration {
 }
 
 fn find_in_path(name: &str) -> Option<PathBuf> {
-    let exe = if cfg!(windows) {
-        format!("{name}.exe")
+    let candidates: Vec<String> = if cfg!(windows) {
+        vec![
+            name.to_string(),
+            format!("{name}.exe"),
+            format!("{name}.cmd"),
+        ]
     } else {
-        name.to_string()
+        vec![name.to_string()]
     };
     std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|dir| dir.join(&exe))
+        .flat_map(|dir| {
+            candidates
+                .iter()
+                .map(move |c| dir.join(c))
+                .collect::<Vec<_>>()
+        })
         .find(|p| p.is_file())
 }
 
@@ -67,7 +76,6 @@ struct SuiteReport {
 /// collecting its output.
 fn run_suite(label: &str, mut command: Command) -> SuiteReport {
     command
-        .current_dir(repo_root())
         .env("COGITATOR_BIN", env!("CARGO_BIN_EXE_cogitator"))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -150,6 +158,29 @@ fn assert_green(label: &str, report: SuiteReport) {
     }
 }
 
+/// A bounded setup command (npm install, tsc): all output relayed,
+/// any failure fatal — setup is never part of the step report.
+fn run_setup(label: &str, mut command: Command) {
+    command.env("COGITATOR_BIN", env!("CARGO_BIN_EXE_cogitator"));
+    let output = command.output().unwrap_or_else(|e| panic!("{label}: {e}"));
+    if !output.status.success() {
+        panic!(
+            "{label} failed ({:?})\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            output.status.code(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+}
+
+fn npm() -> &'static str {
+    if cfg!(windows) {
+        "npm.cmd"
+    } else {
+        "npm"
+    }
+}
+
 #[test]
 #[ignore = "editor system suite — run via `just system-test`"]
 fn nvim_suite() {
@@ -158,6 +189,7 @@ fn nvim_suite() {
     }
     let mut command = Command::new("nvim");
     command
+        .current_dir(repo_root())
         .arg("--headless")
         .arg("-l")
         .arg(repo_root().join("editors/nvim/tests/run.lua"));
@@ -172,6 +204,7 @@ fn emacs_suite() {
     }
     let mut command = Command::new("emacs");
     command
+        .current_dir(repo_root())
         .arg("-Q")
         .arg("--batch")
         .arg("-L")
@@ -179,4 +212,29 @@ fn emacs_suite() {
         .arg("-l")
         .arg(repo_root().join("editors/emacs/tests/run.el"));
     assert_green("emacs", run_suite("emacs", command));
+}
+
+/// The extension-host suite: @vscode/test-electron downloads a cached
+/// VS Code build (editors/vscode/.vscode-test/) and runs
+/// src/test/suite inside it — same ok/FAIL contract. Linux CI wraps
+/// the whole orchestrator in xvfb-run.
+#[test]
+#[ignore = "editor system suite — run via `just system-test`"]
+fn vscode_suite() {
+    if !editor_available("npm", "install Node.js >= 20") {
+        return;
+    }
+    let ext = repo_root().join("editors/vscode");
+    let mut install = Command::new(npm());
+    install
+        .current_dir(&ext)
+        .args(["install", "--no-audit", "--no-fund"]);
+    run_setup("vscode: npm install", install);
+    let mut compile = Command::new(npm());
+    compile.current_dir(&ext).args(["run", "compile"]);
+    run_setup("vscode: npm run compile", compile);
+
+    let mut command = Command::new("node");
+    command.current_dir(&ext).arg("./out/test/runTest.js");
+    assert_green("vscode", run_suite("vscode", command));
 }

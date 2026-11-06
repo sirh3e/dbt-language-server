@@ -13,6 +13,12 @@ import {
 
 let client: LanguageClient | undefined;
 
+/** What activate() returns: other extensions (and the extension-host
+ *  test suite) reach the live LanguageClient through it. */
+export interface CogitatorApi {
+  client(): LanguageClient | undefined;
+}
+
 function serverOptions(): ServerOptions {
   const config = vscode.workspace.getConfiguration("cogitator");
   const command = config.get<string>("serverPath", "cogitator");
@@ -64,7 +70,7 @@ async function execDbt(command: string, extra?: Record<string, unknown>) {
 
 export async function activate(
   context: vscode.ExtensionContext
-): Promise<void> {
+): Promise<CogitatorApi> {
   const palette: Array<[string, () => Thenable<unknown> | void]> = [
     ["cogitator.run", () => execDbt("dbt.run")],
     ["cogitator.test", () => execDbt("dbt.test")],
@@ -100,6 +106,7 @@ export async function activate(
     );
   }
   await startClient(context);
+  return { client: () => client };
 }
 
 export async function deactivate(): Promise<void> {

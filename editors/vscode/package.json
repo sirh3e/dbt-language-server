@@ -77,6 +77,7 @@
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
+    "test": "npm run compile && node ./out/test/runTest.js",
     "package": "vsce package"
   },
   "dependencies": {
@@ -85,6 +86,7 @@
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/vscode": "^1.82.0",
+    "@vscode/test-electron": "^3.1.0",
     "typescript": "^5.4.5"
   }
 }
