@@ -3,12 +3,27 @@
 First-party Zed extension registering the cogitator dbt language server
 for SQL and YAML buffers.
 
-## Install (dev extension)
+## 1. Install the server
 
-1. Put a `cogitator` binary on your PATH (release asset or
-   `cargo build --release -p cogitator`).
-2. In Zed: `zed: install dev extension` → pick this directory
-   (`editors/zed`). Zed compiles the extension itself.
+The extension spawns a `cogitator` binary; put one on your PATH:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh
+```
+
+(verifies the download against the release's `SHA256SUMS`; Windows
+uses `install.ps1` the same way). Alternatively unpack an archive
+from the
+[releases page](https://github.com/sirh3e/dbt-language-server/releases)
+or build from source: `cargo build --release -p cogitator`.
+
+Not on PATH? Point `lsp.cogitator.binary.path` at the binary (below).
+
+## 2. Install the extension (dev extension)
+
+Clone this repository, then in Zed: `zed: install dev extension` →
+pick this directory (`editors/zed`). Zed compiles the extension
+itself.
 
 ## Settings
 
