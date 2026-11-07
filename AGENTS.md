@@ -44,9 +44,12 @@ editor integrations live under `editors/`.
   tools go into `nix/tooling.nix`, nowhere else; CI's `nix-shell` job
   proves the shell assembles.
 - **Workflow**: trunk-based with typed branches (`feat/…`, `fix/…`),
-  squash-merged PRs, defined in CONTRIBUTING.md; releases via
+  squash-merged PRs, defined in CONTRIBUTING.md. Main is protected on
+  GitHub (PRs-only, squash merge, no direct pushes); releases via
   `just release-prep <version>` (guards, version bump, changelog
-  section, release commit + tag — the tag push drives release.yml).
+  section, release commit on a `release/v…` branch → PR) and, after
+  the squash-merge, `just release-tag <version>` on main — the tag
+  push drives release.yml.
 - **Commits are Conventional Commits** (`feat(scope): …`, `fix: …`,
   `docs(specs): …`); CHANGELOG.md is generated with git-cliff
   (`just changelog` — ranged from the fork point `724b0f2`; the upstream
