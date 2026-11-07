@@ -310,7 +310,13 @@ map, keyed by resolved project root:
   dbt_project.yml — foreign projects join lazily;
 - per-URI dispatch (snapshot_for, push diagnostics, dialect choice,
   dbt run/test/compile/preview, fusion) picks the covering context by
-  longest project-root prefix, compared as Path components (08 §1);
+  longest project-root prefix, compared as Path components (08 §1).
+  The position-shaped request handlers route the same way — hover,
+  completion, references and their respond_position siblings, the
+  call-hierarchy calls (by the item's uri), dbt.modelGraph and
+  dbt.goToSchema — never the primary snapshot. Requests with no URI
+  (workspace/symbol, workspace/diagnostic, completionItem/resolve,
+  dbt.deadModels, dbt.projectGraph) stay on the primary context;
 - the refresh task debounces per DISTINCT root and keeps one
   ContextBuilder per secondary root (same scan-cache warm start and
   persistence; no watch publish, no user-facing warnings);

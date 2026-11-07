@@ -672,6 +672,13 @@ fn multi_root_workspace_folders() {
             format!("select * from {{{{ ref('{name}_base') }}}}"),
         )
         .unwrap();
+        std::fs::write(
+            models.join("schema.yml"),
+            format!(
+                "version: 2\nmodels:\n  - name: {name}_base\n    description: {name} base model\n"
+            ),
+        )
+        .unwrap();
         root
     };
     let second = make_project("beta");
@@ -724,6 +731,23 @@ fn multi_root_workspace_folders() {
             .is_some_and(|u| u.ends_with("beta_base.sql")),
         "{def}"
     );
+
+    // hover answers from the secondary project's context too — the
+    // respond_position handlers used to pin the primary snapshot and
+    // came back empty for every foreign-root file
+    let hover = lsp.request(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": beta_uri},
+                           "position": {"line": 0, "character": 25}}),
+    );
+    assert_eq!(hover["result"]["contents"], "beta base model", "{hover}");
+
+    // dbt.modelGraph routes through the owning root as well
+    let graph = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.modelGraph", "arguments": [{"uri": beta_uri}]}),
+    );
+    assert!(graph["result"].to_string().contains("beta_base"), "{graph}");
 
     // a file from a project NOBODY listed joins lazily on didOpen
     let gamma_top = third.join("models/gamma_top.sql");

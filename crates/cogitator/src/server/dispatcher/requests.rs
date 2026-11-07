@@ -27,7 +27,9 @@ impl Dispatcher {
             self.invalid_params(content, method);
             return;
         };
-        let ctx = self.snapshot();
+        // multi-root: the context must be the one whose root owns the
+        // file, not always the primary (its siblings use snapshot_for)
+        let ctx = self.ctx_for(&uri);
         let result = feature(&ctx, self.documents.get(&uri), &uri, pos);
         self.send(&ResultResponse::new(id, result));
     }
@@ -248,7 +250,7 @@ impl Dispatcher {
             self.invalid_params(content, "callHierarchy/incomingCalls");
             return;
         };
-        let ctx = self.snapshot();
+        let ctx = self.ctx_for(&params.item.uri);
         // offloaded: every caller file is re-read from disk
         self.offload_blocking(req.id, "callHierarchy/incomingCalls", move || {
             let calls = features::macro_incoming_calls(&ctx, &params.item);
