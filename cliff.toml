@@ -10,10 +10,9 @@ header = """# Changelog
 All notable changes to cogitator, the dbt language server
 (a Rust rewrite of j-clemons/dbt-language-server).
 
-The Rust rewrite has no releases yet; everything sits under
-[unreleased]. The v0.1.x–v0.4.x tags in the git history belong to the
-upstream Go project and are ignored here — the first release of this
-fork should start at v0.5.0 to stay clear of them.
+Releases of this fork start at v0.5.0: the v0.1.x–v0.4.x tags in
+the git history belong to the upstream Go project and are ignored
+here.
 
 <!-- git-cliff: end of header -->
 """
