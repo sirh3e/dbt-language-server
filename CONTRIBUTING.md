@@ -54,7 +54,8 @@ one hard rule: **tags start at v0.5.0**, because v0.1.x–v0.4.x belong to
 the upstream Go project this fork was rewritten from (git-cliff ignores
 those tags; see cliff.toml).
 
-The whole mechanical part is one recipe:
+Main is protected (PRs-only, squash merges), so the release commit
+travels like every other change. The mechanical part is two recipes:
 
 ```bash
 just release-prep 0.5.0
@@ -62,18 +63,29 @@ just release-prep 0.5.0
 
 which, in order:
 
-1. guards: working tree clean, on `main`, version ≥ 0.5.0;
-2. bumps `[workspace.package] version` in the root `Cargo.toml` (every
+1. guards: working tree clean, on `main` and up to date with
+   `origin/main`, version ≥ 0.5.0;
+2. creates the `release/v<version>` branch;
+3. bumps `[workspace.package] version` in the root `Cargo.toml` (every
    crate inherits it) and refreshes `Cargo.lock`;
-3. runs `just check`;
-4. regenerates `CHANGELOG.md` with the new section
+4. runs `just check`;
+5. regenerates `CHANGELOG.md` with the new section
    (`git cliff 724b0f2..HEAD --tag v<version>`);
-5. commits `chore(release): v<version>` and creates the annotated tag.
+6. commits `chore(release): v<version>`.
 
-Then a human reviews the commit and publishes:
+Push the branch, open a PR titled `chore(release): v<version>`, and
+squash-merge it once CI is green. Then, on the updated `main`:
 
 ```bash
-git push origin main v0.5.0
+just release-tag 0.5.0
+```
+
+which verifies `main` matches `origin/main` and carries the version
+bump, and creates the annotated tag on the squash-merged release
+commit. A human reviews and publishes:
+
+```bash
+git push origin v0.5.0
 ```
 
 The tag push triggers `.github/workflows/release.yml`: the

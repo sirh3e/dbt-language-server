@@ -177,26 +177,45 @@ zed-build:
 changelog:
     git cliff 724b0f2..HEAD -o CHANGELOG.md
 
-# (review the tagged commit, then: git push origin main v<version>)
-# Prepare a release: guards, bump, check, changelog, commit + annotated tag
+# Prepare a release on a release/v<version> branch: guards, bump, check,
+# changelog, commit. Main is PRs-only, so the commit travels as a pull
+# request; after the squash-merge, `just release-tag <version>` tags main.
 [group('release')]
 release-prep version:
     #!/usr/bin/env bash
     set -euo pipefail
     v="{{version}}"
     [ -z "$(git status --porcelain)" ] || { echo "error: working tree not clean" >&2; exit 1; }
-    [ "$(git branch --show-current)" = "main" ] || { echo "error: not on main" >&2; exit 1; }
+    [ "$(git branch --show-current)" = "main" ] || { echo "error: start from main" >&2; exit 1; }
+    git fetch origin main
+    [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "error: main is not up to date with origin/main" >&2; exit 1; }
     if [ "$(printf '%s\n' 0.5.0 "$v" | sort -V | head -1)" != "0.5.0" ]; then
         echo "error: fork releases start at 0.5.0 (upstream owns v0.1.x-v0.4.x)" >&2; exit 1
     fi
+    git switch -c "release/v$v"
     perl -pi -e 'if (!$done && s/^version = ".*"/version = "'"$v"'"/) { $done = 1 }' Cargo.toml
     cargo update --workspace --quiet
     just check
     git cliff 724b0f2..HEAD --tag "v$v" -o CHANGELOG.md
     git add Cargo.toml Cargo.lock CHANGELOG.md
     git commit -m "chore(release): v$v"
+    echo "release/v$v ready — push it and open a PR titled 'chore(release): v$v';"
+    echo "after the squash-merge, on updated main: just release-tag $v"
+
+# Tag the squash-merged release commit on main and hand back the tag push
+# (the tag push is what drives release.yml)
+[group('release')]
+release-tag version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    v="{{version}}"
+    [ -z "$(git status --porcelain)" ] || { echo "error: working tree not clean" >&2; exit 1; }
+    [ "$(git branch --show-current)" = "main" ] || { echo "error: not on main" >&2; exit 1; }
+    git fetch origin main
+    [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || { echo "error: main is not up to date with origin/main" >&2; exit 1; }
+    grep -q "^version = \"$v\"" Cargo.toml || { echo "error: Cargo.toml is not at $v — merge the release PR first" >&2; exit 1; }
     git tag -a "v$v" -m "cogitator v$v"
-    echo "tagged v$v — review the commit, then: git push origin main v$v"
+    echo "tagged v$v — review, then publish with: git push origin v$v"
 
 # ---------------------------------------------------------- maintenance
 
