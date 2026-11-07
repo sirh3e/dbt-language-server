@@ -6,24 +6,53 @@ lenses, dbt run/test/compile/preview — lives in the server; this
 extension spawns it over stdio and forwards the dbt command surface
 to the palette.
 
-## Setup
+## 1. Install the server
 
-1. Install the server (`install.sh` / `install.ps1` from the
-   repository root, or a release asset) so `cogitator` is on PATH —
-   or point `cogitator.serverPath` at the binary.
-2. Build the extension:
+The extension spawns a `cogitator` binary; put one on your PATH.
+Linux/macOS:
 
-   ```sh
-   cd editors/vscode
-   npm install
-   npm run compile
-   ```
+```sh
+curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh
+```
 
-3. Load it: `code --install-extension` a `vsce package` output, or
-   open `editors/vscode` and press F5 (Extension Development Host).
+Windows (PowerShell):
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.ps1 | iex"
+```
+
+Both verify the download against the release's `SHA256SUMS`.
+Alternatively unpack an archive from the
+[releases page](https://github.com/sirh3e/dbt-language-server/releases)
+or build from source: `cargo build --release -p cogitator`.
+
+Not on PATH? Point `cogitator.serverPath` at the binary.
+
+## 2. Install the extension
+
+Download `cogitator-<version>.vsix` from the
+[releases page](https://github.com/sirh3e/dbt-language-server/releases)
+and install it — *Extensions → ⋯ → Install from VSIX*, or:
+
+```sh
+code --install-extension cogitator-<version>.vsix
+```
+
+(The extension is not on the marketplace yet.) For development,
+build and run it from source instead:
+
+```sh
+cd editors/vscode
+npm install
+npm run compile
+```
+
+then open `editors/vscode` and press F5 (Extension Development
+Host), or package your own vsix with `just vsix`.
 
 The extension activates in workspaces containing `dbt_project.yml`
-and attaches to SQL and YAML documents.
+and attaches to SQL and YAML documents; with the server on PATH no
+further configuration is needed.
 
 ## Settings
 

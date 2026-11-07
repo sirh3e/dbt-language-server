@@ -4,6 +4,36 @@ Emacs (29+) integration for the cogitator dbt language server. Works with
 the built-in **eglot** client and with **lsp-mode**; the dbt commands and
 the model-graph browser work under either.
 
+## 1. Install the server
+
+The integration spawns a `cogitator` binary; put one on your PATH:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sirh3e/dbt-language-server/main/install.sh | sh
+```
+
+(verifies the download against the release's `SHA256SUMS` and
+installs to `~/.local/bin`). Alternatively unpack an archive from the
+[releases page](https://github.com/sirh3e/dbt-language-server/releases)
+or build from source: `cargo build --release -p cogitator`.
+
+Not on PATH? `(setq cogitator-server-command '("/path/to/cogitator"))`.
+
+## 2. Install the elisp
+
+The lisp lives in this repository under `editors/emacs` — clone and
+add it to `load-path` (snippets below), or with `use-package`:
+
+```elisp
+(use-package cogitator
+  :load-path "~/src/dbt-language-server/editors/emacs"
+  :config
+  (require 'cogitator-graph)
+  (cogitator-setup-eglot)
+  (add-hook 'sql-mode-hook #'eglot-ensure)
+  (add-hook 'yaml-mode-hook #'eglot-ensure))
+```
+
 ## Setup (eglot)
 
 ```elisp

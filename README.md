@@ -354,10 +354,25 @@ against and the packaged VS Code extension
 Install from VSIX*). On Windows, put `cogitator.exe` somewhere on
 `%PATH%` and configure your editor the same way as below.
 
+Every editor pairs the same way: install the server (above), then
+the editor's own plugin — each integration has a step-by-step
+install guide in its directory.
+
+### VS Code
+
+First-party extension at [`editors/vscode`](editors/vscode)
+([install guide](editors/vscode/README.md)): download
+`cogitator-<version>.vsix` from the releases page and install it via
+*Extensions → ⋯ → Install from VSIX* (not on the marketplace yet).
+Palette commands for dbt run/test/compile/preview, lineage and server
+status; `cogitator.serverPath` points at the binary when it is not on
+PATH.
+
 ### Neovim
 
 First-party plugin at [`editors/nvim`](editors/nvim)
-(spec: `specs/neovim-plugin/00-plugin.md`): `:DbtRun/Test/Compile/Schema/
+([install guide](editors/nvim/README.md), spec:
+`specs/neovim-plugin/00-plugin.md`): `:DbtRun/Test/Compile/Schema/
 Lineage/Graph/Profiles`, the yazi-style model-graph browser, code-lens
 wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim:
 
@@ -383,10 +398,11 @@ vim.lsp.enable("cogitator")
 
 ### Emacs
 
-First-party integration at [`editors/emacs`](editors/emacs) for **eglot**
-(built-in, Emacs 29+) and **lsp-mode**:
+First-party integration at [`editors/emacs`](editors/emacs)
+([install guide](editors/emacs/README.md)) for **eglot** (built-in,
+Emacs 29+) and **lsp-mode**:
 `M-x cogitator-run/test/compile/schema/lineage` and the same model-graph
-browser (`M-x cogitator-graph`). See `editors/emacs/README.md`:
+browser (`M-x cogitator-graph`):
 
 ```elisp
 (add-to-list 'load-path "/path/to/dbt-language-server/editors/emacs")
@@ -398,7 +414,8 @@ browser (`M-x cogitator-graph`). See `editors/emacs/README.md`:
 
 ### Zed
 
-First-party extension at [`editors/zed`](editors/zed): install it via
+First-party extension at [`editors/zed`](editors/zed)
+([install guide](editors/zed/README.md)): install it via
 `zed: install dev extension`, configure through the standard
 `lsp.cogitator` settings (binary path, arguments,
 `initialization_options`). The third-party
