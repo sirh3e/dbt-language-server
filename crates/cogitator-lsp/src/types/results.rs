@@ -61,6 +61,9 @@ pub enum CompletionData {
     Variable {
         name: String,
     },
+    Doc {
+        name: String,
+    },
     Macro {
         name: String,
         /// Tolerates clients echoing data without the package (the

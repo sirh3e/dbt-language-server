@@ -22,6 +22,17 @@ fn complete(text: &str, line: u32, character: u32) -> Vec<CompletionItem> {
 const DOC: &str = "with recent as (\n    select customer_id, order_total from {{ ref('customers') }} c\n)\nselect \nfrom \n";
 
 #[test]
+fn doc_call_offers_docs_blocks_with_closing_suffix() {
+    let items = complete("{{ doc('", 0, 8);
+    let block = items
+        .iter()
+        .find(|i| i.label == "orders_status")
+        .expect("docs block item");
+    assert_eq!(block.insert_text, "orders_status') }}");
+    assert_eq!(block.detail, "Project: jaffle_shop");
+}
+
+#[test]
 fn relation_position_suggests_ctes_and_jinja_snippets() {
     // cursor after `from ` on line 4
     let items = complete(DOC, 4, 5);

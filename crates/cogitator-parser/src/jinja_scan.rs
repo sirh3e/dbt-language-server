@@ -33,6 +33,11 @@ pub struct MacroParam {
 pub struct RawDocsBlock {
     pub name: String,
     pub content: String,
+    /// 0-based (line, column) of the block's name identifier. Added
+    /// after cache format 1: `default` keeps old payloads decodable,
+    /// though the format bump already cold-starts them.
+    #[serde(default)]
+    pub start: (u32, u32),
 }
 
 type JinjaTokens<'a> = Vec<(JToken<'a>, minijinja::machinery::Span)>;
@@ -159,14 +164,17 @@ pub fn extract_docs_blocks(text: &str) -> Vec<RawDocsBlock> {
 }
 
 fn extract_docs_from_tokens(text: &str, tokens: &JinjaTokens<'_>) -> Vec<RawDocsBlock> {
+    let table = LineTable::new(text);
     let mut out = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
         if matches!(tokens[i].0, JToken::BlockStart)
             && tokens.get(i + 1).is_some_and(|(t, _)| ident_is(t, "docs"))
         {
-            let name = match tokens.get(i + 2).map(|(t, _)| t) {
-                Some(JToken::Ident(s)) => (*s).to_string(),
+            let (name, name_start) = match tokens.get(i + 2).map(|(t, s)| (t, s)) {
+                Some((JToken::Ident(s), span)) => {
+                    ((*s).to_string(), table.line_col(span.start_offset))
+                }
                 _ => {
                     i += 1;
                     continue;
@@ -195,6 +203,7 @@ fn extract_docs_from_tokens(text: &str, tokens: &JinjaTokens<'_>) -> Vec<RawDocs
                         out.push(RawDocsBlock {
                             name,
                             content: text[content_start..content_end].trim().to_string(),
+                            start: name_start,
                         });
                         i = k;
                         break;
@@ -319,11 +328,13 @@ pub fn params_from_signature(signature: &str) -> Vec<MacroParam> {
 }
 
 fn extract_docs_regex(text: &str) -> Vec<RawDocsBlock> {
+    let table = LineTable::new(text);
     DOCS_RE
         .captures_iter(text)
         .map(|caps| RawDocsBlock {
             name: caps[1].to_string(),
             content: caps[2].trim().to_string(),
+            start: table.line_col(caps.get(1).map(|m| m.start() as u32).unwrap_or_default()),
         })
         .collect()
 }

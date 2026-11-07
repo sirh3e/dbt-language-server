@@ -24,6 +24,7 @@ fn refine_at(text: &str, tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> 
         "ref" => ref_args(tokens, i),
         "var" => call_string_arg(tokens, i, TokenKind::Var),
         "source" => source_args(tokens, i),
+        "doc" => call_string_arg(tokens, i, TokenKind::Doc),
         "config" => config_marker(tokens, i),
         _ => macro_markers(tokens, i),
     }
@@ -118,6 +119,15 @@ mod tests {
         let tokens = kinds("select 1 from {{ ref('customers') }}");
         assert!(
             tokens.contains(&(TokenKind::Ref, "customers".into())),
+            "{tokens:?}"
+        );
+    }
+
+    #[test]
+    fn doc_call_marks_the_block_name() {
+        let tokens = kinds("description: '{{ doc(\"orders_status\") }}'");
+        assert!(
+            tokens.contains(&(TokenKind::Doc, "orders_status".into())),
             "{tokens:?}"
         );
     }

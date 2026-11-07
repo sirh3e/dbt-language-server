@@ -126,8 +126,10 @@ fn docs_blocks_multiple_in_one_file() {
     assert_eq!(blocks.len(), 2);
     assert_eq!(blocks[0].name, "orders_status");
     assert_eq!(blocks[0].content, "Status of the order.");
+    assert_eq!(blocks[0].start, (0, 8), "name ident position");
     assert_eq!(blocks[1].name, "customer_id");
     assert_eq!(blocks[1].content, "Unique id.");
+    assert_eq!(blocks[1].start, (4, 8), "name ident position");
 }
 
 #[test]

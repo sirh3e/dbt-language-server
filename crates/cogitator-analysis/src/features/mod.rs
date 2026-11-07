@@ -40,7 +40,9 @@ pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};
 pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
-pub use diagnostics::{citizen_diagnostics, dangling_ref_diagnostics, packages_diagnostics};
+pub use diagnostics::{
+    citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
+};
 pub use document_links::document_links;
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use governance::{contract_diagnostics, private_ref_diagnostics};

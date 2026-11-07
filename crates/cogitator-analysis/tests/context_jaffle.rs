@@ -199,3 +199,50 @@ fn source_relation_coordinates_resolved() {
     let payments = stripe.tables.get("payments").expect("payments table");
     assert_eq!(payments.identifier, None);
 }
+
+#[test]
+fn doc_blocks_land_on_the_context_with_positions() {
+    let ctx = ctx();
+    let block = ctx
+        .doc_detail_map
+        .get("orders_status")
+        .expect("docs block from models/docs.md");
+    assert!(block.uri.ends_with("models/docs.md"), "{:?}", block.uri);
+    assert!(block.content.contains("placed"), "{}", block.content);
+    assert_eq!(block.project_name, "jaffle_shop");
+    // `{% docs orders_status %}` opens the file: the name sits at col 8
+    assert_eq!(
+        (block.range.start.line, block.range.start.character),
+        (0, 8)
+    );
+}
+
+#[test]
+fn hover_and_definition_on_a_doc_reference() {
+    let ctx = ctx();
+    let schema_path = fixture_root().join("models/schema.yml");
+    let text = std::fs::read_to_string(&schema_path).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&schema_path);
+
+    let mut docs = Documents::default();
+    docs.open(uri.clone(), &text, &ctx.dialect);
+    let doc = docs.get(&uri).unwrap();
+
+    let offset = text.find("orders_status").expect("doc() ref in schema.yml");
+    let line = text[..offset].matches('\n').count() as u32;
+    let col = (offset - text[..offset].rfind('\n').map(|p| p + 1).unwrap_or(0)) as u32;
+    let pos = Position {
+        line,
+        character: col + 2,
+    };
+
+    let hover = features::hover(&ctx, doc, pos);
+    assert!(hover.contains("placed"), "{hover}");
+
+    let location = features::definition(&ctx, doc, &uri, pos);
+    assert!(location.uri.ends_with("docs.md"), "{}", location.uri);
+    assert_eq!(
+        (location.range.start.line, location.range.start.character),
+        (0, 8)
+    );
+}

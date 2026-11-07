@@ -20,6 +20,11 @@ pub fn hover(ctx: &DbtContext, doc: &Document, pos: Position) -> String {
             .get(literal)
             .map(|m| m.description.clone())
             .unwrap_or_default(),
+        TokenKind::Doc => ctx
+            .doc_detail_map
+            .get(literal)
+            .map(|d| d.content.clone())
+            .unwrap_or_default(),
         TokenKind::SourceName => ctx
             .source_detail_map
             .get(literal)

@@ -185,6 +185,10 @@ All "retype" operations mutate `cur.token.type` **before** it is appended to `to
   (`inc_paren` is called for the LPAREN.) Both quote types accepted. If any step
   mismatches, stop silently (tokens keep their lexed types).
 - `parse_var`: same shape, retypes to `VAR`.
+- `parse_doc` *(addendum — no Go counterpart)*: same shape as `parse_var`,
+  retypes the string argument of `doc('name')` to `DOC` (`TokenKind::Doc`),
+  feeding the doc() hover/definition/completion/diagnostic set (03 §6.4
+  addendum).
 - `parse_source`: pattern
   `SOURCE LPAREN ('|") IDENT ('|") COMMA ('|") IDENT` —
   first IDENT → `SOURCE`, second IDENT → `SOURCE_TABLE`.
