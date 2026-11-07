@@ -140,6 +140,15 @@ driver — no system `cc`, no MSVC, no cross-compiler zoo:
 - **Pinning:** one Zig version for the whole project (e.g. a `ZIG_VERSION` in CI
   and a line in the README; zig is downloaded, not assumed installed). Compiler
   upgrades are explicit commits.
+- **Release surface** (release.yml): the matrix's binaries ship as
+  `cogitator-<os>-<arch>.tar.gz` (linux/darwin) and `.zip` (windows),
+  each carrying the binary + LICENSE + README, alongside one
+  `SHA256SUMS` and the packaged VS Code extension
+  (`cogitator-<version>.vsix`, versioned from the released
+  Cargo.toml). Asset names carry **no version**: they are the
+  installers' `releases/latest/download/<asset>` contract. A
+  `workflow_dispatch` with a `tag` input rebuilds that tag's tree and
+  replaces its release; without the input it is a dry-run build.
 - `sccache`/zig's own caching keeps the DuckDB amalgamation from dominating CI
   (sccache setup in 09 §4); the `duckdb-parser` feature and the dedicated
   `dbt-ls-duckdb` workspace crate (09 §1) keep it out of the dev inner loop

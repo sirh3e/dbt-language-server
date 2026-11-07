@@ -29,3 +29,4 @@ editors/vscode/*.vsix
 editors/vscode/package-lock.json
 # the test runner's downloaded VS Code builds
 editors/vscode/.vscode-test/
+editors/vscode/LICENSE

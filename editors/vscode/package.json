@@ -2,7 +2,7 @@
   "name": "cogitator",
   "displayName": "cogitator (dbt language server)",
   "description": "dbt SQL/YAML intelligence via the cogitator language server: navigation, lineage, diagnostics, dbt run/test/compile/preview.",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "publisher": "sirh3e",
   "license": "MIT",
   "repository": {
@@ -75,6 +75,7 @@
     ]
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "test": "npm run compile && node ./out/test/runTest.js",

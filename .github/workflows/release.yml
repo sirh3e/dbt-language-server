@@ -4,7 +4,14 @@ on:
   push:
     tags:
       - 'v*.*.*'  # Triggers on version tags like v1.0.0, v2.1.3, etc.
-  workflow_dispatch: {}  # dry-run: builds the matrix without creating a release
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >-
+          Existing tag to (re-)publish, e.g. v0.5.0. Empty = dry run:
+          build and package only, publish nothing.
+        required: false
+        default: ''
 
 permissions:
   contents: write  # Required to create releases
@@ -13,11 +20,18 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
 
+    env:
+      # The tag being released: the pushed tag, or the dispatch input.
+      # Empty means dry run (build + package, no release).
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Fetch all history for changelog generation
+          # a dispatch re-publish builds the tag's tree, not the branch tip
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -32,55 +46,114 @@ jobs:
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild --locked
 
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Setup Node (packages the VS Code extension)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
       - name: Install git-cliff
         uses: taiki-e/install-action@v2
         with:
           tool: git-cliff
 
-      - name: Generate release notes (same style as CHANGELOG.md)
-        id: changelog
-        run: |
-          {
-            echo "CHANGELOG<<EOF"
-            git cliff --latest --strip header
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Build release binaries (cargo-zigbuild, 07 §5 matrix)
         run: |
           mkdir -p dist
-          # target triple -> asset suffix install.sh / install.ps1 download
           build() {
             local target="$1" suffix="$2" ext="${3:-}"
             cargo zigbuild --release --target "$target" -p cogitator
-            cp "target/${target%%.*}/release/cogitator$ext" "dist/cogitator-$suffix"
+            cp "target/${target%%.*}/release/cogitator$ext" "dist/cogitator-$suffix$ext"
           }
           build x86_64-unknown-linux-gnu.2.17 linux-amd64
           build x86_64-apple-darwin darwin-amd64
           build aarch64-apple-darwin darwin-arm64
-          build x86_64-pc-windows-gnu windows-amd64.exe .exe
+          build x86_64-pc-windows-gnu windows-amd64 .exe
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package archives (binary + LICENSE + README)
+        # Asset names carry no version: install.sh / install.ps1 fetch
+        # releases/latest/download/<asset>, which only works with stable
+        # names. The version lives in the tag, the binary and the vsix.
         run: |
-          gh release create ${{ steps.version.outputs.VERSION }} \
-            --title "${{ steps.version.outputs.VERSION }}" \
-            --notes "${{ steps.changelog.outputs.CHANGELOG }}"
-
-      - name: Upload Release Assets
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for asset in ./dist/*; do
-            if [ -f "$asset" ]; then
-              echo "Uploading $asset"
-              gh release upload ${{ steps.version.outputs.VERSION }} "$asset" --clobber
+          package() {
+            local suffix="$1" ext="${2:-}"
+            local stage="pack/cogitator-$suffix"
+            mkdir -p "$stage"
+            cp "dist/cogitator-$suffix$ext" "$stage/cogitator$ext"
+            cp LICENSE README.md "$stage/"
+            if [ -z "$ext" ]; then
+              chmod 755 "$stage/cogitator"
+              tar -C pack -czf "dist/cogitator-$suffix.tar.gz" "cogitator-$suffix"
+            else
+              (cd pack && zip -qr "../dist/cogitator-$suffix.zip" "cogitator-$suffix")
             fi
-          done
+            rm "dist/cogitator-$suffix$ext"
+          }
+          package linux-amd64
+          package darwin-amd64
+          package darwin-arm64
+          package windows-amd64 .exe
+          rm -rf pack
+
+      - name: Package the VS Code extension (.vsix)
+        working-directory: editors/vscode
+        # the vsix version is the released workspace version from
+        # Cargo.toml, not package.json's — the two can drift on old tags
+        run: |
+          version="$(perl -ne 'if (/^version = "(.*)"/) { print $1; exit }' ../../Cargo.toml)"
+          npm install
+          cp ../../LICENSE LICENSE
+          npx --yes @vscode/vsce package "$version" --no-update-package-json -o "../../dist/cogitator-$version.vsix"
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Assemble release notes (changelog + install instructions)
+        if: env.RELEASE_TAG != ''
+        run: |
+          git cliff --latest --strip header -o notes.md
+          cat >> notes.md <<'EOF'
+
+          ## Install
+
+          Linux/macOS:
+
+          ```sh
+          curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | sh
+          ```
+
+          Windows (PowerShell):
+
+          ```powershell
+          irm https://raw.githubusercontent.com/${{ github.repository }}/main/install.ps1 | iex
+          ```
+
+          Manual: download the archive for your platform below, verify it
+          against `SHA256SUMS` (`sha256sum -c --ignore-missing SHA256SUMS`),
+          unpack, and put `cogitator` on your PATH.
+
+          VS Code: download the `.vsix` and install it via
+          *Extensions → … → Install from VSIX* (it bundles no server:
+          point `cogitator.serverPath` at the installed binary, or keep
+          it on PATH).
+          EOF
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "Full history: [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$RELEASE_TAG/CHANGELOG.md)"
+          } >> notes.md
+
+      - name: Publish release
+        if: env.RELEASE_TAG != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # a dispatch re-publish replaces the release; the tag stays
+          gh release delete "$RELEASE_TAG" --yes 2>/dev/null || true
+          gh release create "$RELEASE_TAG" \
+            --title "cogitator $RELEASE_TAG" \
+            --notes-file notes.md \
+            dist/*

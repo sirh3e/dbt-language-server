@@ -345,10 +345,14 @@ Alternatively grab a binary from the
 [releases page](https://github.com/sirh3e/dbt-language-server/releases)
 or build from source (below).
 
-Release assets cover Linux (`cogitator-linux-amd64`), macOS
-(`cogitator-darwin-amd64`, `cogitator-darwin-arm64`) and Windows
-(`cogitator-windows-amd64.exe`). On Windows, put `cogitator.exe` somewhere
-on `%PATH%` and configure your editor the same way as below.
+Release assets cover Linux (`cogitator-linux-amd64.tar.gz`), macOS
+(`cogitator-darwin-amd64.tar.gz`, `cogitator-darwin-arm64.tar.gz`) and
+Windows (`cogitator-windows-amd64.zip`) — each archive holds the
+binary, LICENSE and README — plus a `SHA256SUMS` file to verify them
+against and the packaged VS Code extension
+(`cogitator-<version>.vsix`, installable via *Extensions → … →
+Install from VSIX*). On Windows, put `cogitator.exe` somewhere on
+`%PATH%` and configure your editor the same way as below.
 
 ### Neovim
 
