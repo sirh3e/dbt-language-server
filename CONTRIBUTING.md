@@ -89,12 +89,24 @@ git push origin v0.5.0
 ```
 
 The tag push triggers `.github/workflows/release.yml`: the
-cargo-zigbuild matrix builds
-`cogitator-{linux-amd64,darwin-amd64,darwin-arm64,windows-amd64.exe}`
-from one host, creates the GitHub release with git-cliff notes, and
-uploads the assets. From that moment `install.sh` / `install.ps1`
-resolve the new "latest".
+cargo-zigbuild matrix builds from one host and publishes the GitHub
+release with git-cliff notes plus install instructions, carrying
 
-**Post-release checks**: the release page lists all four assets;
-`curl -fsSL …/install.sh | sh` installs; `cogitator --version` prints
-the new version.
+- `cogitator-{linux-amd64,darwin-amd64,darwin-arm64}.tar.gz` and
+  `cogitator-windows-amd64.zip` — binary + LICENSE + README each,
+  names unversioned on purpose (the installers'
+  `releases/latest/download` contract);
+- `SHA256SUMS` over every asset;
+- `cogitator-<version>.vsix`, the packaged VS Code extension,
+  versioned from the released `Cargo.toml`.
+
+From that moment `install.sh` / `install.ps1` resolve the new
+"latest" and verify what they download. To rebuild a release (new
+asset layout, a broken upload), run the workflow manually with the
+existing tag as the `tag` input: it rebuilds that tag's tree and
+replaces the release; dispatched without a tag it is a dry-run build
+that publishes nothing.
+
+**Post-release checks**: the release page lists the six assets;
+`curl -fsSL …/install.sh | sh` reports "checksum verified" and
+installs; `cogitator --version` prints the new version.
