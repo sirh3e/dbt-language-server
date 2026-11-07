@@ -145,6 +145,13 @@ system-test:
 vscode-build:
     cd editors/vscode && npm install --no-audit --no-fund && npm run compile
 
+# Package the VS Code extension as an installable .vsix (what the
+# release workflow uploads; LICENSE is copied in because vsce wants
+# one inside the package directory)
+[group('editors')]
+vsix:
+    cd editors/vscode && npm install --no-audit --no-fund && cp ../../LICENSE LICENSE && npx --yes @vscode/vsce package
+
 # Extension-host tests in a downloaded VS Code (cached under
 # editors/vscode/.vscode-test; needs node/npm and a debug server build)
 [group('editors')]
@@ -194,10 +201,11 @@ release-prep version:
     fi
     git switch -c "release/v$v"
     perl -pi -e 'if (!$done && s/^version = ".*"/version = "'"$v"'"/) { $done = 1 }' Cargo.toml
+    perl -pi -e 'if (!$done && s/^  "version": ".*",/  "version": "'"$v"'",/) { $done = 1 }' editors/vscode/package.json
     cargo update --workspace --quiet
     just check
     git cliff 724b0f2..HEAD --tag "v$v" -o CHANGELOG.md
-    git add Cargo.toml Cargo.lock CHANGELOG.md
+    git add Cargo.toml Cargo.lock CHANGELOG.md editors/vscode/package.json
     git commit -m "chore(release): v$v"
     echo "release/v$v ready — push it and open a PR titled 'chore(release): v$v';"
     echo "after the squash-merge, on updated main: just release-tag $v"
