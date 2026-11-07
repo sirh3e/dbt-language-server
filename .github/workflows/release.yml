@@ -139,6 +139,12 @@ jobs:
           point `cogitator.serverPath` at the installed binary, or keep
           it on PATH).
           EOF
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "Full history: [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$RELEASE_TAG/CHANGELOG.md)"
+          } >> notes.md
 
       - name: Publish release
         if: env.RELEASE_TAG != ''
