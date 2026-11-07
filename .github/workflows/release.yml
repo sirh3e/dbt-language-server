@@ -101,6 +101,9 @@ jobs:
         run: |
           version="$(perl -ne 'if (/^version = "(.*)"/) { print $1; exit }' ../../Cargo.toml)"
           npm install
+          # compile explicitly: a re-published old tag may predate the
+          # vscode:prepublish script vsce would otherwise rely on
+          npm run compile
           cp ../../LICENSE LICENSE
           npx --yes @vscode/vsce package "$version" --no-update-package-json -o "../../dist/cogitator-$version.vsix"
 
