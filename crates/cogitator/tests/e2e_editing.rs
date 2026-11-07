@@ -52,6 +52,88 @@ fn dangling_ref_quickfix_carries_an_edit() {
     lsp.shutdown();
 }
 
+/// doc('…') end to end over the booted server: hover shows the block's
+/// markdown, definition jumps into docs.md, a misspelled name pulls a
+/// dangling-doc diagnostic with suggestions, and `doc('` completes.
+#[test]
+fn doc_blocks_hover_definition_diagnostic_completion() {
+    let project = jaffle();
+    let (mut lsp, _uri) = project.booted();
+    let root = project.root.clone();
+
+    let probe = cogitator_lsp::fs_path_to_uri(&root.join("models/doc_probe.yml"));
+    let text = concat!(
+        "version: 2\n",
+        "models:\n",
+        "  - name: orders\n",
+        "    description: '{{ doc(\"orders_status\") }}'\n",
+        "    columns:\n",
+        "      - name: status\n",
+        "        description: '{{ doc(\"orders_statuss\") }}'\n",
+    );
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": probe, "languageId": "yaml", "version": 1,
+            "text": text}}),
+    );
+
+    let hover = lsp.request(
+        "textDocument/hover",
+        serde_json::json!({"textDocument": {"uri": probe},
+                           "position": {"line": 3, "character": 30}}),
+    );
+    assert!(
+        hover["result"]["contents"]
+            .as_str()
+            .is_some_and(|c| c.contains("placed")),
+        "{hover}"
+    );
+
+    let def = lsp.request(
+        "textDocument/definition",
+        serde_json::json!({"textDocument": {"uri": probe},
+                           "position": {"line": 3, "character": 30}}),
+    );
+    assert!(
+        def["result"]["uri"]
+            .as_str()
+            .is_some_and(|u| u.ends_with("docs.md")),
+        "{def}"
+    );
+
+    let pulled = lsp.request(
+        "textDocument/diagnostic",
+        serde_json::json!({"textDocument": {"uri": probe}}),
+    );
+    let items = pulled["result"]["items"].as_array().expect("items");
+    let diag = items
+        .iter()
+        .find(|d| d["code"] == "dangling-doc")
+        .expect("dangling-doc diagnostic");
+    assert_eq!(diag["data"]["suggestions"][0], "orders_status", "{diag}");
+
+    let sql_probe = cogitator_lsp::fs_path_to_uri(&root.join("models/doc_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": sql_probe, "languageId": "sql", "version": 1,
+            "text": "{{ doc('"}}),
+    );
+    let completion = lsp.request(
+        "textDocument/completion",
+        serde_json::json!({"textDocument": {"uri": sql_probe},
+                           "position": {"line": 0, "character": 8}}),
+    );
+    let labels: Vec<&str> = completion["result"]
+        .as_array()
+        .expect("completion items")
+        .iter()
+        .filter_map(|i| i["label"].as_str())
+        .collect();
+    assert!(labels.contains(&"orders_status"), "{labels:?}");
+
+    lsp.shutdown();
+}
+
 /// Inlay hints, document links and linked editing (01 §6.3) over the
 /// shared fixture — read-only requests, no fixture mutation.
 #[test]
