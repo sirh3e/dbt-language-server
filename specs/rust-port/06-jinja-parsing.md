@@ -77,7 +77,11 @@ Ident(<name>), BlockEnd`, then capture everything up to the matching
 trimmed slice between the two blocks. Multiple blocks per file now extract
 correctly — this fixes **Q2** (broken char class) and the greedy-`(.*)`
 cross-block capture quirk of 03 §6.4 by construction. Name matching accepts any
-Jinja identifier (supersedes the `[a-zA-z]+` class).
+Jinja identifier (supersedes the `[a-zA-z]+` class). The extractor (and the
+regex fallback) records the name identifier's 0-based (line, column) on the
+block record (`RawDocsBlock.start`) — definition jumps land on the block
+header. Adding the field bumped the persisted scan-cache format to 2, so
+position-less payloads cold-start instead of serving (0,0).
 
 `replace_description_docs_blocks` (03 §6.4, the `{{ doc("name") }}` substitution
 inside YAML descriptions) also moves off its regex: tokenize the description

@@ -296,6 +296,28 @@ schema_uri: "", schema_range: default }` (overwrites model names on collision).
   index-based splice; recommended fix: `Regex::replace_all` with a lookup closure.
   **[Q2]** `[-zA-z]` char class as written.
 
+#### Addendum: doc() as a first-class reference (beyond the Go original)
+
+The docs map is no longer dropped after description expansion: it lives
+on the context as `doc_detail_map` (`context/docs.rs`) — block name →
+file, zero-width range at the `{% docs name %}` identifier, content and
+project name. Names are flat, as `doc('name')` references them; on a
+collision the FIRST definition wins and the own project is scanned
+first, so it beats installed packages. Two-argument
+`doc('package', 'name')` is not resolved yet (deferred with
+cross-project refs). On top of the map, with the `doc('…')` argument
+refined to its own token kind (02 §3.3):
+
+- hover shows the block's markdown; definition jumps to the block
+  header — in properties YAML too (same token path);
+- `doc('` completes block names with the usual closing-suffix
+  mirroring (§9.4.1), content resolved lazily via completionItem/resolve;
+- a `doc()` naming no known block warns as `dangling-doc` with
+  did-you-mean suggestions, in SQL and in properties YAML (the YAML
+  diagnostics pass runs this check even though it skips the SQL
+  dangling-ref pass). Column descriptions still skip doc() EXPANSION
+  (unchanged from the Go port); the dangling check covers them anyway.
+
 ## 7. Util functions
 
 ### 7.1 Project root (`get_project_root(file_name, wd)`)
