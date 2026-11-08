@@ -1,4 +1,4 @@
---- The explorer's bottom pane: renders one of three tabs for the
+--- The explorer's bottom pane: renders one of four tabs for the
 --- selected model — [1] the raw SQL, [2] the compiled SQL served by
 --- dbt.compiledSql (a hint when dbt has not written one), [3] versions
 --- and tests, [4] the info view (description/tags/relation/columns/

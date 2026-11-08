@@ -179,6 +179,8 @@ return function(ctx)
       "dag: expanded nodes list columns",
       expanded:sub(1, 300)
     )
+    H.feed("C") -- back to collapsed: motions below expect single-line boxes
+    dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/dag_motions.lua"))(ctx, dag)
     dag.close()
     H.check(dag._state == nil, "dag: closes cleanly")
   end
