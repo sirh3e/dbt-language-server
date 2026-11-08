@@ -174,7 +174,7 @@ feature algorithm in 03 §9 stay byte-for-byte unchanged**:
 | call `source`, first/second string args | `SourceName` / `SourceTable` |
 | call `var`, first string arg | `Var` |
 | expression-statement call ident (not ref/source/var/config) | `Macro` (+ preceding `ident . ` → `Package`) |
-| SQL injection ranges | fed to `sqlparser` exactly as 05 §4 step 2 (CTE tracking unchanged) |
+| SQL injection ranges | collected across the document and fed to `sqlparser` exactly as 05 §4 step 2 (CTE tracking unchanged) |
 
 ERROR-node regions contribute no refined tokens (hover/completion simply find
 nothing there — a milder degradation than phase 1's whole-document last-good

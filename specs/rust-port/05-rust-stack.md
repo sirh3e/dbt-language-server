@@ -206,9 +206,16 @@ writes **no lexer of its own**: all lexing is done by the two provided crates �
    | `postgres` | `PostgreSqlDialect` |
    | anything else / `""` | `GenericDialect` |
 
-   Use `tokenize_with_location()`; sqlparser locations are 1-based → subtract 1 and
-   add the segment's base offset to produce the document-absolute 0-based positions
-   the features need. Keyword classification comes from `Token::Word { keyword, .. }`
+   The segments are lexed **as one document**: every non-segment byte is blanked
+   (same byte length, newlines included) and sqlparser runs once, so string and
+   comment state survives across Jinja, as it does in dbt's rendered output
+   (`'{{ x }}'` is one string, `-- {{ x }} don't` one comment). SQL tokens that
+   overlap Jinja are dropped. When the whole-document view can't be trusted (a
+   tokenizer error, or a token starting and ending in different `if`/`elif`/`else`/
+   `for` branches), each segment is lexed alone instead.
+   Use `tokenize_with_location()`; sqlparser locations are 1-based (line, **char**
+   column), converted to byte offsets by one forward walk over the lexed text, for
+   the document-absolute 0-based positions the features need. Keyword classification comes from `Token::Word { keyword, .. }`
    — this **replaces the Go keyword tables** (02 §1.2) entirely.
    For `dialect == duckdb`, sqlparser is the **token layer only**; real parsing
    (syntax diagnostics, AST) is done by the embedded DuckDB 2.0 parser (07 §1–§3).

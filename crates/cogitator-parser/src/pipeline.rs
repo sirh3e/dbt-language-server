@@ -1,6 +1,7 @@
 //! The minijinja + sqlparser tokenization pipeline (specs/rust-port/05 §4)
 //! and the dbt refinement pass (02 §3 behavior).
 
+use std::ops::Range;
 use std::sync::Arc;
 
 use cogitator_dialects::Dialect;
@@ -12,9 +13,9 @@ use sqlparser::dialect::{
     SnowflakeDialect,
 };
 use sqlparser::keywords::Keyword;
-use sqlparser::tokenizer::{Token as SToken, Tokenizer};
 
 use crate::refine::{kind_at, refine};
+use crate::sql_lex::lex_document;
 use crate::{DocumentParser, JinjaKind, LineTable, ParsedDocument, Token, TokenKind};
 
 /// Phase-1 `DocumentParser` (06 §3.5): full retokenize per parse; the caller
@@ -30,9 +31,12 @@ impl DocumentParser for JinjaSqlParser {
 
 pub fn parse_document(text: &str, dialect: &Dialect) -> Result<ParsedDocument> {
     let table = LineTable::new(text);
-    let mut tokens = Vec::new();
-    tokenize_template(text, 0, dialect, &table, &mut tokens)?;
-    Ok(assemble(text, tokens))
+    let (mut jinja, mut segments) = (Vec::new(), Vec::new());
+    tokenize_template(text, 0, &table, &mut jinja, &mut segments)?;
+    Ok(assemble(
+        text,
+        lex_document(text, segments, jinja, dialect, &table),
+    ))
 }
 
 /// Run refinement + CTE collection and build the indexed document. Shared
@@ -50,15 +54,16 @@ pub fn assemble(text: &str, mut tokens: Vec<Token>) -> ParsedDocument {
     doc
 }
 
-/// Tokenize a template `slice` that starts at byte `base` of the document.
-/// minijinja spans are slice-relative; everything emitted is document-
-/// absolute. `TemplateData` runs go through sqlparser (05 §4).
+/// Tokenize the Jinja layer of a template `slice` starting at byte `base`
+/// of the document. minijinja spans are slice-relative; everything emitted
+/// is document-absolute. `TemplateData` runs are collected in `segments`
+/// for [`lex_document`] (05 §4).
 pub fn tokenize_template(
     slice: &str,
     base: u32,
-    dialect: &Dialect,
     table: &LineTable,
     tokens: &mut Vec<Token>,
+    segments: &mut Vec<Range<usize>>,
 ) -> Result<()> {
     for item in jinja_tokenize(slice, false, SyntaxConfig::default()) {
         let (jtok, span) = item.map_err(|e| Error::Jinja {
@@ -67,12 +72,9 @@ pub fn tokenize_template(
         })?;
         let (start, end) = (base + span.start_offset, base + span.end_offset);
         match jtok {
-            JToken::TemplateData(_) => {
-                // The SQL segment is sliced from the original text by span so
-                // whitespace-control trimming cannot desynchronize offsets.
-                let segment = &slice[span.start_offset as usize..span.end_offset as usize];
-                tokenize_sql_segment(segment, start, dialect, table, tokens);
-            }
+            // Taken by span so whitespace-control trimming cannot
+            // desynchronize offsets.
+            JToken::TemplateData(_) => segments.push(start as usize..end as usize),
             JToken::VariableStart => push(
                 tokens,
                 TokenKind::JinjaOpen(JinjaKind::Expr),
@@ -140,7 +142,13 @@ pub fn tokenize_template(
     Ok(())
 }
 
-fn push(tokens: &mut Vec<Token>, kind: TokenKind, start: u32, end: u32, table: &LineTable) {
+pub(crate) fn push(
+    tokens: &mut Vec<Token>,
+    kind: TokenKind,
+    start: u32,
+    end: u32,
+    table: &LineTable,
+) {
     if end <= start {
         return;
     }
@@ -161,64 +169,6 @@ pub fn sql_dialect(dialect: &Dialect) -> Box<dyn SqlDialect> {
         "bigquery" => Box::new(BigQueryDialect {}),
         "postgres" => Box::new(PostgreSqlDialect {}),
         _ => Box::new(GenericDialect {}),
-    }
-}
-
-/// Tokenize one SQL segment, appending document-absolute tokens.
-///
-/// A tokenizer error (mid-edit, e.g. unterminated string) skips the segment —
-/// strictly better than failing the whole parse.
-pub fn tokenize_sql_segment(
-    segment: &str,
-    base: u32,
-    dialect: &Dialect,
-    table: &LineTable,
-    out: &mut Vec<Token>,
-) {
-    let dialect = sql_dialect(dialect);
-    let mut tokenizer = Tokenizer::new(dialect.as_ref(), segment);
-    let located = match tokenizer.tokenize_with_location() {
-        Ok(toks) => toks,
-        Err(err) => {
-            tracing::trace!(%err, "sql segment tokenize failed; skipping segment");
-            return;
-        }
-    };
-
-    let seg_table = LineTable::new(segment);
-    for tw in located {
-        let (kind, len) = match &tw.token {
-            SToken::Whitespace(_) | SToken::EOF => continue,
-            SToken::Word(w) => {
-                let quoted = w.quote_style.is_some() as u32 * 2;
-                (TokenKind::Word(w.keyword), w.value.len() as u32 + quoted)
-            }
-            SToken::Number(s, long) => (TokenKind::Number, s.len() as u32 + *long as u32),
-            SToken::SingleQuotedString(s) | SToken::DoubleQuotedString(s) => {
-                (TokenKind::StringLit, s.len() as u32 + 2)
-            }
-            SToken::LParen => (TokenKind::Symbol('('), 1),
-            SToken::RParen => (TokenKind::Symbol(')'), 1),
-            SToken::Comma => (TokenKind::Symbol(','), 1),
-            SToken::Period => (TokenKind::Symbol('.'), 1),
-            SToken::SemiColon => (TokenKind::Symbol(';'), 1),
-            other => {
-                let text = other.to_string();
-                let first = text.chars().next().unwrap_or(' ');
-                (TokenKind::Symbol(first), text.len() as u32)
-            }
-        };
-        // sqlparser spans are 1-based line/column within the segment
-        // (line 0 marks an empty span — skip those).
-        if tw.span.start.line == 0 {
-            continue;
-        }
-        let Some(line_start) = seg_table.line_start(tw.span.start.line as usize - 1) else {
-            continue;
-        };
-        let offset_in_segment = line_start + tw.span.start.column.saturating_sub(1) as u32;
-        let start = base + offset_in_segment;
-        push(out, kind, start, start + len, table);
     }
 }
 

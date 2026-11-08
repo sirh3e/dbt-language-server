@@ -13,6 +13,7 @@ mod ffi;
 mod sql_structure;
 
 use std::collections::HashMap;
+use std::ops::Range;
 use std::sync::Mutex;
 
 use cogitator_dialects::Dialect;
@@ -168,61 +169,62 @@ pub(crate) struct Region {
 fn parse_with_tree(tree: &tree_sitter::Tree, text: &str, dialect: &Dialect) -> ParsedDocument {
     let regions = collect_regions(tree.root_node(), text);
     let table = LineTable::new(text);
-    let mut tokens: Vec<Token> = Vec::new();
+    let mut jinja: Vec<Token> = Vec::new();
+    let mut segments: Vec<Range<usize>> = Vec::new();
 
     let mut pos = 0usize;
     for region in &regions {
         if region.start > pos {
-            backend::tokenize_sql_segment(
-                &text[pos..region.start],
-                pos as u32,
-                dialect,
-                &table,
-                &mut tokens,
-            );
+            segments.push(pos..region.start);
         }
         let slice = &text[region.start..region.end];
         match region.kind {
             RegionKind::Comment => {}
-            RegionKind::Jinja => tokenize_region(slice, region.start, dialect, &table, &mut tokens),
+            RegionKind::Jinja => {
+                tokenize_region(slice, region.start, &table, &mut jinja, &mut segments)
+            }
             RegionKind::Error => {
                 // A broken region that still looks like Jinja degrades to
                 // nothing (06 §3.3); anything else is SQL the grammar
                 // tripped over.
                 if slice.contains("{{") || slice.contains("{%") || slice.contains("{#") {
-                    tokenize_region(slice, region.start, dialect, &table, &mut tokens);
+                    tokenize_region(slice, region.start, &table, &mut jinja, &mut segments);
                 } else {
-                    backend::tokenize_sql_segment(
-                        slice,
-                        region.start as u32,
-                        dialect,
-                        &table,
-                        &mut tokens,
-                    );
+                    segments.push(region.start..region.end);
                 }
             }
         }
         pos = region.end.max(pos);
     }
     if pos < text.len() {
-        backend::tokenize_sql_segment(&text[pos..], pos as u32, dialect, &table, &mut tokens);
+        segments.push(pos..text.len());
     }
 
+    let tokens = backend::lex_document(text, segments, jinja, dialect, &table);
     backend::assemble(text, tokens)
 }
 
 /// Tokenize one Jinja region with minijinja; a malformed region contributes
-/// no tokens instead of failing the document.
+/// nothing instead of failing the document.
 fn tokenize_region(
     slice: &str,
     base: usize,
-    dialect: &Dialect,
     table: &LineTable,
-    out: &mut Vec<Token>,
+    jinja: &mut Vec<Token>,
+    segments: &mut Vec<Range<usize>>,
 ) {
-    let mut region_tokens = Vec::new();
-    match backend::tokenize_template(slice, base as u32, dialect, table, &mut region_tokens) {
-        Ok(()) => out.extend(region_tokens),
+    let (mut region_tokens, mut region_segments) = (Vec::new(), Vec::new());
+    match backend::tokenize_template(
+        slice,
+        base as u32,
+        table,
+        &mut region_tokens,
+        &mut region_segments,
+    ) {
+        Ok(()) => {
+            jinja.extend(region_tokens);
+            segments.extend(region_segments);
+        }
         Err(err) => tracing::trace!(%err, base, "malformed jinja region skipped"),
     }
 }
