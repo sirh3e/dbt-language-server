@@ -2,7 +2,7 @@
 //! (specs/rust-port/05 §4 step 2). Mirrors the minijinja pipeline's suite.
 
 use cogitator_dialects::Dialect;
-use cogitator_parser::{DocumentParser, ParsedDocument, TokenKind};
+use cogitator_parser::{AppliedEdit, DocumentParser, ParsedDocument, TokenKind};
 use cogitator_treesitter::TreeSitterParser;
 
 fn parse(text: &str) -> ParsedDocument {
@@ -130,4 +130,103 @@ fn unterminated_string_degrades_to_its_own_segment() {
     let doc = parse("select {{ ref('a') }} from t where x = 'oops");
     assert!(word(&doc, "select"));
     assert_eq!(kinds(&doc, TokenKind::Ref), ["a"]);
+}
+
+fn fingerprint(doc: &ParsedDocument) -> Vec<(TokenKind, u32, u32)> {
+    doc.tokens
+        .iter()
+        .map(|t| (t.kind, t.start, t.end))
+        .collect()
+}
+
+/// The two backends agree on every shape the grammar can't express.
+#[test]
+fn backends_agree_on_comment_and_raw_shapes() {
+    for text in [
+        "{## a ##}\nselect {{ ref('a') }}\n{# b #}",
+        "{## don't ##} select 1 as b",
+        "{##} select {{ ref('a') }}",
+        "{# a #} select 1 {#- b -#}",
+        "{% raw %}{{ ref('a') }}{% endraw %} select 1 as b",
+        "select {%- raw -%}{# x #}{%- endraw -%} from {{ ref('b') }}",
+    ] {
+        let minijinja = cogitator_parser::JinjaSqlParser
+            .parse(text, &Dialect::new("duckdb"))
+            .expect("parse ok");
+        assert_eq!(fingerprint(&parse(text)), fingerprint(&minijinja), "{text}");
+    }
+}
+
+#[test]
+fn a_ref_after_an_even_comment_closer_is_a_ref() {
+    let doc = parse("{## a ##}\nselect {{ ref('a') }}\n{# b #}");
+    assert_eq!(kinds(&doc, TokenKind::Ref), ["a"]);
+}
+
+#[test]
+fn a_ref_in_a_raw_block_is_not_a_ref() {
+    let doc = parse("{% raw %}{{ ref('a') }}{% endraw %} select 1");
+    assert!(kinds(&doc, TokenKind::Ref).is_empty());
+}
+
+#[test]
+fn sql_after_a_broken_expression_survives() {
+    let doc = parse("select 1 as a {{ ( \nfrom t");
+    assert!(word(&doc, "select") && word(&doc, "a"));
+}
+
+/// Adding then removing a construct the grammar needs normalised must not
+/// feed a stale tree into the incremental path.
+#[test]
+fn incremental_edits_through_normalised_text_stay_correct() {
+    let parser = TreeSitterParser::new().expect("language loads");
+    let dialect = Dialect::new("duckdb");
+    let padding = "-- padding\n".repeat(4000);
+    let plain = format!("{padding}select {{{{ ref('a') }}}} as b");
+    let with_raw = format!("{padding}{{% raw %}}select {{{{ ref('a') }}}}{{% endraw %}} as b");
+    let with_even = format!("{padding}{{## c ##}}select {{{{ ref('a') }}}} as b");
+
+    let steps = [&plain, &with_raw, &plain, &with_even, &plain];
+    for (i, text) in steps.iter().enumerate() {
+        let edit = (i > 0).then(|| whole_replace(steps[i - 1], text));
+        let doc = parser
+            .parse_incremental("file:///m.sql", text, &dialect, edit.as_slice())
+            .expect("parse ok");
+        let fresh = TreeSitterParser::new()
+            .expect("language loads")
+            .parse(text, &dialect)
+            .expect("parse ok");
+        assert_eq!(fingerprint(&doc), fingerprint(&fresh), "step {i}");
+    }
+}
+
+fn whole_replace(old: &str, new: &str) -> AppliedEdit {
+    let prefix = old
+        .bytes()
+        .zip(new.bytes())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = old[prefix..]
+        .bytes()
+        .rev()
+        .zip(new[prefix..].bytes().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let point = |text: &str, at: usize| {
+        let before = &text[..at];
+        let line_start = before.rfind('\n').map_or(0, |i| i + 1);
+        (
+            before.matches('\n').count() as u32,
+            (at - line_start) as u32,
+        )
+    };
+    let (old_end, new_end) = (old.len() - suffix, new.len() - suffix);
+    AppliedEdit {
+        start_byte: prefix,
+        old_end_byte: old_end,
+        new_end_byte: new_end,
+        start_point: point(old, prefix),
+        old_end_point: point(old, old_end),
+        new_end_point: point(new, new_end),
+    }
 }
