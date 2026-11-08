@@ -7,6 +7,7 @@
 pub mod jinja_scan;
 pub mod pipeline;
 pub(crate) mod refine;
+pub mod sql_lex;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -232,7 +233,6 @@ pub use pipeline::JinjaSqlParser;
 /// Shared tokenization backend for alternative [`DocumentParser`]
 /// implementations (06 §3.5 seam — used by the tree-sitter crate).
 pub mod backend {
-    pub use crate::pipeline::{
-        assemble, collect_ctes, sql_dialect, tokenize_sql_segment, tokenize_template,
-    };
+    pub use crate::pipeline::{assemble, collect_ctes, sql_dialect, tokenize_template};
+    pub use crate::sql_lex::lex_document;
 }
