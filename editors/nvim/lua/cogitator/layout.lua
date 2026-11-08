@@ -2,15 +2,17 @@
 --- to a character grid — no buffers, no windows, no LSP. The DAG view
 --- (cogitator.dag) renders the result; tests can drive this directly.
 
+local canvas = require("cogitator.canvas")
+
 local M = {}
 
-M.GUTTER = 7
+M.GUTTER = canvas.GUTTER
 M.MAX_COLUMNS = 8
 
 ---@class cogitator.layout.Node
 ---@field id string
 ---@field name string
----@field kind "model"|"source"|"exposure"|"metric"|"semantic_model"
+---@field kind "model"|"source"|"exposure"|"metric"|"semantic_model"|"test"|"analysis"
 ---@field layer integer 0-based layer from the server
 ---@field tags string[]
 ---@field columns {name: string, description: string}[]
@@ -23,65 +25,7 @@ M.MAX_COLUMNS = 8
 ---@field x integer left edge (1-based grid column)
 ---@field y integer top edge (1-based grid row)
 ---@field cy integer vertical center, where edges attach
-
---- An empty character grid (list of rows of single-char cells).
----@param width integer
----@param height integer
----@return string[][]
-function M.canvas_new(width, height)
-  local grid = {}
-  for y = 1, height do
-    local row = {}
-    for x = 1, width do
-      row[x] = " "
-    end
-    grid[y] = row
-  end
-  return grid
-end
-
---- Set one cell unconditionally (box drawing).
----@param grid string[][]
----@param x integer
----@param y integer
----@param char string
-function M.put(grid, x, y, char)
-  if grid[y] and grid[y][x] then
-    grid[y][x] = char
-  end
-end
-
-local EDGE_CHARS = {
-  ["─"] = true,
-  ["│"] = true,
-  ["┼"] = true,
-  ["▸"] = true,
-  ["╮"] = true,
-  ["╯"] = true,
-  ["╭"] = true,
-  ["╰"] = true,
-}
-
---- Set one cell for an edge: never overwrites box content; crossing
---- edges merge to ┼; arrowheads win over lines.
----@param grid string[][]
----@param x integer
----@param y integer
----@param char string
-function M.put_edge(grid, x, y, char)
-  local row = grid[y]
-  if not row or not row[x] then
-    return
-  end
-  local current = row[x]
-  if current == " " then
-    row[x] = char
-  elseif EDGE_CHARS[current] and current ~= char and char ~= "▸" then
-    row[x] = "┼"
-  elseif char == "▸" then
-    row[x] = char
-  end
-end
+---@field layer integer 1-based layer
 
 --- A node's box content: title (+[source]), #tags line, and — when
 --- expanded — a rule plus up to MAX_COLUMNS column names.
@@ -132,6 +76,7 @@ function M.layout(data, expanded_set, all_expanded)
     table.insert(layers[layer], node)
   end
 
+  local parents = M.adjacency(data.edges).parents
   local boxes = {}
   local x = 2
   local max_bottom = 0
@@ -142,9 +87,9 @@ function M.layout(data, expanded_set, all_expanded)
       local score = {}
       for _, node in ipairs(column) do
         local total, n = 0, 0
-        for _, edge in ipairs(data.edges) do
-          if edge.to == node.id and centers[edge.from] then
-            total, n = total + centers[edge.from], n + 1
+        for _, parent in ipairs(parents[node.id] or {}) do
+          if centers[parent] then
+            total, n = total + centers[parent], n + 1
           end
         end
         score[node.id] = n > 0 and (total / n) or math.huge
@@ -173,6 +118,7 @@ function M.layout(data, expanded_set, all_expanded)
         h = #lines + 2,
         x = x,
         y = y,
+        layer = li,
       }
       box.cy = y + math.floor(box.h / 2)
       boxes[node.id] = box
@@ -186,72 +132,59 @@ function M.layout(data, expanded_set, all_expanded)
   return boxes, x, max_bottom
 end
 
---- Draw boxes and orthogonally-routed edges onto a fresh grid; returns
---- the buffer lines (right-trimmed).
----@param boxes table<string, cogitator.layout.Box>
+M.draw = canvas.draw
+
+--- Direct dependencies and dependents of every node.
 ---@param edges {from: string, to: string}[]
----@param width integer
----@param height integer
----@return string[]
-function M.draw(boxes, edges, width, height)
-  local grid = M.canvas_new(width, height)
-  for _, box in pairs(boxes) do
-    local x2 = box.x + box.w - 1
-    local y2 = box.y + box.h - 1
-    M.put(grid, box.x, box.y, "╭")
-    M.put(grid, x2, box.y, "╮")
-    M.put(grid, box.x, y2, "╰")
-    M.put(grid, x2, y2, "╯")
-    for x = box.x + 1, x2 - 1 do
-      M.put(grid, x, box.y, "─")
-      M.put(grid, x, y2, "─")
-    end
-    for y = box.y + 1, y2 - 1 do
-      M.put(grid, box.x, y, "│")
-      M.put(grid, x2, y, "│")
-    end
-    for i, line in ipairs(box.lines) do
-      local cx = box.x + 2
-      for _, char in ipairs(vim.fn.split(line, "\\zs")) do
-        M.put(grid, cx, box.y + i, char)
-        cx = cx + 1
-      end
-    end
-  end
-
+---@return {parents: table<string, string[]>, children: table<string, string[]>}
+function M.adjacency(edges)
+  local parents, children = {}, {}
   for _, edge in ipairs(edges) do
-    local from, to = boxes[edge.from], boxes[edge.to]
-    if from and to then
-      local sx, sy = from.x + from.w, from.cy
-      local tx, ty = to.x - 1, to.cy
-      if sy == ty then
-        for x = sx, tx - 1 do
-          M.put_edge(grid, x, sy, "─")
-        end
-      else
-        local mid = math.max(sx + 1, tx - math.floor(M.GUTTER / 2))
-        for x = sx, mid - 1 do
-          M.put_edge(grid, x, sy, "─")
-        end
-        M.put_edge(grid, mid, sy, sy < ty and "╮" or "╯")
-        local step = sy < ty and 1 or -1
-        for y = sy + step, ty - step, step do
-          M.put_edge(grid, mid, y, "│")
-        end
-        M.put_edge(grid, mid, ty, sy < ty and "╰" or "╭")
-        for x = mid + 1, tx - 1 do
-          M.put_edge(grid, x, ty, "─")
-        end
-      end
-      M.put_edge(grid, tx, ty, "▸")
+    parents[edge.to] = parents[edge.to] or {}
+    table.insert(parents[edge.to], edge.from)
+    children[edge.from] = children[edge.from] or {}
+    table.insert(children[edge.from], edge.to)
+  end
+  return { parents = parents, children = children }
+end
+
+---@class cogitator.layout.Index
+---@field rows table<integer, cogitator.layout.Box[]> boxes occupying each row
+---@field layers cogitator.layout.Box[][] boxes per layer, top to bottom
+
+--- Position lookups over placed boxes.
+---@param boxes table<string, cogitator.layout.Box>
+---@return cogitator.layout.Index
+function M.index(boxes)
+  local rows, layers = {}, {}
+  for _, box in pairs(boxes) do
+    for y = box.y, box.y + box.h - 1 do
+      rows[y] = rows[y] or {}
+      table.insert(rows[y], box)
+    end
+    layers[box.layer] = layers[box.layer] or {}
+    table.insert(layers[box.layer], box)
+  end
+  for _, layer in pairs(layers) do
+    table.sort(layer, function(a, b)
+      return a.y < b.y
+    end)
+  end
+  return { rows = rows, layers = layers }
+end
+
+--- The box covering a grid cell, if any.
+---@param index cogitator.layout.Index
+---@param row integer
+---@param col integer
+---@return cogitator.layout.Box?
+function M.box_at(index, row, col)
+  for _, box in ipairs(index.rows[row] or {}) do
+    if col >= box.x and col <= box.x + box.w - 1 then
+      return box
     end
   end
-
-  local lines = {}
-  for y = 1, height do
-    lines[y] = table.concat(grid[y]):gsub("%s+$", "")
-  end
-  return lines
+  return nil
 end
 
 return M

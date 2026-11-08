@@ -14,6 +14,7 @@ local M = {}
 ---@field expanded table<string, boolean> per-node column toggle
 ---@field all_expanded boolean
 ---@field boxes table<string, cogitator.layout.Box>
+---@field index cogitator.layout.Index
 ---@field buf integer the cogitator://dag scratch buffer
 ---@field src_buf integer
 ---@field client vim.lsp.Client
@@ -27,12 +28,8 @@ local function node_at_cursor()
   local row, byte_col = unpack(vim.api.nvim_win_get_cursor(0))
   local line = vim.api.nvim_get_current_line()
   local col = vim.fn.charidx(line, math.min(byte_col, #line)) + 1
-  for _, box in pairs(s.boxes) do
-    if row >= box.y and row <= box.y + box.h - 1 and col >= box.x and col <= box.x + box.w - 1 then
-      return box.node
-    end
-  end
-  return nil
+  local box = layout_lib.box_at(s.index, row, col)
+  return box and box.node
 end
 
 --- Re-run layout + draw into the scratch buffer.
@@ -40,6 +37,7 @@ local function render()
   local s = M._state
   local boxes, width, height = layout_lib.layout(s.data, s.expanded, s.all_expanded)
   s.boxes = boxes
+  s.index = layout_lib.index(boxes)
   local lines = layout_lib.draw(boxes, s.data.edges, width + 2, height + 1)
   require("cogitator.ui").set_lines(s.buf, lines)
 end

@@ -41,4 +41,6 @@ return function(ctx)
     vim.inspect(entry)
   )
   H.check(vim.tbl_contains(manager.roots(), proj), "manager: roots lists the project")
+
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_ui.lua"))(ctx)
 end

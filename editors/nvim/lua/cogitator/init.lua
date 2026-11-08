@@ -132,6 +132,7 @@ function M.setup(opts)
     return
   end
 
+  require("cogitator.highlight").setup()
   M.register(config)
   vim.lsp.enable("cogitator")
 

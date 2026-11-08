@@ -33,27 +33,10 @@ end
 --- deletes, <CR> accepts, <Esc> clears and leaves.
 ---@param explorer table the cogitator.explorer module
 function M.prompt(explorer)
-  local s = explorer._state
-  local bs = vim.api.nvim_replace_termcodes("<BS>", true, false, true)
-  while true do
-    vim.cmd.redraw()
-    local ok, ch = pcall(vim.fn.getcharstr)
-    if not ok or ch == "\27" then
-      s.filter = ""
-      M.apply(explorer)
-      return
-    elseif ch == "\r" or ch == "\n" then
-      return
-    elseif ch == bs then
-      s.filter = s.filter:sub(1, -2)
-      M.apply(explorer)
-    elseif #ch == 1 and ch:match("[%w%p ]") then
-      s.filter = s.filter .. ch
-      M.apply(explorer)
-    else
-      return
-    end
-  end
+  require("cogitator.prompt").run(explorer._state.filter, function(text)
+    explorer._state.filter = text
+    M.apply(explorer)
+  end)
 end
 
 return M
