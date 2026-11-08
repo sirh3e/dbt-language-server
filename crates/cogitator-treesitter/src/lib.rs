@@ -18,6 +18,7 @@ use std::sync::Mutex;
 
 use cogitator_dialects::Dialect;
 use cogitator_error::Result;
+use cogitator_parser::jinja_spans::{jinja_spans, JinjaSpan, JinjaSpanKind};
 use cogitator_parser::{backend, AppliedEdit, DocumentParser, LineTable, ParsedDocument, Token};
 
 /// Below this size a full reparse is µs-scale anyway; the incremental
@@ -234,6 +235,10 @@ fn tokenize_region(
 /// Everything between regions is SQL text.
 fn collect_regions(root: tree_sitter::Node<'_>, text: &str) -> Vec<Region> {
     let mut regions = Vec::new();
+    let comments: Vec<JinjaSpan> = jinja_spans(text)
+        .into_iter()
+        .filter(|s| s.kind == JinjaSpanKind::Comment)
+        .collect();
     let count = root.child_count();
     let mut i = 0;
     while i < count {
@@ -269,13 +274,11 @@ fn collect_regions(root: tree_sitter::Node<'_>, text: &str) -> Vec<Region> {
                 // The grammar marks the comment-body token HIDDEN, so the
                 // sibling walk can land on a later construct and swallow
                 // it (a well-formed comment then ate the rest of the
-                // document). Find the real `#}` in the text instead; an
-                // unterminated comment still runs to the end.
+                // document). Take the real extent from the shared spans.
                 let start = node.start_byte();
-                let end = text[start + 2..]
-                    .find("#}")
-                    .map(|off| start + 2 + off + 2)
-                    .unwrap_or(text.len());
+                let end = comments
+                    .binary_search_by_key(&start, |s| s.range.start)
+                    .map_or(node.end_byte(), |at| comments[at].range.end);
                 regions.push(Region {
                     kind: RegionKind::Comment,
                     start,

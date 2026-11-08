@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use cogitator_parser::jinja_spans::{blanked, NOT_SQL};
 use cogitator_parser::{JinjaKind, ParsedDocument, Token, TokenKind};
 
 use super::Relation;
@@ -29,6 +30,8 @@ pub(super) fn mask_for_lineage(
             let (start, end) = (token.start as usize, doc.tokens[close].end as usize);
             masked.push_str(&text[pos..start.max(pos).min(text.len())]);
             match kind {
+                // config() renders to nothing, not to a relation
+                JinjaKind::Expr if is_config_call(doc, i) => {}
                 JinjaKind::Expr => {
                     let region = &doc.tokens[i..=close];
                     let relation = relation_in_region(doc, region);
@@ -59,8 +62,8 @@ pub(super) fn mask_for_lineage(
     }
     masked.push_str(&text[pos.min(text.len())..]);
 
-    // comments are not tokens; strip them from the rebuilt text
-    let masked = strip_jinja_comments(&masked);
+    // comments and raw tags are not tokens; blank them in the rebuilt text
+    let masked = blanked(&masked, NOT_SQL);
     Some((masked, placeholders))
 }
 
@@ -77,18 +80,10 @@ pub(super) fn relation_in_region(doc: &ParsedDocument, region: &[Token]) -> Opti
     ))
 }
 
-pub(super) fn strip_jinja_comments(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(start) = rest.find("{#") {
-        out.push_str(&rest[..start]);
-        match rest[start..].find("#}") {
-            Some(end) => rest = &rest[start + end + 2..],
-            None => return out,
-        }
-    }
-    out.push_str(rest);
-    out
+fn is_config_call(doc: &ParsedDocument, open: usize) -> bool {
+    doc.tokens
+        .get(open + 1)
+        .is_some_and(|t| t.kind == TokenKind::Config)
 }
 
 // ---------------------------------------------------------------------------

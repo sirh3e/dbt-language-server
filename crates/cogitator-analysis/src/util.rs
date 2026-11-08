@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use cogitator_dialects::Dialect;
+use cogitator_parser::jinja_spans::{blanked, NOT_CODE};
 use regex::{Captures, Regex};
 use saphyr::{LoadableYamlNode, MarkedYaml};
 
@@ -74,7 +75,8 @@ static QUOTED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"'([^']*)'|"([
 /// Tags declared in SQL via `{{ config(tags=…) }}` (string or list).
 pub fn config_tags(text: &str) -> Vec<String> {
     let mut tags = Vec::new();
-    for span in CONFIG_SPAN_RE.captures_iter(text) {
+    let live = blanked(text, NOT_CODE);
+    for span in CONFIG_SPAN_RE.captures_iter(&live) {
         for caps in CONFIG_TAGS_RE.captures_iter(&span[1]) {
             if let Some(list) = caps.get(1) {
                 for item in QUOTED_RE.captures_iter(list.as_str()) {

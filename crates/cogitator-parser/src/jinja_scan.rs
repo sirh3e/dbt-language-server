@@ -8,6 +8,7 @@ use minijinja::machinery::{tokenize as jinja_tokenize, Token as JToken};
 use minijinja::syntax::SyntaxConfig;
 use regex::Regex;
 
+use crate::jinja_spans::{blanked, NOT_CODE};
 use crate::LineTable;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -264,8 +265,9 @@ static DOCS_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 fn extract_macros_regex(text: &str) -> Vec<RawMacro> {
     let table = LineTable::new(text);
+    let live = blanked(text, NOT_CODE);
     MACRO_RE
-        .captures_iter(text)
+        .captures_iter(&live)
         .filter_map(|caps| {
             let m = caps.get(1)?;
             let signature = m.as_str();
@@ -329,11 +331,15 @@ pub fn params_from_signature(signature: &str) -> Vec<MacroParam> {
 
 fn extract_docs_regex(text: &str) -> Vec<RawDocsBlock> {
     let table = LineTable::new(text);
+    let live = blanked(text, NOT_CODE);
     DOCS_RE
-        .captures_iter(text)
+        .captures_iter(&live)
         .map(|caps| RawDocsBlock {
             name: caps[1].to_string(),
-            content: caps[2].trim().to_string(),
+            // From the original: a docs body may hold comments of its own.
+            content: text[caps.get(2).map_or(0..0, |m| m.range())]
+                .trim()
+                .to_string(),
             start: table.line_col(caps.get(1).map(|m| m.start() as u32).unwrap_or_default()),
         })
         .collect()

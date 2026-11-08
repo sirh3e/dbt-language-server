@@ -40,6 +40,16 @@ fn sql_config_tags_extract() {
 }
 
 #[test]
+fn commented_out_config_declares_no_tags() {
+    assert!(config_tags("{# {{ config(tags=['dead']) }} #} select 1").is_empty());
+    assert!(config_tags("{% raw %}{{ config(tags=['dead']) }}{% endraw %}").is_empty());
+    assert_eq!(
+        config_tags("{# {{ config(tags=['dead']) }} #}{{ config(tags='live') }}"),
+        vec!["live".to_string()]
+    );
+}
+
+#[test]
 fn selectors_yml_is_loaded() {
     let ctx = ctx();
     let nightly = ctx.selector_detail_map.get("nightly").expect("selector");

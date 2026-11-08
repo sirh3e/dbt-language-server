@@ -5,6 +5,7 @@
 //! SQL layer; the refinement pass marks dbt constructs (REF/SOURCE/VAR/MACRO).
 
 pub mod jinja_scan;
+pub mod jinja_spans;
 pub mod pipeline;
 pub(crate) mod refine;
 pub mod sql_lex;
