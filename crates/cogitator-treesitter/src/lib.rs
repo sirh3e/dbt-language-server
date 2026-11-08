@@ -10,6 +10,7 @@
 //! to the phase-1 pipeline. SQL stays on sqlparser per 06 §3.3.
 
 mod ffi;
+mod regions;
 mod sql_structure;
 
 use std::collections::HashMap;
@@ -18,8 +19,9 @@ use std::sync::Mutex;
 
 use cogitator_dialects::Dialect;
 use cogitator_error::Result;
-use cogitator_parser::jinja_spans::{jinja_spans, JinjaSpan, JinjaSpanKind};
 use cogitator_parser::{backend, AppliedEdit, DocumentParser, LineTable, ParsedDocument, Token};
+
+use regions::{collect_regions, prepare, Prepared, Region, RegionKind};
 
 /// Below this size a full reparse is µs-scale anyway; the incremental
 /// path (06 §3.4) only engages past it — risk stays bounded.
@@ -62,24 +64,31 @@ impl TreeSitterParser {
         &self,
         tree: &tree_sitter::Tree,
         text: &str,
+        injected: &[Region],
         dialect: &Dialect,
     ) -> ParsedDocument {
-        let mut doc = parse_with_tree(tree, text, dialect);
-        let regions = collect_regions(tree.root_node(), text);
+        let regions = collect_regions(tree.root_node(), text, injected);
+        let mut doc = parse_regions(&regions, text, dialect);
         doc.sql_structure = sql_structure::collect(&self.sql_parser, text, &regions);
         doc
+    }
+
+    fn parse_tree(
+        &self,
+        prepared: &Prepared,
+        text: &str,
+        old_tree: Option<&tree_sitter::Tree>,
+    ) -> Option<tree_sitter::Tree> {
+        let input = prepared.normalised.as_deref().unwrap_or(text);
+        self.parser.lock().ok()?.parse(input, old_tree)
     }
 }
 
 impl DocumentParser for TreeSitterParser {
     fn parse(&self, text: &str, dialect: &Dialect) -> Result<ParsedDocument> {
-        let tree = self
-            .parser
-            .lock()
-            .ok()
-            .and_then(|mut parser| parser.parse(text, None));
-        match tree {
-            Some(tree) => Ok(self.document_from(&tree, text, dialect)),
+        let prepared = prepare(text);
+        match self.parse_tree(&prepared, text, None) {
+            Some(tree) => Ok(self.document_from(&tree, text, &prepared.injected, dialect)),
             // parse() returns None only on cancellation/timeout; fall back to
             // the phase-1 pipeline rather than dropping the request.
             None => backend_parse(text, dialect),
@@ -96,7 +105,16 @@ impl DocumentParser for TreeSitterParser {
         dialect: &Dialect,
         edits: &[AppliedEdit],
     ) -> Result<ParsedDocument> {
-        let old_tree = if !edits.is_empty() && text.len() > INCREMENTAL_MIN_BYTES {
+        let prepared = prepare(text);
+        if prepared.normalised.is_some() {
+            // Blanking can change bytes outside the edit, so neither the
+            // stored tree nor this one can be edited forward later.
+            self.forget(uri);
+        }
+        let old_tree = if prepared.normalised.is_none()
+            && !edits.is_empty()
+            && text.len() > INCREMENTAL_MIN_BYTES
+        {
             self.trees
                 .lock()
                 .ok()
@@ -110,16 +128,13 @@ impl DocumentParser for TreeSitterParser {
         } else {
             None
         };
-        let tree = self
-            .parser
-            .lock()
-            .ok()
-            .and_then(|mut parser| parser.parse(text, old_tree.as_ref()));
-        match tree {
+        match self.parse_tree(&prepared, text, old_tree.as_ref()) {
             Some(tree) => {
-                let doc = self.document_from(&tree, text, dialect);
-                if let Ok(mut trees) = self.trees.lock() {
-                    trees.insert(uri.to_string(), tree);
+                let doc = self.document_from(&tree, text, &prepared.injected, dialect);
+                if prepared.normalised.is_none() {
+                    if let Ok(mut trees) = self.trees.lock() {
+                        trees.insert(uri.to_string(), tree);
+                    }
                 }
                 Ok(doc)
             }
@@ -153,28 +168,13 @@ fn backend_parse(text: &str, dialect: &Dialect) -> Result<ParsedDocument> {
     cogitator_parser::pipeline::parse_document(text, dialect)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RegionKind {
-    Jinja,
-    Comment,
-    Error,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Region {
-    kind: RegionKind,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
-}
-
-fn parse_with_tree(tree: &tree_sitter::Tree, text: &str, dialect: &Dialect) -> ParsedDocument {
-    let regions = collect_regions(tree.root_node(), text);
+fn parse_regions(regions: &[Region], text: &str, dialect: &Dialect) -> ParsedDocument {
     let table = LineTable::new(text);
     let mut jinja: Vec<Token> = Vec::new();
     let mut segments: Vec<Range<usize>> = Vec::new();
 
     let mut pos = 0usize;
-    for region in &regions {
+    for region in regions {
         if region.start > pos {
             segments.push(pos..region.start);
         }
@@ -228,83 +228,4 @@ fn tokenize_region(
         }
         Err(err) => tracing::trace!(%err, base, "malformed jinja region skipped"),
     }
-}
-
-/// Top-level walk of the jinja2 CST: group `{{ … }}` token runs, take
-/// `jinja_expression` ({% … %}) and comment spans, and surface ERROR spans.
-/// Everything between regions is SQL text.
-fn collect_regions(root: tree_sitter::Node<'_>, text: &str) -> Vec<Region> {
-    let mut regions = Vec::new();
-    let comments: Vec<JinjaSpan> = jinja_spans(text)
-        .into_iter()
-        .filter(|s| s.kind == JinjaSpanKind::Comment)
-        .collect();
-    let count = root.child_count();
-    let mut i = 0;
-    while i < count {
-        let Some(node) = root.child(i) else { break };
-        match node.kind() {
-            "{{" => {
-                // run to the matching `}}` sibling (or as far as the children go)
-                let start = node.start_byte();
-                let mut end = node.end_byte();
-                let mut j = i + 1;
-                while let Some(sibling) = root.child(j) {
-                    end = sibling.end_byte();
-                    if sibling.kind() == "}}" {
-                        break;
-                    }
-                    j += 1;
-                }
-                regions.push(Region {
-                    kind: RegionKind::Jinja,
-                    start,
-                    end,
-                });
-                i = j;
-            }
-            "jinja_expression" => {
-                regions.push(Region {
-                    kind: RegionKind::Jinja,
-                    start: node.start_byte(),
-                    end: node.end_byte(),
-                });
-            }
-            "{#" => {
-                // The grammar marks the comment-body token HIDDEN, so the
-                // sibling walk can land on a later construct and swallow
-                // it (a well-formed comment then ate the rest of the
-                // document). Take the real extent from the shared spans.
-                let start = node.start_byte();
-                let end = comments
-                    .binary_search_by_key(&start, |s| s.range.start)
-                    .map_or(node.end_byte(), |at| comments[at].range.end);
-                regions.push(Region {
-                    kind: RegionKind::Comment,
-                    start,
-                    end,
-                });
-            }
-            "ERROR" => {
-                regions.push(Region {
-                    kind: RegionKind::Error,
-                    start: node.start_byte(),
-                    end: node.end_byte(),
-                });
-            }
-            _ => {} // anonymous text tokens → SQL gap
-        }
-        i += 1;
-    }
-    // defensive: sorted, non-overlapping
-    regions.sort_by_key(|r| r.start);
-    regions.dedup_by(|b, a| {
-        if b.start < a.end {
-            a.end = a.end.max(b.end);
-            true
-        } else {
-            false
-        }
-    });
-    regions
 }

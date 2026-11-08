@@ -8,7 +8,7 @@ use std::sync::Mutex;
 
 use cogitator_parser::{NodeRange, SqlStructure};
 
-use crate::Region;
+use crate::regions::Region;
 
 /// Hard cap so a pathological document cannot balloon the parsed state.
 const MAX_NODES: usize = 4096;
