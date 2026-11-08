@@ -129,6 +129,24 @@ fn lineage_wildcard_and_expr_alias() {
 }
 
 #[test]
+fn lineage_ignores_standalone_config_comments_and_raw_tags() {
+    for text in [
+        "{{ config(materialized='table') }}\n{# c #}\nselect a from {{ ref('b') }}",
+        "{# {{ ref('dead') }} #}{% raw %}select a{% endraw %} from {{ ref('b') }}",
+    ] {
+        let lineage = column_lineage(&parse(text), &Dialect::new("duckdb")).expect(text);
+        assert_eq!(
+            lineage.columns[0].sources,
+            vec![SourceRef::Model {
+                name: "b".into(),
+                column: "a".into()
+            }],
+            "{text}"
+        );
+    }
+}
+
+#[test]
 fn lineage_declines_on_control_blocks() {
     let doc = parse("select 1 {% if flag %}, 2{% endif %} from {{ ref('a') }}");
     assert!(column_lineage(&doc, &Dialect::new("duckdb")).is_none());

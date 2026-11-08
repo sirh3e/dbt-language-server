@@ -4,6 +4,7 @@
 //! C++ build stays out of the dev loop (09 §1). The Jinja masking is always
 //! compiled (and tested) — it is pure text work.
 
+use cogitator_parser::jinja_spans::{blank_spans_in, jinja_spans, NOT_SQL};
 use cogitator_parser::{JinjaKind, ParsedDocument, TokenKind};
 
 /// Position-preserving Jinja masking (07 §3.1): every replacement has the
@@ -25,6 +26,15 @@ pub fn mask_jinja(doc: &ParsedDocument) -> Option<String> {
                 .map(|off| i + 1 + off)?;
             let (start, end) = (token.start as usize, doc.tokens[close].end as usize);
             match kind {
+                // config() renders to nothing, not to an identifier
+                JinjaKind::Expr
+                    if doc
+                        .tokens
+                        .get(i + 1)
+                        .is_some_and(|t| t.kind == TokenKind::Config) =>
+                {
+                    blank(&mut out[start..end]);
+                }
                 JinjaKind::Expr => {
                     // `_` + `j` padding: a valid identifier of equal length
                     out[start] = b'_';
@@ -42,39 +52,22 @@ pub fn mask_jinja(doc: &ParsedDocument) -> Option<String> {
                     if !matches!(tag, "config" | "set" | "endset") {
                         return None; // control block → stay silent (07 §3.2)
                     }
-                    for b in &mut out[start..end] {
-                        if *b != b'\n' {
-                            *b = b' ';
-                        }
-                    }
+                    blank(&mut out[start..end]);
                 }
             }
             i = close;
         }
         i += 1;
     }
-    // Comments were swallowed by the tokenizer; blank any `{# … #}` spans.
-    blank_comments(&mut out);
+    // Comments and raw tags produce no tokens; blank them separately.
+    blank_spans_in(&mut out, &jinja_spans(&doc.text), NOT_SQL);
     String::from_utf8(out).ok()
 }
 
-fn blank_comments(buf: &mut [u8]) {
-    let mut i = 0;
-    while i + 1 < buf.len() {
-        if buf[i] == b'{' && buf[i + 1] == b'#' {
-            let mut j = i + 2;
-            while j + 1 < buf.len() && !(buf[j] == b'#' && buf[j + 1] == b'}') {
-                j += 1;
-            }
-            let end = (j + 2).min(buf.len());
-            for b in &mut buf[i..end] {
-                if *b != b'\n' {
-                    *b = b' ';
-                }
-            }
-            i = end;
-        } else {
-            i += 1;
+fn blank(bytes: &mut [u8]) {
+    for b in bytes {
+        if *b != b'\n' {
+            *b = b' ';
         }
     }
 }
@@ -167,6 +160,24 @@ mod tests {
         assert!(masked.starts_with("select * from _jjjjj"));
         assert!(masked.ends_with("where x = 1"));
         assert!(!masked.contains("{{"));
+    }
+
+    #[test]
+    fn standalone_config_masks_to_nothing() {
+        let text = "{{ config(materialized='table') }}\n{# c #}\nselect 1";
+        let masked = mask_jinja(&parse(text)).expect("maskable");
+        assert_eq!(masked.len(), text.len());
+        assert_eq!(masked.trim(), "select 1");
+    }
+
+    #[test]
+    fn raw_tags_mask_and_the_body_stays() {
+        let text = "select {% raw %}1{% endraw %}";
+        let masked = mask_jinja(&parse(text)).expect("maskable");
+        assert_eq!(
+            masked.split_whitespace().collect::<Vec<_>>(),
+            ["select", "1"]
+        );
     }
 
     #[test]
