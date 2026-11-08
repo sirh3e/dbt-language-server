@@ -41,16 +41,21 @@ function M.geometry()
 end
 
 --- Fill the upstream/downstream panes from the selection's modelInfo.
+--- Side cursors survive a refresh of the same model and reset otherwise.
 ---@param s cogitator.explorer.State
 function M.sides(s)
+  local same_model = s.sides_for == s.selected
   local info = s.info
-  ui.set_lines(s.bufs.left, render_lib.pane_lines(info and info.upstream))
-  ui.set_lines(s.bufs.right, render_lib.pane_lines(info and info.downstream))
-  for _, pane in ipairs({ "left", "right" }) do
-    if vim.api.nvim_win_is_valid(s.wins[pane]) then
-      vim.api.nvim_win_set_cursor(s.wins[pane], { 1, 0 })
+  local panes = { left = info and info.upstream, right = info and info.downstream }
+  for pane, entries in pairs(panes) do
+    local win = s.wins[pane]
+    local row = (same_model and vim.api.nvim_win_is_valid(win)) and vim.api.nvim_win_get_cursor(win)[1] or 1
+    render_lib.fill_pane(s.bufs[pane], entries)
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_set_cursor(win, { math.min(row, vim.api.nvim_buf_line_count(s.bufs[pane])), 0 })
     end
   end
+  s.sides_for = s.selected
 end
 
 --- The center title: match count, or the live filter text.
