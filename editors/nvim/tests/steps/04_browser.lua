@@ -23,6 +23,17 @@ return function(ctx)
     local center = table.concat(vim.api.nvim_buf_get_lines(s.bufs.center, 0, -1, false), "\n")
     H.check(center:find("customers") ~= nil, "integration: center pane names the model", center)
   end
+  if ui_ok then
+    local start = s.data.model
+    vim.api.nvim_set_current_win(s.wins.center)
+    H.feed("h")
+    H.check(vim.api.nvim_get_current_win() == s.wins.left, "integration: graph h enters upstream")
+    H.feed("h")
+    H.wait("integration: graph h walks upstream", 10000, function()
+      return s.data.model ~= start and not s.loading
+    end)
+    H.check(vim.api.nvim_get_current_win() == s.wins.left, "integration: graph walk stays in the pane")
+  end
   graph.close()
   H.check(graph._state == nil, "integration: graph browser closes cleanly")
 
@@ -82,7 +93,7 @@ return function(ctx)
 
   -- versions & tests tab
   vim.api.nvim_set_current_win(bst.wins.center)
-  vim.api.nvim_feedkeys("3", "x", false)
+  H.feed("3<Tab>")
   prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
   H.check(
     prev:find("latest_version: 2") ~= nil and prev:find("not_null") ~= nil and prev:find("v1") ~= nil,
@@ -106,7 +117,7 @@ return function(ctx)
       local st = browse._state
       return st and st.info and st.info.model == "customers"
     end)
-    vim.api.nvim_feedkeys("2", "x", false)
+    H.feed("2<Tab>")
     -- the compiled tab is a dbt.compiledSql round trip: wait for it
     H.wait("integration: compiled tab round trip", 10000, function()
       local p = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
@@ -149,7 +160,7 @@ return function(ctx)
       return st and st.info and st.info.model == "customers"
     end)
     vim.api.nvim_set_current_win(bst.wins.center)
-    vim.api.nvim_feedkeys("4", "x", false)
+    H.feed("4<Tab>")
     H.wait("integration: info tab renders", 10000, function()
       local p = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
       return p:find("relation: jaffle_shop%.main%.customers") ~= nil
@@ -179,6 +190,8 @@ return function(ctx)
     end
     vim.api.nvim_set_current_buf(bufnr)
   end
+
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/browser_motions.lua"))(ctx, browse)
 
   browse.close()
   H.check(browse._state == nil, "integration: browser closes cleanly")

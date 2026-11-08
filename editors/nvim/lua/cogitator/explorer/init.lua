@@ -31,6 +31,8 @@ local M = {}
 ---@field info_gen integer staleness guard for in-flight fetches
 ---@field tab integer active preview tab (1-based)
 ---@field timer uv.uv_timer_t selection debounce
+---@field sides_for string? the model the side panes were last filled for
+---@field pending_walk {pane: "left"|"right", count: integer}? walk steps waiting on dbt.modelInfo
 ---@type cogitator.explorer.State?
 M._state = nil
 
@@ -61,6 +63,7 @@ local function fetch_info(name)
       return
     end
     if err then
+      s.pending_walk = nil
       vim.notify("dbt.modelInfo failed: " .. err.message, vim.log.levels.ERROR)
       return
     end
@@ -69,6 +72,11 @@ local function fetch_info(name)
     preview.render(s)
     if s.tab == 4 and s.relation == nil then
       M._fetch_relation()
+    end
+    if s.info then
+      ekeys.resume_walk(M)
+    else
+      s.pending_walk = nil
     end
   end)
 end

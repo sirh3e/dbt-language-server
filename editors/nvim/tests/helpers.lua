@@ -31,6 +31,11 @@ function H.wait(label, ms, pred, detail)
   return ok
 end
 
+--- Press keys the way a user would, mappings included.
+function H.feed(keys)
+  vim.api.nvim_feedkeys(vim.keycode(keys), "x", false)
+end
+
 --- Register a cleanup to run in H.finish() (also on failure).
 function H.defer(fn)
   cleanups[#cleanups + 1] = fn

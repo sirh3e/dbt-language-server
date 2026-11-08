@@ -1,10 +1,12 @@
 --- Model-graph browser (dbt.modelGraph): a yazi-style three-pane float —
 --- upstream models on the left, the current model in the center, downstream
---- models on the right. h/l move focus, <CR> re-centers on a neighbor,
---- o opens its file, q/<Esc> closes. Float/label plumbing lives in
+--- models on the right. h/l enter a side pane, and pressed again there walk
+--- further along the lineage. <CR> re-centers on a neighbor, o opens its
+--- file, y yanks its name, q/<Esc> closes. Float/label plumbing lives in
 --- cogitator.ui / cogitator.render / cogitator.actions.
 
 local actions = require("cogitator.actions")
+local motion = require("cogitator.motion")
 local render_lib = require("cogitator.render")
 local ui = require("cogitator.ui")
 
@@ -16,6 +18,8 @@ local M = {}
 ---@field wins table<string, integer>
 ---@field bufs table<string, integer>
 ---@field data table? the dbt.modelGraph payload
+---@field loading boolean? a re-center is in flight
+---@field pending {pane: "left"|"right", count: integer}? walk steps waiting on it
 ---@type cogitator.graph.State?
 M._state = nil
 
@@ -35,7 +39,7 @@ local function render(data)
   s.data = data
   local path = (data.uri and data.uri ~= vim.NIL) and vim.fn.fnamemodify(vim.uri_to_fname(data.uri), ":~:.")
     or ""
-  ui.set_lines(s.bufs.left, render_lib.pane_lines(data.upstream))
+  render_lib.fill_pane(s.bufs.left, data.upstream)
   ui.set_lines(s.bufs.center, {
     data.model,
     "",
@@ -43,7 +47,7 @@ local function render(data)
     "",
     ("%d upstream · %d downstream"):format(#data.upstream, #data.downstream),
   })
-  ui.set_lines(s.bufs.right, render_lib.pane_lines(data.downstream))
+  render_lib.fill_pane(s.bufs.right, data.downstream)
   ui.retitle(s.wins.center, " " .. data.model .. " ")
   for _, pane in ipairs({ "left", "right" }) do
     if vim.api.nvim_win_is_valid(s.wins[pane]) then
@@ -56,7 +60,8 @@ end
 --- initial view or {model=...} when re-centering on a neighbor.
 ---@param by {uri?: string, model?: string}
 ---@param on_result fun(data: table)
-local function fetch(by, on_result)
+---@param on_fail fun()? called when no result arrives
+local function fetch(by, on_result, on_fail)
   local s = M._state
   if not s or not s.client or s.client:is_stopped() then
     vim.notify("cogitator client is gone; close and reopen the graph", vim.log.levels.ERROR)
@@ -65,6 +70,9 @@ local function fetch(by, on_result)
   actions.exec_with(s.client, s.src_buf, "dbt.modelGraph", { uri = by.uri or "", model = by.model }, function(err, result)
     if err then
       vim.notify("dbt.modelGraph failed: " .. err.message, vim.log.levels.ERROR)
+      if on_fail then
+        on_fail()
+      end
       return
     end
     if not result or result == vim.NIL then
@@ -72,6 +80,9 @@ local function fetch(by, on_result)
         (by.model or "this model") .. " is not in the project graph (not a model file?)",
         vim.log.levels.WARN
       )
+      if on_fail then
+        on_fail()
+      end
       return
     end
     on_result(result)
@@ -90,18 +101,42 @@ local function selected_entry(pane)
   return entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
 end
 
---- <CR> on a side entry: make that model the center.
+--- Make a side entry the center, `count` times over, walking the lineage.
+--- A step waits for the previous one's dbt.modelGraph answer.
 ---@param pane "left"|"right"
-local function recenter(pane)
+---@param count integer
+local function recenter(pane, count)
+  local s = M._state
+  if s.loading then
+    s.pending = { pane = pane, count = ((s.pending and s.pending.pane == pane) and s.pending.count or 0) + count }
+    return
+  end
   local e = selected_entry(pane)
   if not e then
     return
   end
   if e.kind ~= "model" then
-    vim.notify(e.name .. " is a source — no further lineage behind it", vim.log.levels.INFO)
+    vim.notify(("%s is a %s — no further lineage behind it"):format(e.name, e.kind:gsub("_", " ")), vim.log.levels.INFO)
     return
   end
-  fetch({ model = e.name }, render)
+  s.loading = true
+  fetch({ model = e.name }, function(data)
+    local st = M._state
+    if not st then
+      return
+    end
+    st.loading = false
+    render(data)
+    local queued = (st.pending and st.pending.pane == pane) and st.pending.count or 0
+    st.pending = nil
+    if count - 1 + queued > 0 then
+      recenter(pane, count - 1 + queued)
+    end
+  end, function()
+    if M._state then
+      M._state.loading, M._state.pending = false, nil
+    end
+  end)
 end
 
 --- Close the view and open the entry's file (if it has one).
@@ -120,16 +155,30 @@ end
 local function keymaps(pane, buf)
   local s = M._state
   local function map(lhs, fn)
-    vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true })
+    motion.map(buf, lhs, fn)
+  end
+  local function focus(name)
+    return function()
+      vim.api.nvim_set_current_win(s.wins[name])
+    end
+  end
+  local function walker(side)
+    return function()
+      recenter(side, vim.v.count1)
+    end
   end
   map("q", close)
   map("<Esc>", close)
-  map("h", function()
-    vim.api.nvim_set_current_win(s.wins[pane == "right" and "center" or "left"])
-  end)
-  map("l", function()
-    vim.api.nvim_set_current_win(s.wins[pane == "left" and "center" or "right"])
-  end)
+  if pane == "left" then
+    map("h", walker("left"))
+    map("l", focus("center"))
+  elseif pane == "right" then
+    map("h", focus("center"))
+    map("l", walker("right"))
+  else
+    map("h", focus("left"))
+    map("l", focus("right"))
+  end
   if pane == "center" then
     local open_center = function()
       open_entry(M._state.data.uri)
@@ -138,7 +187,13 @@ local function keymaps(pane, buf)
     map("o", open_center)
   else
     map("<CR>", function()
-      recenter(pane)
+      recenter(pane, 1)
+    end)
+    map("y", function()
+      local e = selected_entry(pane)
+      if e then
+        vim.fn.setreg(vim.v.register, e.name)
+      end
     end)
     map("o", function()
       local e = selected_entry(pane)
