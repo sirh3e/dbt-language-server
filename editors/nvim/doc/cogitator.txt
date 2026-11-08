@@ -74,10 +74,26 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtSelectors  pick a selectors.yml entry
 
 `:DbtDag` (a *Neovim-only* feature) draws the whole project as a layered
-DAG: `<CR>` opens the model under the cursor, `c`/`C` expand columns in
-one/all nodes (docglow-style), `L` shows column lineage, `R` refreshes,
-`q` closes. Search also works through |vim.lsp.buf.workspace_symbol|
-with `tag:x` and `selector:x` queries.
+DAG in the dbt-docs colours. One node is selected, and movement goes
+from node to node:
+
+  h / l          a connected parent / child (nearest by row, or back the
+                 way you came)
+  j / k          next / previous node in the same layer
+  gg / G         first / last node ([count] goes to that node)
+  { / }          first / last layer ([count] counts from that end)
+  /              search node names live; n / N step through the matches
+  <C-o> / <C-i>  older / newer selection
+  <CR>           open the selected model
+  c / C          expand columns in this / every node (docglow-style)
+  L              show column lineage
+  R              refresh
+  q              close
+
+Counts repeat h, j, k, l, n, N, <C-o> and <C-i>. The colours are the
+`DbtDag*` highlight groups, which a colorscheme can override. Search
+also works through |vim.lsp.buf.workspace_symbol| with `tag:x` and
+`selector:x` queries.
 
 Context refreshes and dbt runs also report through $/progress, so they
 appear in |vim.lsp.status()| and plugins like fidget.nvim.
@@ -107,10 +123,14 @@ The graph browser (|:DbtGraph|) is a yazi-style three-pane float: direct
 upstream models on the left, the current model in the center, direct
 downstream models on the right. Keys inside it:
 
-  h / l          move focus between the panes
+  h / l          from the center: enter the upstream / downstream pane
+                 in a side pane: h upstream or l downstream walks one
+                 step further along the lineage ([count] walks that
+                 many); the opposite key returns to the center
   j / k          select an entry in a side pane
   <CR>           re-center the graph on the selected neighbor
   o              open the selected entry's file (center: the model itself)
+  y              yank the selected entry's name
   q / <Esc>      close the browser
 
 Sources appear in the upstream pane tagged `[source]`; they have no
@@ -119,18 +139,26 @@ further lineage behind them.
 `:DbtBrowse` (a *Neovim-only* feature) is the project-wide browser:
 the center pane lists every model, the side panes follow the selection
 with its direct upstream and downstream, and the preview below shows
-the selected model in three tabs. Keys inside it:
+the selected model in four tabs. Keys inside it:
 
-  j / k          select a model (the panes follow, debounced)
+  j / k          select a model (the panes follow, debounced); counts
+                 and the other native motions work (5j, gg, G, <C-d>)
+  n / N          step through the list, wrapping at the ends
   /              filter the list live (smart-case substring);
                  <BS> edits, <CR> accepts, <Esc> clears
-  h / l          move focus between the top panes
+  h / l          from the center: enter the upstream / downstream pane
+                 in a side pane: h upstream or l downstream re-centers
+                 on the entry and stays, so pressing it again walks the
+                 lineage ([count] walks that many); the opposite key
+                 returns to the center
   p              focus the preview pane (h returns)
-  1 / 2 / 3      preview tab: raw SQL / compiled SQL / versions+tests
-  <Tab>          cycle the preview tabs
+  J / K          scroll the preview from any pane
+  <Tab>          cycle the preview tabs (<S-Tab> reverses)
+  [count]<Tab>   preview tab [count]
   <CR>           side pane: re-select that model in the center
                  center: open the model file and close
   o              open the selected entry's file
+  y              yank the selected model's or entry's name
   <Esc>          clear the filter first, close second
   q              close the browser
 

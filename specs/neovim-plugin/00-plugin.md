@@ -206,16 +206,26 @@ server's semantic tokens), and no dedicated `cache` workflow beyond
 `lua/cogitator/dag.lua` renders `dbt.projectGraph` as a dbt-docs-style
 DAG in a scratch tab: layers left→right, box-drawn nodes with `#tags`,
 orthogonal edges with corner glyphs (never overdrawing box content), and
-docglow-style column information inside expanded nodes. Keys: `<CR>`
-open, `c` toggle this node's columns, `C` toggle all, `L` column lineage
-via `dbt.showLineage`, `R` refresh, `q` close. The server command is
-editor-neutral; this UI is deliberately implemented only in the Neovim
-plugin.
+docglow-style column information inside expanded nodes. Nodes are filled
+in the dbt-docs resource colours (`src/app/services/graph.service.js`,
+groups `DbtDag*` in `cogitator.highlight`, defined with `default = true`);
+the selected node and its edges are recoloured in a separate extmark
+namespace so moving the selection never rebuilds the grid.
+Exactly one node is selected, and movement is node to node (`cogitator.dag_nav`,
+pure): `h`/`l` go to a connected parent/child (nearest by row, or back
+along the path just taken), `j`/`k` through the same layer, `gg`/`G`
+first/last node (or node `[count]`), `{`/`}` first/last layer (or layer
+`[count]` from that end), `/` live name search with `n`/`N`,
+`<C-o>`/`<C-i>` selection history; counts repeat `hjkl`, `n`/`N` and the
+history keys. Native motions and the mouse move the selection through a
+`CursorMoved` hit test. Other keys: `<CR>` open, `c` toggle this node's
+columns, `C` toggle all, `L` column lineage via `dbt.showLineage`, `R`
+refresh, `q` close. The server command is editor-neutral; this UI is
+deliberately implemented only in the Neovim plugin.
 
 ### 5.3c Project browser (`:DbtBrowse`) — **Neovim only**
 
-`lua/cogitator/browse.lua` (+ `lua/cogitator/browse_preview.lua` for
-the bottom pane) is the yazi-style browser over the whole project: the
+`lua/cogitator/browse.lua` is the yazi-style browser over the whole project: the
 center float lists every model from `dbt.projectGraph` (`/` filters
 live, smart-case substring), the side floats show the selection's
 direct upstream/downstream from `dbt.modelInfo` (debounced per cursor
@@ -223,11 +233,19 @@ move, stale responses discarded), and the full-width preview below
 switches between `[1]` the raw SQL, `[2]` the compiled SQL from
 `target/compiled/<project>/…` (a hint when dbt has not compiled the
 model — the browser never runs dbt itself) and `[3]` versions + tests.
-Keys: `j`/`k` move, `h`/`l` switch panes, `p` focus the preview, `<CR>`
-on a side entry re-selects it in the center, `<CR>`/`o` on the center
-opens the file, `1`/`2`/`3`/`4`/`<Tab>` switch the preview tab (raw /
-compiled / versions+tests / info), `<Esc>` clears the filter first and
-closes second, `q` closes. The info tab shows description, tags, the
+Keys: `j`/`k` and the other native motions move (counts included, which
+is why the preview tabs are not on the digit keys); from the center
+`h`/`l` enter the upstream/downstream pane; in a side pane `h` upstream
+or `l` downstream re-centers on the entry and stays there, so repeating
+it walks the lineage (`[count]` walks that many; steps queue while
+`dbt.modelInfo` is in flight), and the opposite key returns to the
+center. `p` focuses the preview, `J`/`K` scroll it from any pane, `n`/`N`
+step the center list with wraparound, `y` yanks a name, `<CR>` on a side
+entry re-selects it in the center, `<CR>`/`o` on the center opens the
+file, `<Tab>`/`<S-Tab>` cycle the preview tab and `[count]<Tab>` picks
+one (1 raw / 2 compiled / 3 versions+tests / 4 info), `<Esc>` clears the
+filter first and closes second, `q` closes. Side-pane entries use the
+`DbtDag*Fg` resource colours. The info tab shows description, tags, the
 dbt.relation name, documented columns from the project graph, and the
 model's tests — `<CR>` on a test line jumps to its YAML entry. The
 implementation is the `cogitator.explorer` package (init/render/
