@@ -22,15 +22,20 @@ use crate::{DbtContext, ModelDetails};
 mod drive;
 mod env;
 mod facts;
+mod passes;
 mod phys;
 mod report;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_facts;
+mod trace;
 
 pub use report::{
-    EvidenceView, FindingView, FixEditView, FixView, LevelReport, NeedsView, OriginView,
-    PlanLevels, PlanStatus, QueryPlan, TraceRow, TraceView,
+    EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, PlanLevels,
+    PlanStatus, QueryPlan,
 };
+pub use trace::{NeedsView, TraceRow, TraceView};
 
 /// One model's text and the facts known about it.
 #[derive(Debug, Clone, Copy)]

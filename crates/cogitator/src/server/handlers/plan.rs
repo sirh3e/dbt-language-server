@@ -56,7 +56,8 @@ pub fn query_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_c
 }
 
 /// Changes whenever a plan input does: the context snapshot, or a re-read
-/// manifest or catalog. Pointer identity, like the results slot.
+/// manifest or catalog. Pointer identity, like the results slot; 48 bits
+/// so it stays an exact integer in JSON clients that decode to doubles.
 fn schema_revision(snap: &Snapshot, artifacts: &ArtifactSet) -> u64 {
     let mut hasher = DefaultHasher::new();
     (Arc::as_ptr(&snap.ctx) as usize).hash(&mut hasher);
@@ -70,7 +71,7 @@ fn schema_revision(snap: &Snapshot, artifacts: &ArtifactSet) -> u64 {
         .as_ref()
         .map(|c| Arc::as_ptr(c) as usize)
         .hash(&mut hasher);
-    hasher.finish()
+    hasher.finish() & 0xFFFF_FFFF_FFFF
 }
 
 fn invalid(guidance: Guidance) -> Reply {
