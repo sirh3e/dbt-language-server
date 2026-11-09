@@ -24,7 +24,10 @@ fn text_cap() {
     let lowered = build(&text);
     assert_eq!(lowered.fidelity, Fidelity::Partial);
     assert_eq!(lowered.degraded[0].kind, DegradationKind::CapExceeded);
-    assert_eq!(root_hole(lowered.value.as_ref().expect("hir")), Some(HoleKind::Truncated));
+    assert_eq!(
+        root_hole(lowered.value.as_ref().expect("hir")),
+        Some(HoleKind::Truncated)
+    );
 }
 
 #[test]
@@ -32,7 +35,10 @@ fn token_cap() {
     let text = format!("select {}", vec!["1"; 41_000].join(", "));
     let lowered = build(&text);
     assert_eq!(lowered.degraded[0].kind, DegradationKind::CapExceeded);
-    assert_eq!(root_hole(lowered.value.as_ref().expect("hir")), Some(HoleKind::Truncated));
+    assert_eq!(
+        root_hole(lowered.value.as_ref().expect("hir")),
+        Some(HoleKind::Truncated)
+    );
 }
 
 #[test]
@@ -51,6 +57,23 @@ fn chain_under_the_cap_lowers() {
     let chain = vec!["a"; 200].join(" + ");
     let hir = hir_of(&format!("select {chain} from t"));
     assert_eq!(hir.cols.len(), 200);
+}
+
+#[test]
+fn chain_at_the_cap_fits_the_default_stack() {
+    let chain = vec!["a"; 257].join(" + ");
+    let hir = hir_of(&format!("select {chain} from t"));
+    assert_eq!(hir.cols.len(), 257);
+}
+
+#[test]
+fn chain_just_over_the_cap_degrades() {
+    let chain = vec!["a"; 258].join(" + ");
+    let lowered = build(&format!("select {chain} from t"));
+    assert!(lowered
+        .degraded
+        .iter()
+        .any(|d| d.kind == DegradationKind::CapExceeded));
 }
 
 #[test]
@@ -81,11 +104,7 @@ fn long_union_chain_degrades() {
         .any(|d| d.kind == DegradationKind::CapExceeded));
 }
 
-// Known gap: expand_star and query_output build their column lists before
-// the node cap is charged, so this input can grow exponentially in memory.
-// Do not enable until the cap is checked during expansion.
 #[test]
-#[ignore = "unbounded memory until star expansion checks the node cap"]
 fn star_expansion_bomb_hits_the_node_cap() {
     let mut text = String::from("with c0 as (select 1 as a0, 2 as a1, 3 as a2, 4 as a3)");
     for i in 1..40 {
@@ -104,7 +123,11 @@ fn star_expansion_bomb_hits_the_node_cap() {
 
 #[test]
 fn deep_derived_nesting_stays_within_limits() {
-    let text = format!("select * from {}t{} x", "(select * from ".repeat(200), ") a".repeat(200));
+    let text = format!(
+        "select * from {}t{} x",
+        "(select * from ".repeat(200),
+        ") a".repeat(200)
+    );
     let lowered = build(&text);
     lowered.assert_clean();
 }
@@ -136,10 +159,30 @@ fn hostile_bytes_do_not_panic() {
 
 #[test]
 fn every_dialect_handles_the_same_edge_cases() {
-    for dialect in ["snowflake", "bigquery", "postgres", "duckdb", "redshift", ""] {
-        build_in("select a::int, b from t", dialect, TemplateVariant::Plain, &SchemaEnv::default());
-        build_in("select `a` from t", dialect, TemplateVariant::Plain, &SchemaEnv::default());
-        let _ = parse_sql_type("array<struct<a int64>>", &cogitator_dialects::Dialect::new(dialect));
+    for dialect in [
+        "snowflake",
+        "bigquery",
+        "postgres",
+        "duckdb",
+        "redshift",
+        "",
+    ] {
+        build_in(
+            "select a::int, b from t",
+            dialect,
+            TemplateVariant::Plain,
+            &SchemaEnv::default(),
+        );
+        build_in(
+            "select `a` from t",
+            dialect,
+            TemplateVariant::Plain,
+            &SchemaEnv::default(),
+        );
+        let _ = parse_sql_type(
+            "array<struct<a int64>>",
+            &cogitator_dialects::Dialect::new(dialect),
+        );
     }
 }
 

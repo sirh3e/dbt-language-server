@@ -5,6 +5,7 @@ use cogitator_ir::hir::{ExprId, FromId, Ident, OutputCol, SelectItem};
 use cogitator_ir::{ColType, DegradationKind, Span, Symbol};
 use sqlparser::ast;
 
+use super::from::name_idents;
 use super::select::ItemOut;
 use super::Lowerer;
 
@@ -112,22 +113,37 @@ impl Lowerer<'_> {
         exclude: &[Ident],
         replace: &[(ExprId, Ident)],
     ) -> (Vec<OutputCol>, bool) {
-        let excluded: Vec<Symbol> = exclude.iter().map(|i| i.folded).collect();
-        let (mut out, mut open) = (Vec::new(), targets.is_empty());
+        let width: usize = targets
+            .iter()
+            .filter_map(|t| self.hir.from.get(*t))
+            .map(|f| f.output.len())
+            .sum();
+        if !self.reserve(width) {
+            return (Vec::new(), true);
+        }
+        let mut excluded: Vec<Symbol> = exclude.iter().map(|i| i.folded).collect();
+        excluded.sort_unstable();
+        let mut replacements: Vec<(Symbol, ExprId)> =
+            replace.iter().map(|(e, name)| (name.folded, *e)).collect();
+        replacements.sort_by_key(|(name, _)| *name);
+        let (mut out, mut open) = (Vec::with_capacity(width), targets.is_empty());
         for &target in targets {
             let Some(item) = self.hir.from.get(target) else {
                 continue;
             };
             open |= item.open;
             for col in &item.output {
-                if excluded.contains(&col.name) {
+                if excluded.binary_search(&col.name).is_ok() {
                     continue;
                 }
-                let replaced = replace.iter().find(|(_, name)| name.folded == col.name);
+                let replaced = replacements
+                    .binary_search_by_key(&col.name, |(name, _)| *name)
+                    .ok()
+                    .and_then(|i| replacements.get(i));
                 out.push(OutputCol {
                     span,
                     name: Some(col.name),
-                    expr: replaced.map(|(e, _)| *e),
+                    expr: replaced.map(|(_, e)| *e),
                     ty: if replaced.is_some() {
                         ColType::UNKNOWN
                     } else {
@@ -138,17 +154,6 @@ impl Lowerer<'_> {
         }
         (out, open)
     }
-}
-
-fn name_idents(name: &ast::ObjectName) -> Vec<ast::Ident> {
-    name.0
-        .iter()
-        .filter_map(|part| match part {
-            // boundary: this small path is compared, not stored
-            ast::ObjectNamePart::Identifier(i) => Some(i.clone()),
-            ast::ObjectNamePart::Function(_) => None,
-        })
-        .collect()
 }
 
 fn exclude_idents(item: &ast::ExcludeSelectItem) -> Vec<&ast::Ident> {

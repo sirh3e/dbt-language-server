@@ -32,9 +32,8 @@ fn nested_with_shadows_outer_cte() {
 
 #[test]
 fn nested_cte_inside_cte_body() {
-    let hir = hir_of(
-        "with a as (with inner_a as (select 1 as v) select v from inner_a) select v from a",
-    );
+    let hir =
+        hir_of("with a as (with inner_a as (select 1 as v) select v from inner_a) select v from a");
     for res in all_res_of(&hir, "v") {
         assert!(is_bound(&res), "{res:?}");
     }
@@ -48,8 +47,12 @@ fn derived_table_alias_columns() {
 
 #[test]
 fn unnest_exposes_alias_and_correlates() {
-    let hir = hir_of("select v from t, unnest(t.arr) as u(v)");
+    let hir = hir_of("with t as (select [1] as arr) select v from t, unnest(t.arr) as u(v)");
     assert!(is_bound(&res_of(&hir, "v")));
+    assert!(all_res_of(&hir, "arr").iter().all(is_bound));
+    // Beside an open relation the element column is only a candidate.
+    let hir = hir_of("select v from t, unnest(t.arr) as u(v)");
+    assert!(matches!(res_of(&hir, "v"), Resolution::Candidates(c) if c.len() == 2));
     let hir = hir_of("select a.x from t as a, lateral (select a.x as y) as s");
     assert!(matches!(res_of(&hir, "x"), Resolution::OpenSchema(_)));
 }
@@ -66,29 +69,38 @@ fn set_ops_keep_left_names_and_order_by_outputs() {
     let root = hir.root.expect("root");
     assert!(matches!(hir.queries[root].body, Body::SetOp { .. }));
     let refs = all_res_of(&hir, "a");
-    assert!(matches!(refs.last().expect("order ref"), Resolution::LateralAlias(0)));
+    assert!(matches!(
+        refs.last().expect("order ref"),
+        Resolution::LateralAlias(0)
+    ));
 }
 
 #[test]
 fn order_by_prefers_alias_over_input() {
     let hir = hir_of("select x + 1 as y, y as z from t order by y");
-    assert!(all_res_of(&hir, "y").iter().any(|r| matches!(r, Resolution::LateralAlias(0))));
+    assert!(all_res_of(&hir, "y")
+        .iter()
+        .any(|r| matches!(r, Resolution::LateralAlias(0))));
 }
 
 #[test]
 fn window_over_and_filter_bind() {
-    let hir = hir_of(
-        "select sum(a) filter (where b > 0) over (partition by c order by d) from t",
-    );
+    let hir = hir_of("select sum(a) filter (where b > 0) over (partition by c order by d) from t");
     for name in ["a", "b", "c", "d"] {
-        assert!(matches!(res_of(&hir, name), Resolution::OpenSchema(_)), "{name}");
+        assert!(
+            matches!(res_of(&hir, name), Resolution::OpenSchema(_)),
+            "{name}"
+        );
     }
 }
 
 #[test]
 fn lateral_alias_is_dialect_gated() {
-    let duck = hir_of("select 1 as a, a + 1 as b from t");
+    let duck = hir_of("select 1 as a, a + 1 as b from (select 2 as z) t");
     assert_eq!(res_of(&duck, "a"), Resolution::LateralAlias(0));
+    // An open input may have the column, and input columns win.
+    let open = hir_of("select 1 as a, a + 1 as b from t");
+    assert!(matches!(res_of(&open, "a"), Resolution::OpenSchema(_)));
     let env = SchemaEnv::default();
     let bq = build_in(
         "select 1 as a, a + 1 as b from (select 2 as z) t",
@@ -121,7 +133,10 @@ fn qualified_star_resolves_its_from() {
     let Body::Select(select) = &hir.queries[hir.root.expect("root")].body else {
         panic!("select");
     };
-    assert!(matches!(&select.items[0], SelectItem::Star { from: Some(_), .. }));
+    assert!(matches!(
+        &select.items[0],
+        SelectItem::Star { from: Some(_), .. }
+    ));
 }
 
 #[test]
@@ -149,10 +164,11 @@ fn exists_correlation() {
 
 #[test]
 fn cte_body_cannot_see_outer_from() {
-    let hir = hir_of(
-        "with a as (select missing from b) select 1 from (select 1 as missing) x, a",
+    let hir = hir_of("with a as (select missing from b) select 1 from (select 1 as missing) x, a");
+    assert_eq!(
+        res_of(&hir, "missing"),
+        Resolution::OpenSchema(_b_item(&hir))
     );
-    assert_eq!(res_of(&hir, "missing"), Resolution::OpenSchema(_b_item(&hir)));
 }
 
 fn _b_item(hir: &cogitator_ir::hir::Hir) -> cogitator_ir::hir::FromId {
@@ -177,7 +193,7 @@ fn folding_per_dialect() {
     );
     let hir = snowflake.value.expect("hir");
     let refs = all_res_of(&hir, "FOO");
-    assert_eq!(refs.len(), 3);
+    assert_eq!(refs.len(), 2, "the quoted reference keeps its case");
     assert!(is_bound(&refs[0]) && is_bound(&refs[1]));
     assert_eq!(res_of(&hir, "Foo"), Resolution::Unresolved);
 }
@@ -188,6 +204,20 @@ fn recursive_cte_references_itself() {
     let hir = hir_of(text);
     let cte = hir.ctes.values().next().expect("cte");
     assert!(cte.recursive);
+    let self_ref = hir
+        .from
+        .values()
+        .find(|f| {
+            matches!(
+                &f.kind,
+                FromKind::Base {
+                    target: RelTarget::Cte(_),
+                    ..
+                }
+            )
+        })
+        .expect("self reference");
+    assert!(self_ref.open, "the body is not known at its own reference");
     insta::assert_snapshot!(report(text, &build(text)));
 }
 
@@ -224,13 +254,15 @@ fn open_schema_binds_quietly() {
 
 #[test]
 fn ambiguity_lists_candidates() {
-    let hir = hir_of("with a as (select 1 as x), b as (select 2 as x) select x from a join b on true");
+    let hir =
+        hir_of("with a as (select 1 as x), b as (select 2 as x) select x from a join b on true");
     assert!(matches!(res_of(&hir, "x"), Resolution::Candidates(v) if v.len() == 2));
 }
 
 #[test]
 fn using_merges_the_column() {
-    let hir = hir_of("with a as (select 1 as x), b as (select 2 as x) select x from a join b using (x)");
+    let hir =
+        hir_of("with a as (select 1 as x), b as (select 2 as x) select x from a join b using (x)");
     assert!(is_bound(&res_of(&hir, "x")));
 }
 

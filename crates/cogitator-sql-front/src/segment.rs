@@ -233,7 +233,10 @@ mod tests {
     fn clause_position_after_an_operand() {
         assert_eq!(clause_of("select a from t {{ m() }}"), vec![true]);
         assert_eq!(clause_of("select a {{ m() }} from t"), vec![true]);
-        assert_eq!(clause_of("select a from t where x = 1 {{ m() }}"), vec![true]);
+        assert_eq!(
+            clause_of("select a from t where x = 1 {{ m() }}"),
+            vec![true]
+        );
         assert_eq!(clause_of("select a from ({{ m() }})"), vec![false]);
         assert_eq!(clause_of("select {{ m() }} from t"), vec![false]);
     }

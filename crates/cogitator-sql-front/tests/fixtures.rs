@@ -53,7 +53,12 @@ fn every_fixture_builds_clean_and_is_pinned() {
     assert!(files.len() >= 9, "fixtures not found: {files:?}");
     for path in files {
         let text = std::fs::read_to_string(&path).expect("read fixture");
-        let lowered = build_in(&text, "duckdb", TemplateVariant::Plain, &SchemaEnv::default());
+        let lowered = build_in(
+            &text,
+            "duckdb",
+            TemplateVariant::Plain,
+            &SchemaEnv::default(),
+        );
         insta::assert_snapshot!(snapshot_name(&path), report(&text, &lowered));
     }
 }

@@ -50,7 +50,12 @@ fn ref_and_source_become_typed_targets() {
 #[test]
 fn versioned_and_packaged_refs() {
     let hir = hir_of("select 1 from {{ ref('pkg', 'm', v=3) }}");
-    let RelTarget::Model { package, name, version } = base_target(&hir) else {
+    let RelTarget::Model {
+        package,
+        name,
+        version,
+    } = base_target(&hir)
+    else {
         panic!("model");
     };
     assert_eq!(package.map(|p| hir.syms.text(p)), Some("pkg"));
@@ -102,7 +107,10 @@ fn a_lone_macro_select_item_is_composite() {
 fn clause_position_after_from_item() {
     let text = "select a from t {{ limit_macro() }}";
     let hir = hir_of(text);
-    assert_eq!(role_of(&hir, "limit_macro", text), JinjaRole::ClausePosition);
+    assert_eq!(
+        role_of(&hir, "limit_macro", text),
+        JinjaRole::ClausePosition
+    );
     assert!(matches!(res_of(&hir, "a"), Resolution::OpenSchema(_)));
     let FromKind::Base { alias, .. } = &hir.from.values().next().expect("from").kind else {
         panic!("base")
@@ -155,7 +163,10 @@ fn a_whole_model_macro_is_a_jinja_hole() {
     let hir = lowered.value.expect("hir");
     let root = &hir.queries[hir.root.expect("root")];
     assert!(matches!(root.body, Body::Hole(HoleKind::Jinja)));
-    assert_eq!(hir.jinja.values().next().expect("node").role, JinjaRole::ClausePosition);
+    assert_eq!(
+        hir.jinja.values().next().expect("node").role,
+        JinjaRole::ClausePosition
+    );
 }
 
 #[test]
@@ -170,9 +181,14 @@ fn incremental_variants_lower_both_ways() {
     assert!(select.filter.is_some());
     assert!(matches!(
         inc_hir.origin,
-        SourceOrigin::Template { variant: TemplateVariant::Incremental }
+        SourceOrigin::Template {
+            variant: TemplateVariant::Incremental
+        }
     ));
-    let tags = inc_hir.jinja.values().filter(|j| j.kind == JinjaKind::IsIncremental);
+    let tags = inc_hir
+        .jinja
+        .values()
+        .filter(|j| j.kind == JinjaKind::IsIncremental);
     assert_eq!(tags.count(), 2);
 
     let full = build_in(text, "duckdb", TemplateVariant::FullRefresh, &env);
@@ -181,7 +197,9 @@ fn incremental_variants_lower_both_ways() {
         panic!("select");
     };
     assert!(select.filter.is_none());
-    insta::assert_snapshot!(report(text, &inc));
+    assert!(full_hir.jinja.values().all(|j| j.role == JinjaRole::Blank));
+    insta::assert_snapshot!("incremental_variant", report(text, &inc));
+    insta::assert_snapshot!("full_refresh_variant", report(text, &full));
 }
 
 #[test]
@@ -205,6 +223,16 @@ fn broken_sql_keeps_good_parts() {
         .count();
     assert_eq!(holes, 1);
     assert!(matches!(res_of(hir, "y"), Resolution::Bound { .. }));
+    let hole = hir
+        .queries
+        .values()
+        .find(|q| matches!(q.body, Body::Hole(HoleKind::ParseError)))
+        .expect("hole");
+    assert_eq!(
+        &text[hole.span.start as usize..hole.span.end as usize],
+        "select from where"
+    );
+    assert!(lowered.degraded[0].span.is_some());
     // The ref inside the good CTE is still typed.
     assert!(matches!(base_target(hir), RelTarget::Model { .. }));
     insta::assert_snapshot!(report(text, &lowered));
@@ -212,8 +240,9 @@ fn broken_sql_keeps_good_parts() {
 
 #[test]
 fn jinja_inside_a_hole_is_blank() {
-    let text = "with a as (select {{ m() }} from where) select 1 as x";
+    let text = "with a as (select {{ m() }} from t where) select 1 as x";
     let lowered = build(text);
+    assert_eq!(lowered.fidelity, Fidelity::Partial);
     let hir = lowered.value.expect("hir");
     assert_eq!(role_of(&hir, "m()", text), JinjaRole::Blank);
 }
@@ -234,14 +263,21 @@ fn jinja_comments_are_blank_nodes() {
     let text = "{# note #}\nselect 1 as x";
     let hir = hir_of(text);
     assert_eq!(role_of(&hir, "note", text), JinjaRole::Blank);
-    assert_eq!(hir.jinja.values().next().expect("node").kind, JinjaKind::Comment);
+    assert_eq!(
+        hir.jinja.values().next().expect("node").kind,
+        JinjaKind::Comment
+    );
 }
 
 #[test]
 fn newlines_in_jinja_keep_later_columns_right() {
     let text = "select {{\n  m()\n}} as a,\n  b\nfrom t";
     let hir = hir_of(text);
-    let b = hir.cols.values().find(|c| hir.syms.text(c.name.folded) == "b").expect("b");
+    let b = hir
+        .cols
+        .values()
+        .find(|c| hir.syms.text(c.name.folded) == "b")
+        .expect("b");
     assert_eq!(&text[b.span.start as usize..b.span.end as usize], "b");
 }
 
@@ -252,7 +288,9 @@ fn multibyte_text_keeps_spans_on_boundaries() {
     let c = hir.cols.values().next().expect("col");
     assert_eq!(&text[c.span.start as usize..c.span.end as usize], "é3");
     let root = &hir.queries[hir.root.expect("root")];
-    let Body::Select(select) = &root.body else { panic!("select") };
+    let Body::Select(select) = &root.body else {
+        panic!("select")
+    };
     assert!(matches!(
         hir.exprs[match &select.items[1] {
             SelectItem::Expr { expr, .. } => *expr,

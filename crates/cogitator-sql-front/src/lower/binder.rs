@@ -1,9 +1,11 @@
 //! Name resolution: frames mirror the query nesting, the innermost last.
 
+use std::collections::HashMap;
+
 use cogitator_ir::hir::{FromId, Resolution, ScopeId};
 use cogitator_ir::Symbol;
 
-use super::Lowerer;
+use super::{Lowerer, INDEXED_WIDTH};
 
 /// Whether and how select-list aliases are visible in the clause being
 /// lowered. Input columns win except in ORDER BY.
@@ -28,6 +30,8 @@ pub(super) struct Frame {
     pub using: Vec<Symbol>,
     /// `(name, select-item index)` for aliases already visible.
     pub aliases: Vec<(Symbol, u32)>,
+    /// Name index over a wide `aliases`; lookup only, first entry wins.
+    pub alias_index: Option<HashMap<Symbol, u32>>,
     /// Stops the upward walk: CTE bodies and non-lateral derived tables.
     pub barrier: bool,
     /// A set operation's ORDER BY sees outputs that may be incomplete.
@@ -41,9 +45,22 @@ impl Frame {
             items: Vec::new(),
             using: Vec::new(),
             aliases: Vec::new(),
+            alias_index: None,
             barrier,
             open_outputs: false,
         }
+    }
+
+    /// Replaces the aliases wholesale, indexing them when wide.
+    pub fn set_aliases(&mut self, aliases: Vec<(Symbol, u32)>) {
+        self.alias_index = (aliases.len() > INDEXED_WIDTH).then(|| {
+            let mut index = HashMap::with_capacity(aliases.len());
+            for (name, item) in &aliases {
+                index.entry(*name).or_insert(*item);
+            }
+            index
+        });
+        self.aliases = aliases;
     }
 }
 
@@ -134,11 +151,13 @@ impl Lowerer<'_> {
             .iter()
             .filter_map(|&f| self.col_of(f, name).map(|col| (f, col)))
             .collect();
+        // Open items that did not already answer: an open item that has
+        // the name is a hit, not a second possibility.
         let opens: Vec<FromId> = frame
             .items
             .iter()
             .copied()
-            .filter(|f| self.is_open(*f))
+            .filter(|f| self.is_open(*f) && !hits.iter().any(|(hit, _)| hit == f))
             .collect();
         if frame.using.contains(&name) {
             if let Some(&(from, col)) = hits.first() {
@@ -151,7 +170,7 @@ impl Lowerer<'_> {
             ([], [from]) => Some(Resolution::OpenSchema(*from)),
             _ => {
                 let mut candidates: Vec<FromId> = hits.iter().map(|(f, _)| *f).collect();
-                candidates.extend(opens.into_iter().filter(|o| !hits.iter().any(|(f, _)| f == o)));
+                candidates.extend(opens);
                 Some(Resolution::Candidates(candidates))
             }
         }
@@ -179,6 +198,9 @@ impl Lowerer<'_> {
     }
 
     fn alias_hit(&self, frame: &Frame, name: Symbol) -> Option<Resolution> {
+        if let Some(index) = &frame.alias_index {
+            return index.get(&name).map(|item| Resolution::LateralAlias(*item));
+        }
         frame
             .aliases
             .iter()

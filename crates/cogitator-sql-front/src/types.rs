@@ -37,7 +37,12 @@ pub(crate) fn to_sql_type(data_type: &DataType) -> SqlType {
     match data_type {
         D::Bool | D::Boolean => T::Bool,
         D::TinyInt(_) | D::UTinyInt | D::TinyIntUnsigned(_) => int(8),
-        D::SmallInt(_) | D::Int2(_) | D::SmallIntUnsigned(_) | D::USmallInt | D::Int16 | D::UInt16 => int(16),
+        D::SmallInt(_)
+        | D::Int2(_)
+        | D::SmallIntUnsigned(_)
+        | D::USmallInt
+        | D::Int16
+        | D::UInt16 => int(16),
         D::Int(_)
         | D::Int4(_)
         | D::Integer(_)
@@ -47,18 +52,34 @@ pub(crate) fn to_sql_type(data_type: &DataType) -> SqlType {
         | D::Int32
         | D::UInt32
         | D::MediumInt(_) => int(32),
-        D::BigInt(_) | D::Int8(_) | D::BigIntUnsigned(_) | D::UBigInt | D::Int64 | D::UInt64 | D::Int8Unsigned(_) => {
-            int(64)
-        }
+        D::BigInt(_)
+        | D::Int8(_)
+        | D::BigIntUnsigned(_)
+        | D::UBigInt
+        | D::Int64
+        | D::UInt64
+        | D::Int8Unsigned(_) => int(64),
         D::HugeInt | D::UHugeInt | D::Int128 | D::UInt128 => int(128),
-        D::Int256 | D::UInt256 | D::Signed | D::SignedInteger | D::Unsigned | D::UnsignedInteger => {
-            T::Int { bits: None }
-        }
-        D::Numeric(info) | D::Decimal(info) | D::BigNumeric(info) | D::BigDecimal(info) | D::Dec(info) | D::DecimalUnsigned(info) | D::DecUnsigned(info) => {
-            decimal(info)
-        }
+        D::Int256
+        | D::UInt256
+        | D::Signed
+        | D::SignedInteger
+        | D::Unsigned
+        | D::UnsignedInteger => T::Int { bits: None },
+        D::Numeric(info)
+        | D::Decimal(info)
+        | D::BigNumeric(info)
+        | D::BigDecimal(info)
+        | D::Dec(info)
+        | D::DecimalUnsigned(info)
+        | D::DecUnsigned(info) => decimal(info),
         D::Float4 | D::Float32 | D::Real | D::RealUnsigned => float(32),
-        D::Float8 | D::Float64 | D::DoublePrecision | D::DoublePrecisionUnsigned | D::Double(_) | D::DoubleUnsigned(_) => float(64),
+        D::Float8
+        | D::Float64
+        | D::DoublePrecision
+        | D::DoublePrecisionUnsigned
+        | D::Double(_)
+        | D::DoubleUnsigned(_) => float(64),
         D::Float(info) | D::FloatUnsigned(info) => float_of(info),
         D::Character(_)
         | D::Char(_)
@@ -75,11 +96,20 @@ pub(crate) fn to_sql_type(data_type: &DataType) -> SqlType {
         | D::Clob(_)
         | D::CharacterLargeObject(_)
         | D::CharLargeObject(_) => T::Text,
-        D::Binary(_) | D::Varbinary(_) | D::Blob(_) | D::TinyBlob | D::MediumBlob | D::LongBlob | D::Bytes(_) | D::Bytea => T::Binary,
+        D::Binary(_)
+        | D::Varbinary(_)
+        | D::Blob(_)
+        | D::TinyBlob
+        | D::MediumBlob
+        | D::LongBlob
+        | D::Bytes(_)
+        | D::Bytea => T::Binary,
         D::Date | D::Date32 => T::Date,
         D::Time(_, _) => T::Time,
         D::Datetime(_) | D::Datetime64(..) | D::TimestampNtz(_) => T::Timestamp { tz: Tz::Without },
-        D::Timestamp(_, tz) => T::Timestamp { tz: timestamp_tz(tz) },
+        D::Timestamp(_, tz) => T::Timestamp {
+            tz: timestamp_tz(tz),
+        },
         D::Interval { .. } => T::Interval,
         D::JSON | D::JSONB => T::Json,
         D::Array(elem) => T::Array(Arc::new(array_elem(elem))),
@@ -112,7 +142,9 @@ fn decimal(info: &ExactNumberInfo) -> SqlType {
     let (p, s) = match info {
         ExactNumberInfo::None => (None, None),
         ExactNumberInfo::Precision(p) => (narrow(*p), Some(0)),
-        ExactNumberInfo::PrecisionAndScale(p, s) => (narrow(*p), u64::try_from(*s).ok().and_then(narrow)),
+        ExactNumberInfo::PrecisionAndScale(p, s) => {
+            (narrow(*p), u64::try_from(*s).ok().and_then(narrow))
+        }
     };
     SqlType::Decimal { p, s }
 }
@@ -140,9 +172,10 @@ fn timestamp_tz(tz: &TimezoneInfo) -> Tz {
 fn array_elem(elem: &ArrayElemTypeDef) -> SqlType {
     match elem {
         ArrayElemTypeDef::None => SqlType::Unknown,
-        ArrayElemTypeDef::AngleBracket(t) | ArrayElemTypeDef::Parenthesis(t) | ArrayElemTypeDef::SquareBracket(t, _) | ArrayElemTypeDef::Qualified(t, _) => {
-            to_sql_type(t)
-        }
+        ArrayElemTypeDef::AngleBracket(t)
+        | ArrayElemTypeDef::Parenthesis(t)
+        | ArrayElemTypeDef::SquareBracket(t, _)
+        | ArrayElemTypeDef::Qualified(t, _) => to_sql_type(t),
     }
 }
 
@@ -174,9 +207,15 @@ mod tests {
         assert_eq!(parsed("smallint", "snowflake"), int(16));
         assert_eq!(
             parsed("numeric(12, 2)", "postgres"),
-            SqlType::Decimal { p: Some(12), s: Some(2) }
+            SqlType::Decimal {
+                p: Some(12),
+                s: Some(2)
+            }
         );
-        assert_eq!(parsed("number", "snowflake"), SqlType::Decimal { p: None, s: None });
+        assert_eq!(
+            parsed("number", "snowflake"),
+            SqlType::Decimal { p: None, s: None }
+        );
     }
 
     #[test]
@@ -184,8 +223,14 @@ mod tests {
         assert_eq!(parsed("varchar(32)", "postgres"), SqlType::Text);
         assert_eq!(parsed("string", "bigquery"), SqlType::Text);
         assert_eq!(parsed("date", "duckdb"), SqlType::Date);
-        assert_eq!(parsed("timestamp", "duckdb"), SqlType::Timestamp { tz: Tz::Unknown });
-        assert_eq!(parsed("timestamptz", "postgres"), SqlType::Timestamp { tz: Tz::With });
+        assert_eq!(
+            parsed("timestamp", "duckdb"),
+            SqlType::Timestamp { tz: Tz::Unknown }
+        );
+        assert_eq!(
+            parsed("timestamptz", "postgres"),
+            SqlType::Timestamp { tz: Tz::With }
+        );
         assert_eq!(
             parsed("timestamp_ntz", "snowflake"),
             SqlType::Timestamp { tz: Tz::Without }
@@ -198,7 +243,10 @@ mod tests {
             parsed("array<int64>", "bigquery"),
             SqlType::Array(Arc::new(int(64)))
         );
-        assert!(matches!(parsed("struct<a int64>", "bigquery"), SqlType::Struct(_)));
+        assert!(matches!(
+            parsed("struct<a int64>", "bigquery"),
+            SqlType::Struct(_)
+        ));
     }
 
     #[test]
@@ -208,6 +256,9 @@ mod tests {
             SqlType::Other(Arc::from("not a type at all ("))
         );
         assert_eq!(parsed("", "duckdb"), SqlType::Other(Arc::from("")));
-        assert!(matches!(parsed("geography", "snowflake"), SqlType::Other(_)));
+        assert!(matches!(
+            parsed("geography", "snowflake"),
+            SqlType::Other(_)
+        ));
     }
 }

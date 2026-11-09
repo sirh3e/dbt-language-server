@@ -5,6 +5,7 @@ use cogitator_ir::hir::{ExprId, ExprKind, JinjaRole, OrderItem, WindowSpec};
 use cogitator_ir::Span;
 use sqlparser::ast::{self, Expr};
 
+use super::from::name_idents;
 use super::Lowerer;
 
 impl Lowerer<'_> {
@@ -156,17 +157,6 @@ fn call_span(this: &Lowerer<'_>, name_span: Span, args: &[ExprId]) -> Span {
     }
 }
 
-fn name_idents(name: &ast::ObjectName) -> Vec<ast::Ident> {
-    name.0
-        .iter()
-        .filter_map(|part| match part {
-            // boundary: a short path, compared and interned, never stored
-            ast::ObjectNamePart::Identifier(i) => Some(i.clone()),
-            ast::ObjectNamePart::Function(_) => None,
-        })
-        .collect()
-}
-
 /// The expression children of forms the IR has no node for. Exhaustive
 /// over what can hold column references; a form with none yields nothing.
 fn opaque_children(e: &Expr) -> Vec<&Expr> {
@@ -191,7 +181,9 @@ fn opaque_children(e: &Expr) -> Vec<&Expr> {
             out
         }
         Expr::JsonAccess { value, .. } => vec![value.as_ref()],
-        Expr::IsJson { expr, .. } | Expr::IsNormalized { expr, .. } | Expr::Convert { expr, .. } => {
+        Expr::IsJson { expr, .. }
+        | Expr::IsNormalized { expr, .. }
+        | Expr::Convert { expr, .. } => {
             vec![expr.as_ref()]
         }
         Expr::InUnnest {
@@ -208,10 +200,14 @@ fn opaque_children(e: &Expr) -> Vec<&Expr> {
             substring_from,
             substring_for,
             ..
-        } => [Some(expr.as_ref()), substring_from.as_deref(), substring_for.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect(),
+        } => [
+            Some(expr.as_ref()),
+            substring_from.as_deref(),
+            substring_for.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect(),
         Expr::Trim {
             expr,
             trim_what,

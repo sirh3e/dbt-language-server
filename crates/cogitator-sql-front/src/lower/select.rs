@@ -26,7 +26,7 @@ pub(super) struct ItemOut {
 impl Lowerer<'_> {
     pub(super) fn select(&mut self, s: &ast::Select) -> Lowered {
         self.note_unsupported_select(s);
-        let from = self.from_items(&s.from);
+        let from = self.lower_from(&s.from);
         let (items, outputs, open) = self.projection(&s.projection);
         let distinct = self.distinct(s.distinct.as_ref());
         self.mode = AliasMode::Lateral;
@@ -111,7 +111,6 @@ impl Lowerer<'_> {
             items.push(out.item);
         }
         self.mode = AliasMode::Off;
-        self.charge(outputs.len());
         (items, outputs, open)
     }
 

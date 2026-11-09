@@ -18,7 +18,7 @@ use cogitator_ir::common::{HoleKind, ModelConfig};
 use cogitator_ir::hir::{verify_hir, Body, Hir, Query, Scope, ScopeKind};
 use cogitator_ir::origin::{SourceOrigin, TemplateVariant};
 use cogitator_ir::schema::ProjectSchemas;
-use cogitator_ir::{Degradation, DegradationKind, Fidelity, Lowered, Span};
+use cogitator_ir::{Degradation, DegradationKind, Lowered, Span};
 
 mod caps;
 mod config;
@@ -33,7 +33,7 @@ mod types;
 pub use types::parse_sql_type;
 
 use mask::{scan, Scanned, Stop};
-use parse::Parsed;
+use segment::Lexed;
 
 /// One model's text and the facts the front end needs beside it.
 #[derive(Debug, Clone)]
@@ -74,13 +74,11 @@ pub fn build_hir(input: &HirInput<'_>, env: &SchemaEnv) -> Lowered<Hir> {
     }
     match scan_input(input) {
         Ok(scanned) => build_scanned(input, env, scanned),
-        Err(Stop::ControlFlow { detail, span }) => {
-            Lowered::declined(vec![Degradation::new(
-                DegradationKind::JinjaControlFlow,
-                detail,
-            )
-            .at(span)])
-        }
+        Err(Stop::ControlFlow { detail, span }) => Lowered::declined(vec![Degradation::new(
+            DegradationKind::JinjaControlFlow,
+            detail,
+        )
+        .at(span)]),
         Err(Stop::Malformed { detail }) => hole_result(
             input,
             HoleKind::Jinja,
@@ -126,10 +124,9 @@ fn build_scanned(input: &HirInput<'_>, env: &SchemaEnv, mut scanned: Scanned) ->
         );
     }
     segment::resolve_positions(&mut lexed, &mut scanned.regions);
-    let pos = std::mem::take(&mut lexed.pos);
     let has_jinja = !scanned.regions.is_empty();
-    let Parsed { outcome, degraded } = parse::parse(lexed, input.dialect, has_jinja);
-    let parsed = Parsed { outcome, degraded };
+    let Lexed { tokens, pos, .. } = lexed;
+    let parsed = parse::parse(tokens, &pos, input.dialect, has_jinja);
     let (hir, degraded) = lower::lower(parsed, &scanned, &pos, input, env);
     finish(input, hir, degraded)
 }
@@ -177,8 +174,5 @@ fn hole_result(input: &HirInput<'_>, kind: HoleKind, degraded: Vec<Degradation>)
         outputs: Vec::new(),
     });
     hir.root = Some(root);
-    let mut lowered = Lowered::partial(hir, degraded);
-    debug_assert_eq!(lowered.fidelity, Fidelity::Partial);
-    lowered.violations.clear();
-    lowered
+    Lowered::partial(hir, degraded)
 }

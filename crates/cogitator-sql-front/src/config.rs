@@ -22,7 +22,10 @@ pub(crate) fn apply_config(
                 }
             }
             "unique_key" => replace(&mut base.unique_key, columns(value, syms, rules)),
-            "partition_by" => replace(&mut base.partition_by, partition_columns(value, syms, rules)),
+            "partition_by" => replace(
+                &mut base.partition_by,
+                partition_columns(value, syms, rules),
+            ),
             "cluster_by" => replace(&mut base.cluster_by, columns(value, syms, rules)),
             "incremental_strategy" => {
                 if let Raw::Str(s) = value {
@@ -143,7 +146,10 @@ mod tests {
         assert_eq!(cfg.indexes.len(), 2);
         assert_eq!(names(&syms, &cfg.indexes[0]), vec!["x", "y"]);
         assert!(cfg.contract_enforced);
-        assert_eq!(syms.text(cfg.incremental_strategy.expect("strategy")), "merge");
+        assert_eq!(
+            syms.text(cfg.incremental_strategy.expect("strategy")),
+            "merge"
+        );
     }
 
     #[test]
