@@ -1,12 +1,11 @@
-//! HIR→MIR: CTE sharing, correlation, holes, open schemas, set ops, caps
-//! and totality on bad input.
+//! HIR→MIR: CTE sharing, correlation, holes and open schemas.
 
 mod common;
 
 use cogitator_ir::common::{BinaryOp, HoleKind, JoinKind, SetOpKind};
-use cogitator_ir::hir::{Body, ExprKind, FromKind, GroupBy, RelTarget, Resolution};
+use cogitator_ir::hir::{Body, ExprKind, FromKind, Resolution};
 use cogitator_ir::mir::{print_mir, HirNode, Origin, RelOp, ScalarKind};
-use cogitator_ir::{ColType, DegradationKind, Fidelity, Idx, Invariant, Nullability, SqlType};
+use cogitator_ir::{DegradationKind, Fidelity};
 use cogitator_lower::lower_to_mir;
 use common::*;
 

@@ -1,9 +1,9 @@
-//! Queries: CTE definitions, set operations, VALUES, holes, and the
-//! ORDER BY and LIMIT of non-SELECT bodies.
+//! Queries: dispatch over the body, holes, correlation isolation and
+//! LIMIT.
 
-use cogitator_ir::common::{HoleKind, Lit, SetOpKind};
-use cogitator_ir::hir::{Body, Cte, CteId, ExprId, ExprKind, Query, QueryId, Resolution};
-use cogitator_ir::mir::{ColId, CteDef, HirNode, ProvId, RelId, RelOp, ScalarId, SortKey};
+use cogitator_ir::common::HoleKind;
+use cogitator_ir::hir::{Body, ExprId, ExprKind, Query, QueryId};
+use cogitator_ir::mir::{ColId, HirNode, ProvId, RelId, RelOp, ScalarId};
 use cogitator_ir::{ColType, DegradationKind, Span, Symbol};
 
 use super::{Ctx, OpaqueSpec, MAX_QUERY_DEPTH};
@@ -66,7 +66,13 @@ impl Ctx<'_> {
     }
 
     /// An `Opaque` with no inputs, exposing only demanded columns.
-    pub(super) fn hole(&mut self, demand: &[Symbol], kind: HoleKind, span: Span, prov: ProvId) -> QueryOut {
+    pub(super) fn hole(
+        &mut self,
+        demand: &[Symbol],
+        kind: HoleKind,
+        span: Span,
+        prov: ProvId,
+    ) -> QueryOut {
         let spec = OpaqueSpec {
             cols: demand
                 .iter()

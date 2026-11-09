@@ -191,10 +191,13 @@ fn window_and_qualify_lower_to_window_and_filter() {
         s.qualify = Some(qualify)
     });
     let mir = clean(&b.finish(root));
-    let partitions = mir.reachable().into_iter().find_map(|id| match &mir.rels[id].op {
-        RelOp::Window { funcs, .. } => Some(funcs[0].1.partition_by.len()),
-        _ => None,
-    });
+    let partitions = mir
+        .reachable()
+        .into_iter()
+        .find_map(|id| match &mir.rels[id].op {
+            RelOp::Window { funcs, .. } => Some(funcs[0].1.partition_by.len()),
+            _ => None,
+        });
     assert_eq!(partitions, Some(1), "the printer omits partitions");
     insta::assert_snapshot!(print_mir(&mir));
 }

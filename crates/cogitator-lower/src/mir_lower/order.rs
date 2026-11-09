@@ -4,10 +4,8 @@
 
 use std::collections::BTreeSet;
 
-use cogitator_ir::common::{HoleKind, Lit};
-use cogitator_ir::hir::{
-    Distinct, ExprId, ExprKind, JinjaId, OrderItem, Query, Resolution, Select,
-};
+use cogitator_ir::common::HoleKind;
+use cogitator_ir::hir::{Distinct, JinjaId, Query, Select};
 use cogitator_ir::mir::{ColId, HirNode, ProvId, RelId, RelOp, ScalarId, ScalarKind, SortKey};
 use cogitator_ir::{ColType, DegradationKind, Span, Symbol};
 

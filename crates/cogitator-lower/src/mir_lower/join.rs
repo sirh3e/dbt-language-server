@@ -200,7 +200,13 @@ impl Ctx<'_> {
     /// `Unnest` is a lateral cross product over `input`. Row preservation
     /// of `LEFT JOIN UNNEST` has no MIR form; it is reported, and the
     /// new columns are typed nullable.
-    pub(super) fn unnest(&mut self, input: RelId, id: FromId, kind: JoinKind, nullable: bool) -> RelId {
+    pub(super) fn unnest(
+        &mut self,
+        input: RelId,
+        id: FromId,
+        kind: JoinKind,
+        nullable: bool,
+    ) -> RelId {
         let hir = self.hir;
         let Some(item) = hir.from.get(id) else {
             return input;

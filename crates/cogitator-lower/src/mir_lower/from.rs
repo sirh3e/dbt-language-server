@@ -1,13 +1,12 @@
 //! FROM items: scans, CTE references, derived tables, joins and UNNEST.
 //! Each item records a `Binding`.
 
-use cogitator_ir::common::{BinaryOp, HoleKind, JoinKind};
-use cogitator_ir::hir::{self, From, FromId, FromKind, JoinCond, QueryId, RelTarget};
-use cogitator_ir::mir::{ColId, HirNode, ProvId, RelId, RelOp, ScalarId, TableDef, TableRef};
+use cogitator_ir::common::{HoleKind, JoinKind};
+use cogitator_ir::hir::{self, From, FromId, FromKind, QueryId, RelTarget};
+use cogitator_ir::mir::{ColId, HirNode, ProvId, RelId, RelOp, TableDef, TableRef};
 use cogitator_ir::schema::Completeness;
-use cogitator_ir::{ColType, DegradationKind, Nullability, Span, Symbol};
+use cogitator_ir::{ColType, DegradationKind, Span, Symbol};
 
-use super::demand::leaves;
 use super::{Binding, Ctx, OpaqueSpec, MAX_FROM_DEPTH};
 
 impl Ctx<'_> {

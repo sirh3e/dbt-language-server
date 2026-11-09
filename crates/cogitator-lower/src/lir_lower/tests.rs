@@ -4,12 +4,11 @@ mod plan;
 
 use cogitator_ir::common::BinaryOp;
 use cogitator_ir::lir::{
-    print_lir, Backend, CtePolicy, Estimate, JoinHint, KeyKind, Lir, PhysColumn, PhysOp,
-    PhysicalFacts, PruneUse, TableFacts,
+    print_lir, Backend, KeyKind, Lir, PhysColumn, PhysOp, PhysicalFacts, PruneUse, TableFacts,
 };
-use cogitator_ir::mir::{ColId, Mir, RelOp, ScalarId, ScalarKind, TableId};
+use cogitator_ir::mir::{ColId, Mir, ScalarId};
 use cogitator_ir::testkit::{int_col, MirBuilder};
-use cogitator_ir::{ColType, Fidelity, Nullability, SqlType};
+use cogitator_ir::{ColType, Nullability, SqlType};
 
 use crate::backends::for_backend;
 use crate::lower_to_lir;
