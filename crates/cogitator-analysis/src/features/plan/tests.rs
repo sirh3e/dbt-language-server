@@ -60,7 +60,7 @@ impl Facts {
         self
     }
 
-    fn input<'a>(&'a self, text: &'a str, model: Option<&'a str>) -> PlanInput<'a> {
+    pub(super) fn input<'a>(&'a self, text: &'a str, model: Option<&'a str>) -> PlanInput<'a> {
         PlanInput {
             text,
             dialect: &self.dialect,

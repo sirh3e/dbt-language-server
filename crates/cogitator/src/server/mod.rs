@@ -72,7 +72,9 @@ pub struct SharedToggles {
     pub warehouse_columns: std::sync::atomic::AtomicBool,
     /// `perf`/`perf_rules`: an atomic can't hold a severity per rule, so
     /// readers clone this snapshot (cheap) and a config change swaps it.
-    pub perf: std::sync::RwLock<Arc<cogitator_analysis::features::plan::diagnostics_config::PerfSettings>>,
+    pub perf: std::sync::RwLock<
+        Arc<cogitator_analysis::features::plan::diagnostics_config::PerfSettings>,
+    >,
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by

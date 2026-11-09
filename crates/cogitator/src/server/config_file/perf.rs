@@ -80,8 +80,10 @@ mod tests {
 
     #[test]
     fn bad_values_keep_the_launch_value() {
-        let settings = file("perf:\n  profile: loud\nperf_rules:\n  not.a_rule: warning\n  join.cartesian: nope\n")
-            .perf_settings(&PerfSettings::default());
+        let settings = file(
+            "perf:\n  profile: loud\nperf_rules:\n  not.a_rule: warning\n  join.cartesian: nope\n",
+        )
+        .perf_settings(&PerfSettings::default());
         assert_eq!(settings, PerfSettings::default());
     }
 
@@ -92,8 +94,9 @@ mod tests {
         let off = file("lint:\n  select_star: false\n").perf_settings(&PerfSettings::default());
         assert_eq!(off.rules[SELECT_STAR_RULE], RuleOverride::Off);
         // an explicit perf_rules entry is more specific
-        let explicit = file("lint:\n  select_star: true\nperf_rules:\n  cross.select_star_chain: off\n")
-            .perf_settings(&PerfSettings::default());
+        let explicit =
+            file("lint:\n  select_star: true\nperf_rules:\n  cross.select_star_chain: off\n")
+                .perf_settings(&PerfSettings::default());
         assert_eq!(explicit.rules[SELECT_STAR_RULE], RuleOverride::Off);
     }
 
@@ -114,10 +117,7 @@ mod tests {
         let profiles = std::sync::Mutex::new(ProfilesConfig::default());
         let first = file("perf_rules:\n  join.cartesian: warning\n");
         let changes = diff(&FileConfig::default(), &first, &baseline);
-        assert_eq!(
-            apply(&changes, &profiles, &limits, &toggles),
-            vec!["perf"]
-        );
+        assert_eq!(apply(&changes, &profiles, &limits, &toggles), vec!["perf"]);
         assert_eq!(
             toggles.perf.read().unwrap().rules["join.cartesian"],
             RuleOverride::Set(Severity::Warning)

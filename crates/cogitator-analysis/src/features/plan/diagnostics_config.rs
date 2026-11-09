@@ -4,8 +4,8 @@
 
 use std::collections::BTreeMap;
 
-pub use cogitator_rules::meta::Severity;
 use cogitator_rules::meta::RuleClass;
+pub use cogitator_rules::meta::Severity;
 use cogitator_rules::REGISTRY;
 
 /// The named rule set (`perf.profile`).
@@ -248,10 +248,7 @@ mod tests {
         // an explicit override is the user's call, not evidence's
         let raised = with(
             PerfProfile::Strict,
-            &[(
-                "join.distinct_fanout",
-                RuleOverride::Set(Severity::Warning),
-            )],
+            &[("join.distinct_fanout", RuleOverride::Set(Severity::Warning))],
         );
         assert_eq!(
             raised.severity("join.distinct_fanout", Severity::Hint),

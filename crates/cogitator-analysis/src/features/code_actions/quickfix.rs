@@ -26,7 +26,11 @@ pub fn quickfixes(uri: &str, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
                 let action = CodeAction::quickfix(fix.title.clone(), diagnostic.clone(), edit);
                 let preferred = fix.preserving && !preferred_used;
                 preferred_used |= preferred;
-                out.push(if preferred { action.preferred() } else { action });
+                out.push(if preferred {
+                    action.preferred()
+                } else {
+                    action
+                });
             }
             continue;
         }
@@ -54,7 +58,11 @@ pub fn quickfixes(uri: &str, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
 /// diagnostic's first preserving fix, skipping one that would overlap an
 /// edit already chosen. Only built when the client asked for a
 /// `source.fixAll` kind (LSP clients request these explicitly).
-pub fn fix_all(uri: &str, diagnostics: &[Diagnostic], only: Option<&[String]>) -> Option<CodeAction> {
+pub fn fix_all(
+    uri: &str,
+    diagnostics: &[Diagnostic],
+    only: Option<&[String]>,
+) -> Option<CodeAction> {
     let requested = only?
         .iter()
         .any(|k| k.starts_with("source") && FIX_ALL_KIND.starts_with(k.as_str()));
@@ -188,7 +196,10 @@ mod tests {
         assert_eq!(action.kind, Some(FIX_ALL_KIND));
         let wire = serde_json::to_value(action.edit.as_ref().expect("edit")).unwrap();
         assert_eq!(
-            wire["documentChanges"][0]["edits"].as_array().unwrap().len(),
+            wire["documentChanges"][0]["edits"]
+                .as_array()
+                .unwrap()
+                .len(),
             1,
             "{wire}"
         );
@@ -198,7 +209,10 @@ mod tests {
     fn fix_all_needs_an_explicit_request_and_a_preserving_fix() {
         let diags = [fix_diag(1, false)];
         let only = ["source.fixAll".to_string()];
-        assert!(fix_all("file:///m.sql", &diags, Some(&only)).is_none(), "no P fix");
+        assert!(
+            fix_all("file:///m.sql", &diags, Some(&only)).is_none(),
+            "no P fix"
+        );
         let p = [fix_diag(1, true)];
         assert!(fix_all("file:///m.sql", &p, None).is_none());
         let quickfix = ["quickfix".to_string()];
@@ -224,7 +238,13 @@ mod tests {
         let only = ["source".to_string()];
         let action = fix_all("file:///m.sql", &[wide, a], Some(&only)).expect("bundle");
         let wire = serde_json::to_value(action.edit.as_ref().expect("edit")).unwrap();
-        assert_eq!(wire["documentChanges"][0]["edits"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            wire["documentChanges"][0]["edits"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]

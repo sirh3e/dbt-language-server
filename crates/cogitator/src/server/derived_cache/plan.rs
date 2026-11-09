@@ -45,7 +45,12 @@ impl DerivedCache {
     /// The cached plan for `uri` at exactly this key, never computing.
     /// The push path's only access: it must not plan on the dispatcher,
     /// and a probe is not a cache hit or miss in the counters.
-    pub fn plan_cached(&self, uri: &str, generation: u64, revision: u64) -> Option<Arc<CachedPlan>> {
+    pub fn plan_cached(
+        &self,
+        uri: &str,
+        generation: u64,
+        revision: u64,
+    ) -> Option<Arc<CachedPlan>> {
         self.cached_plan(uri, (generation, revision))
     }
 

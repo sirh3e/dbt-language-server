@@ -107,11 +107,8 @@ impl Dispatcher {
         let Some(doc) = self.documents.get(uri) else {
             return Vec::new();
         };
-        let revision = crate::server::handlers::plan::schema_revision(
-            ctx,
-            artifacts,
-            perf.catalog_stats,
-        );
+        let revision =
+            crate::server::handlers::plan::schema_revision(ctx, artifacts, perf.catalog_stats);
         self.derived
             .plan_cached(uri, doc.generation, revision)
             .map(|plan| crate::server::diagnostics::perf_diagnostics(doc, &plan, &perf))
@@ -120,7 +117,11 @@ impl Dispatcher {
 
     /// The live perf settings: a cheap Arc clone.
     pub(super) fn perf_settings(&self) -> Arc<PerfSettings> {
-        self.toggles.perf.read().expect("perf settings lock").clone()
+        self.toggles
+            .perf
+            .read()
+            .expect("perf settings lock")
+            .clone()
     }
 
     /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled
