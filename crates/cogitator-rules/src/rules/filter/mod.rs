@@ -6,4 +6,5 @@ pub mod non_sargable;
 pub mod partition_or;
 mod predicate;
 mod range;
+mod range_fix;
 pub(crate) mod support;

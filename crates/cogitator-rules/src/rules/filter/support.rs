@@ -19,6 +19,8 @@ pub(crate) const BIGQUERY_PARTITION_DOC: &str =
     "https://docs.cloud.google.com/bigquery/docs/querying-partitioned-tables";
 pub(crate) const BIGQUERY_CLUSTER_DOC: &str =
     "https://docs.cloud.google.com/bigquery/docs/querying-clustered-tables";
+pub(crate) const BIGQUERY_COSTS_DOC: &str =
+    "https://docs.cloud.google.com/bigquery/docs/best-practices-costs";
 pub(crate) const SNOWFLAKE_CLUSTERING_DOC: &str =
     "https://docs.snowflake.com/en/user-guide/tables-clustering-micropartitions";
 pub(crate) const POSTGRES_EXPRESSION_DOC: &str =
