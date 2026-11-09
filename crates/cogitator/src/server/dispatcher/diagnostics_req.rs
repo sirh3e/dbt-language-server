@@ -91,13 +91,14 @@ impl Dispatcher {
         let perf = self.perf_settings();
         self.offload_blocking(id, "textDocument/diagnostic", move || {
             // the pull path affords lineage (cached per generation), so
-            // the undocumented-columns check runs here, not on push
+            // the undocumented-columns and contract checks run here, not
+            // on push; typed, so an expanded star counts as its columns
             let lineage = (lints.undocumented_columns && !uri.ends_with(".yml")).then(|| {
-                crate::server::handlers::commands::lineage_for(
+                crate::server::handlers::lineage::typed_lineage_for(
+                    &snap,
                     &derived,
-                    &snap.ctx,
-                    snap.doc.as_deref(),
                     &uri,
+                    artifact_cap,
                 )
             });
             let mut items = crate::server::diagnostics::static_diagnostics(

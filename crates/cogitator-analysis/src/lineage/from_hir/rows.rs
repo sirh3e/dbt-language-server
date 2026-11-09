@@ -2,6 +2,7 @@
 
 use cogitator_ir::hir::{Body, ExprId, ExprKind, FromId, Ident, QueryId, SelectItem};
 
+use super::lookup::Wanted;
 use super::{unique, Ctx, Row, Star, Walker};
 use crate::lineage::SourceRef;
 
@@ -16,11 +17,14 @@ impl Walker<'_> {
                     scope: query.scope,
                     select: Some(select),
                 };
-                select
-                    .items
-                    .iter()
-                    .filter_map(|item| self.item_row(item, ctx, id))
-                    .collect()
+                let mut rows = Vec::with_capacity(select.items.len());
+                for item in &select.items {
+                    match self.star_columns(item, ctx) {
+                        Some(columns) => rows.extend(columns),
+                        None => rows.extend(self.item_row(item, ctx, id)),
+                    }
+                }
+                rows
             }
             Body::SetOp { by_name, l, r, .. } => {
                 let (left, right) = (self.rows_of(*l), self.rows_of(*r));
@@ -33,6 +37,64 @@ impl Walker<'_> {
             Body::Values(rows) => self.values_rows(rows, id),
             Body::Hole(_) => Vec::new(),
         }
+    }
+
+    /// One row per column of a star over `Closed` inputs. `None` when the
+    /// star's column list is not known in full, or the item is no star:
+    /// the caller then keeps the `*` row, so nothing here guesses.
+    fn star_columns(&mut self, item: &SelectItem, ctx: Ctx<'_>) -> Option<Vec<Row>> {
+        let SelectItem::Star {
+            from,
+            exclude,
+            replace,
+            ..
+        } = item
+        else {
+            return None;
+        };
+        if !self.expand_stars {
+            return None;
+        }
+        let targets = match from {
+            Some(from) => vec![*from],
+            None => self.scope_leaves(ctx),
+        };
+        let hir = self.hir;
+        let known = |t: &FromId| {
+            hir.from
+                .get(*t)
+                .is_some_and(|f| !f.open && !f.output.is_empty())
+        };
+        if targets.is_empty() || !targets.iter().all(known) {
+            return None;
+        }
+        let mut rows = Vec::new();
+        for target in targets {
+            let item = hir.from.get(target)?;
+            for (position, col) in item.output.iter().enumerate() {
+                if exclude.iter().any(|e| e.folded == col.name) {
+                    continue;
+                }
+                let replaced = replace.iter().find(|(_, name)| name.folded == col.name);
+                let label = hir.syms.text(col.name).to_string(); // boundary: reports own names
+                let wanted = Wanted {
+                    key: Some(col.name),
+                    label: &label,
+                    bound: u32::try_from(position).ok(),
+                };
+                let sources = match replaced {
+                    Some((expr, _)) => self.expr_sources(*expr, ctx),
+                    None => self.item_sources(target, wanted, ctx),
+                };
+                rows.push(Row {
+                    key: Some(col.name),
+                    label: Some(label),
+                    star: None,
+                    sources: unique(sources),
+                });
+            }
+        }
+        Some(rows)
     }
 
     /// `None` only for a `t.*` whose qualifier names nothing in scope.
@@ -128,7 +190,6 @@ impl Walker<'_> {
             .find(|o| o.expr == Some(expr))?;
         let key = output.name?;
         let written = self
-            .doc
             .text
             .get(output.span.start as usize..output.span.end as usize)?;
         let last = written.rsplit('.').next()?.trim_matches('"');

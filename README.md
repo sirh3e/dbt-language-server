@@ -302,13 +302,6 @@ perf_rules:                # per-rule severity or off; wins over the profile
   filter.non_sargable: off
 ```
 
-Plan findings report through pull diagnostics, and the next save
-republishes them for push clients (the push path reuses a computed plan and
-never plans). A `{# cogitator: ignore join.cartesian -- reason #}` comment, or
-`-- cogitator: ignore …`, silences a rule on that line or the next;
-`ignore-file` covers the whole file. Suppressed findings stay visible in
-`dbt.queryPlan`.
-
 Hot semantics are **changed-keys-only, last writer wins**: a reload
 applies only keys whose file value changed, so editing `target:`
 updates the live target even after a `dbt.setTarget`, while untouched
@@ -323,6 +316,24 @@ Launch precedence: defaults < config file < CLI flags <
 only apply when the file is passed at launch via `--config <path>`;
 found in the root file, they warn to restart instead. `dbt.status`
 reports the file's path, whether it loaded, and the last parse error.
+
+## Performance advice
+
+Off by default. Set `perf.profile` in `cogitator.yml` to `recommended` (the
+rules whose findings are claims) or `strict` (everything), or name single
+rules under `perf_rules`; `dbt.queryPlan` shows the plan whichever you pick.
+
+The advice comes from reading your SQL statically: nothing here runs a query
+or connects to a warehouse, and SQL changes only through a quick fix you
+accept. Findings report through pull diagnostics, and the next save
+republishes them for push clients (the push path reuses a computed plan and
+never plans). A model with Jinja control flow is planned from
+`target/compiled` when that exists.
+
+Suppress a finding with a `{# cogitator: ignore join.cartesian -- reason #}`
+comment, or `-- cogitator: ignore …`, on the same line or the line above;
+`ignore-file` covers the whole file. Suppressed findings stay visible in
+`dbt.queryPlan`.
 
 ## Observability
 

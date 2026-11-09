@@ -89,8 +89,24 @@ which omits node ids) is the fixpoint test.
 Each degrades explicitly. Front end: 512 KiB text, 40k tokens, expression
 depth 256, 200k IR nodes. The pass manager has its own smaller budget (04).
 
-## Performance targets (proposed, not measured)
+## Performance targets
 
 Full plan on a cache miss p95 ≤ 15 ms, offloaded only; cached plan ≤ 1 ms.
 The push-diagnostics path reuses a cached plan and never computes.
-`DerivedCache` slot keyed by (uri, generation, schema revision).
+`DerivedCache` slot keyed by (uri, generation, plan key; see 09).
+
+Measured on an Apple M1 Pro (8P+2E, 32 GB, release build), `benches/plan_realistic.rs`:
+
+| Model | Size | Miss p50 / p95 | Cached probe + diagnostics p95 |
+|---|---|---|---|
+| Jinja mart, six CTEs | 1.3 KiB | 1.1 / 1.4 ms | 0.002 ms |
+| Control flow, compiled route | 0.5 KiB | 0.5 / 0.7 ms | 0.0004 ms |
+| Large mart, 200 columns, eight CTEs | 13 KiB | 8.5 / 9.3 ms | 0.006 ms |
+
+## Status
+
+Delivered: the four IR crates, the oracles (07), the plan view and
+`dbt.queryPlan` (09), the compiled fallback, the project schema job, the
+tranche 1 rules and diagnostics with suppression (08), and the lineage
+migration (09). Tranche 2 rules are being delivered rule by rule (05): a
+rule still under a stub reports nothing.

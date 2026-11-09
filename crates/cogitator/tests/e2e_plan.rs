@@ -242,3 +242,82 @@ fn schema_job_gives_the_plan_a_revision_closed_schemas_and_demand() {
     );
     lsp.shutdown();
 }
+
+fn column_lineage(lsp: &mut harness::Lsp, uri: &str) -> Value {
+    lsp.request(
+        "workspace/executeCommand",
+        json!({"command": "dbt.columnLineage", "arguments": [{"uri": uri}]}),
+    )
+}
+
+#[test]
+fn column_lineage_answers_control_flow_from_fresh_compiled_sql() {
+    let project = jaffle();
+    write_orders_compiled(&project);
+    let (mut lsp, _uri) = project.booted();
+    let orders = cogitator_lsp::fs_path_to_uri(&project.root.join("models/orders.sql"));
+
+    let response = column_lineage(&mut lsp, &orders);
+    let result = &response["result"];
+    assert_eq!(result["origin"], "compiled", "{response}");
+    let columns = result["columns"].as_array().expect("columns");
+    let amount = columns
+        .iter()
+        .find(|c| c["name"] == "amount")
+        .expect("amount column");
+    assert!(
+        amount["sources"]
+            .as_array()
+            .is_some_and(|s| s.iter().any(|s| s["name"] == "stg_payments")),
+        "{amount}"
+    );
+    lsp.shutdown();
+}
+
+#[test]
+fn column_lineage_refuses_stale_compiled_sql() {
+    let project = jaffle();
+    write_orders_compiled(&project);
+    let model = project.root.join("models/orders.sql");
+    let newer = std::time::SystemTime::now() + std::time::Duration::from_secs(120);
+    std::fs::File::options()
+        .write(true)
+        .open(&model)
+        .and_then(|f| f.set_modified(newer))
+        .expect("touch model");
+    let (mut lsp, _uri) = project.booted();
+    let orders = cogitator_lsp::fs_path_to_uri(&model);
+
+    let response = column_lineage(&mut lsp, &orders);
+    assert_eq!(response["result"], Value::Null, "{response}");
+    lsp.shutdown();
+}
+
+#[test]
+fn column_lineage_refuses_compiled_sql_while_the_model_has_unsaved_edits() {
+    let project = jaffle();
+    write_orders_compiled(&project);
+    let model = project.root.join("models/orders.sql");
+    let text = std::fs::read_to_string(&model).expect("model");
+    let (mut lsp, _uri) = project.booted();
+    let orders = cogitator_lsp::fs_path_to_uri(&model);
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {
+            "uri": orders, "languageId": "sql", "version": 1, "text": text
+        }}),
+    );
+    let response = column_lineage(&mut lsp, &orders);
+    assert_eq!(response["result"]["origin"], "compiled", "{response}");
+    // an edit too small for the coverage check: only the disk comparison sees it
+    lsp.notify(
+        "textDocument/didChange",
+        json!({
+            "textDocument": {"uri": orders, "version": 2},
+            "contentChanges": [{"text": format!("{text}\n-- unsaved")}]
+        }),
+    );
+    let response = column_lineage(&mut lsp, &orders);
+    assert_eq!(response["result"], Value::Null, "{response}");
+    lsp.shutdown();
+}

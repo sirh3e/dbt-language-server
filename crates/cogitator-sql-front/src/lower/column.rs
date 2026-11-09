@@ -56,6 +56,25 @@ impl Lowerer<'_> {
         qualifier: &[Ident],
     ) -> Option<ExprId> {
         let first = *qualifier.first()?;
+        // `t.s.g`: `t` names a FROM item and `s` is the struct column
+        if let [_, second, ..] = qualifier {
+            let qualified = self.resolve(&[first.folded], second.folded);
+            let qualified = self.affordable(qualified);
+            if qualified != Resolution::Unresolved {
+                let col = self.col_ref(
+                    self.ident_span(path.get(1)?),
+                    vec![first],
+                    *second,
+                    Some(qualified),
+                );
+                return Some(self.alloc_expr(
+                    span,
+                    ExprKind::Opaque {
+                        children: vec![col],
+                    },
+                ));
+            }
+        }
         let head = self.resolve(&[], first.folded);
         let head = self.affordable(head);
         if head == Resolution::Unresolved {

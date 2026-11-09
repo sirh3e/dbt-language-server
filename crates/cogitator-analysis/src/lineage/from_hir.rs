@@ -12,7 +12,7 @@ use cogitator_dialects::Dialect;
 use cogitator_ir::common::ModelConfig;
 use cogitator_ir::hir::{Body, Hir, Ident, QueryId, ScopeId, Select};
 use cogitator_ir::origin::{SourceOrigin, TemplateVariant};
-use cogitator_ir::{DegradationKind, Symbol};
+use cogitator_ir::{DegradationKind, Lowered, Symbol};
 use cogitator_parser::{JinjaKind, ParsedDocument, TokenKind};
 use cogitator_sql_front::{build_hir, HirInput, SchemaEnv};
 
@@ -30,15 +30,34 @@ pub fn column_lineage(doc: &ParsedDocument, dialect: &Dialect) -> Option<ModelLi
     if has_control_block(doc) {
         return None;
     }
-    let input = HirInput {
+    let lowered = build_hir(&template_input(doc, dialect), &SchemaEnv::default());
+    let columns = columns_of(&lowered, &doc.text, Some(doc), false)?;
+    Some(ModelLineage {
+        columns,
+        origin: None,
+    })
+}
+
+pub(super) fn template_input<'a>(doc: &'a ParsedDocument, dialect: &'a Dialect) -> HirInput<'a> {
+    HirInput {
         text: &doc.text,
         dialect,
         origin: SourceOrigin::Template {
             variant: TemplateVariant::Plain,
         },
         config: ModelConfig::default(),
-    };
-    let lowered = build_hir(&input, &SchemaEnv::default());
+    }
+}
+
+/// The columns of a lowered HIR, `None` when the front end gave up or cut
+/// the query short. `text` is what the HIR's spans index; `doc` is `None`
+/// on the compiled route, which has no template to read Jinja from.
+pub(super) fn columns_of(
+    lowered: &Lowered<Hir>,
+    text: &str,
+    doc: Option<&ParsedDocument>,
+    expand_stars: bool,
+) -> Option<Vec<ColumnLineage>> {
     let incomplete = lowered.degraded.iter().any(|d| {
         matches!(
             d.kind,
@@ -48,7 +67,7 @@ pub fn column_lineage(doc: &ParsedDocument, dialect: &Dialect) -> Option<ModelLi
     if incomplete {
         return None;
     }
-    let hir = lowered.value?;
+    let hir = lowered.value.as_ref()?;
     let root = hir.root?;
     if !matches!(
         hir.queries.get(root)?.body,
@@ -56,19 +75,15 @@ pub fn column_lineage(doc: &ParsedDocument, dialect: &Dialect) -> Option<ModelLi
     ) {
         return None;
     }
-    let mut walker = Walker::new(&hir, doc);
-    let columns = walker
-        .rows_of(root)
-        .iter()
-        .filter_map(Row::to_column)
-        .collect();
-    Some(ModelLineage { columns })
+    let mut walker = Walker::new(hir, text, doc, expand_stars);
+    let rows = walker.rows_of(root);
+    Some(rows.iter().filter_map(Row::to_column).collect())
 }
 
 /// The 07 §3.2 rule: any statement tag but config and set declines. That
 /// includes a lone `{% if is_incremental() %}`, which HIR could analyse as
 /// its `Incremental` variant but lineage has never answered for.
-fn has_control_block(doc: &ParsedDocument) -> bool {
+pub(super) fn has_control_block(doc: &ParsedDocument) -> bool {
     let mut tokens = doc.tokens.iter();
     while let Some(open) = tokens.next() {
         if open.kind != TokenKind::JinjaOpen(JinjaKind::Stmt) {
@@ -128,17 +143,30 @@ struct Ctx<'h> {
 /// Per-query results memoised for one walk, since CTEs are read repeatedly.
 struct Walker<'h> {
     hir: &'h Hir,
-    doc: &'h ParsedDocument,
+    /// The text the spans index: the template, or the compiled SQL.
+    text: &'h str,
+    /// The template's tokens, for `{{ adapter.get_relation(ref('a')) }}`.
+    doc: Option<&'h ParsedDocument>,
+    /// Expand a star over known columns; off on the plain route, whose
+    /// answers the corpus snapshots pin.
+    expand_stars: bool,
     memo: Vec<Option<Rc<[Row]>>>,
     /// Guards `WITH RECURSIVE`: a query being built has no rows yet.
     visiting: Vec<bool>,
 }
 
 impl<'h> Walker<'h> {
-    fn new(hir: &'h Hir, doc: &'h ParsedDocument) -> Self {
+    fn new(
+        hir: &'h Hir,
+        text: &'h str,
+        doc: Option<&'h ParsedDocument>,
+        expand_stars: bool,
+    ) -> Self {
         Self {
             hir,
+            text,
             doc,
+            expand_stars,
             memo: vec![None; hir.queries.len()],
             visiting: vec![false; hir.queries.len()],
         }
@@ -163,7 +191,6 @@ impl<'h> Walker<'h> {
     /// The identifier as written, unquoted; the folded form is for matching.
     fn surface(&self, ident: Ident) -> String {
         let written = self
-            .doc
             .text
             .get(ident.span.start as usize..ident.span.end as usize)
             .filter(|s| !s.is_empty());

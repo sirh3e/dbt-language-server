@@ -6,7 +6,7 @@ use cogitator_parser::{DocumentParser, JinjaSqlParser};
 
 use super::{column_lineage, ModelLineage, SourceRef};
 
-fn render(lineage: &ModelLineage) -> String {
+pub(super) fn render(lineage: &ModelLineage) -> String {
     let mut out = String::new();
     for column in &lineage.columns {
         out.push_str(&column.name);
@@ -176,6 +176,14 @@ fn lateral_alias_reads_the_item() {
     insta::assert_snapshot!(lineage_of(concat!(
         "with c as (select a from {{ ref('m') }})\n",
         "select a + 1 as b, b * 2 as d from c",
+    )));
+}
+
+#[test]
+fn struct_paths_and_subscripts_name_one_column() {
+    insta::assert_snapshot!(lineage_of(concat!(
+        "select s.g[1] as a, t.arr[2] as b, t.s.g[3] as c, arr[idx] as d, x[1].y as e ",
+        "from {{ ref('m') }} t",
     )));
 }
 

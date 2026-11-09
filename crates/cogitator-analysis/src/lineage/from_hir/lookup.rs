@@ -97,24 +97,24 @@ impl Walker<'_> {
     /// A relation only known as Jinja: `{{ adapter.get_relation(ref('a')) }}`
     /// still names `a`; with no static name anywhere there is no source.
     fn jinja_relation(&self, span: Option<Span>, wanted: Wanted<'_>) -> Vec<SourceRef> {
-        let Some(span) = span else {
+        let (Some(span), Some(doc)) = (span, self.doc) else {
             return Vec::new();
         };
-        let start = self.doc.tokens.partition_point(|t| t.start < span.start);
-        let end = self.doc.tokens.partition_point(|t| t.start < span.end);
-        let Some(region) = self.doc.tokens.get(start..end) else {
+        let start = doc.tokens.partition_point(|t| t.start < span.start);
+        let end = doc.tokens.partition_point(|t| t.start < span.end);
+        let Some(region) = doc.tokens.get(start..end) else {
             return Vec::new();
         };
         if let Some(reference) = region.iter().find(|t| t.kind == TokenKind::Ref) {
-            return vec![model(self.doc.literal(reference), wanted.label)];
+            return vec![model(doc.literal(reference), wanted.label)];
         }
         let source = region.iter().find(|t| t.kind == TokenKind::SourceName);
         let table = region.iter().find(|t| t.kind == TokenKind::SourceTable);
         match (source, table) {
             (Some(source), Some(table)) => vec![SourceRef::Source {
-                source: self.doc.literal(source).to_string(), // boundary: reports own names
-                table: self.doc.literal(table).to_string(),   // boundary: as above
-                column: wanted.label.to_string(),             // boundary: as above
+                source: doc.literal(source).to_string(), // boundary: reports own names
+                table: doc.literal(table).to_string(),   // boundary: as above
+                column: wanted.label.to_string(),        // boundary: as above
             }],
             _ => Vec::new(),
         }
