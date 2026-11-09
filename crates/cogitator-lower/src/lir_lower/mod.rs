@@ -3,6 +3,7 @@
 //! which the MIR verifier guarantees is operands-first; relations under
 //! subqueries lower too, so their scans carry pruning facts.
 
+mod classify;
 mod prune;
 #[cfg(test)]
 mod tests;

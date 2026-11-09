@@ -19,12 +19,8 @@
 //! | column alone | prunes | "use simple filter expressions" |
 //! | `CAST`, function or arithmetic on it | blocks | a complex filter expression "is not optimized"; the page's example is `CAST(customer_id AS STRING)` |
 //! | compared to another column | blocks | "block pruning cannot be applied" |
-//! | filter skips an earlier clustered column | blocks | filter "in left-to-right sort order, starting with the first column" |
+//! | filter skips an earlier clustered column | unknown | pruning is "typically less effective", not absent |
 //! | subquery or `OR` | unknown | not mentioned |
-//!
-//! The last-but-one row is stronger than the page, which says skipping a
-//! leading column is typically less effective, not that it never helps.
-//! Rule messages built on it should say "less effective".
 //!
 //! CTEs ([`CTE_DOC`]): non-recursive ones are not materialized and run
 //! "once for each reference", so the policy is `Inline`.
@@ -132,19 +128,15 @@ impl DialectBackend for BigQuery {
         decided
     }
 
-    /// A clustered column helps only after the ones before it are
-    /// filtered too. Keys arrive in `TableFacts` order, which callers
+    /// A filter that skips an earlier clustered column may still prune,
+    /// "typically less effective" per the docs, so it is neither `Used`
+    /// nor `Blocked`. Keys arrive in `TableFacts` order, which callers
     /// must supply as the `CLUSTER BY` order.
     fn finish_keys(&self, keys: &mut [PruneKey]) {
         let mut chain_intact = true;
         for key in keys.iter_mut().filter(|k| k.kind == KeyKind::Cluster) {
             match key.usage {
-                PruneUse::Used(by) if !chain_intact => {
-                    key.usage = PruneUse::Blocked {
-                        by,
-                        reason: BlockReason::Other,
-                    };
-                }
+                PruneUse::Used(_) if !chain_intact => key.usage = PruneUse::Unknown,
                 PruneUse::Used(_) => {}
                 _ => chain_intact = false,
             }

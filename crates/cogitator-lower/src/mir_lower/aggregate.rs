@@ -99,7 +99,7 @@ impl Ctx<'_> {
         }
         let agg_cols: Vec<(ColId, AggCall)> =
             aggs.iter().filter_map(|id| self.agg_call(*id)).collect();
-        let sets = sets_kind.then(|| GroupingSets(key_of_group));
+        let sets = sets_kind.then_some(GroupingSets(key_of_group));
         self.env.grouped = true;
         self.mir.add_rel(
             RelOp::Aggregate {
@@ -252,6 +252,17 @@ impl Ctx<'_> {
 
     fn agg_call(&mut self, id: ExprId) -> Option<(ColId, AggCall)> {
         let hir = self.hir;
+        let earlier = self
+            .env
+            .aggs
+            .iter()
+            .find(|(seen, _)| same_expr(hir, **seen, id))
+            .map(|(_, col)| *col);
+        if let Some(col) = earlier {
+            // HAVING and the select list often repeat one aggregate
+            self.env.aggs.insert(id, col);
+            return None;
+        }
         let node = hir.exprs.get(id)?;
         let ExprKind::Call {
             name,

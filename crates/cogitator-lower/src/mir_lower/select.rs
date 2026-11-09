@@ -30,7 +30,7 @@ impl Ctx<'_> {
         demand: &[Symbol],
         prov: ProvId,
     ) -> QueryOut {
-        let mut rel = self.from_list(&select.from, prov);
+        let mut rel = self.lower_from_list(&select.from, prov);
         let expanded = self.expand_items(select);
         self.env.aliases = select.items.iter().map(alias_expr).collect();
         rel = self.filter(rel, select.filter, prov);

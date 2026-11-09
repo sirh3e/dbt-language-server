@@ -9,13 +9,17 @@
 
 mod aggregate;
 mod column;
+mod cte;
 mod demand;
 mod equal;
 mod expr;
 mod from;
+mod join;
 mod order;
+mod order_key;
 mod query;
 mod select;
+mod set_op;
 mod star;
 mod window;
 
