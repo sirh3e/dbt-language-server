@@ -104,8 +104,9 @@ editor integrations live under `editors/`.
   (showDocument navigation for the YAML-side code actions),
   dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
   dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
-  dbt.impact, dbt.expandJinja, dbt.doctor. Every command takes one
-  argument object (`{uri, position?, …}`).
+  dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
+  findings and rule trace for one model; `features/plan/`). Every
+  command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`); the
   completion capability advertises `triggerCharacters`.

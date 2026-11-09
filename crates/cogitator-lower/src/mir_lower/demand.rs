@@ -16,8 +16,16 @@ impl Demand {
     pub(super) fn of(hir: &Hir) -> Self {
         let mut demand = Demand::default();
         for col in hir.cols.values() {
-            if let Some(Resolution::OpenSchema(from)) = &col.res {
-                demand.add_from(*from, col.name.folded);
+            match &col.res {
+                Some(Resolution::OpenSchema(from)) => demand.add_from(*from, col.name.folded),
+                // A named column of an open item is still read through
+                // it: an open CTE only exposes what is demanded of it.
+                Some(Resolution::Bound { from, .. } | Resolution::Outer { from, .. })
+                    if hir.from.get(*from).is_some_and(|item| item.open) =>
+                {
+                    demand.add_from(*from, col.name.folded);
+                }
+                _ => {}
             }
         }
         for item in hir.from.values() {

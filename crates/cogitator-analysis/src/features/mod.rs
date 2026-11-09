@@ -24,6 +24,7 @@ mod linked_editing;
 pub mod lint;
 mod model_info;
 mod navigation;
+pub mod plan;
 mod relation;
 mod rename;
 mod signature;
