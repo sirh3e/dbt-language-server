@@ -7,6 +7,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::core::{Location, Range};
+use super::workspace::TextEdit;
 
 /// LSP DiagnosticTag values.
 pub mod diagnostic_tag {
@@ -21,14 +22,26 @@ pub struct DiagnosticRelatedInformation {
     pub message: String,
 }
 
-/// What a quickfix should do with the carried range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// What a quickfix should do with the carried range. The unit variants
+/// serialize as their name (`"replace_token"`), as they always have;
+/// `MultiEdit` serializes as `{"multi_edit": {...}}`, so older data on
+/// the wire still decodes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FixKind {
     /// Replace the token at `token_range` with a suggestion.
     ReplaceToken,
     /// Insert a suggestion at `token_range.start`.
     InsertText,
+    /// Alternative fixes, each a complete set of edits to apply together.
+    MultiEdit { fixes: Vec<MultiEditFix> },
+}
+
+/// One self-contained fix: its title and all of its edits.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MultiEditFix {
+    pub title: String,
+    pub edits: Vec<TextEdit>,
 }
 
 /// The typed Diagnostic.data payload (01 §6.1). Clients preserve `data`
@@ -115,6 +128,39 @@ mod tests {
         let data = back.data.expect("data survives");
         assert_eq!(data.fix, FixKind::ReplaceToken);
         assert_eq!(data.suggestions, vec!["stg_orders".to_string()]);
+    }
+
+    #[test]
+    fn unit_fix_kinds_keep_their_wire_format() {
+        assert_eq!(
+            serde_json::to_string(&FixKind::ReplaceToken).unwrap(),
+            r#""replace_token""#
+        );
+        let old: FixKind = serde_json::from_str(r#""insert_text""#).unwrap();
+        assert_eq!(old, FixKind::InsertText);
+    }
+
+    #[test]
+    fn multi_edit_round_trips_through_the_wire() {
+        let fix = FixKind::MultiEdit {
+            fixes: vec![MultiEditFix {
+                title: "Delete".into(),
+                edits: vec![
+                    TextEdit {
+                        range: Range::default(),
+                        new_text: String::new(),
+                    },
+                    TextEdit {
+                        range: Range::default(),
+                        new_text: "x".into(),
+                    },
+                ],
+            }],
+        };
+        let wire = serde_json::to_value(&fix).unwrap();
+        assert_eq!(wire["multi_edit"]["fixes"][0]["edits"][1]["newText"], "x");
+        let back: FixKind = serde_json::from_value(wire).unwrap();
+        assert_eq!(back, fix);
     }
 
     #[test]

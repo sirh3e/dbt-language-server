@@ -16,30 +16,91 @@ pub fn quickfixes(uri: &str, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
         let Some(data) = &diagnostic.data else {
             continue;
         };
+        if let FixKind::MultiEdit { fixes } = &data.fix {
+            for fix in fixes {
+                let edit = workspace_edit(uri, fix.edits.clone());
+                out.push(CodeAction::quickfix(
+                    fix.title.clone(),
+                    diagnostic.clone(),
+                    edit,
+                ));
+            }
+            continue;
+        }
         for suggestion in &data.suggestions {
             let title = match data.fix {
-                FixKind::ReplaceToken => format!("Change to '{suggestion}'"),
                 FixKind::InsertText => format!("Insert '{suggestion}'"),
+                FixKind::ReplaceToken | FixKind::MultiEdit { .. } => {
+                    format!("Change to '{suggestion}'")
+                }
             };
-            let edit = WorkspaceEdit {
-                document_changes: vec![DocumentChange::Edit(TextDocumentEdit::new(
-                    uri.to_string(),
-                    vec![TextEdit {
-                        range: data.token_range,
-                        new_text: suggestion.clone(),
-                    }],
-                ))],
-            };
+            let edit = workspace_edit(
+                uri,
+                vec![TextEdit {
+                    range: data.token_range,
+                    new_text: suggestion.clone(),
+                }],
+            );
             out.push(CodeAction::quickfix(title, diagnostic.clone(), edit));
         }
     }
     out
 }
 
+fn workspace_edit(uri: &str, edits: Vec<TextEdit>) -> WorkspaceEdit {
+    WorkspaceEdit {
+        document_changes: vec![DocumentChange::Edit(TextDocumentEdit::new(
+            uri.to_string(),
+            edits,
+        ))],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cogitator_lsp::{diagnostic_severity, DiagnosticData, Position, Range};
+    use cogitator_lsp::{diagnostic_severity, DiagnosticData, MultiEditFix, Position, Range};
+
+    #[test]
+    fn multi_edit_produces_one_action_per_fix() {
+        let range = Range::zero_width(Position {
+            line: 1,
+            character: 0,
+        });
+        let mut diag = Diagnostic::plain(
+            range,
+            "join makes filter unreachable".into(),
+            diagnostic_severity::WARNING,
+            "join.left_nullified",
+            "cogitator",
+        );
+        let edit = |text: &str| TextEdit {
+            range,
+            new_text: text.into(),
+        };
+        diag.data = Some(DiagnosticData {
+            fix: FixKind::MultiEdit {
+                fixes: vec![
+                    MultiEditFix {
+                        title: "Make the join INNER".into(),
+                        edits: vec![edit("inner"), edit("")],
+                    },
+                    MultiEditFix {
+                        title: "Move the predicate to ON".into(),
+                        edits: vec![edit("on")],
+                    },
+                ],
+            },
+            token_range: range,
+            suggestions: vec![],
+        });
+        let actions = quickfixes("file:///m.sql", &[diag]);
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions[0].title, "Make the join INNER");
+        let wire = serde_json::to_value(actions[0].edit.as_ref().expect("edit")).unwrap();
+        assert_eq!(wire["documentChanges"][0]["edits"][0]["newText"], "inner");
+        assert_eq!(wire["documentChanges"][0]["edits"][1]["newText"], "");
+    }
 
     #[test]
     fn one_action_per_suggestion_with_the_edit() {
