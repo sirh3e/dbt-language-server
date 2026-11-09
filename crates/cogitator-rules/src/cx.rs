@@ -30,6 +30,9 @@ pub struct Cx<'a> {
     /// The canonical plan, set by the driver for LIR detect: LIR scalars
     /// and columns are MIR ids.
     pub mir: Option<&'a Mir>,
+    /// The text `hir` spans index, for rules that verify a fix's edit
+    /// against what is written. `None` withholds those fixes.
+    pub text: Option<&'a str>,
     pub dialect: Option<Backend>,
     pub mat: Option<Materialization>,
     pub config: Option<&'a ModelConfig>,
@@ -44,6 +47,7 @@ impl<'a> Cx<'a> {
             available,
             hir: None,
             mir: None,
+            text: None,
             dialect: None,
             mat: None,
             config: None,

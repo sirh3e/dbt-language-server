@@ -8,6 +8,7 @@ license.workspace = true
 cogitator-ir = { workspace = true }
 
 [dev-dependencies]
+cogitator-dialects = { workspace = true }
 cogitator-ir = { workspace = true, features = ["testkit"] }
 cogitator-lower = { workspace = true }
 cogitator-sql-front = { workspace = true }
