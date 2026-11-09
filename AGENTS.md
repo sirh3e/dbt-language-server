@@ -104,8 +104,9 @@ editor integrations live under `editors/`.
   (showDocument navigation for the YAML-side code actions),
   dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
   dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
-  dbt.impact, dbt.expandJinja, dbt.doctor. Every command takes one
-  argument object (`{uri, position?, …}`).
+  dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
+  findings and rule trace for one model; `features/plan/`). Every
+  command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`); the
   completion capability advertises `triggerCharacters`.
@@ -143,6 +144,10 @@ editor integrations live under `editors/`.
 - `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
 - `crates/cogitator-duckdb` — Jinja masking + feature-gated DuckDB 2.0 parse diagnostics
 - `crates/cogitator-treesitter` — tree-sitter document backend (vendored grammar in `third_party/`)
+- `crates/cogitator-ir` — IR arenas, HIR/MIR/LIR types, verifiers, printers, `testkit` feature (serde and petgraph only)
+- `crates/cogitator-sql-front` — HIR construction: masking, binder (the only IR crate seeing sqlparser/`minijinja::machinery`)
+- `crates/cogitator-lower` — HIR→MIR, MIR→LIR, dialect backends
+- `crates/cogitator-rules` — pass manager, trace, rule registry, rules
 - `crates/cogitator` — the binary: CLI, tokio tasks, dispatcher, fusion, observability
 - `editors/nvim` — first-party Neovim plugin (commands, graph browser, the
   Neovim-only :DbtDag project view, headless test suite)
@@ -150,5 +155,6 @@ editor integrations live under `editors/`.
 - `editors/zed` — Zed extension (Rust→WASM)
 - `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
 - `specs/rust-port/` — the binding implementation specs (00–09);
-  `specs/neovim-plugin/` — the editor-integration spec
+  `specs/neovim-plugin/` — the editor-integration spec;
+  `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules and oracles (00–09)
 - `testdata/` — shared fixtures (jaffle_shop_duckdb)

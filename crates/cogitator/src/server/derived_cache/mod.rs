@@ -19,6 +19,10 @@ use cogitator_analysis::profiles::{load_inventory, ProfileScope, ProfilesInvento
 use serde::Serialize;
 
 mod artifacts;
+mod plan;
+mod schemas;
+
+pub use plan::CachedPlan;
 
 /// (mtime secs, mtime nanos, size) — the same freshness idea as the scan
 /// cache; a file that changed under us gets a different stamp.
@@ -67,6 +71,7 @@ pub struct CacheReport {
     pub lineage: CacheSurface,
     pub results: CacheSurface,
     pub artifacts: CacheSurface,
+    pub plans: CacheSurface,
 }
 
 /// (path, scope fingerprint) → (stamp, parsed inventory).
@@ -77,6 +82,8 @@ type LineageMap = HashMap<String, (u64, Arc<Option<ModelLineage>>)>;
 type ResultsSlot = (usize, HashMap<String, (String, Arc<str>)>);
 /// root → ([run_results, manifest, sources] stamps, the parsed set).
 type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 4], ArtifactSet)>;
+/// uri → ((document generation, schema revision), typed plan).
+type PlansMap = HashMap<String, ((u64, u64), Arc<CachedPlan>)>;
 
 #[derive(Default)]
 pub struct DerivedCache {
@@ -93,6 +100,11 @@ pub struct DerivedCache {
     /// target/ artifact payloads per root, stamp-guarded like profiles.
     artifacts: Mutex<ArtifactsMap>,
     artifacts_stats: Counters,
+    /// `dbt.queryPlan` results; only the latest revision per uri lives.
+    plans: Mutex<PlansMap>,
+    plans_stats: Counters,
+    /// The project-schema job's snapshot and state, per project root.
+    schemas: schemas::SchemaSlot,
 }
 
 impl DerivedCache {
@@ -201,6 +213,7 @@ impl DerivedCache {
         slot.0 = 0;
         slot.1.clear();
         self.artifacts.lock().expect("artifacts cache lock").clear();
+        self.plans.lock().expect("plans cache lock").clear();
     }
 
     pub fn report(&self) -> CacheReport {
@@ -225,6 +238,10 @@ impl DerivedCache {
             artifacts: surface(
                 self.artifacts.lock().expect("artifacts cache lock").len(),
                 &self.artifacts_stats,
+            ),
+            plans: surface(
+                self.plans.lock().expect("plans cache lock").len(),
+                &self.plans_stats,
             ),
         }
     }
