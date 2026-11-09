@@ -156,6 +156,52 @@ fn a_template_that_does_not_need_it_ignores_compiled_sql() {
     assert_eq!(plan.banner, None);
 }
 
+const JOIN_TEMPLATE: &str = "select\n    a.id,\n    {% for c in cols %}\n    {{ c }},\n    {% endfor %}\n    b.amount\nfrom {{ ref('stg_orders') }} a\njoin {{ ref('stg_items') }} b on b.flag = 1\n";
+
+const JOIN_COMPILED: &str = "select\n    a.id,\n    \n    x,\n    \n    b.amount\nfrom stg_orders a\njoin stg_items b on b.flag = 1\n";
+
+fn join_facts() -> Facts {
+    Facts::new("duckdb")
+        .yaml("stg_orders", &[("id", None)])
+        .yaml("stg_items", &[("amount", None), ("flag", None)])
+}
+
+fn cartesian(plan: &QueryPlan) -> &FindingView {
+    plan.findings
+        .iter()
+        .find(|f| f.id == "join.cartesian")
+        .unwrap_or_else(|| panic!("no join.cartesian: {:?}", plan.findings))
+}
+
+#[test]
+fn a_real_finding_on_a_fresh_compiled_plan_lands_on_the_template() {
+    let facts = join_facts();
+    let plan = plan_with(
+        &facts,
+        JOIN_TEMPLATE,
+        available(JOIN_COMPILED, Staleness::Fresh),
+    );
+    let finding = cartesian(&plan);
+    assert!(finding.diagnostics_eligible, "{finding:?}");
+    assert_ne!(finding.placement, Placement::Unmapped, "{finding:?}");
+    assert!(
+        (finding.span.end as usize) <= JOIN_TEMPLATE.len(),
+        "span indexes the template: {finding:?}"
+    );
+}
+
+#[test]
+fn a_real_finding_on_a_stale_compiled_plan_is_not_eligible() {
+    let facts = join_facts();
+    let plan = plan_with(
+        &facts,
+        JOIN_TEMPLATE,
+        available(JOIN_COMPILED, Staleness::Stale),
+    );
+    assert!(plan.banner.is_some());
+    assert!(!cartesian(&plan).diagnostics_eligible);
+}
+
 fn finding(id: &'static str, span: Span, edits: Vec<Span>) -> FindingView {
     FindingView {
         id,
@@ -177,6 +223,7 @@ fn finding(id: &'static str, span: Span, edits: Vec<Span>) -> FindingView {
                 })
                 .collect(),
         }],
+        suppressed: false,
     }
 }
 
@@ -230,14 +277,28 @@ fn jinja_findings_highlight_without_a_fix() {
 #[test]
 fn unmapped_findings_stay_out_of_diagnostics_and_sort_last() {
     let mut findings = vec![
-        finding("a", Span::new(5, 25), vec![]),
+        finding("a", Span::new(25, 40), vec![]),
         finding("b", Span::new(2, 4), vec![]),
     ];
     place_findings(&mut findings, &origin(Staleness::Fresh));
     assert_eq!(findings[0].id, "b");
     assert_eq!(findings[1].placement, Placement::Unmapped);
-    assert_eq!(findings[1].span, Span::new(5, 25), "keeps compiled offsets");
+    assert_eq!(
+        findings[1].span,
+        Span::new(25, 40),
+        "keeps compiled offsets"
+    );
     assert!(!findings[1].diagnostics_eligible);
+}
+
+#[test]
+fn a_span_crossing_jinja_highlights_the_covering_range_without_a_fix() {
+    let mut findings = vec![finding("r", Span::new(5, 25), vec![Span::new(5, 25)])];
+    place_findings(&mut findings, &origin(Staleness::Fresh));
+    assert_eq!(findings[0].placement, Placement::InJinja);
+    assert_eq!(findings[0].span, Span::new(105, 205));
+    assert!(findings[0].fixes.is_empty());
+    assert!(findings[0].diagnostics_eligible);
 }
 
 #[test]

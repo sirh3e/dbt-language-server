@@ -123,7 +123,7 @@ gen-schemas-check: gen-schemas
 # test fails the suite while it is stale)
 [group('schemas')]
 gen-config-schema:
-    cargo run -q -p cogitator -- schema > schemas/cogitator.schema.json
+    cargo run -q -p cogitator --bin cogitator -- schema > schemas/cogitator.schema.json
 
 # ---------------------------------------------------------- perf & fuzz
 

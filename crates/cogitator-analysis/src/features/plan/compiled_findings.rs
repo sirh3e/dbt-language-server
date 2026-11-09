@@ -34,7 +34,32 @@ fn locate(span: Span, map: &SpanMap) -> (Span, Placement) {
     match map.map(span) {
         Mapped::Exact(template) => (template, Placement::Exact),
         Mapped::InJinja(template) => (template, Placement::InJinja),
-        Mapped::Unmapped => (span, Placement::Unmapped),
+        Mapped::Unmapped => match covering(span, map) {
+            Some(template) => (template, Placement::InJinja),
+            None => (span, Placement::Unmapped),
+        },
+    }
+}
+
+/// The template range of a span crossing literal SQL and Jinja output,
+/// such as a join over `{{ ref(...) }}`: no single anchor holds it, but
+/// both of its ends can be placed. It highlights; it never carries a fix.
+fn covering(span: Span, map: &SpanMap) -> Option<Span> {
+    if span.end <= span.start {
+        return None;
+    }
+    let first = placed(map.map(Span::new(span.start, span.start + 1)))?;
+    let last = placed(map.map(Span::new(span.end - 1, span.end)))?;
+    Some(Span::new(
+        first.start.min(last.start),
+        first.end.max(last.end),
+    ))
+}
+
+fn placed(mapped: Mapped) -> Option<Span> {
+    match mapped {
+        Mapped::Exact(span) | Mapped::InJinja(span) => Some(span),
+        Mapped::Unmapped => None,
     }
 }
 

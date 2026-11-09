@@ -1,11 +1,13 @@
 //! Tests for `plan::diagnostics`, split out to keep the module small.
 
 use cogitator_ir::lir::Backend;
-use cogitator_ir::origin::{Staleness, TemplateVariant};
+use cogitator_ir::origin::TemplateVariant;
 use cogitator_ir::Level;
 
 use super::super::diagnostics_config::{PerfProfile, RuleOverride};
-use super::super::report::{FixEditView, LevelReport, PlanLevels, PlanStatus};
+use super::super::report::{
+    FixEditView, LevelReport, OriginView, Placement, PlanLevels, PlanStatus,
+};
 use super::super::suppress::scan;
 use super::super::trace::{NeedsView, TraceView};
 use super::*;
@@ -23,7 +25,7 @@ fn finding(id: &'static str, span: Span, severity: &'static str) -> FindingView 
         fixes: Vec::new(),
         suppressed: false,
         diagnostics_eligible: true,
-        placement: super::super::report::Placement::Template,
+        placement: Placement::Template,
     }
 }
 
@@ -136,14 +138,10 @@ fn stats_evidence_cannot_raise_severity() {
 }
 
 #[test]
-fn ineligible_plans_produce_nothing() {
-    let compiled = Some(OriginView::Compiled {
-        staleness: Staleness::Fresh,
-    });
-    let plan = plan(
-        vec![finding("join.cartesian", Span::new(0, 6), "warning")],
-        compiled,
-    );
+fn ineligible_findings_produce_nothing() {
+    let mut ineligible = finding("join.cartesian", Span::new(0, 6), "warning");
+    ineligible.diagnostics_eligible = false;
+    let plan = plan(vec![ineligible], template());
     assert!(plan_diagnostics(
         "select 1\n",
         &plan,
