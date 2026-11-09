@@ -250,7 +250,11 @@ mod tests {
         // removing the whole section reverts to the baseline (all off)
         let gone = parse("", Path::new("x")).unwrap();
         let reverted = diff(&new, &gone, &baseline());
-        assert_eq!(reverted, vec![Change::LintFlags(0)]);
+        // ...and, since select_star aliases a plan rule, the perf settings
+        assert_eq!(
+            reverted,
+            vec![Change::LintFlags(0), Change::Perf(PerfSettings::default())]
+        );
     }
 
     #[test]
