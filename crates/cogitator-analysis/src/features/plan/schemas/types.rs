@@ -28,6 +28,8 @@ pub struct JobLimits {
     pub max_models: usize,
     pub max_columns: usize,
     pub max_read_bytes: u64,
+    /// Canonical subplan text the duplicate check keeps across models.
+    pub max_subplan_bytes: u64,
 }
 
 impl Default for JobLimits {
@@ -36,6 +38,7 @@ impl Default for JobLimits {
             max_models: 20_000,
             max_columns: 5_000,
             max_read_bytes: 1 << 30,
+            max_subplan_bytes: 64 << 20,
         }
     }
 }
@@ -50,6 +53,8 @@ pub enum JobIssue {
     ModelCap,
     ReadCap,
     ColumnCap,
+    /// This model and later ones were not compared for duplicate logic.
+    SubplanBudget,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
