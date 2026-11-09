@@ -13,6 +13,7 @@ pub mod verify;
 
 use serde::Serialize;
 
+use crate::common::ModelConfig;
 use crate::{Arena, ColType, Idx, Interner, Symbol};
 
 pub use ops::{AggCall, Scalar, ScalarKind, SortKey, SubqueryKind, WinCall};
@@ -51,6 +52,8 @@ pub struct Mir {
     pub tables: Arena<TableDef>,
     pub prov: ProvTable,
     pub root: RelId,
+    /// The model config lowering read; MIR→LIR builds the `Sink` from it.
+    pub config: ModelConfig,
 }
 
 impl Mir {
@@ -64,6 +67,7 @@ impl Mir {
             tables: Arena::new(),
             prov: ProvTable::default(),
             root: RelId::from_raw(0),
+            config: ModelConfig::default(),
         }
     }
 
