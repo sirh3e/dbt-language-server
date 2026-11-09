@@ -6,7 +6,8 @@ use std::collections::HashMap;
 
 use sqlparser::ast::{Expr, Select, SelectItem, TableFactor, TableWithJoins};
 
-use super::{ColumnLineage, Relation, SourceRef};
+use super::Relation;
+use crate::lineage::{ColumnLineage, SourceRef};
 
 pub(super) fn select_lineage(
     select: &Select,
