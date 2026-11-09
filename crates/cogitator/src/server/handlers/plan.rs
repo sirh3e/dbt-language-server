@@ -15,6 +15,7 @@ use super::super::derived_cache::{CachedPlan, DerivedCache};
 use super::super::reply::Reply;
 use super::super::snapshot::Snapshot;
 use super::navigation::short_uri;
+use super::plan_compiled::CompiledProbe;
 
 /// The plan for `uri`, cached per (uri, generation, schema revision).
 /// A closed file is read from disk and planned per call.
@@ -35,10 +36,22 @@ pub fn query_plan(
     };
     let artifacts = artifacts_for(snap, derived, artifact_cap);
     let revision = schema_revision(&snap.ctx, &artifacts, catalog_stats);
+    let compiled = CompiledProbe::new(&snap.ctx, uri);
+    // A fresh `dbt compile` changes nothing else in the key.
+    let key = compiled.cache_key(revision);
+    let run = |text: &str| {
+        compute(
+            snap,
+            &artifacts,
+            &compiled,
+            &model,
+            text,
+            revision,
+            catalog_stats,
+        )
+    };
     let plan = match snap.doc.as_deref() {
-        Some(doc) => derived.query_plan(uri, doc.generation, revision, || {
-            compute(snap, &artifacts, &model, &doc.text, revision, catalog_stats)
-        }),
+        Some(doc) => derived.query_plan(uri, doc.generation, key, || run(&doc.text)),
         None => {
             let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
             let Ok(text) = std::fs::read_to_string(&path) else {
@@ -48,7 +61,7 @@ pub fn query_plan(
                         .fix("open the model in the editor, or check the uri."),
                 );
             };
-            compute(snap, &artifacts, &model, &text, revision, catalog_stats).map(Arc::new)
+            run(&text).map(Arc::new)
         }
     };
     match plan {
@@ -74,8 +87,17 @@ pub fn document_plan(
     }
     let artifacts = artifacts_for(snap, derived, artifact_cap);
     let revision = schema_revision(&snap.ctx, &artifacts, catalog_stats);
-    derived.query_plan(uri, doc.generation, revision, || {
-        compute(snap, &artifacts, &model, &doc.text, revision, catalog_stats)
+    let compiled = CompiledProbe::new(&snap.ctx, uri);
+    derived.query_plan(uri, doc.generation, compiled.cache_key(revision), || {
+        compute(
+            snap,
+            &artifacts,
+            &compiled,
+            &model,
+            &doc.text,
+            revision,
+            catalog_stats,
+        )
     })
 }
 
@@ -89,12 +111,15 @@ fn artifacts_for(snap: &Snapshot, derived: &DerivedCache, cap: u64) -> ArtifactS
 fn compute(
     snap: &Snapshot,
     artifacts: &ArtifactSet,
+    compiled: &CompiledProbe,
     model: &str,
     text: &str,
     revision: u64,
     catalog_stats: bool,
 ) -> Option<CachedPlan> {
-    let mut input = PlanInput::from_context(&snap.ctx, text, Some(model), artifacts, revision);
+    let file = compiled.read(snap.compiled_cap_bytes);
+    let mut input = PlanInput::from_context(&snap.ctx, text, Some(model), artifacts, revision)
+        .with_compiled(file.input());
     input.catalog_stats = catalog_stats;
     let mut plan = drive_plan(&input);
     let suppressions = suppress::scan(text, &snap.ctx.dialect);

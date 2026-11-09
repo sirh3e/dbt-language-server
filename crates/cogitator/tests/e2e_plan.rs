@@ -56,8 +56,72 @@ fn query_plan_shows_every_level_for_a_jinja_model() {
     lsp.shutdown();
 }
 
+/// What `dbt compile` writes for models/orders.sql, reduced to two payment
+/// methods and rendered with the fixture's relation names.
+const ORDERS_COMPILED: &str = "\n\nwith orders as (\n\n    select * from \"jaffle\".\"main\".\"stg_orders\"\n\n),\n\npayments as (\n\n    select * from \"jaffle\".\"main\".\"stg_payments\"\n\n),\n\norder_payments as (\n\n    select\n        order_id,\n\n        sum(case when payment_method = 'credit_card' then amount else 0 end) as credit_card_amount,\n        sum(case when payment_method = 'coupon' then amount else 0 end) as coupon_amount,\n        sum(amount) as total_amount\n\n    from payments\n\n    group by order_id\n\n),\n\nfinal as (\n\n    select\n        orders.order_id,\n        orders.customer_id,\n        orders.order_date,\n        orders.status,\n\n        order_payments.credit_card_amount,\n\n        order_payments.coupon_amount,\n\n        order_payments.total_amount as amount\n\n    from orders\n\n\n    left join order_payments\n        on orders.order_id = order_payments.order_id\n\n)\n\nselect * from final\n";
+
+fn write_orders_compiled(project: &harness::fixture::TestProject) {
+    let dir = project.root.join("target/compiled/jaffle_shop/models");
+    std::fs::create_dir_all(&dir).expect("compiled dir");
+    std::fs::write(dir.join("orders.sql"), ORDERS_COMPILED).expect("compiled file");
+}
+
 #[test]
-fn query_plan_declines_control_flow_with_guidance_until_compiled_plans() {
+fn query_plan_falls_back_to_compiled_sql_for_control_flow() {
+    let project = jaffle();
+    write_orders_compiled(&project);
+    let (mut lsp, _uri) = project.booted();
+    let orders = cogitator_lsp::fs_path_to_uri(&project.root.join("models/orders.sql"));
+    let response = plan(&mut lsp, &orders);
+    let result = &response["result"];
+    assert_eq!(result["origin"]["kind"], "compiled", "{response}");
+    assert_eq!(result["origin"]["staleness"], "Fresh", "{response}");
+    assert_eq!(result["banner"], Value::Null, "{response}");
+    assert_ne!(result["status"], "declined", "{response}");
+    let hir = result["levels"]["hir"]["text"].as_str().expect("hir");
+    assert!(hir.contains("model stg_orders"), "{hir}");
+    assert_eq!(
+        result["levels"]["hir"]["violations"],
+        json!([]),
+        "{response}"
+    );
+    assert_eq!(result["levels"]["mir"]["available"], true, "{response}");
+    lsp.shutdown();
+}
+
+#[test]
+fn query_plan_marks_a_compiled_plan_stale_after_an_unsaved_edit() {
+    let project = jaffle();
+    write_orders_compiled(&project);
+    let (mut lsp, _uri) = project.booted();
+    let path = project.root.join("models/orders.sql");
+    let orders = cogitator_lsp::fs_path_to_uri(&path);
+    let saved = std::fs::read_to_string(&path).expect("orders");
+    let edited = saved.replace("group by order_id", "group by order_id, customer_id");
+    assert_ne!(saved, edited);
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": orders, "languageId": "sql", "version": 1, "text": edited}}),
+    );
+    let response = plan(&mut lsp, &orders);
+    let result = &response["result"];
+    assert_eq!(result["origin"]["staleness"], "Stale", "{response}");
+    assert!(
+        result["banner"]
+            .as_str()
+            .is_some_and(|banner| banner.contains("dbt compile")),
+        "{response}"
+    );
+    let findings = result["findings"].as_array().expect("findings");
+    assert!(
+        findings.iter().all(|f| f["diagnosticsEligible"] == false),
+        "{response}"
+    );
+    lsp.shutdown();
+}
+
+#[test]
+fn query_plan_declines_control_flow_with_guidance_when_nothing_was_compiled() {
     let project = jaffle();
     let (mut lsp, _uri) = project.booted();
     let orders = cogitator_lsp::fs_path_to_uri(&project.root.join("models/orders.sql"));
@@ -68,6 +132,7 @@ fn query_plan_declines_control_flow_with_guidance_until_compiled_plans() {
     assert_eq!(result["status"], "declined", "{response}");
     let guidance = result["guidance"].as_str().expect("guidance");
     assert!(guidance.contains("dbt compile"), "{guidance}");
+    assert!(guidance.contains("no compiled file"), "{guidance}");
     assert_eq!(result["levels"]["hir"]["available"], false, "{response}");
     assert_eq!(result["levels"]["lir"]["available"], false, "{response}");
     assert!(

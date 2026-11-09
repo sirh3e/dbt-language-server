@@ -10,6 +10,7 @@
 use std::collections::HashMap;
 
 use cogitator_dialects::Dialect;
+pub use cogitator_ir::origin::Staleness;
 use cogitator_lower::backends::for_backend;
 use cogitator_lower::lower_to_mir;
 
@@ -19,6 +20,8 @@ use crate::artifacts::ArtifactSet;
 use crate::context::types::SourceDetails;
 use crate::{DbtContext, ModelDetails};
 
+mod compiled_findings;
+mod compiled_route;
 pub mod diagnostics;
 pub mod diagnostics_config;
 mod drive;
@@ -31,14 +34,44 @@ pub mod suppress;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_compiled;
+#[cfg(test)]
 mod tests_facts;
 mod trace;
 
 pub use report::{
-    EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, PlanLevels,
-    PlanStatus, QueryPlan,
+    EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, Placement,
+    PlanLevels, PlanStatus, QueryPlan,
 };
 pub use trace::{NeedsView, TraceRow, TraceView};
+
+/// What the shell found at the model's `target/compiled` path. The file
+/// and its mtime are read off the dispatcher task, so this stays pure.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum CompiledInput<'a> {
+    /// The shell did not look, or the model has no compiled path.
+    #[default]
+    NotChecked,
+    Missing {
+        path: &'a str,
+    },
+    /// Over `limits.compiled_sql_mib`.
+    TooLarge {
+        path: &'a str,
+        bytes: u64,
+        cap: u64,
+    },
+    Unreadable {
+        path: &'a str,
+        detail: &'a str,
+    },
+    Available {
+        text: &'a str,
+        path: &'a str,
+        /// `Fresh` when the file is at least as new as the model on disk.
+        mtime: Staleness,
+    },
+}
 
 /// One model's text and the facts known about it.
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +88,8 @@ pub struct PlanInput<'a> {
     pub schema_revision: u64,
     /// `perf.catalog_stats`: catalog statistics count as a usable fact.
     pub catalog_stats: bool,
+    /// Used when the template declines on control flow.
+    pub compiled: CompiledInput<'a>,
 }
 
 impl<'a> PlanInput<'a> {
@@ -76,7 +111,13 @@ impl<'a> PlanInput<'a> {
             catalog: artifacts.catalog.as_deref(),
             schema_revision,
             catalog_stats: true,
+            compiled: CompiledInput::NotChecked,
         }
+    }
+
+    /// The same input with the shell's reading of the compiled file.
+    pub fn with_compiled(self, compiled: CompiledInput<'a>) -> Self {
+        PlanInput { compiled, ..self }
     }
 }
 

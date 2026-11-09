@@ -14,15 +14,14 @@ use cogitator_parser::LineTable;
 use cogitator_rules::meta::Severity;
 
 use super::diagnostics_config::PerfSettings;
-use super::report::{EvidenceView, FindingView, FixView, OriginView, QueryPlan};
+use super::report::{EvidenceView, FindingView, FixView, QueryPlan};
 use super::suppress::Suppressions;
 
 /// May this finding become a diagnostic at all? The eligibility rule:
-/// its spans must map onto the document and be fresh. Compiled-origin
-/// plans do not yet say so per finding, so only template-origin plans
-/// qualify; this is the one line that changes when they do.
-fn eligible(plan: &QueryPlan, _finding: &FindingView) -> bool {
-    matches!(plan.origin, Some(OriginView::Template { .. }))
+/// its spans must map onto the document and be fresh, which each finding
+/// records.
+fn eligible(finding: &FindingView) -> bool {
+    finding.diagnostics_eligible
 }
 
 /// Maps one plan to its diagnostics: findings, then unknown-rule warnings.
@@ -38,7 +37,7 @@ pub fn plan_diagnostics(
     let table = LineTable::new(text);
     let mut out = Vec::new();
     for finding in plan.findings.iter().filter(|f| !f.suppressed) {
-        if !eligible(plan, finding) {
+        if !eligible(finding) {
             continue;
         }
         let Some(severity) = settings.severity(finding.id, parse_severity(finding.severity)) else {

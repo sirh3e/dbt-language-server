@@ -71,6 +71,7 @@ impl Facts {
             catalog: self.catalog.as_ref(),
             schema_revision: 7,
             catalog_stats: true,
+            compiled: CompiledInput::NotChecked,
         }
     }
 
