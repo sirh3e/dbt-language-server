@@ -7,6 +7,6 @@ pub mod left_nullified;
 pub mod redundant_left;
 
 mod left_fix;
-mod null_reject;
+pub(crate) mod null_reject;
 pub(crate) mod support;
 pub(crate) mod text;
