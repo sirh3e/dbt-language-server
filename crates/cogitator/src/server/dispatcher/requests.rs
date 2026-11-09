@@ -45,6 +45,7 @@ impl Dispatcher {
     }
 
     pub(super) fn hover(&mut self, content: &[u8]) {
+        let derived = self.derived.clone();
         self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
                 // Q8: unknown doc → empty hover
@@ -54,7 +55,14 @@ impl Dispatcher {
                             cogitator_analysis::yaml_cogitator::cogitator_hover(&d.text, pos)
                                 .unwrap_or_default()
                         } else {
-                            features::hover(ctx, d, pos)
+                            // dispatcher path: a cache probe, never a compute
+                            let lineage = derived.lineage_cached(uri, d.generation);
+                            features::hover_with_lineage(
+                                ctx,
+                                d,
+                                pos,
+                                lineage.as_deref().and_then(Option::as_ref),
+                            )
                         }
                     })
                     .unwrap_or_default(),
