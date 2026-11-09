@@ -19,6 +19,7 @@ use cogitator_analysis::profiles::{load_inventory, ProfileScope, ProfilesInvento
 use serde::Serialize;
 
 mod artifacts;
+mod lineage;
 mod plan;
 mod schemas;
 
@@ -82,6 +83,8 @@ type LineageMap = HashMap<String, (u64, Arc<Option<ModelLineage>>)>;
 type ResultsSlot = (usize, HashMap<String, (String, Arc<str>)>);
 /// root → ([run_results, manifest, sources] stamps, the parsed set).
 type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 4], ArtifactSet)>;
+/// uri → ((document generation, plan key), typed lineage).
+type TypedLineageMap = HashMap<String, ((u64, u64), Arc<Option<ModelLineage>>)>;
 /// uri → ((document generation, schema revision), typed plan).
 type PlansMap = HashMap<String, ((u64, u64), Arc<CachedPlan>)>;
 
@@ -93,6 +96,8 @@ pub struct DerivedCache {
     /// Column lineage per uri; only the latest document generation lives.
     lineage: Mutex<LineageMap>,
     lineage_stats: Counters,
+    /// Typed column lineage; only the latest key per uri lives.
+    typed_lineage: Mutex<TypedLineageMap>,
     /// Serialized command results scoped to ONE context snapshot (the
     /// pointer identity of the Arc): a refresh wipes the slot wholesale.
     results: Mutex<ResultsSlot>,
@@ -209,6 +214,10 @@ impl DerivedCache {
     pub fn clear(&self) {
         self.profiles.lock().expect("profiles cache lock").clear();
         self.lineage.lock().expect("lineage cache lock").clear();
+        self.typed_lineage
+            .lock()
+            .expect("typed lineage lock")
+            .clear();
         let mut slot = self.results.lock().expect("results cache lock");
         slot.0 = 0;
         slot.1.clear();
@@ -228,7 +237,8 @@ impl DerivedCache {
                 &self.profiles_stats,
             ),
             lineage: surface(
-                self.lineage.lock().expect("lineage cache lock").len(),
+                self.lineage.lock().expect("lineage cache lock").len()
+                    + self.typed_lineage.lock().expect("typed lineage lock").len(),
                 &self.lineage_stats,
             ),
             results: surface(
