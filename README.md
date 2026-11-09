@@ -117,6 +117,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Compiled SQL over the wire** (`dbt.compiledSql`): the server reads
   `target/compiled/…` itself and answers the text (2 MiB cap), so
   editors need no filesystem path math
+- **Query plan** (`dbt.queryPlan`, `:DbtPlan`): each IR level (HIR,
+  MIR, LIR) of one model with its fidelity and any gaps, the optimiser
+  findings, and which rules ran or were skipped and why; models with
+  Jinja control flow other than `is_incremental()` report what to run
+  instead (`dbt compile`)
 - **Relation resolution** (`dbt.relation`): the
   `database.schema.identifier` of the `source()` table, `ref()` target
   or model under the cursor — source YAML coordinates with dbt's
