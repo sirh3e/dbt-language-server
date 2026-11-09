@@ -41,16 +41,17 @@ struct Fixture {
 }
 
 fn fixture() -> Fixture {
+    fixture_reading(&["ts", "a", "b", "c"])
+}
+
+/// The same table when the query reads only `names`.
+fn fixture_reading(names: &[&str]) -> Fixture {
     let mut b = MirBuilder::new();
-    let scan = b.scan(
-        "t",
-        &[
-            ("ts", ts_col()),
-            ("a", int_col()),
-            ("b", int_col()),
-            ("c", int_col()),
-        ],
-    );
+    let read: Vec<_> = names
+        .iter()
+        .map(|n| (*n, if *n == "ts" { ts_col() } else { int_col() }))
+        .collect();
+    let scan = b.scan("t", &read);
     let cols = b.out(scan);
     let columns = [
         ("ts", KeyKind::Partition),
@@ -212,6 +213,17 @@ fn bigquery_filter_skipping_the_first_cluster_column_is_unknown() {
     let lir = lower(&mir, Backend::BigQuery, &phys);
     assert_eq!(usage(&lir, 1), PruneUse::NotFiltered);
     assert_eq!(usage(&lir, 2), PruneUse::Unknown);
+}
+
+#[test]
+fn bigquery_unread_leading_cluster_column_still_breaks_the_order() {
+    let mut f = fixture_reading(&["b"]);
+    let b_col = f.cols[0];
+    let pred = f.cmp(b_col, BinaryOp::Eq);
+    let (mir, phys) = f.filtered(vec![pred]);
+    let lir = lower(&mir, Backend::BigQuery, &phys);
+    assert_eq!(usages(&lir).len(), 1);
+    assert_eq!(usage(&lir, 0), PruneUse::Unknown);
 }
 
 #[test]

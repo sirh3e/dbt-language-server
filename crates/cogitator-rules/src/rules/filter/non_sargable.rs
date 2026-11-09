@@ -74,12 +74,6 @@ impl Detect<Lir> for NonSargable {
                 let finding = match key.usage {
                     PruneUse::Blocked { by, reason } => check.blocked(key, by, reason),
                     PruneUse::Unknown => check.unknown(key, above),
-                    // Lowering drops unread columns before `finish_keys`,
-                    // so a skipped key that is never read still leaves
-                    // a later one `Used`.
-                    PruneUse::Used(by) if check.skips_cluster_key(key) => {
-                        check.skipped_cluster(key, by)
-                    }
                     PruneUse::Used(_) | PruneUse::NotFiltered => None,
                 };
                 if let Some(finding) = finding {

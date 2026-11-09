@@ -73,6 +73,7 @@ impl Passes<'_, '_> {
             available,
             hir: Some(hir),
             mir: None,
+            text: Some(input.text),
             dialect: Some(caps.backend),
             mat: hir.config.materialized,
             config: Some(&hir.config),

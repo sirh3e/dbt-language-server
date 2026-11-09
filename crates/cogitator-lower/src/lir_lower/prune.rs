@@ -106,18 +106,32 @@ impl Lowering<'_> {
         let Some(facts) = self.phys.table(table) else {
             return Vec::new();
         };
+        let Some(&placeholder) = cols.first() else {
+            return Vec::new();
+        };
         let allowed = self.backend.capabilities().pruning_keys;
         let mut keys = Vec::new();
+        let mut unread = Vec::new();
         for column in &facts.columns {
             let Some(kind) = column.key.filter(|k| allowed.contains(k)) else {
                 continue;
             };
-            let Some(col) = self.scan_col(cols, column.name) else {
-                continue;
-            };
-            keys.push(self.key(scan, col, kind, column));
+            let col = self.scan_col(cols, column.name);
+            unread.push(col.is_none());
+            keys.push(match col {
+                Some(col) => self.key(scan, col, kind, column),
+                // A key the query never reads still breaks the key order,
+                // so it holds a place until the backend has finished.
+                None => PruneKey {
+                    col: placeholder,
+                    kind,
+                    usage: PruneUse::NotFiltered,
+                },
+            });
         }
         self.backend.finish_keys(&mut keys);
+        let mut unread = unread.into_iter();
+        keys.retain(|_| !unread.next().unwrap_or(false));
         keys
     }
 
