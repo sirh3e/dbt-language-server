@@ -120,6 +120,17 @@ impl ExprKind {
         }
     }
 
+    /// True when the node's span comes straight from one token or Jinja
+    /// region and may drive a fix. Every other `Expr` span is derived
+    /// from its children's spans (sqlparser leaves most AST spans empty)
+    /// and is approximate: fine for highlighting, never for an edit.
+    pub fn span_is_exact(&self) -> bool {
+        matches!(
+            self,
+            ExprKind::Col(_) | ExprKind::Lit(_) | ExprKind::Jinja(_)
+        )
+    }
+
     /// The subquery this expression opens, if any.
     pub fn subquery(&self) -> Option<QueryId> {
         match self {

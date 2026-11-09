@@ -104,6 +104,8 @@ pub struct ModelConfig {
     pub cluster_by: Vec<Symbol>,
     pub incremental_strategy: Option<Symbol>,
     pub contract_enforced: bool,
+    /// One entry per declared index, its columns in order.
+    pub indexes: Vec<Vec<Symbol>>,
 }
 
 /// A rule id (`join.cartesian`); the registry in `cogitator-rules` owns
