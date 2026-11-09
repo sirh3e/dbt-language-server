@@ -119,11 +119,40 @@ impl Lowerer<'_> {
 
     /// Unknown expression forms: keep their children, lose only the shape.
     pub(super) fn opaque_expr(&mut self, e: &Expr) -> ExprId {
+        if let Expr::CompoundFieldAccess { root, access_chain } = e {
+            if let Some(access) = self.field_access(root, access_chain) {
+                return access;
+            }
+        }
         let children = opaque_children(e);
         if let Expr::Lambda(lambda) = e {
             return self.lambda(lambda);
         }
         self.opaque_of(&children)
+    }
+
+    /// `s.g[1]` and `t.arr[1]`: the leading identifiers are one column path
+    /// (`g` is a field, not a sibling column); `None` for any other root.
+    fn field_access(&mut self, root: &Expr, chain: &[ast::AccessExpr]) -> Option<ExprId> {
+        let mut path: Vec<ast::Ident> = match root {
+            // boundary: `column` takes owned idents; one short path per access
+            Expr::Identifier(ident) => vec![ident.clone()],
+            Expr::CompoundIdentifier(idents) => idents.clone(),
+            _ => return None,
+        };
+        let mut rest = chain;
+        while let [ast::AccessExpr::Dot(Expr::Identifier(field)), tail @ ..] = rest {
+            path.push(field.clone()); // boundary: as above
+            rest = tail;
+        }
+        let mut children = vec![self.column(&path)];
+        for access in rest {
+            for inner in access_children(access) {
+                children.push(self.expr(inner));
+            }
+        }
+        let span = self.union_spans(&children);
+        Some(self.alloc_expr(span, ExprKind::Opaque { children }))
     }
 
     fn lambda(&mut self, lambda: &ast::LambdaFunction) -> ExprId {
@@ -157,27 +186,31 @@ fn call_span(this: &Lowerer<'_>, name_span: Span, args: &[ExprId]) -> Span {
     }
 }
 
+/// What one access step reads: a subscript's bounds, or the expressions in
+/// a `.call()` step. A plain `.field` names a field and reads nothing.
+fn access_children(access: &ast::AccessExpr) -> Vec<&Expr> {
+    match access {
+        ast::AccessExpr::Dot(Expr::Identifier(_)) => Vec::new(),
+        ast::AccessExpr::Dot(inner) => vec![inner],
+        ast::AccessExpr::Subscript(ast::Subscript::Index { index }) => vec![index],
+        ast::AccessExpr::Subscript(ast::Subscript::Slice {
+            lower_bound,
+            upper_bound,
+            stride,
+        }) => [lower_bound.as_ref(), upper_bound.as_ref(), stride.as_ref()]
+            .into_iter()
+            .flatten()
+            .collect(),
+    }
+}
+
 /// The expression children of forms the IR has no node for. Exhaustive
 /// over what can hold column references; a form with none yields nothing.
 fn opaque_children(e: &Expr) -> Vec<&Expr> {
     match e {
         Expr::CompoundFieldAccess { root, access_chain } => {
             let mut out = vec![root.as_ref()];
-            for access in access_chain {
-                match access {
-                    ast::AccessExpr::Dot(inner) => out.push(inner),
-                    ast::AccessExpr::Subscript(ast::Subscript::Index { index }) => out.push(index),
-                    ast::AccessExpr::Subscript(ast::Subscript::Slice {
-                        lower_bound,
-                        upper_bound,
-                        stride,
-                    }) => {
-                        out.extend(lower_bound.as_ref());
-                        out.extend(upper_bound.as_ref());
-                        out.extend(stride.as_ref());
-                    }
-                }
-            }
+            out.extend(access_chain.iter().flat_map(access_children));
             out
         }
         Expr::JsonAccess { value, .. } => vec![value.as_ref()],

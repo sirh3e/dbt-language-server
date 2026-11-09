@@ -180,6 +180,14 @@ fn lateral_alias_reads_the_item() {
 }
 
 #[test]
+fn struct_paths_and_subscripts_name_one_column() {
+    insta::assert_snapshot!(lineage_of(concat!(
+        "select s.g[1] as a, t.arr[2] as b, t.s.g[3] as c, arr[idx] as d, x[1].y as e ",
+        "from {{ ref('m') }} t",
+    )));
+}
+
+#[test]
 fn deterministic_source_order_across_runs() {
     let sql =
         "select * from {{ ref('a') }} join {{ ref('b') }} on true join {{ ref('c') }} on true";
