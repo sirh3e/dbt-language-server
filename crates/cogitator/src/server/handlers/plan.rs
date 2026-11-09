@@ -14,6 +14,7 @@ use super::super::derived_cache::DerivedCache;
 use super::super::reply::Reply;
 use super::super::snapshot::Snapshot;
 use super::navigation::short_uri;
+use super::plan_compiled::CompiledProbe;
 
 /// The plan for `uri`, cached per (uri, generation, schema revision).
 /// A closed file is read from disk and planned per call.
@@ -31,12 +32,17 @@ pub fn query_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_c
         None => ArtifactSet::default(),
     };
     let revision = schema_revision(snap, &artifacts);
+    let compiled = CompiledProbe::new(&snap.ctx, uri);
     let compute = |text: &str| {
-        let input = PlanInput::from_context(&snap.ctx, text, Some(&model), &artifacts, revision);
+        let file = compiled.read(snap.compiled_cap_bytes);
+        let input = PlanInput::from_context(&snap.ctx, text, Some(&model), &artifacts, revision)
+            .with_compiled(file.input());
         serde_json::to_string(&drive_plan(&input)).ok()
     };
+    // A fresh `dbt compile` changes nothing else in the key.
+    let key = compiled.cache_key(revision);
     let json: Option<Arc<str>> = match snap.doc.as_deref() {
-        Some(doc) => derived.query_plan(uri, doc.generation, revision, || compute(&doc.text)),
+        Some(doc) => derived.query_plan(uri, doc.generation, key, || compute(&doc.text)),
         None => {
             let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
             let Ok(text) = std::fs::read_to_string(&path) else {
