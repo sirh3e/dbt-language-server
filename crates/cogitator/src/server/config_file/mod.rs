@@ -190,6 +190,20 @@ const PERF_RULE_KEYS: &[&str] = &[
     "incr.missing_guard",
     "incr.subquery_watermark",
     "set.union_distinct",
+    "cross.unused_column",
+    "cross.filter_late",
+    "cross.ephemeral_repeat",
+    "cross.duplicate_logic",
+    "order.in_cte",
+    "subq.not_in_nullable",
+    "subq.correlated",
+    "join.redundant_left",
+    "join.key_type_mismatch",
+    "filter.partition_or",
+    "filter.cluster_order",
+    "filter.constant_false",
+    "limit.no_scan_reduction",
+    "incr.no_unique_key",
 ];
 
 /// Unknown keys warn with did-you-mean — never a hard error, so a

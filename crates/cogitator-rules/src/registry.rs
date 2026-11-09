@@ -8,7 +8,7 @@ use cogitator_ir::mir::Mir;
 use crate::canon::{predicates, required_columns, simplify};
 use crate::meta::RuleMeta;
 use crate::rule::{Canonicalize, Detect};
-use crate::rules::{cross, filter, incr, join, model, set};
+use crate::rules::{cross, filter, incr, join, limit, model, order, set, subq};
 
 /// One rule's meta and the phases it implements.
 pub struct Registered {
@@ -89,6 +89,76 @@ pub static REGISTRY: &[Registered] = &[
         lir: Some(&filter::non_sargable::NonSargable),
         ..EMPTY
     },
+    Registered {
+        meta: &cross::unused_column::META,
+        mir: Some(&cross::unused_column::UnusedColumn),
+        ..EMPTY
+    },
+    Registered {
+        meta: &cross::filter_late::META,
+        mir: Some(&cross::filter_late::FilterLate),
+        ..EMPTY
+    },
+    Registered {
+        meta: &cross::ephemeral_repeat::META,
+        mir: Some(&cross::ephemeral_repeat::EphemeralRepeat),
+        ..EMPTY
+    },
+    Registered {
+        meta: &cross::duplicate_logic::META,
+        mir: Some(&cross::duplicate_logic::DuplicateLogic),
+        ..EMPTY
+    },
+    Registered {
+        meta: &order::in_cte::META,
+        mir: Some(&order::in_cte::InCte),
+        ..EMPTY
+    },
+    Registered {
+        meta: &subq::not_in_nullable::META,
+        mir: Some(&subq::not_in_nullable::NotInNullable),
+        ..EMPTY
+    },
+    Registered {
+        meta: &subq::correlated::META,
+        mir: Some(&subq::correlated::Correlated),
+        ..EMPTY
+    },
+    Registered {
+        meta: &join::redundant_left::META,
+        mir: Some(&join::redundant_left::RedundantLeft),
+        ..EMPTY
+    },
+    Registered {
+        meta: &join::key_type_mismatch::META,
+        mir: Some(&join::key_type_mismatch::KeyTypeMismatch),
+        ..EMPTY
+    },
+    Registered {
+        meta: &filter::partition_or::META,
+        lir: Some(&filter::partition_or::PartitionOr),
+        ..EMPTY
+    },
+    Registered {
+        meta: &filter::cluster_order::META,
+        lir: Some(&filter::cluster_order::ClusterOrder),
+        ..EMPTY
+    },
+    Registered {
+        meta: &filter::constant_false::META,
+        mir: Some(&filter::constant_false::ConstantFalse),
+        ..EMPTY
+    },
+    Registered {
+        meta: &limit::no_scan_reduction::META,
+        lir: Some(&limit::no_scan_reduction::NoScanReduction),
+        ..EMPTY
+    },
+    Registered {
+        meta: &incr::no_unique_key::META,
+        hir: Some(&incr::no_unique_key::NoUniqueKey),
+        ..EMPTY
+    },
 ];
 
 #[cfg(test)]
@@ -111,13 +181,31 @@ mod tests {
         "set.union_distinct",
     ];
 
+    const TRANCHE_TWO: [&str; 14] = [
+        "cross.unused_column",
+        "cross.filter_late",
+        "cross.ephemeral_repeat",
+        "cross.duplicate_logic",
+        "order.in_cte",
+        "subq.not_in_nullable",
+        "subq.correlated",
+        "join.redundant_left",
+        "join.key_type_mismatch",
+        "filter.partition_or",
+        "filter.cluster_order",
+        "filter.constant_false",
+        "limit.no_scan_reduction",
+        "incr.no_unique_key",
+    ];
+
     #[test]
-    fn registry_covers_tranche_one_exactly() {
+    fn registry_covers_both_tranches_exactly() {
         let mut ids: Vec<&str> = REGISTRY.iter().map(|r| r.meta.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();
         assert_eq!(ids.len(), REGISTRY.len(), "duplicate rule id");
         let mut expected = TRANCHE_ONE.to_vec();
+        expected.extend(TRANCHE_TWO);
         expected.sort_unstable();
         assert_eq!(ids, expected);
     }
