@@ -35,12 +35,17 @@ use cogitator_ir::schema::ProjectSchemas;
 
 use crate::graph::NodeKind;
 
+mod cross_sites;
 mod dag;
 mod infer;
 pub(super) mod merge;
+mod model_facts;
 mod reads;
+mod shared;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_cross;
 #[cfg(test)]
 mod tests_demand;
 #[cfg(test)]
@@ -107,7 +112,20 @@ pub fn run_schema_job(input: &JobInput<'_>, state: &mut JobState) -> Option<Arc<
         .catalog
         .and_then(|c| c.generated_at.as_deref())
         .unwrap_or("unknown");
-    let index = dag::fold(&order, input, &inferred, backed, Arc::from(generated_at));
+    let shared = shared::for_job(&order, &inferred, input.limits.max_subplan_bytes);
+    if let Some(model) = &shared.over_budget {
+        walk.report
+            .degraded
+            .push(JobDegradation::new(model, JobIssue::SubplanBudget));
+    }
+    let index = dag::fold(
+        &order,
+        input,
+        &inferred,
+        backed,
+        Arc::from(generated_at),
+        shared,
+    );
     Some(publish(state, walk.schemas, index, walk.report))
 }
 

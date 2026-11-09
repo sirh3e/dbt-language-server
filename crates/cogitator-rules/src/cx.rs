@@ -12,6 +12,34 @@ use cogitator_ir::schema::ProjectSchemas;
 use crate::meta::{Need, Needs, RuleMeta};
 use crate::passes::SkipReason;
 
+/// A predicate a consumer provably applies to every row it reads of this
+/// model, over one output column.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ColumnFilter {
+    /// The output column on this model, as the consumer read it.
+    pub column: Arc<str>,
+    /// The predicate in canonical text with the column as `$`: two
+    /// consumers filter alike exactly when these are equal.
+    pub predicate: Arc<str>,
+}
+
+/// One direct downstream model.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConsumerFacts {
+    pub filters: Arc<[ColumnFilter]>,
+}
+
+/// Another model holds the same canonical subplan as this one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedSubplan {
+    /// The canonical text, for confirming against this model's own plan.
+    pub text: Arc<str>,
+    pub size: u32,
+    /// The others, sorted and capped; `total` counts every one.
+    pub models: Vec<Arc<str>>,
+    pub total: usize,
+}
+
 /// Downstream demand for this model, for `cross.*` rules. Sorted maps
 /// so iteration stays deterministic.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -23,6 +51,13 @@ pub struct DagFacts {
     /// Set when this model's columns rest on a catalog snapshot: when it
     /// was generated, for `Evidence::Catalog`.
     pub catalog_generated_at: Option<Arc<str>>,
+    /// Every direct downstream model, including one that reads no column.
+    pub consumers: BTreeMap<Arc<str>, ConsumerFacts>,
+    /// The non-ephemeral models this one is compiled into; filled only
+    /// for an ephemeral model, chains of ephemerals looked through.
+    pub inlined_into: Vec<Arc<str>>,
+    /// Subplans this model shares with another, by canonical hash.
+    pub shared_subplans: BTreeMap<u64, SharedSubplan>,
 }
 
 /// Read-only inputs. `available` states what is actually usable, so

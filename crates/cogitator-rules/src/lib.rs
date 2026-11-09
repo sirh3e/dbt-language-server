@@ -12,7 +12,7 @@ pub mod registry;
 pub mod rule;
 pub mod rules;
 
-pub use cx::{Cx, DagFacts};
+pub use cx::{ColumnFilter, ConsumerFacts, Cx, DagFacts, SharedSubplan};
 pub use findings::{Evidence, Finding, Findings, Fix, FixEdit};
 pub use meta::{FixSafety, Need, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
 pub use passes::{Budgets, Outcome, Phase, SkipReason, Trace, TraceEntry};

@@ -12,9 +12,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use cogitator_rules::DagFacts;
+use cogitator_rules::{ConsumerFacts, DagFacts, SharedSubplan};
 
+use super::cross_sites::{inline_sites, record_consumer};
 use super::infer::{storage_for, Inferred, Storage};
+use super::shared::SharedIndex;
 use super::JobInput;
 use crate::context::types::ModelDetails;
 use crate::graph::NodeKind;
@@ -22,10 +24,11 @@ use crate::graph::NodeKind;
 type Columns = BTreeSet<Arc<str>>;
 
 #[derive(Debug, Default, Clone)]
-struct ModelDemand {
-    by_downstream: BTreeMap<Arc<str>, Columns>,
+pub(super) struct ModelDemand {
+    pub(super) by_downstream: BTreeMap<Arc<str>, Columns>,
     tested: Columns,
     unknown: bool,
+    pub(super) consumers: BTreeMap<Arc<str>, ConsumerFacts>,
 }
 
 /// Lookup-only: rules get one model's [`DagFacts`] at a time.
@@ -34,6 +37,9 @@ pub struct DagIndex {
     by_model: HashMap<Arc<str>, ModelDemand>,
     catalog_backed: HashSet<Arc<str>>,
     generated_at: Option<Arc<str>>,
+    /// Non-ephemeral compile sites of each ephemeral model.
+    inlined: BTreeMap<Arc<str>, Vec<Arc<str>>>,
+    shared: BTreeMap<Arc<str>, BTreeMap<u64, SharedSubplan>>,
 }
 
 impl DagIndex {
@@ -55,6 +61,9 @@ impl DagIndex {
                 .contains(model)
                 .then(|| self.generated_at.clone())
                 .flatten(),
+            consumers: demand.consumers.clone(),
+            inlined_into: self.inlined.get(model).cloned().unwrap_or_default(),
+            shared_subplans: self.shared.get(model).cloned().unwrap_or_default(),
         })
     }
 
@@ -69,6 +78,23 @@ impl DagIndex {
             for (down, cols) in &demand.by_downstream {
                 down.hash(hasher);
                 cols.hash(hasher);
+            }
+            for (consumer, facts) in &demand.consumers {
+                consumer.hash(hasher);
+                for filter in facts.filters.iter() {
+                    filter.column.hash(hasher);
+                    filter.predicate.hash(hasher);
+                }
+            }
+        }
+        self.inlined.hash(hasher);
+        for (model, shared) in &self.shared {
+            model.hash(hasher);
+            for (hash, subplan) in shared {
+                hash.hash(hasher);
+                subplan.text.hash(hasher);
+                subplan.models.hash(hasher);
+                subplan.total.hash(hasher);
             }
         }
     }
@@ -86,6 +112,7 @@ pub(super) fn fold(
     inferred: &HashMap<Arc<str>, Option<Arc<Inferred>>>,
     catalog_backed: HashSet<Arc<str>>,
     generated_at: Arc<str>,
+    shared: SharedIndex,
 ) -> DagIndex {
     let mut by_model: HashMap<Arc<str>, ModelDemand> = order
         .iter()
@@ -106,15 +133,19 @@ pub(super) fn fold(
         match found.filter(|i| !i.reads.unknown) {
             Some(inferred) => {
                 apply_reads(inferred, needed.as_ref(), name, &mut by_model);
+                record_consumer(inferred, name, &upstream, &mut by_model);
             }
             None => mark_unknown(&upstream, &mut by_model),
         }
         by_model.insert(Arc::from(name), own);
     }
+    let inlined = inline_sites(order, input, inferred, &by_model);
     DagIndex {
         by_model,
         catalog_backed,
         generated_at: Some(generated_at),
+        inlined,
+        shared: shared.by_model,
     }
 }
 
