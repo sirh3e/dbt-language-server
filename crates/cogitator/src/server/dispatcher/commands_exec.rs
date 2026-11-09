@@ -359,6 +359,7 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.queryPlan" => return self.query_plan(req.id, uri),
             "dbt.reloadConfig" => {
                 // the watcher stats, reads and applies off this task;
                 // the null answer just acknowledges the trigger

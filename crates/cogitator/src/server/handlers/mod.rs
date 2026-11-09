@@ -7,4 +7,5 @@
 pub mod commands;
 pub mod doctor;
 pub mod navigation;
+pub mod plan;
 pub mod profiles;
