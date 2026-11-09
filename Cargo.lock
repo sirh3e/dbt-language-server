@@ -553,9 +553,13 @@ version = "0.5.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-error",
+ "cogitator-ir",
+ "cogitator-lower",
  "cogitator-lsp",
  "cogitator-parser",
+ "cogitator-rules",
  "cogitator-schemas",
+ "cogitator-sql-front",
  "criterion",
  "insta",
  "minijinja",
@@ -604,6 +608,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cogitator-ir"
+version = "0.5.0"
+dependencies = [
+ "insta",
+ "petgraph",
+ "serde",
+]
+
+[[package]]
+name = "cogitator-lower"
+version = "0.5.0"
+dependencies = [
+ "cogitator-ir",
+]
+
+[[package]]
 name = "cogitator-lsp"
 version = "0.5.0"
 dependencies = [
@@ -633,6 +653,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cogitator-rules"
+version = "0.5.0"
+dependencies = [
+ "cogitator-ir",
+]
+
+[[package]]
 name = "cogitator-schemas"
 version = "0.5.0"
 dependencies = [
@@ -645,6 +672,18 @@ dependencies = [
  "serde",
  "serde_json",
  "typify",
+]
+
+[[package]]
+name = "cogitator-sql-front"
+version = "0.5.0"
+dependencies = [
+ "cogitator-dialects",
+ "cogitator-error",
+ "cogitator-ir",
+ "cogitator-parser",
+ "minijinja",
+ "sqlparser",
 ]
 
 [[package]]

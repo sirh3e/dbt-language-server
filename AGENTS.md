@@ -143,6 +143,10 @@ editor integrations live under `editors/`.
 - `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
 - `crates/cogitator-duckdb` — Jinja masking + feature-gated DuckDB 2.0 parse diagnostics
 - `crates/cogitator-treesitter` — tree-sitter document backend (vendored grammar in `third_party/`)
+- `crates/cogitator-ir` — IR arenas, HIR/MIR/LIR types, verifiers, printers, `testkit` feature (serde and petgraph only)
+- `crates/cogitator-sql-front` — HIR construction: masking, binder (the only IR crate seeing sqlparser/`minijinja::machinery`)
+- `crates/cogitator-lower` — HIR→MIR, MIR→LIR, dialect backends
+- `crates/cogitator-rules` — pass manager, trace, rule registry, rules
 - `crates/cogitator` — the binary: CLI, tokio tasks, dispatcher, fusion, observability
 - `editors/nvim` — first-party Neovim plugin (commands, graph browser, the
   Neovim-only :DbtDag project view, headless test suite)
@@ -150,5 +154,6 @@ editor integrations live under `editors/`.
 - `editors/zed` — Zed extension (Rust→WASM)
 - `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
 - `specs/rust-port/` — the binding implementation specs (00–09);
-  `specs/neovim-plugin/` — the editor-integration spec
+  `specs/neovim-plugin/` — the editor-integration spec;
+  `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules and oracles (00–09)
 - `testdata/` — shared fixtures (jaffle_shop_duckdb)
