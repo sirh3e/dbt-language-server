@@ -79,6 +79,7 @@ fn message(finding: &FindingView) -> String {
         EvidenceView::Catalog { generated_at } => {
             format!("{} [catalog {generated_at}]", finding.message)
         }
+        EvidenceView::Tested { .. } => format!("{} [dbt tests]", finding.message),
         EvidenceView::Heuristic => format!("{} [heuristic]", finding.message),
         EvidenceView::Unknown => format!("{} [unknown]", finding.message),
     }

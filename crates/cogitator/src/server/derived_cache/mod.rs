@@ -20,6 +20,7 @@ use serde::Serialize;
 
 mod artifacts;
 mod plan;
+mod schemas;
 
 pub use plan::CachedPlan;
 
@@ -102,6 +103,8 @@ pub struct DerivedCache {
     /// `dbt.queryPlan` results; only the latest revision per uri lives.
     plans: Mutex<PlansMap>,
     plans_stats: Counters,
+    /// The project-schema job's snapshot and state, per project root.
+    schemas: schemas::SchemaSlot,
 }
 
 impl DerivedCache {

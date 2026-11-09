@@ -30,6 +30,7 @@ mod facts;
 mod passes;
 mod phys;
 mod report;
+pub mod schemas;
 pub mod suppress;
 #[cfg(test)]
 mod tests;
@@ -90,6 +91,9 @@ pub struct PlanInput<'a> {
     pub catalog_stats: bool,
     /// Used when the template declines on control flow.
     pub compiled: CompiledInput<'a>,
+    /// The project-wide schema job's result; before the first job finishes
+    /// the plan lists YAML and catalog columns as `Open`.
+    pub project: Option<&'a schemas::SchemaSnapshot>,
 }
 
 impl<'a> PlanInput<'a> {
@@ -112,12 +116,19 @@ impl<'a> PlanInput<'a> {
             schema_revision,
             catalog_stats: true,
             compiled: CompiledInput::NotChecked,
+            project: None,
         }
     }
 
     /// The same input with the shell's reading of the compiled file.
     pub fn with_compiled(self, compiled: CompiledInput<'a>) -> Self {
         PlanInput { compiled, ..self }
+    }
+
+    /// Sets the project snapshot this plan binds against.
+    pub fn with_project(mut self, project: Option<&'a schemas::SchemaSnapshot>) -> Self {
+        self.project = project;
+        self
     }
 }
 

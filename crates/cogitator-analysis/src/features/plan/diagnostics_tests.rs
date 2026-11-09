@@ -22,6 +22,8 @@ fn finding(id: &'static str, span: Span, severity: &'static str) -> FindingView 
         evidence: EvidenceView::Exact,
         fixes: Vec::new(),
         suppressed: false,
+        diagnostics_eligible: true,
+        placement: super::super::report::Placement::Template,
     }
 }
 
@@ -33,6 +35,7 @@ fn plan(findings: Vec<FindingView>, origin: Option<OriginView>) -> QueryPlan {
         schema_revision: 1,
         status: PlanStatus::Complete,
         guidance: None,
+        banner: None,
         origin,
         levels: PlanLevels {
             hir: LevelReport::skipped("test"),

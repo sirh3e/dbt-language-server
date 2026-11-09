@@ -18,6 +18,11 @@ use crate::passes::SkipReason;
 pub struct DagFacts {
     /// Columns downstream models read from this model, by model name.
     pub downstream_columns: BTreeMap<Arc<str>, Vec<Arc<str>>>,
+    /// Columns a dbt test on this model reads; not a downstream model.
+    pub tested_columns: Vec<Arc<str>>,
+    /// Set when this model's columns rest on a catalog snapshot: when it
+    /// was generated, for `Evidence::Catalog`.
+    pub catalog_generated_at: Option<Arc<str>>,
 }
 
 /// Read-only inputs. `available` states what is actually usable, so

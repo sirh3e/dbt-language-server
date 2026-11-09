@@ -72,6 +72,7 @@ impl Facts {
             schema_revision: 7,
             catalog_stats: true,
             compiled: CompiledInput::NotChecked,
+            project: None,
         }
     }
 
@@ -86,6 +87,7 @@ fn column(name: &str, data_type: Option<&str>) -> ColumnEntry {
         description: String::new(),
         name_pos: Default::default(),
         data_type: data_type.map(str::to_string),
+        tests: Vec::new(),
     }
 }
 

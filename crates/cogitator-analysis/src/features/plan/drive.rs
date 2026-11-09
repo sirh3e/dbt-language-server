@@ -15,7 +15,7 @@ use cogitator_sql_front::{build_hir, HirInput, SchemaEnv};
 
 use super::compiled_findings::place_findings;
 use super::compiled_route::{self, Failure, Route};
-use super::env::{bare_env, fill, BuiltEnv, Upstreams};
+use super::env::{bare_env, for_plan, BuiltEnv, Upstreams};
 use super::facts::merge_manifest;
 use super::passes::{Passes, Run};
 use super::report::{LevelReport, OriginView, PlanLevels, PlanStatus, QueryPlan};
@@ -149,7 +149,7 @@ pub(super) fn two_pass(
             env: BuiltEnv::default(),
         };
     };
-    let env = fill(&Upstreams::of(hir), input);
+    let env = for_plan(&Upstreams::of(hir), input);
     if env.is_empty() {
         return BuiltHir { hir: first, env };
     }

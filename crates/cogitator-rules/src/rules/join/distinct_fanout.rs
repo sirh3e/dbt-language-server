@@ -3,10 +3,10 @@
 //! `replace_distinct_aggregate.rs`).
 //!
 //! `unique` tests are optional evidence, so `Need::Tests` is not declared:
-//! a project without tests still gets the Hint.
+//! a project without tests still gets the Hint. Tests come from YAML through
+//! `ProjectSchemas`; the finding names them with `Evidence::Tested`.
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 use cogitator_ir::common::{BinaryOp, JoinKind};
 use cogitator_ir::mir::{ColId, Mir, RelId, RelOp, ScalarKind, TableRef};
@@ -99,13 +99,10 @@ fn verdict(mir: &Mir, cx: &Cx<'_>, l: RelId, r: RelId, keys: &[(ColId, ColId)]) 
             "DISTINCT over this join may hide duplicate rows from join fan-out".to_owned(),
         )),
         _ => {
-            let generated_at = cx.schemas.map_or_else(
-                || Arc::from("dbt unique test"),
-                |s| Arc::from(format!("dbt unique test (schema revision {})", s.revision)),
-            );
+            let schema_revision = cx.schemas.map_or(0, |s| s.revision);
             Some((
                 Severity::Info,
-                Evidence::Catalog { generated_at },
+                Evidence::Tested { schema_revision },
                 "DISTINCT over this join hides duplicate rows: a `unique` test covers only one \
                  side of the key"
                     .to_owned(),

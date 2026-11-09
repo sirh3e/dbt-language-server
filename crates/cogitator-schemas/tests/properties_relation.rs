@@ -115,3 +115,45 @@ fn column_entries_without_a_data_type_serialize_as_before() {
     let back: cogitator_schemas::ColumnEntry = serde_json::from_str(old).unwrap();
     assert_eq!(back.data_type, None);
 }
+
+#[test]
+fn column_tests_are_read_from_both_keys_with_their_conditions() {
+    let yaml = r#"
+version: 2
+models:
+  - name: m
+    columns:
+      - name: id
+        tests: [unique, not_null]
+      - name: legacy
+        data_tests:
+          - dbt.unique
+      - name: scoped
+        tests:
+          - not_null:
+              config:
+                where: "x > 1"
+          - relationships:
+              to: ref('b')
+              field: id
+      - name: warned
+        tests:
+          - unique:
+              severity: warn
+      - name: long_form
+        data_tests:
+          - name: my_check
+            test_name: not_null
+"#;
+    let parsed = parse_properties(yaml, Path::new("schema.yml")).expect("parses");
+    let columns = &parsed.models[0].columns;
+    assert!(columns[0].proven_by("unique") && columns[0].proven_by("not_null"));
+    assert!(columns[1].proven_by("unique"), "dbt. prefix and data_tests");
+    assert!(!columns[2].proven_by("not_null"), "where weakens the test");
+    assert_eq!(columns[2].tests.len(), 2, "every test is recorded");
+    assert!(
+        !columns[3].proven_by("unique"),
+        "severity warn weakens the test"
+    );
+    assert!(columns[4].proven_by("not_null"), "test_name is the test");
+}

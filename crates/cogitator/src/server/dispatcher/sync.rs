@@ -107,10 +107,15 @@ impl Dispatcher {
         let Some(doc) = self.documents.get(uri) else {
             return Vec::new();
         };
-        let revision =
-            crate::server::handlers::plan::schema_revision(ctx, artifacts, perf.catalog_stats);
+        let key = crate::server::handlers::plan::plan_key(
+            ctx,
+            &self.derived,
+            artifacts,
+            uri,
+            perf.catalog_stats,
+        );
         self.derived
-            .plan_cached(uri, doc.generation, revision)
+            .plan_cached(uri, doc.generation, key)
             .map(|plan| crate::server::diagnostics::perf_diagnostics(doc, &plan, &perf))
             .unwrap_or_default()
     }
