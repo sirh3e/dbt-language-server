@@ -7,6 +7,7 @@ use cogitator_ir::common::{Materialization, ModelConfig};
 use cogitator_ir::lir::Backend;
 use cogitator_ir::{Interner, Symbol};
 use cogitator_parser::pipeline::sql_dialect;
+use cogitator_sql_front::fold_schema_name;
 use serde_json::Value;
 use sqlparser::ast::{Expr, Function, FunctionArg, FunctionArgExpr, FunctionArguments};
 use sqlparser::parser::Parser;
@@ -34,15 +35,6 @@ pub(super) fn backend_for(dialect: &Dialect) -> Backend {
         "duckdb" => Backend::DuckDb,
         "postgres" => Backend::Postgres,
         _ => Backend::Generic,
-    }
-}
-
-/// Mirrors the front end's folding of unquoted names from schema
-/// metadata, which that crate keeps private (`DialectRules::fold_name`).
-pub(super) fn fold_name(name: &str, dialect: &Dialect) -> String {
-    match dialect.as_str() {
-        "snowflake" => name.to_uppercase(),
-        _ => name.to_lowercase(),
     }
 }
 
@@ -120,7 +112,7 @@ pub(super) fn key_columns(raw: &str, dialect: &Dialect) -> Vec<String> {
             Some(args) => args.iter().filter_map(|a| column_of(a)).collect(),
             None => column_of(expr).into_iter().collect::<Vec<_>>(),
         })
-        .map(|name| fold_name(&name, dialect))
+        .map(|name| fold_schema_name(&name, dialect).into_owned())
         .collect()
 }
 
@@ -205,7 +197,7 @@ pub(super) fn merge_manifest(
         manifest
             .unique_key
             .iter()
-            .map(|k| fold_name(k, dialect))
+            .map(|k| fold_schema_name(k, dialect).into_owned())
             .collect()
     });
     fill(&mut config.partition_by, syms, || {
@@ -234,7 +226,7 @@ pub(super) fn merge_manifest(
                 .into_iter()
                 .map(|cols| {
                     cols.iter()
-                        .map(|c| syms.intern(&fold_name(c, dialect)))
+                        .map(|c| syms.intern(&fold_schema_name(c, dialect)))
                         .collect()
                 })
                 .collect();

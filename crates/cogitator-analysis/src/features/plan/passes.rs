@@ -79,7 +79,7 @@ impl Passes<'_, '_> {
             config: Some(&hir.config),
             schemas: built.schema_known.then_some(&*schemas),
             phys: phys.has_keys.then_some(&phys.facts),
-            dag: None,
+            dag: built.dag.as_ref(),
         };
         let output = run_passes(
             PassInput {
@@ -106,7 +106,7 @@ impl Passes<'_, '_> {
 }
 
 /// `Need::Dialect` is held only by a named backend: `generic` has no
-/// capability table to reason with. `Tests` and `Dag` have no facts yet.
+/// capability table to reason with.
 fn needs(
     input: &PlanInput<'_>,
     hir: &Hir,
@@ -121,6 +121,8 @@ fn needs(
         }
     };
     set(Need::Schema, env.schema_known);
+    set(Need::Dag, env.dag.is_some());
+    set(Need::Tests, env.tests_known);
     set(Need::Types, env.types_known);
     set(Need::Stats, phys.has_stats);
     set(Need::Phys, phys.has_keys);

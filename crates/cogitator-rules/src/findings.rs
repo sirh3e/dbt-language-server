@@ -13,6 +13,8 @@ use crate::meta::{FixSafety, Severity};
 pub enum Evidence {
     Exact,
     Catalog { generated_at: Arc<str> },
+    /// A dbt test (`unique`, `not_null`) recorded in the project YAML.
+    Tested { schema_revision: u64 },
     Heuristic,
     Unknown,
 }

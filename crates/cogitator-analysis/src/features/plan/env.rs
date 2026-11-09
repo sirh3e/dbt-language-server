@@ -1,6 +1,7 @@
-//! `SchemaEnv` from direct upstream columns. The project-wide topological
-//! job is Wave 4, so every schema filled here stays `Open`: a YAML or
-//! catalog listing is evidence of these columns, not proof of no others.
+//! `SchemaEnv` for one plan. With a [`SchemaSnapshot`] the direct upstreams
+//! come from the project-wide job, `Closed` where it proved that. Before the
+//! first job finishes, `fill` lists YAML and catalog columns as `Open`: a
+//! listing is evidence of these columns, not proof of no others.
 
 use std::collections::BTreeSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -14,6 +15,10 @@ use cogitator_sql_front::{parse_sql_type, SchemaEnv};
 
 use crate::artifacts::catalog::CatalogTable;
 
+use cogitator_rules::DagFacts;
+
+use super::schemas::merge::with_tests;
+use super::schemas::SchemaSnapshot;
 use super::PlanInput;
 
 /// Named relations the query reads directly.
@@ -65,6 +70,10 @@ pub(super) struct BuiltEnv {
     pub(super) schema_known: bool,
     /// At least one column has a stated type, so `Need::Types` holds.
     pub(super) types_known: bool,
+    /// A direct upstream has a strict `unique` or `not_null` test.
+    pub(super) tests_known: bool,
+    /// Downstream demand for this model, when it is known.
+    pub(super) dag: Option<DagFacts>,
 }
 
 impl BuiltEnv {
@@ -82,6 +91,77 @@ pub(super) fn bare_env(input: &PlanInput<'_>) -> SchemaEnv {
         }),
         model: input.model.map(Arc::from),
     }
+}
+
+/// The environment for one plan: the job's snapshot when there is one.
+pub(super) fn for_plan(upstreams: &Upstreams, input: &PlanInput<'_>) -> BuiltEnv {
+    match input.project {
+        Some(snapshot) => from_snapshot(upstreams, input, snapshot),
+        None => fill(upstreams, input),
+    }
+}
+
+/// Copies the direct upstreams out of the project snapshot. A relation
+/// the job has no schema for is left out, so the binder keeps it open.
+fn from_snapshot(
+    upstreams: &Upstreams,
+    input: &PlanInput<'_>,
+    snapshot: &SchemaSnapshot,
+) -> BuiltEnv {
+    let mut schemas = ProjectSchemas {
+        revision: snapshot.revision,
+        ..ProjectSchemas::default()
+    };
+    let mut found = 0;
+    let mut types_known = false;
+    let self_name = input.model.filter(|_| upstreams.this);
+    for name in upstreams.models.iter().map(String::as_str).chain(self_name) {
+        if let Some(schema) = snapshot.schemas.model(name) {
+            found += 1;
+            types_known |= has_types(schema);
+            schemas.models.insert(Arc::from(name), schema.clone());
+        }
+    }
+    for (source, table) in &upstreams.sources {
+        if let Some(schema) = snapshot.schemas.source(source, table) {
+            found += 1;
+            types_known |= has_types(schema);
+            schemas.sources.insert(
+                (Arc::from(source.as_str()), Arc::from(table.as_str())),
+                schema.clone(),
+            );
+        }
+    }
+    BuiltEnv {
+        schema_known: upstreams.count() > 0 && !upstreams.unnamed && found == upstreams.count(),
+        types_known,
+        tests_known: tested_upstream(upstreams, input),
+        dag: input.model.and_then(|m| snapshot.dag.facts(m)),
+        env: SchemaEnv {
+            schemas: Arc::new(schemas),
+            model: input.model.map(Arc::from),
+        },
+    }
+}
+
+/// Whether YAML on a direct upstream states a proof-giving test.
+fn tested_upstream(upstreams: &Upstreams, input: &PlanInput<'_>) -> bool {
+    let tested = |columns: &[ColumnEntry]| {
+        columns
+            .iter()
+            .any(|c| c.proven_by("unique") || c.proven_by("not_null"))
+    };
+    upstreams
+        .models
+        .iter()
+        .any(|m| input.models.get(m).is_some_and(|d| tested(&d.columns)))
+        || upstreams.sources.iter().any(|(source, table)| {
+            input
+                .sources
+                .get(source)
+                .and_then(|s| s.tables.get(table))
+                .is_some_and(|t| tested(&t.columns))
+        })
 }
 
 /// Fills schemas for `upstreams` from YAML and the catalog. A relation
@@ -129,6 +209,8 @@ pub(super) fn fill(upstreams: &Upstreams, input: &PlanInput<'_>) -> BuiltEnv {
     BuiltEnv {
         schema_known: upstreams.count() > 0 && !upstreams.unnamed && found == upstreams.count(),
         types_known,
+        tests_known: tested_upstream(upstreams, input),
+        dag: None,
         env: SchemaEnv {
             schemas: Arc::new(schemas),
             model: input.model.map(Arc::from),
@@ -161,11 +243,18 @@ fn schema_of(
             .take(typed_in_catalog)
             .position(|c| c.name.eq_ignore_ascii_case(&entry.name));
         match known {
-            Some(i) if columns[i].ty.ty == SqlType::Unknown => {
-                columns[i] = col(&entry.name, entry.data_type.as_deref(), input);
+            Some(i) => {
+                let name = columns[i].name.clone();
+                let mut ty = columns[i].ty.clone();
+                if ty.ty == SqlType::Unknown {
+                    ty = col(&entry.name, entry.data_type.as_deref(), input).ty;
+                }
+                columns[i] = with_tests(name, ty, Some(entry));
             }
-            Some(_) => {}
-            None => columns.push(col(&entry.name, entry.data_type.as_deref(), input)),
+            None => {
+                let ty = col(&entry.name, entry.data_type.as_deref(), input).ty;
+                columns.push(with_tests(Arc::from(entry.name.as_str()), ty, Some(entry)));
+            }
         }
     }
     let mut hasher = DefaultHasher::new();

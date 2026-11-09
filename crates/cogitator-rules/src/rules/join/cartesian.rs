@@ -14,7 +14,7 @@ use cogitator_ir::hir::{ExprId, ExprKind, FromId, FromKind, Hir, JoinCond, Resol
 use cogitator_ir::mir::{ColId, HirNode, Mir, Rel, RelId, RelOp, ScalarId};
 use cogitator_ir::{Level, RuleId};
 
-use super::support::{expr, from_leaves, hir_ref, is_closed, is_one_row, reads};
+use super::support::{expr, from_leaves, hir_ref, is_one_row, no_opaque, reads};
 use crate::cx::Cx;
 use crate::findings::{Evidence, Finding, Findings};
 use crate::meta::{FixSafety, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
@@ -75,7 +75,9 @@ fn examine(
         return None;
     }
     let hir = cx.hir?;
-    if !is_closed(mir, *l) || !is_closed(mir, *r) || is_one_row(mir, *l) || is_one_row(mir, *r) {
+    // "No condition" is about the written ON and WHERE, not about every
+    // column: open scans are fine, an `Opaque` input is not.
+    if !no_opaque(mir, *l) || !no_opaque(mir, *r) || is_one_row(mir, *l) || is_one_row(mir, *r) {
         return None;
     }
     let (left, right) = (columns(mir, *l)?, columns(mir, *r)?);
@@ -141,8 +143,8 @@ fn keyless_as_written(mir: &Mir, hir: &Hir, rel: &Rel, kind: JoinKind, on: &[Sca
 }
 
 /// True when the written ON reads columns from exactly one side and
-/// every reference is bound. An unresolved reference, whichever kind of
-/// `Resolution` it is, leaves its side unknown, so it blocks the claim.
+/// every reference is bound. `OpenSchema` names its FROM item, so its side
+/// is known; any other unresolved reference blocks the claim.
 fn written_on_is_one_sided(hir: &Hir, on: ExprId, l: FromId, r: FromId) -> bool {
     let (left, right) = (from_leaves(hir, l), from_leaves(hir, r));
     let (mut in_left, mut in_right) = (false, false);
@@ -153,7 +155,7 @@ fn written_on_is_one_sided(hir: &Hir, on: ExprId, l: FromId, r: FromId) -> bool 
         };
         match &node.kind {
             ExprKind::Col(c) => match hir.cols.get(*c).and_then(|c| c.res.as_ref()) {
-                Some(Resolution::Bound { from, .. }) => {
+                Some(Resolution::Bound { from, .. } | Resolution::OpenSchema(from)) => {
                     in_left |= left.contains(from);
                     in_right |= right.contains(from);
                 }

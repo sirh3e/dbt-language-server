@@ -151,10 +151,16 @@ fn left_nullified_with_jinja_values_stays_honest() {
 }
 
 #[test]
-fn left_nullified_does_not_claim_over_an_open_schema() {
+fn left_nullified_claims_a_qualified_column_of_an_open_from_item() {
     let sql =
         "select o.id from orders as o left join customers as c on o.cid = c.id where c.state = 1";
-    assert!(left(sql).is_empty());
+    assert_eq!(left(sql).len(), 1, "c.state names its FROM item");
+}
+
+#[test]
+fn left_nullified_stays_silent_on_a_name_that_could_be_either_side() {
+    let sql = "select o.id from orders as o left join customers as c on o.cid = c.id where state = 1";
+    assert!(left(sql).is_empty(), "either open side could supply it");
 }
 
 #[test]
@@ -236,8 +242,20 @@ fn cartesian_exempts_explicit_cross_joins_and_one_row_inputs() {
 fn cartesian_does_not_claim_through_holes_or_open_schemas() {
     let jinja_on = "select x.id from {{ ref('a') }} as x left join {{ ref('b') }} as y on {{ my_condition() }}";
     assert!(cartesian(jinja_on).is_empty());
+    let hole = "select x.id from {{ ref('a') }} as x, generate_series(1, 3) as g";
+    assert!(cartesian(hole).is_empty(), "a table function hides what it reads");
+    let open_related = "select x.id from orders as x, customers as y where x.id = y.oid";
+    assert!(cartesian(open_related).is_empty(), "qualified keys relate them");
+    let open_ambiguous = "select x.id from orders as x, customers as y where id = oid";
+    assert!(cartesian(open_ambiguous).is_empty(), "unqualified: could relate them");
+}
+
+#[test]
+fn cartesian_reports_a_comma_join_over_open_schemas() {
     let open = "select x.id from {{ ref('a') }} as x, some_table as y";
-    assert!(cartesian(open).is_empty());
+    assert_eq!(cartesian(open).len(), 1, "keyless as written; no schema needed");
+    let one_sided = "select x.id from orders as x join customers as y on x.state = 1";
+    assert_eq!(cartesian(one_sided).len(), 1, "qualified: one side only");
 }
 
 // join.distinct_fanout
@@ -267,9 +285,16 @@ fn distinct_fanout_is_info_when_a_test_covers_one_side() {
     let finding = only(run(JOINED, schemas, all_needs(), "join.distinct_fanout"));
     assert_eq!(finding.severity, Severity::Info);
     assert!(
-        matches!(finding.evidence, Evidence::Catalog { .. }),
+        matches!(finding.evidence, Evidence::Tested { .. }),
         "{finding:#?}"
     );
+}
+
+#[test]
+fn distinct_fanout_stays_silent_when_a_star_could_cross_the_join() {
+    // An open star names no columns, so "only one side is kept" cannot be
+    // shown: this claim genuinely needs closed schemas.
+    assert!(fanout("select distinct * from orders as x join customers as y on x.id = y.k").is_empty());
 }
 
 #[test]
@@ -470,10 +495,32 @@ fn union_distinct_is_silent_when_dedupe_may_be_needed() {
     for sql in [
         "select id from {{ ref('a') }} where id > 1 union select id from {{ ref('a') }} where id < 5",
         "select id from {{ ref('a') }} union all select id from {{ ref('b') }}",
-        "select id from orders union select id from customers",
     ] {
         assert!(union(sql).is_empty(), "{sql}");
     }
+}
+
+#[test]
+fn union_distinct_does_not_need_closed_arms() {
+    let sql = "select id from orders union select id from customers";
+    let finding = only(union(sql));
+    assert_eq!(finding.evidence, Evidence::Heuristic);
+    assert_eq!(finding.fixes[0].safety, FixSafety::ChangesIntent);
+}
+
+#[test]
+fn union_distinct_with_an_opaque_arm_stays_silent() {
+    let sql = "select id from generate_series(1, 2) union select id from {{ ref('b') }}";
+    assert!(union(sql).is_empty(), "a table function hides what it reads");
+}
+
+#[test]
+fn union_distinct_discriminators_need_closed_arms_to_be_preserving() {
+    let closed = "select 'a' as src, id from {{ ref('a') }} group by id union select 'b' as src, id from {{ ref('b') }} group by id";
+    assert_eq!(only(union(closed)).fixes[0].safety, FixSafety::Preserving);
+    // The same shape over open tables keeps the P proof off: it needs positions.
+    let open = "select 'a' as src, id from orders group by id union select 'b' as src, id from customers group by id";
+    assert_eq!(only(union(open)).fixes[0].safety, FixSafety::ChangesIntent);
 }
 
 #[test]

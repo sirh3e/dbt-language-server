@@ -111,6 +111,10 @@ pub enum EvidenceView {
     Catalog {
         generated_at: String,
     },
+    #[serde(rename_all = "camelCase")]
+    Tested {
+        schema_revision: u64,
+    },
     Heuristic,
     Unknown,
 }
@@ -121,6 +125,9 @@ impl EvidenceView {
             Evidence::Exact => EvidenceView::Exact,
             Evidence::Catalog { generated_at } => EvidenceView::Catalog {
                 generated_at: generated_at.to_string(),
+            },
+            Evidence::Tested { schema_revision } => EvidenceView::Tested {
+                schema_revision: *schema_revision,
             },
             Evidence::Heuristic => EvidenceView::Heuristic,
             Evidence::Unknown => EvidenceView::Unknown,

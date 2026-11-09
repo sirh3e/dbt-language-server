@@ -13,7 +13,7 @@ use cogitator_lower::DialectBackend;
 use cogitator_rules::meta::Needs;
 use cogitator_sql_front::{build_hir, HirInput};
 
-use super::env::{bare_env, fill, BuiltEnv, Upstreams};
+use super::env::{bare_env, for_plan, BuiltEnv, Upstreams};
 use super::facts::merge_manifest;
 use super::passes::{Passes, Run};
 use super::report::{LevelReport, OriginView, PlanLevels, PlanStatus, QueryPlan};
@@ -124,7 +124,7 @@ fn built_hir(input: &PlanInput<'_>) -> BuiltHir {
             env: BuiltEnv::default(),
         };
     };
-    let env = fill(&Upstreams::of(hir), input);
+    let env = for_plan(&Upstreams::of(hir), input);
     if env.is_empty() {
         return BuiltHir { hir: first, env };
     }
