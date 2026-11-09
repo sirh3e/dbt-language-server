@@ -10,7 +10,8 @@ editor integrations live under `editors/`.
   `lint` / `lint-shell` (shellcheck; testdata fixtures excluded) /
   `check` (the CI set) / `system-test` / `release` / `duckdb-check` /
   `gen-schemas(-check)` / `zigbuild` / `nvim-test` / `emacs-test` /
-  `zed-build` / `changelog` / `hooks`
+  `zed-build` / `changelog` / `hooks` / `oracle` (= `oracle-duckdb` +
+  `oracle-datafusion`, the differential corpus; never in the default build)
 - **Build**: `cargo build --workspace`
 - **Test all**: `just test` = `cargo test --workspace --features
   cogitator/e2e` (the `e2e` feature builds the fake-dbt test bin; a bare
@@ -128,7 +129,9 @@ editor integrations live under `editors/`.
   `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`, `--config [path]`.
 - **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
   `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
-  `refresh.debounce_ms` hot-reload (2 s stamp poll + didSave fast-path +
+  `refresh.debounce_ms`, `perf.{profile,catalog_stats}` and `perf_rules`
+  (rule id → severity or off; profile default `off`, specs/ir-pipeline/08)
+  hot-reload (2 s stamp poll + didSave fast-path +
   `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch
   values; `startup.{debug,otlp,tree_sitter,fusion}` only via `--config`
   at launch. Precedence: defaults < file < CLI < initializationOptions.
@@ -148,6 +151,7 @@ editor integrations live under `editors/`.
 - `crates/cogitator-sql-front` — HIR construction: masking, binder (the only IR crate seeing sqlparser/`minijinja::machinery`)
 - `crates/cogitator-lower` — HIR→MIR, MIR→LIR, dialect backends
 - `crates/cogitator-rules` — pass manager, trace, rule registry, rules
+- `crates/cogitator-oracle` — differential tests against DuckDB (`just oracle`; feature-gated, never in the default build); `oracles/datafusion` is its separate DataFusion workspace
 - `crates/cogitator` — the binary: CLI, tokio tasks, dispatcher, fusion, observability
 - `editors/nvim` — first-party Neovim plugin (commands, graph browser, the
   Neovim-only :DbtDag project view, headless test suite)

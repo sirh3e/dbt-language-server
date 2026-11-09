@@ -45,14 +45,31 @@ compiled offsets. `model.unused_cte` and other `AllBranches` rules record
 
 ## Compute
 
-Offloaded (`offload_blocking`), cached in a new `DerivedCache` slot keyed by
-(uri, generation, schema revision). The push-diagnostics path reuses a cached
-plan and never computes one.
+Offloaded (`offload_blocking`), cached in a `DerivedCache` slot keyed by
+(uri, generation, plan key). The plan key moves with the schema revision,
+the context snapshot, the manifest and catalog, `perf.catalog_stats` and the
+stamps of the model and its compiled file. The push-diagnostics path reuses
+a cached plan and never computes one.
 
 ## Lineage
 
-`lineage/from_hir.rs` migrates column lineage to HIR, keeping the
-`column_lineage` signature and `ModelLineage` JSON so all consumers stay green.
-Legacy code moves under `cfg(test)` for a parity test over all fixtures,
-comparing sources as sets with an explicit allowlist of accepted differences,
-and is removed once parity holds.
+`lineage/from_hir.rs` is column lineage over HIR; `column_lineage` and the
+`ModelLineage` JSON are unchanged. The pre-HIR engine has been removed: parity
+held across the fixtures and the lineage test inputs, and `corpus_tests.rs` now
+pins those answers. Accepted differences from the old engine: `__dbt_rel_N__`
+placeholder names never appear, gap closures only add sources, and a
+top-level set operation answers where the old engine declined.
+
+`lineage/typed.rs` adds `typed_column_lineage`, over the project
+`SchemaSnapshot`: a star expands into its columns when every input is `Closed`
+(an `Open` or unknown input keeps the `*` row), and a template with control
+flow answers from `target/compiled` only when the file is known `Fresh`, its
+coverage reaches `MIN_LITERAL_COVERAGE` and the open document has no unsaved
+edits. Stale SQL yields no answer, never a banner. `dbt.columnLineage` reports
+`origin: "compiled"`, `dbt.impact` lists such models in `compiledLineage`, and
+`dbt.showLineage` and the contract and undocumented diagnostics say so in
+their text; a response built from the template omits the field.
+
+Freshness compares the model's own file with its compiled file; a change only
+in a macro it calls is not detectable that way and is accepted as staleness.
+Hover reads the cached lineage at the document's generation and never computes.
