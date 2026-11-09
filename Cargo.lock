@@ -621,6 +621,7 @@ name = "cogitator-lower"
 version = "0.5.0"
 dependencies = [
  "cogitator-ir",
+ "insta",
 ]
 
 [[package]]

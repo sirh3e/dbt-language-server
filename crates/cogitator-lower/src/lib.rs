@@ -1,14 +1,23 @@
-//! HIR → MIR and MIR → LIR lowering (specs/ir-pipeline/02, 03).
+//! HIR → MIR and MIR → LIR lowering (specs/ir-pipeline/02, 03), SQL type
+//! inference and one `DialectBackend` per dialect.
 //!
-//! Wave 1 stub: both stages decline. Type inference, the lowering rules
-//! and the five backends land in `feat/ir-lowering`.
+//! Both stages are total: gaps in the input become `Opaque` nodes with a
+//! `Degradation`, and a verifier `Violation` drops the level instead of
+//! panicking (specs/ir-pipeline/00).
 
 pub mod backends;
+mod infer;
+mod lir_lower;
+mod mir_lower;
 
 use cogitator_ir::hir::Hir;
-use cogitator_ir::lir::{Capabilities, Lir, PhysColumn, PhysicalFacts, Pred, Pruning};
+use cogitator_ir::lir::{
+    Capabilities, CtePolicy, Lir, PhysColumn, PhysicalFacts, Pred, PruneKey, Pruning,
+};
 use cogitator_ir::mir::Mir;
-use cogitator_ir::{Degradation, DegradationKind, Lowered};
+use cogitator_ir::Lowered;
+
+pub use lir_lower::{decide_pruning, lower_plan, PredContext, PredDetail};
 
 /// A dialect's physical knowledge. Implemented by one unit struct per
 /// module under `backends/`; `lower` must return a `Lir` that passes
@@ -16,62 +25,35 @@ use cogitator_ir::{Degradation, DegradationKind, Lowered};
 pub trait DialectBackend: Sync {
     fn capabilities(&self) -> &'static Capabilities;
     fn lower(&self, mir: &Mir, phys: &PhysicalFacts) -> Lir;
+
+    /// The verdict from the predicate's shape alone. Callers holding a
+    /// `Mir` should use [`decide_pruning`], which also applies `refine`.
     fn pruning(&self, pred: &Pred, col: &PhysColumn) -> Pruning;
-}
 
-/// Lowers a verified HIR to MIR. Never fails: gaps become `Opaque`
-/// nodes with `Degradation`s or a `Declined` result.
-pub fn lower_to_mir(_hir: &Hir) -> Lowered<Mir> {
-    Lowered::declined(vec![Degradation::new(
-        DegradationKind::NotImplemented,
-        "HIR to MIR lowering is not implemented yet",
-    )])
-}
-
-/// Lowers a verified MIR through `backend`.
-pub fn lower_to_lir(
-    _mir: &Mir,
-    _backend: &dyn DialectBackend,
-    _phys: &PhysicalFacts,
-) -> Lowered<Lir> {
-    Lowered::declined(vec![Degradation::new(
-        DegradationKind::NotImplemented,
-        "MIR to LIR lowering is not implemented yet",
-    )])
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use cogitator_ir::origin::{SourceOrigin, TemplateVariant};
-    use cogitator_ir::testkit::{int_col, MirBuilder};
-    use cogitator_ir::Fidelity;
-
-    struct NoBackend;
-
-    impl DialectBackend for NoBackend {
-        fn capabilities(&self) -> &'static Capabilities {
-            unreachable!("the stubs never consult the backend")
-        }
-        fn lower(&self, _mir: &Mir, _phys: &PhysicalFacts) -> Lir {
-            unreachable!("the stubs never consult the backend")
-        }
-        fn pruning(&self, _pred: &Pred, _col: &PhysColumn) -> Pruning {
-            Pruning::Unknown
-        }
+    /// Adjusts `decided` with facts that need the plan: a function's
+    /// name, or how the column is used inside the comparison.
+    fn refine(&self, decided: Pruning, _ctx: &PredContext<'_>) -> Pruning {
+        decided
     }
 
-    #[test]
-    fn stubs_decline_without_panicking() {
-        let hir = Hir::new(SourceOrigin::Template {
-            variant: TemplateVariant::Plain,
-        });
-        assert_eq!(lower_to_mir(&hir).fidelity, Fidelity::Declined);
+    /// Adjusts one scan's keys together, in `TableFacts` column order.
+    fn finish_keys(&self, _keys: &mut [PruneKey]) {}
 
-        let mut b = MirBuilder::new();
-        let scan = b.scan("t", &[("a", int_col())]);
-        let mir = b.finish(scan);
-        let lir = lower_to_lir(&mir, &NoBackend, &PhysicalFacts::default());
-        assert_eq!(lir.fidelity, Fidelity::Declined);
+    /// The policy for a CTE with `uses` references in the plan. Must be
+    /// listed in `capabilities().cte_policies`.
+    fn cte_policy(&self, _uses: u32) -> CtePolicy {
+        CtePolicy::Auto
     }
+}
+
+/// Lowers a HIR to MIR. Never panics: gaps become `Opaque` nodes with
+/// `Degradation`s, and verifier violations drop the level.
+pub fn lower_to_mir(hir: &Hir) -> Lowered<Mir> {
+    mir_lower::lower(hir)
+}
+
+/// Lowers a MIR through `backend`. An invalid MIR declines the level;
+/// the result is verified against the backend's capability table.
+pub fn lower_to_lir(mir: &Mir, backend: &dyn DialectBackend, phys: &PhysicalFacts) -> Lowered<Lir> {
+    lir_lower::lower(mir, backend, phys)
 }
