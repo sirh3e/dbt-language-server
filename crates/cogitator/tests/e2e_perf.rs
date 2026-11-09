@@ -127,7 +127,7 @@ fn perf_rules_override_and_hot_reload() {
         json!({"command": "dbt.doctor", "arguments": [{}]}),
     );
     assert_eq!(doctor["result"]["perf"]["profile"], "strict", "{doctor}");
-    assert_eq!(doctor["result"]["perf"]["enabledRules"], 8, "{doctor}");
+    assert_eq!(doctor["result"]["perf"]["enabledRules"], 22, "{doctor}");
     lsp.shutdown();
 }
 
