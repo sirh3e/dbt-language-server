@@ -682,6 +682,7 @@ dependencies = [
  "cogitator-error",
  "cogitator-ir",
  "cogitator-parser",
+ "insta",
  "minijinja",
  "sqlparser",
 ]
