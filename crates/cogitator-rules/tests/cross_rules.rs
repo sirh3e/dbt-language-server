@@ -163,6 +163,14 @@ fn a_jinja_expanded_select_list_cannot_be_called_unused() {
 }
 
 #[test]
+fn a_jinja_expression_output_is_named_and_can_be_unused() {
+    let sql = "select a, {{ var('x') }} as b from {{ ref('up') }}";
+    let found = run(UNUSED, sql, Materialization::Table, &downstream(&["a"]));
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert!(found[0].message.contains("`b`"));
+}
+
+#[test]
 fn the_models_own_config_keys_are_read_by_the_build() {
     let sql = "{{ config(materialized='incremental', unique_key='b') }}\
                \nselect a, b, c from {{ ref('up') }}";

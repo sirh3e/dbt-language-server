@@ -21,6 +21,8 @@ pub(super) struct SharedIndex {
     pub(super) by_model: BTreeMap<Arc<str>, BTreeMap<u64, SharedSubplan>>,
     /// The first model the byte budget left out.
     pub(super) over_budget: Option<Arc<str>>,
+    /// Models a per-model count bound left partly or wholly uncompared.
+    pub(super) incomplete: Vec<Arc<str>>,
 }
 
 /// Groups every inferred model's candidates, in `order`.
@@ -29,13 +31,21 @@ pub(super) fn for_job(
     inferred: &HashMap<Arc<str>, Option<Arc<Inferred>>>,
     max_bytes: u64,
 ) -> SharedIndex {
-    group(
+    let models = || {
         order.iter().filter_map(|name| {
             let result = inferred.get(*name)?.as_ref()?;
-            Some((Arc::<str>::from(*name), result.facts.subplans.as_slice()))
-        }),
+            Some((Arc::<str>::from(*name), &result.facts))
+        })
+    };
+    let mut out = group(
+        models().map(|(name, facts)| (name, facts.subplans.as_slice())),
         max_bytes,
-    )
+    );
+    out.incomplete = models()
+        .filter(|(_, facts)| !facts.subplans_complete)
+        .map(|(name, _)| name)
+        .collect();
+    out
 }
 
 /// `models` in a fixed (upstream-first) order; the result does not depend

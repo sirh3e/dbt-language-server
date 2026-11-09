@@ -113,7 +113,7 @@ pub fn run_schema_job(input: &JobInput<'_>, state: &mut JobState) -> Option<Arc<
         .and_then(|c| c.generated_at.as_deref())
         .unwrap_or("unknown");
     let shared = shared::for_job(&order, &inferred, input.limits.max_subplan_bytes);
-    if let Some(model) = &shared.over_budget {
+    for model in shared.over_budget.iter().chain(&shared.incomplete) {
         walk.report
             .degraded
             .push(JobDegradation::new(model, JobIssue::SubplanBudget));

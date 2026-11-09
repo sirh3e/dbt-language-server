@@ -53,18 +53,29 @@ pub fn fnv1a(text: &str) -> u64 {
 
 /// The model's comparable subplans, largest first, in a fixed order.
 pub fn subplans_of(mir: &Mir) -> Vec<Subplan> {
+    bounded_subplans(mir).0
+}
+
+/// The candidates, and whether the count bounds left any out, for the
+/// schema job's explicit degradation.
+pub fn bounded_subplans(mir: &Mir) -> (Vec<Subplan>, bool) {
     let reachable = mir.reachable();
     if reachable.len() > MAX_RELS {
-        return Vec::new();
+        return (Vec::new(), false);
     }
     let mut spent = 0;
+    let mut complete = true;
     let mut found: Vec<Subplan> = Vec::new();
     for at in reachable {
         let leaf = matches!(
             mir.rels.get(at).map(|r| &r.op),
             None | Some(RelOp::Scan { .. } | RelOp::CteRef { .. } | RelOp::Opaque { .. })
         );
-        if leaf || spent >= MAX_MODEL_STEPS {
+        if leaf {
+            continue;
+        }
+        if spent >= MAX_MODEL_STEPS {
+            complete = false;
             continue;
         }
         let mut render = Render::new(mir);
@@ -82,7 +93,7 @@ pub fn subplans_of(mir: &Mir) -> Vec<Subplan> {
     found.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.text.cmp(&b.text)));
     found.dedup_by(|a, b| a.text == b.text);
     found.truncate(MAX_CANDIDATES);
-    found
+    (found, complete)
 }
 
 /// True when the subtree does work an engine pays for each time.

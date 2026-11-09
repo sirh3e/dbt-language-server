@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use cogitator_ir::hir::{Hir, JinjaKind};
 use cogitator_ir::mir::{ColId, Mir, RelId, RelOp, ScalarId, ScalarKind, TableRef};
-use cogitator_rules::rules::cross::subplan::{lit_text, subplans_of, Subplan};
+use cogitator_rules::rules::cross::subplan::{bounded_subplans, lit_text, Subplan};
 use cogitator_rules::ColumnFilter;
 
 /// Per upstream: more predicates than this are not compared.
@@ -20,12 +20,16 @@ pub(super) struct ModelFacts {
     pub(super) filters: BTreeMap<Arc<str>, Arc<[ColumnFilter]>>,
     /// Largest-first candidates for `cross.duplicate_logic`.
     pub(super) subplans: Vec<Subplan>,
+    /// False when a count bound left candidates out.
+    pub(super) subplans_complete: bool,
 }
 
 pub(super) fn model_facts(hir: &Hir, canonical: &Mir) -> ModelFacts {
+    let (subplans, subplans_complete) = bounded_subplans(canonical);
     ModelFacts {
         filters: upstream_filters(hir, canonical),
-        subplans: subplans_of(canonical),
+        subplans,
+        subplans_complete,
     }
 }
 
