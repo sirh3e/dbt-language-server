@@ -9,3 +9,4 @@ cogitator-ir = { workspace = true }
 
 [dev-dependencies]
 cogitator-ir = { workspace = true, features = ["testkit"] }
+insta = { workspace = true }
