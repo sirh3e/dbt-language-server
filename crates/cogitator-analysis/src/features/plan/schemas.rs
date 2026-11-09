@@ -31,13 +31,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
 use std::sync::Arc;
 
-use cogitator_dialects::Dialect;
 use cogitator_ir::schema::ProjectSchemas;
 
-use crate::artifacts::catalog::CatalogIndex;
-use crate::artifacts::manifest::ManifestIndex;
-use crate::context::types::{ModelDetails, SourceDetails};
-use crate::graph::{NodeKind, ProjectGraph};
+use crate::graph::NodeKind;
 
 mod dag;
 mod infer;
@@ -47,107 +43,18 @@ mod reads;
 mod tests;
 #[cfg(test)]
 mod tests_demand;
+#[cfg(test)]
+mod tests_limits;
+mod types;
 mod upstream;
 
 pub use dag::DagIndex;
 use infer::Inferred;
+use types::Cached;
+pub use types::{
+    JobDegradation, JobInput, JobIssue, JobLimits, JobReport, JobState, SavedFiles, SchemaSnapshot,
+};
 use upstream::Upstream;
-
-/// Saved file access, injected so the core stays pure.
-pub trait SavedFiles {
-    /// A value that changes when the file does; `None` if unreadable.
-    fn stamp(&self, path: &Path) -> Option<u64>;
-    /// The saved text, bounded by the implementation.
-    fn read(&self, path: &Path) -> Option<String>;
-}
-
-/// Counts that bound the job; passing one degrades explicitly.
-#[derive(Debug, Clone, Copy)]
-pub struct JobLimits {
-    pub max_models: usize,
-    pub max_columns: usize,
-    pub max_read_bytes: u64,
-}
-
-impl Default for JobLimits {
-    fn default() -> Self {
-        JobLimits {
-            max_models: 20_000,
-            max_columns: 5_000,
-            max_read_bytes: 1 << 30,
-        }
-    }
-}
-
-/// Why a model's schema rests on less than its SQL.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum JobIssue {
-    Unreadable,
-    Declined,
-    Cycle,
-    MissingUpstream(String),
-    ModelCap,
-    ReadCap,
-    ColumnCap,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct JobDegradation {
-    pub model: Arc<str>,
-    pub issue: JobIssue,
-}
-
-impl JobDegradation {
-    fn new(model: &Arc<str>, issue: JobIssue) -> Self {
-        JobDegradation {
-            model: model.clone(),
-            issue,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct JobReport {
-    pub models: usize,
-    pub rebuilt: usize,
-    pub reused: usize,
-    pub degraded: Vec<JobDegradation>,
-}
-
-/// The published result of one job.
-#[derive(Debug)]
-pub struct SchemaSnapshot {
-    pub revision: u64,
-    pub schemas: Arc<ProjectSchemas>,
-    pub dag: DagIndex,
-    pub report: JobReport,
-    content: u64,
-}
-
-struct Cached {
-    key: (Option<u64>, u64),
-    inferred: Option<Arc<Inferred>>,
-}
-
-/// What survives between jobs.
-#[derive(Default)]
-pub struct JobState {
-    entries: HashMap<Arc<str>, Cached>,
-    previous: Option<Arc<SchemaSnapshot>>,
-}
-
-pub struct JobInput<'a> {
-    pub dialect: &'a Dialect,
-    pub models: &'a HashMap<String, ModelDetails>,
-    pub sources: &'a HashMap<String, SourceDetails>,
-    pub graph: &'a ProjectGraph,
-    pub manifest: Option<&'a ManifestIndex>,
-    pub catalog: Option<&'a CatalogIndex>,
-    pub files: &'a dyn SavedFiles,
-    pub limits: JobLimits,
-    /// True once a newer job has been requested.
-    pub stale: &'a dyn Fn() -> bool,
-}
 
 /// One run's accumulators.
 struct Walk {
@@ -288,18 +195,19 @@ fn build_one(
     inferred
 }
 
-fn add_schema(
-    input: &JobInput<'_>,
-    model: &Arc<str>,
-    result: Option<&Inferred>,
-    walk: &mut Walk,
-) {
+fn add_schema(input: &JobInput<'_>, model: &Arc<str>, result: Option<&Inferred>, walk: &mut Walk) {
     let yaml = input
         .models
         .get(model.as_ref())
         .map_or(&[][..], |d| d.columns.as_slice());
     let catalog = input.catalog.and_then(|c| c.models.get(model.as_ref()));
-    let built = merge::model_schema(result, yaml, catalog, input.dialect, input.limits.max_columns);
+    let built = merge::model_schema(
+        result,
+        yaml,
+        catalog,
+        input.dialect,
+        input.limits.max_columns,
+    );
     let Some(built) = built else {
         return;
     };

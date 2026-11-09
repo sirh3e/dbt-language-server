@@ -164,10 +164,7 @@ pub(in crate::features::plan) fn with_tests(
 }
 
 fn catalog_index(columns: &[CatalogColumn]) -> HashMap<String, &CatalogColumn> {
-    columns
-        .iter()
-        .map(|c| (c.name.to_lowercase(), c))
-        .collect()
+    columns.iter().map(|c| (c.name.to_lowercase(), c)).collect()
 }
 
 fn yaml_index(yaml: &[ColumnEntry]) -> HashMap<String, &ColumnEntry> {

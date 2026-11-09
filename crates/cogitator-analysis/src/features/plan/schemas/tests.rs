@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use cogitator_dialects::Dialect;
 use cogitator_ir::schema::Completeness;
-use cogitator_ir::{Nullability, SqlType};
+use cogitator_ir::SqlType;
 
 use super::*;
 use crate::artifacts::catalog::{CatalogColumn, CatalogIndex, CatalogTable};
@@ -69,7 +69,11 @@ pub(super) struct Files {
 
 impl Files {
     pub(super) fn bump(&self, path: &Path) {
-        *self.bumped.borrow_mut().entry(path.to_path_buf()).or_default() += 1;
+        *self
+            .bumped
+            .borrow_mut()
+            .entry(path.to_path_buf())
+            .or_default() += 1;
     }
 }
 
@@ -112,7 +116,7 @@ pub(super) fn run_with(
     run_schema_job(&input, state).expect("not superseded")
 }
 
-fn names(snapshot: &SchemaSnapshot, model: &str) -> Vec<String> {
+pub(super) fn names(snapshot: &SchemaSnapshot, model: &str) -> Vec<String> {
     snapshot
         .schemas
         .model(model)
@@ -123,14 +127,17 @@ fn names(snapshot: &SchemaSnapshot, model: &str) -> Vec<String> {
         .collect()
 }
 
-fn completeness(snapshot: &SchemaSnapshot, model: &str) -> Completeness {
+pub(super) fn completeness(snapshot: &SchemaSnapshot, model: &str) -> Completeness {
     snapshot.schemas.model(model).expect("schema").completeness
 }
 
 #[test]
 fn named_columns_flow_through_a_star_chain_and_stay_closed() {
     let project = Project::new()
-        .sql("base", "select 1 as id, 'x' as name, cast(2 as bigint) as n")
+        .sql(
+            "base",
+            "select 1 as id, 'x' as name, cast(2 as bigint) as n",
+        )
         .sql("mid", "select * from {{ ref('base') }}")
         .sql("top", "select id, n from {{ ref('mid') }}");
     let (ctx, files) = (project.ctx(), Files::default());
@@ -148,7 +155,10 @@ fn a_star_over_an_unknown_relation_is_open_even_with_named_siblings() {
     let project = Project::new()
         .sql("a", "select * from {{ source('s', 't') }}")
         .sql("b", "select x, y from {{ source('s', 't') }}")
-        .sql("c", "select {{ dbt_utils.star(ref('b')) }} from {{ ref('b') }}");
+        .sql(
+            "c",
+            "select {{ dbt_utils.star(ref('b')) }} from {{ ref('b') }}",
+        );
     let (ctx, files) = (project.ctx(), Files::default());
     let snapshot = run(&ctx, &files, &mut JobState::default());
     assert_eq!(completeness(&snapshot, "a"), Completeness::Open);
@@ -171,22 +181,16 @@ fn quoted_and_unnamed_outputs_stay_open() {
     assert_eq!(completeness(&snapshot, "up"), Completeness::Closed);
 }
 
-fn source_details(yaml_only: bool) -> Project {
-    let columns = if yaml_only { "" } else { "      - name: a\n" };
-    let table = format!(
-        "version: 2\nsources:\n  - name: s\n    tables:\n      - name: t\n{}\n",
-        if columns.is_empty() {
-            "        columns:\n          - name: a\n"
-        } else {
-            "        columns:\n          - name: a\n"
-        }
-    );
-    Project::new().sql("m", "select * from {{ source('s','t') }}").yaml(&table)
+fn source_details() -> Project {
+    let yaml = "version: 2\nsources:\n  - name: s\n    tables:\n      - name: t\n        columns:\n          - name: a\n";
+    Project::new()
+        .sql("m", "select * from {{ source('s','t') }}")
+        .yaml(yaml)
 }
 
 #[test]
 fn a_yaml_only_source_stays_open_and_a_catalog_source_closes() {
-    let project = source_details(true);
+    let project = source_details();
     let ctx = project.ctx();
     let files = Files::default();
     let yaml_only = run(&ctx, &files, &mut JobState::default());
@@ -284,94 +288,4 @@ fn a_changed_schema_propagates_and_bumps_the_revision() {
     assert_eq!(second.report.rebuilt, 2, "next depends on the new columns");
     assert_eq!(names(&second, "next"), vec!["id", "extra"]);
     assert_eq!(second.revision, first.revision + 1);
-}
-
-#[test]
-fn a_cycle_degrades_without_hanging() {
-    let project = Project::new()
-        .sql("a", "select * from {{ ref('b') }}")
-        .sql("b", "select * from {{ ref('a') }}")
-        .sql("c", "select 1 as ok");
-    let (ctx, files) = (project.ctx(), Files::default());
-    let snapshot = run(&ctx, &files, &mut JobState::default());
-    assert!(snapshot
-        .report
-        .degraded
-        .iter()
-        .any(|d| d.issue == JobIssue::Cycle));
-    assert_eq!(completeness(&snapshot, "c"), Completeness::Closed);
-    assert!(snapshot.dag.is_unknown("a") || snapshot.dag.is_unknown("b"));
-}
-
-#[test]
-fn a_missing_upstream_degrades_and_stays_open() {
-    let project = Project::new().sql("m", "select * from {{ ref('ghost') }}");
-    let (ctx, files) = (project.ctx(), Files::default());
-    let snapshot = run(&ctx, &files, &mut JobState::default());
-    assert!(snapshot.report.degraded.iter().any(|d| matches!(
-        &d.issue,
-        JobIssue::MissingUpstream(name) if name == "ghost"
-    )));
-    assert_eq!(completeness(&snapshot, "m"), Completeness::Open);
-}
-
-#[test]
-fn the_column_cap_degrades_to_open() {
-    let project = Project::new().sql("m", "select 1 as a, 2 as b, 3 as c");
-    let (ctx, files) = (project.ctx(), Files::default());
-    let limits = JobLimits {
-        max_columns: 2,
-        ..JobLimits::default()
-    };
-    let snapshot = run_with(&ctx, &files, &mut JobState::default(), None, limits);
-    assert_eq!(completeness(&snapshot, "m"), Completeness::Open);
-    assert_eq!(names(&snapshot, "m").len(), 2);
-    assert!(snapshot
-        .report
-        .degraded
-        .iter()
-        .any(|d| d.issue == JobIssue::ColumnCap));
-}
-
-#[test]
-fn the_model_cap_stops_inference_explicitly() {
-    let project = Project::new()
-        .sql("a", "select 1 as a")
-        .sql("b", "select 1 as b");
-    let (ctx, files) = (project.ctx(), Files::default());
-    let limits = JobLimits {
-        max_models: 1,
-        ..JobLimits::default()
-    };
-    let snapshot = run_with(&ctx, &files, &mut JobState::default(), None, limits);
-    assert_eq!(snapshot.report.rebuilt, 1);
-    assert!(snapshot
-        .report
-        .degraded
-        .iter()
-        .any(|d| d.issue == JobIssue::ModelCap));
-}
-
-#[test]
-fn unique_and_not_null_tests_become_facts() {
-    let project = Project::new()
-        .sql("m", "select id, maybe, filtered, warned, dt from {{ source('s', 't') }}")
-        .yaml(concat!(
-            "version: 2\nmodels:\n  - name: m\n    columns:\n",
-            "      - name: id\n        tests: [unique, not_null]\n",
-            "      - name: maybe\n",
-            "      - name: filtered\n        tests:\n          - not_null:\n              config: {where: \"x > 1\"}\n",
-            "      - name: warned\n        tests:\n          - unique:\n              config: {severity: warn}\n",
-            "      - name: dt\n        data_tests: [unique]\n",
-        ));
-    let (ctx, files) = (project.ctx(), Files::default());
-    let snapshot = run(&ctx, &files, &mut JobState::default());
-    let schema = snapshot.schemas.model("m").expect("schema");
-    let col = |name: &str| schema.columns.iter().find(|c| &*c.name == name).expect(name);
-    assert!(col("id").unique);
-    assert_eq!(col("id").ty.null, Nullability::NotNull);
-    assert!(!col("maybe").unique);
-    assert_ne!(col("filtered").ty.null, Nullability::NotNull, "where: weakens it");
-    assert!(!col("warned").unique, "severity: warn does not prove it");
-    assert!(col("dt").unique, "data_tests counts");
 }

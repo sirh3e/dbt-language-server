@@ -34,9 +34,8 @@ impl<'g> Upstream<'g> {
         for node in graph.model_neighbors(model).0 {
             match node.kind {
                 NodeKind::Model => {
-                    let deeper = own.is_none_or(|d| {
-                        depths.get(node.name.as_str()).is_none_or(|up| *up >= d)
-                    });
+                    let deeper = own
+                        .is_none_or(|d| depths.get(node.name.as_str()).is_none_or(|up| *up >= d));
                     up.cycle |= node.name == model || deeper;
                     up.models.push(node.name.as_str());
                 }

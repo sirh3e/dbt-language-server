@@ -136,18 +136,16 @@ fn settle(
         .and_then(|i| i.as_deref())
         .and_then(|i| i.template_storage);
     let storage = storage_for(name, template, input.manifest);
-    let needed = if storage == Some(Storage::PassThrough)
-        && !own.unknown
-        && !own.by_downstream.is_empty()
-    {
-        let mut needed: Columns = own.tested.clone();
-        for cols in own.by_downstream.values() {
-            needed.extend(cols.iter().cloned());
-        }
-        Some(needed)
-    } else {
-        None
-    };
+    let needed =
+        if storage == Some(Storage::PassThrough) && !own.unknown && !own.by_downstream.is_empty() {
+            let mut needed: Columns = own.tested.clone();
+            for cols in own.by_downstream.values() {
+                needed.extend(cols.iter().cloned());
+            }
+            Some(needed)
+        } else {
+            None
+        };
     (own, needed)
 }
 

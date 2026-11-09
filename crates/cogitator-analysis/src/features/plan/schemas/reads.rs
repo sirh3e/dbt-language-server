@@ -202,9 +202,8 @@ impl Walker<'_> {
             let mut deps = BTreeSet::new();
             for arm in inputs {
                 let source = self.mir.rels.get(*arm).and_then(|r| r.out.get(i)).copied();
-                match source.and_then(|c| self.dep(c)) {
-                    Some(found) => deps.extend(found.iter().copied()),
-                    None => {}
+                if let Some(found) = source.and_then(|c| self.dep(c)) {
+                    deps.extend(found.iter().copied());
                 }
             }
             if !all {

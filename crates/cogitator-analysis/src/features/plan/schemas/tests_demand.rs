@@ -60,12 +60,10 @@ fn a_view_passes_on_only_what_its_consumer_asks() {
 
 #[test]
 fn an_unconsumed_view_counts_as_reading_everything() {
-    let project = Project::new()
-        .sql("stg", "select 1 as a, 2 as b")
-        .sql(
-            "v",
-            "{{ config(materialized='view') }}\nselect a, b from {{ ref('stg') }}",
-        );
+    let project = Project::new().sql("stg", "select 1 as a, 2 as b").sql(
+        "v",
+        "{{ config(materialized='view') }}\nselect a, b from {{ ref('stg') }}",
+    );
     assert_eq!(
         downstream(&project, "stg"),
         Some(vec![(

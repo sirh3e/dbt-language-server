@@ -4,13 +4,13 @@
 use std::sync::Arc;
 
 use cogitator_dialects::Dialect;
+use cogitator_ir::common::Materialization;
 use cogitator_ir::common::ModelConfig;
 use cogitator_ir::origin::{SourceOrigin, TemplateVariant};
 use cogitator_ir::schema::{Completeness, ModelSchema, ProjectSchemas, SchemaCol};
 use cogitator_ir::{ColType, Fidelity, Nullability, SqlType, VerifyMode};
 use cogitator_lower::lower_to_mir;
 use cogitator_rules::passes::{run_passes, Budgets, PassInput, PassOutput};
-use cogitator_ir::common::Materialization;
 use cogitator_rules::{Cx, DagFacts, Finding, Fix, Need, Needs};
 use cogitator_sql_front::{build_hir, HirInput, SchemaEnv};
 

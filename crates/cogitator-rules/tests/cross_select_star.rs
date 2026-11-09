@@ -1,5 +1,6 @@
 //! `cross.select_star_chain` through the real front end and pass manager.
 
+#[allow(dead_code)] // shared with the other rule test crates
 mod join_support;
 
 use std::collections::BTreeMap;
@@ -157,7 +158,10 @@ fn only_exact_stars_get_an_edit() {
     let facts = dag(&["a"]);
     let qualified = "select u.* from {{ ref('up') }} as u";
     let finding = only(run(qualified, Materialization::Table, &facts));
-    assert!(finding.fixes.is_empty(), "qualified stars are not rewritten");
+    assert!(
+        finding.fixes.is_empty(),
+        "qualified stars are not rewritten"
+    );
     let excluded = "select * exclude (b) from {{ ref('up') }}";
     assert!(only(run(excluded, Materialization::Table, &facts))
         .fixes
@@ -174,7 +178,13 @@ fn a_used_reserved_word_withholds_the_edit() {
         model(&[("order", false), ("b", false), ("c", false)]),
     );
     let facts = dag(&["order"]);
-    let finding = only(run_with(STAR, schemas, Materialization::Table, &facts, true));
+    let finding = only(run_with(
+        STAR,
+        schemas,
+        Materialization::Table,
+        &facts,
+        true,
+    ));
     assert!(finding.fixes.is_empty(), "{finding:#?}");
 }
 
