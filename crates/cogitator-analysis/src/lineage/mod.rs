@@ -41,8 +41,6 @@ pub struct ModelLineage {
 }
 
 #[cfg(test)]
+mod corpus_tests;
+#[cfg(test)]
 mod gap_tests;
-#[cfg(test)]
-mod legacy;
-#[cfg(test)]
-mod parity;

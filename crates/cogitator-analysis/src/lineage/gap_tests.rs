@@ -6,7 +6,7 @@ use cogitator_parser::{DocumentParser, JinjaSqlParser};
 
 use super::{column_lineage, ModelLineage, SourceRef};
 
-fn render(lineage: &ModelLineage) -> String {
+pub(super) fn render(lineage: &ModelLineage) -> String {
     let mut out = String::new();
     for column in &lineage.columns {
         out.push_str(&column.name);
