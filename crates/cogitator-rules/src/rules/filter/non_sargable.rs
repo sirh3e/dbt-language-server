@@ -72,6 +72,11 @@ impl Detect<Lir> for NonSargable {
                 scan: &scan,
             };
             for key in scan.keys {
+                // A column that is also the partition key reports as that.
+                let is_partition = |k: &PruneKey| k.kind == KeyKind::Partition && k.col == key.col;
+                if key.kind == KeyKind::Cluster && scan.keys.iter().any(is_partition) {
+                    continue;
+                }
                 let finding = match key.usage {
                     PruneUse::Blocked { by, reason } => check.blocked(key, by, reason),
                     PruneUse::Unknown => check.unknown(key, above),

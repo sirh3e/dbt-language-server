@@ -2,8 +2,6 @@
 //! the plan scans. A table with no known key or row count gets no entry,
 //! so backends report `Unknown` for it rather than `NotFiltered`.
 
-use std::collections::BTreeMap;
-
 use cogitator_ir::common::ModelConfig;
 use cogitator_ir::lir::{KeyKind, PhysColumn, PhysicalFacts, TableFacts};
 use cogitator_ir::mir::{Mir, TableRef};
@@ -26,15 +24,21 @@ pub(super) struct BuiltPhys {
     pub(super) has_stats: bool,
 }
 
-/// Keys per column name, the strongest first: a column that is both
-/// partitioned and clustered prunes as a partition.
+/// Keys in configured order, which backends read as `CLUSTER BY` order.
+/// A column has one key, the first found, except that a partition column
+/// can also be clustered: it then takes its place in the cluster order too.
 #[derive(Default)]
-struct Keys(BTreeMap<String, KeyKind>);
+struct Keys(Vec<(String, KeyKind)>);
 
 impl Keys {
     fn add(&mut self, columns: impl IntoIterator<Item = String>, kind: KeyKind) {
         for column in columns {
-            self.0.entry(column).or_insert(kind);
+            let taken = self.0.iter().any(|(name, existing)| {
+                *name == column && !(*existing == KeyKind::Partition && kind == KeyKind::Cluster)
+            });
+            if !taken {
+                self.0.push((column, kind));
+            }
         }
     }
 
@@ -168,4 +172,45 @@ fn column_type(schema: Option<&ModelSchema>, name: &str) -> SqlType {
     schema
         .and_then(|s| s.columns.iter().find(|c| c.name.eq_ignore_ascii_case(name)))
         .map_or(SqlType::Unknown, |c| c.ty.ty.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(ToString::to_string).collect()
+    }
+
+    #[test]
+    fn keys_keep_their_configured_cluster_order() {
+        let mut keys = Keys::default();
+        keys.add(names(&["b", "a"]), KeyKind::Cluster);
+        let order: Vec<&str> = keys.0.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(order, ["b", "a"]);
+    }
+
+    #[test]
+    fn a_partition_column_also_takes_its_cluster_place() {
+        let mut keys = Keys::default();
+        keys.add(names(&["ts"]), KeyKind::Partition);
+        keys.add(names(&["ts", "a"]), KeyKind::Cluster);
+        keys.add(names(&["ts"]), KeyKind::Cluster);
+        assert_eq!(
+            keys.0,
+            [
+                ("ts".to_string(), KeyKind::Partition),
+                ("ts".to_string(), KeyKind::Cluster),
+                ("a".to_string(), KeyKind::Cluster),
+            ]
+        );
+    }
+
+    #[test]
+    fn other_second_keys_are_ignored() {
+        let mut keys = Keys::default();
+        keys.add(names(&["a"]), KeyKind::Cluster);
+        keys.add(names(&["a"]), KeyKind::Sort);
+        assert_eq!(keys.0, [("a".to_string(), KeyKind::Cluster)]);
+    }
 }

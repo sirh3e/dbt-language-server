@@ -68,6 +68,33 @@ impl Dispatcher {
                     .unwrap_or_default(),
             }
         });
+        self.warm_lineage(content);
+    }
+
+    /// Fills the lineage cache after a hover missed it, off the
+    /// dispatcher, so the next hover of this text has the lineage line.
+    fn warm_lineage(&self, content: &[u8]) {
+        let Some((_, uri, _)) = Self::position_request(content) else {
+            return;
+        };
+        if !uri.ends_with(".sql") {
+            return;
+        }
+        let snap = self.snapshot_for(&uri);
+        let Some(generation) = snap.doc.as_deref().map(|doc| doc.generation) else {
+            return;
+        };
+        if self.derived.lineage_cached(&uri, generation).is_some() {
+            return;
+        }
+        let derived = self.derived.clone();
+        let cap = self
+            .limits
+            .artifact_cap_bytes
+            .load(std::sync::atomic::Ordering::Relaxed);
+        tokio::task::spawn_blocking(move || {
+            crate::server::handlers::lineage::typed_lineage_for(&snap, &derived, &uri, cap);
+        });
     }
 
     pub(super) fn definition(&mut self, content: &[u8]) {
