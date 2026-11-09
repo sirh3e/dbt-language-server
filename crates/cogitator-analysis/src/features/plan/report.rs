@@ -151,6 +151,9 @@ pub struct FindingView {
     pub message: String,
     pub evidence: EvidenceView,
     pub fixes: Vec<FixView>,
+    /// A suppression comment covers this finding: it stays here but is
+    /// not published as a diagnostic (specs/ir-pipeline/08).
+    pub suppressed: bool,
 }
 
 fn severity(value: Severity) -> &'static str {
@@ -196,6 +199,7 @@ impl FindingView {
             message: finding.message.clone(),
             evidence: EvidenceView::of(&finding.evidence),
             fixes: finding.fixes.iter().map(fix_view).collect(),
+            suppressed: false,
         }
     }
 }

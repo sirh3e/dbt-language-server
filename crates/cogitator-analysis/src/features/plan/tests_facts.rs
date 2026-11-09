@@ -101,6 +101,19 @@ fn physical_facts_come_from_the_manifest_and_catalog() {
         "{:#?}",
         stats.needs
     );
+
+    // perf.catalog_stats off: the row count no longer counts as a fact,
+    // while the clustering keys (physical layout, not statistics) stay
+    let text = "select a, b from {{ ref('src_up') }} where a > 1";
+    let mut input = facts.input(text, Some("m"));
+    input.catalog_stats = false;
+    let gated = crate::features::plan::query_plan(&input);
+    assert!(gated.needs.missing.contains(&"stats"), "{:#?}", gated.needs);
+    assert!(
+        gated.needs.available.contains(&"phys"),
+        "{:#?}",
+        gated.needs
+    );
 }
 
 /// Named columns of an open upstream, read through a `SELECT *` CTE, must

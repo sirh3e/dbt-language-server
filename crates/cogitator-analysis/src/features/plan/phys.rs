@@ -127,7 +127,10 @@ pub(super) fn physical_facts(
             TableRef::Physical(_) | TableRef::Jinja => continue,
         };
         add_catalog_keys(&mut keys, catalog, input);
-        let row_count = catalog.and_then(|c| c.stats.row_count);
+        // perf.catalog_stats off: the rows are never seen as a fact
+        let row_count = catalog
+            .filter(|_| input.catalog_stats)
+            .and_then(|c| c.stats.row_count);
         let columns = phys_columns(&keys, schema.as_deref(), &mut mir.syms);
         if columns.is_empty() && row_count.is_none() {
             continue;

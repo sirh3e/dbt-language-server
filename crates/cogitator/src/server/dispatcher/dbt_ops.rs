@@ -213,6 +213,7 @@ impl Dispatcher {
                 .expect("config status lock")
                 .clone(),
             self.extra.roots(),
+            crate::server::status::PerfStatus::of(&self.perf_settings()),
         );
         self.send(&ResultResponse::new(id, report));
     }

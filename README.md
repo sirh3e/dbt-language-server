@@ -294,7 +294,20 @@ startup:                 # honored only via --config at launch
   otlp: ""
   tree_sitter: true
   fusion: dbt
+perf:
+  profile: off             # off | recommended | strict: which plan rules
+  catalog_stats: true      # report as diagnostics (dbt.queryPlan always works)
+perf_rules:                # per-rule severity or off; wins over the profile
+  join.cartesian: warning  # off | hint | info | warning
+  filter.non_sargable: off
 ```
+
+Plan findings report through pull diagnostics, and the next save
+republishes them for push clients (the push path reuses a computed plan and
+never plans). A `{# cogitator: ignore join.cartesian -- reason #}` comment, or
+`-- cogitator: ignore …`, silences a rule on that line or the next;
+`ignore-file` covers the whole file. Suppressed findings stay visible in
+`dbt.queryPlan`.
 
 Hot semantics are **changed-keys-only, last writer wins**: a reload
 applies only keys whose file value changed, so editing `target:`

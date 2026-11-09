@@ -68,6 +68,123 @@
         }
       }
     },
+    "perf": {
+      "description": "Query-plan performance diagnostics; dbt.queryPlan always works, whatever is set here.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "catalog_stats": {
+          "description": "Use catalog statistics when ordering findings; statistics never raise a severity. (bool)",
+          "type": "boolean"
+        },
+        "profile": {
+          "description": "Which rules report as diagnostics: off (default), recommended or strict. (off|recommended|strict)",
+          "type": "string",
+          "enum": [
+            "off",
+            "recommended",
+            "strict"
+          ]
+        }
+      }
+    },
+    "perf_rules": {
+      "description": "Per-rule severity, by rule id; wins over the profile. A rule named here reports even under profile off.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cross.select_star_chain": {
+          "description": "SELECT * reading columns nothing downstream uses (also lint.select_star). (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "filter.non_sargable": {
+          "description": "Wrapped column may block pruning. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "incr.missing_guard": {
+          "description": "Incremental model reprocesses all input each run. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "incr.subquery_watermark": {
+          "description": "Subquery filter does not prune. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "join.cartesian": {
+          "description": "Join with no key. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "join.distinct_fanout": {
+          "description": "DISTINCT may hide join fan-out. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "join.left_nullified": {
+          "description": "WHERE makes this LEFT JOIN inner. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "model.unused_cte": {
+          "description": "CTE never used. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "set.union_distinct": {
+          "description": "UNION dedupes; UNION ALL? (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        }
+      }
+    },
     "profiles": {
       "description": "dbt profiles overrides — hot: editing these re-resolves the active profile/target.",
       "type": "object",

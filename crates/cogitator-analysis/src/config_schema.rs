@@ -94,7 +94,41 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             "bool",
         )],
     },
+    SectionSchema {
+        name: "perf",
+        doc: "Query-plan performance diagnostics; dbt.queryPlan always works, whatever is set here.",
+        keys: &[
+            key(
+                "profile",
+                "Which rules report as diagnostics: off (default), recommended or strict.",
+                "off|recommended|strict",
+            ),
+            key(
+                "catalog_stats",
+                "Use catalog statistics when ordering findings; statistics never raise a severity.",
+                "bool",
+            ),
+        ],
+    },
+    SectionSchema {
+        name: "perf_rules",
+        doc: "Per-rule severity, by rule id; wins over the profile. A rule named here reports even under profile off.",
+        keys: &[
+            key("join.left_nullified", "WHERE makes this LEFT JOIN inner.", RULE_SEVERITIES),
+            key("join.cartesian", "Join with no key.", RULE_SEVERITIES),
+            key("join.distinct_fanout", "DISTINCT may hide join fan-out.", RULE_SEVERITIES),
+            key("model.unused_cte", "CTE never used.", RULE_SEVERITIES),
+            key("cross.select_star_chain", "SELECT * reading columns nothing downstream uses (also lint.select_star).", RULE_SEVERITIES),
+            key("filter.non_sargable", "Wrapped column may block pruning.", RULE_SEVERITIES),
+            key("incr.missing_guard", "Incremental model reprocesses all input each run.", RULE_SEVERITIES),
+            key("incr.subquery_watermark", "Subquery filter does not prune.", RULE_SEVERITIES),
+            key("set.union_distinct", "UNION dedupes; UNION ALL?", RULE_SEVERITIES),
+        ],
+    },
 ];
+
+/// The `perf_rules` value set (one severity per entry).
+const RULE_SEVERITIES: &str = "off|hint|info|warning";
 
 /// Bit per lint check inside the shared AtomicU32 — one truth for the
 /// config parser and the lint feature.
@@ -216,5 +250,25 @@ pub mod json {
                 })
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::features::plan::diagnostics_config::advice_rule_ids;
+
+    #[test]
+    fn perf_rule_keys_cover_exactly_the_registry() {
+        let mut schema: Vec<&str> = section("perf_rules")
+            .expect("perf_rules")
+            .keys
+            .iter()
+            .map(|k| k.key)
+            .collect();
+        schema.sort_unstable();
+        let mut registry: Vec<&str> = advice_rule_ids().collect();
+        registry.sort_unstable();
+        assert_eq!(schema, registry, "registry and perf_rules schema drifted");
     }
 }
