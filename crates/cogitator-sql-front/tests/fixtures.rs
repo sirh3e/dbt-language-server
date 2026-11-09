@@ -52,7 +52,10 @@ fn every_fixture_builds_clean_and_is_pinned() {
     }
     assert!(files.len() >= 9, "fixtures not found: {files:?}");
     for path in files {
-        let text = std::fs::read_to_string(&path).expect("read fixture");
+        // Windows checkouts convert fixtures to CRLF; the pinned spans are LF.
+        let text = std::fs::read_to_string(&path)
+            .expect("read fixture")
+            .replace("\r\n", "\n");
         let lowered = build_in(
             &text,
             "duckdb",
