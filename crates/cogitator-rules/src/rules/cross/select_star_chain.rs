@@ -50,6 +50,12 @@ impl Detect<Mir> for SelectStarChain {
     }
 }
 
+/// True when this rule reports the model's columns, so another rule
+/// must not report them one by one.
+pub(super) fn covers(cx: &Cx<'_>) -> bool {
+    examine(cx).is_some()
+}
+
 fn examine(cx: &Cx<'_>) -> Option<Finding> {
     if !matches!(
         cx.mat,
@@ -95,7 +101,7 @@ fn examine(cx: &Cx<'_>) -> Option<Finding> {
     })
 }
 
-fn evidence(dag: &DagFacts) -> Evidence {
+pub(super) fn evidence(dag: &DagFacts) -> Evidence {
     match &dag.catalog_generated_at {
         Some(generated_at) => Evidence::Catalog {
             generated_at: generated_at.clone(),
@@ -104,7 +110,7 @@ fn evidence(dag: &DagFacts) -> Evidence {
     }
 }
 
-fn root_select(hir: &Hir, root: QueryId) -> Option<&Select> {
+pub(super) fn root_select(hir: &Hir, root: QueryId) -> Option<&Select> {
     match &hir.queries.get(root)?.body {
         Body::Select(select) => Some(select),
         _ => None,
@@ -135,7 +141,7 @@ fn sole_star(select: &Select) -> Option<Star> {
     stars.next().is_none().then_some(star)
 }
 
-fn used_columns(dag: &DagFacts) -> BTreeSet<String> {
+pub(super) fn used_columns(dag: &DagFacts) -> BTreeSet<String> {
     dag.downstream_columns
         .values()
         .flatten()
@@ -144,7 +150,7 @@ fn used_columns(dag: &DagFacts) -> BTreeSet<String> {
         .collect()
 }
 
-fn lower(name: &str) -> String {
+pub(super) fn lower(name: &str) -> String {
     name.to_lowercase()
 }
 

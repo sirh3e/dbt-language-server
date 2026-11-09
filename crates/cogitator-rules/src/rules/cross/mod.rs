@@ -5,4 +5,5 @@ pub mod ephemeral_repeat;
 pub mod filter_late;
 pub mod output;
 pub mod select_star_chain;
+pub mod subplan;
 pub mod unused_column;

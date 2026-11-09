@@ -2,9 +2,26 @@
 //! project-schema job, which uses it to decide `Completeness`.
 
 use cogitator_ir::hir::{Body, FromId, FromKind, Hir, JinjaRole, QueryId, SelectItem};
+use cogitator_ir::Span;
 
 /// Recursion bound for nested set operations.
 const MAX_DEPTH: usize = 256;
+
+/// Where a finding about a root output column should point: the column
+/// when the select list names it, else the root query.
+pub(super) fn output_span(hir: &Hir, column: &str) -> Span {
+    let Some(query) = hir.root.and_then(|r| hir.queries.get(r)) else {
+        return Span::default();
+    };
+    query
+        .outputs
+        .iter()
+        .find(|o| {
+            o.name
+                .is_some_and(|n| hir.syms.text(n).eq_ignore_ascii_case(column))
+        })
+        .map_or(query.span, |o| o.span)
+}
 
 /// True when the query may produce columns the HIR cannot name: a star
 /// over an open FROM item, Jinja expanding to unknown columns, a select
