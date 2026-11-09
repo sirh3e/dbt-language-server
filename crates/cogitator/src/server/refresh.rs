@@ -450,6 +450,7 @@ fn enrich_warehouse_columns(
                             name: c.name,
                             description: format!("{} (from warehouse)", c.data_type),
                             name_pos: Default::default(),
+                            data_type: None,
                         })
                         .collect();
                 }
@@ -497,6 +498,7 @@ fn enrich_catalog_columns(
                     name: column.name.clone(),
                     description: format!("{} (from catalog)", column.data_type),
                     name_pos: Default::default(),
+                    data_type: None,
                 })
                 .collect();
         }
