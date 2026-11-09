@@ -9,8 +9,9 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let catalog_stats = self.perf_settings().catalog_stats;
         self.offload_blocking(id, "dbt.queryPlan", move || {
-            crate::server::handlers::plan::query_plan(&snap, &derived, &uri, cap)
+            crate::server::handlers::plan::query_plan(&snap, &derived, &uri, cap, catalog_stats)
         });
     }
 }

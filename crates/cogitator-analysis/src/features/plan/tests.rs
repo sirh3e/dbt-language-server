@@ -70,6 +70,7 @@ impl Facts {
             manifest: self.manifest.as_ref(),
             catalog: self.catalog.as_ref(),
             schema_revision: 7,
+            catalog_stats: true,
         }
     }
 

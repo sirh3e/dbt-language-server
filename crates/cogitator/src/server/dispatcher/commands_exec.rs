@@ -245,6 +245,7 @@ impl Dispatcher {
                     .expect("config status lock")
                     .clone();
                 let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+                let perf = crate::server::status::PerfStatus::of(&self.perf_settings());
                 self.offload_blocking(req.id, "dbt.doctor", move || {
                     crate::server::handlers::doctor::doctor(
                         &snap,
@@ -253,6 +254,7 @@ impl Dispatcher {
                         jobs,
                         config,
                         artifact_cap,
+                        perf,
                     )
                 });
                 return;

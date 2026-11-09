@@ -19,12 +19,15 @@ use crate::artifacts::ArtifactSet;
 use crate::context::types::SourceDetails;
 use crate::{DbtContext, ModelDetails};
 
+pub mod diagnostics;
+pub mod diagnostics_config;
 mod drive;
 mod env;
 mod facts;
 mod passes;
 mod phys;
 mod report;
+pub mod suppress;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -50,6 +53,8 @@ pub struct PlanInput<'a> {
     pub catalog: Option<&'a CatalogIndex>,
     /// Stamped into the plan's `ProjectSchemas` and echoed in the report.
     pub schema_revision: u64,
+    /// `perf.catalog_stats`: catalog statistics count as a usable fact.
+    pub catalog_stats: bool,
 }
 
 impl<'a> PlanInput<'a> {
@@ -70,6 +75,7 @@ impl<'a> PlanInput<'a> {
             manifest: artifacts.manifest.as_deref(),
             catalog: artifacts.catalog.as_deref(),
             schema_revision,
+            catalog_stats: true,
         }
     }
 }

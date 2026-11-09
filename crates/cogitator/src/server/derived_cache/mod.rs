@@ -21,6 +21,8 @@ use serde::Serialize;
 mod artifacts;
 mod plan;
 
+pub use plan::CachedPlan;
+
 /// (mtime secs, mtime nanos, size) — the same freshness idea as the scan
 /// cache; a file that changed under us gets a different stamp.
 pub(crate) type FileStamp = (i64, u32, u64);
@@ -79,8 +81,8 @@ type LineageMap = HashMap<String, (u64, Arc<Option<ModelLineage>>)>;
 type ResultsSlot = (usize, HashMap<String, (String, Arc<str>)>);
 /// root → ([run_results, manifest, sources] stamps, the parsed set).
 type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 4], ArtifactSet)>;
-/// uri → ((document generation, schema revision), serialized plan).
-type PlansMap = HashMap<String, ((u64, u64), Arc<str>)>;
+/// uri → ((document generation, schema revision), typed plan).
+type PlansMap = HashMap<String, ((u64, u64), Arc<CachedPlan>)>;
 
 #[derive(Default)]
 pub struct DerivedCache {

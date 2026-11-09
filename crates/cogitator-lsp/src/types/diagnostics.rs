@@ -37,11 +37,15 @@ pub enum FixKind {
     MultiEdit { fixes: Vec<MultiEditFix> },
 }
 
-/// One self-contained fix: its title and all of its edits.
+/// One self-contained fix: its title and all of its edits. `preserving`
+/// (absent means false) marks a fix that keeps results unchanged, the
+/// only kind offered as preferred or bundled into `source.fixAll`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MultiEditFix {
     pub title: String,
     pub edits: Vec<TextEdit>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub preserving: bool,
 }
 
 /// The typed Diagnostic.data payload (01 §6.1). Clients preserve `data`
@@ -155,12 +159,24 @@ mod tests {
                         new_text: "x".into(),
                     },
                 ],
+                preserving: true,
             }],
         };
         let wire = serde_json::to_value(&fix).unwrap();
         assert_eq!(wire["multi_edit"]["fixes"][0]["edits"][1]["newText"], "x");
+        assert_eq!(wire["multi_edit"]["fixes"][0]["preserving"], true);
         let back: FixKind = serde_json::from_value(wire).unwrap();
         assert_eq!(back, fix);
+    }
+
+    #[test]
+    fn multi_edit_decodes_without_preserving() {
+        let fix: FixKind =
+            serde_json::from_str(r#"{"multi_edit":{"fixes":[{"title":"t","edits":[]}]}}"#).unwrap();
+        let FixKind::MultiEdit { fixes } = fix else {
+            panic!("multi edit");
+        };
+        assert!(!fixes[0].preserving);
     }
 
     #[test]
