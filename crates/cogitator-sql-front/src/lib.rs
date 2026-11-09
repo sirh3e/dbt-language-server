@@ -21,6 +21,7 @@ use cogitator_ir::schema::ProjectSchemas;
 use cogitator_ir::{Degradation, DegradationKind, Lowered, Span};
 
 mod caps;
+pub mod compiled;
 mod config;
 mod dialect;
 mod jinja;

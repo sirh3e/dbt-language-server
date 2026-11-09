@@ -11,8 +11,10 @@ use cogitator_ir::origin::{SourceOrigin, TemplateVariant};
 use cogitator_ir::{DegradationKind, Fidelity, Lowered, Violation};
 use cogitator_lower::DialectBackend;
 use cogitator_rules::meta::Needs;
-use cogitator_sql_front::{build_hir, HirInput};
+use cogitator_sql_front::{build_hir, HirInput, SchemaEnv};
 
+use super::compiled_findings::place_findings;
+use super::compiled_route::{self, Failure, Route};
 use super::env::{bare_env, fill, BuiltEnv, Upstreams};
 use super::facts::merge_manifest;
 use super::passes::{Passes, Run};
@@ -29,7 +31,21 @@ pub(super) fn drive(
     backend: &dyn DialectBackend,
     lower: MirLowering<'_>,
 ) -> QueryPlan {
-    let built = built_hir(input);
+    let template = built_hir(input);
+    let (route_input, built, banner, failure) =
+        if compiled_route::declined_on_control_flow(&template.hir) {
+            match compiled_route::route(input) {
+                Ok(Route {
+                    input,
+                    built,
+                    banner,
+                }) => (input, built, banner, None),
+                Err(failure) => (*input, template, None, Some(failure)),
+            }
+        } else {
+            (*input, template, None, None)
+        };
+    let input = &route_input;
     let mut hir_lowered = built.hir;
     if let Some(hir) = hir_lowered.value.as_mut() {
         merge_manifest_config(hir, input);
@@ -40,7 +56,7 @@ pub(super) fn drive(
     let backend_kind = backend.capabilities().backend;
 
     let Some(hir) = hir_lowered.value.as_ref() else {
-        return declined(input, &hir_lowered, hir_report, backend_kind);
+        return declined(input, &hir_lowered, hir_report, backend_kind, failure);
     };
 
     let mir_lowered = lower(hir);
@@ -58,15 +74,16 @@ pub(super) fn drive(
             degraded: mir_degraded,
             violations: mir_violations,
         };
-        return without_mir(input, hir, hir_report, &lowered, backend_kind);
+        return without_mir(input, hir, hir_report, &lowered, backend_kind, banner);
     };
 
-    let run = Passes {
+    let mut run = Passes {
         input,
         backend,
         env: built.env,
     }
     .run(hir, mir);
+    place_findings(&mut run.findings, &hir.origin);
 
     let mir_report = LevelReport {
         available: true,
@@ -85,6 +102,7 @@ pub(super) fn drive(
         schema_revision: input.schema_revision,
         status,
         guidance: None,
+        banner,
         origin: Some(OriginView::of(&hir.origin)),
         levels: PlanLevels {
             hir: hir_report,
@@ -97,9 +115,9 @@ pub(super) fn drive(
     }
 }
 
-struct BuiltHir {
-    hir: Lowered<Hir>,
-    env: BuiltEnv,
+pub(super) struct BuiltHir {
+    pub(super) hir: Lowered<Hir>,
+    pub(super) env: BuiltEnv,
 }
 
 fn hir_input<'a>(input: &PlanInput<'a>) -> HirInput<'a> {
@@ -113,11 +131,18 @@ fn hir_input<'a>(input: &PlanInput<'a>) -> HirInput<'a> {
     }
 }
 
-/// HIR is built once to learn the direct upstreams from the live text,
-/// and again only when those upstreams have schema facts to bind against.
 fn built_hir(input: &PlanInput<'_>) -> BuiltHir {
     let front = hir_input(input);
-    let first = build_hir(&front, &bare_env(input));
+    two_pass(input, |env| build_hir(&front, env))
+}
+
+/// HIR is built once to learn the direct upstreams from the text, and
+/// again only when those upstreams have schema facts to bind against.
+pub(super) fn two_pass(
+    input: &PlanInput<'_>,
+    build: impl Fn(&SchemaEnv) -> Lowered<Hir>,
+) -> BuiltHir {
+    let first = build(&bare_env(input));
     let Some(hir) = first.value.as_ref() else {
         return BuiltHir {
             hir: first,
@@ -129,7 +154,7 @@ fn built_hir(input: &PlanInput<'_>) -> BuiltHir {
         return BuiltHir { hir: first, env };
     }
     BuiltHir {
-        hir: build_hir(&front, &env.env),
+        hir: build(&env.env),
         env,
     }
 }
@@ -166,6 +191,7 @@ fn declined(
     lowered: &Lowered<Hir>,
     hir: LevelReport,
     backend: Backend,
+    failure: Option<Failure<'_>>,
 ) -> QueryPlan {
     QueryPlan {
         model: input.model.map(str::to_string),
@@ -173,7 +199,8 @@ fn declined(
         backend,
         schema_revision: input.schema_revision,
         status: PlanStatus::Declined,
-        guidance: Some(guidance(input, lowered).to_message()),
+        guidance: Some(compiled_route::declined_guidance(input, lowered, failure).to_message()),
+        banner: None,
         origin: None,
         levels: PlanLevels {
             hir,
@@ -195,15 +222,18 @@ pub(super) fn guidance(input: &PlanInput<'_>, lowered: &Lowered<Hir>) -> Guidanc
         .because(format!("{:?}: {}", violation.invariant, violation.detail))
         .fix("this is a cogitator bug; please report it with the model's SQL.");
     }
-    let reason = lowered
+    Guidance::new(format!("No query plan for {model} from its template."))
+        .because(decline_reason(lowered).to_string())
+        .fix("run `dbt compile` to plan the model from its compiled SQL.")
+}
+
+pub(super) fn decline_reason(lowered: &Lowered<Hir>) -> &str {
+    lowered
         .degraded
         .iter()
         .find(|d| d.kind == DegradationKind::JinjaControlFlow)
         .or(lowered.degraded.first())
-        .map_or("the template could not be lowered", |d| d.detail.as_str());
-    Guidance::new(format!("No query plan for {model} from its template."))
-        .because(reason.to_string())
-        .fix("run `dbt compile` and inspect the compiled SQL; plans from compiled output are not available yet.")
+        .map_or("the template could not be lowered", |d| d.detail.as_str())
 }
 
 /// MIR lowering produced nothing. HIR is shown; everything below is not.
@@ -213,6 +243,7 @@ fn without_mir(
     hir_report: LevelReport,
     lowered: &Lowered<Mir>,
     backend: Backend,
+    banner: Option<String>,
 ) -> QueryPlan {
     QueryPlan {
         model: input.model.map(str::to_string),
@@ -221,6 +252,7 @@ fn without_mir(
         schema_revision: input.schema_revision,
         status: PlanStatus::Partial,
         guidance: None,
+        banner,
         origin: Some(OriginView::of(&hir.origin)),
         levels: PlanLevels {
             hir: hir_report,

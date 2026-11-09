@@ -60,7 +60,7 @@ impl Facts {
         self
     }
 
-    fn input<'a>(&'a self, text: &'a str, model: Option<&'a str>) -> PlanInput<'a> {
+    pub(super) fn input<'a>(&'a self, text: &'a str, model: Option<&'a str>) -> PlanInput<'a> {
         PlanInput {
             text,
             dialect: &self.dialect,
@@ -70,6 +70,7 @@ impl Facts {
             manifest: self.manifest.as_ref(),
             catalog: self.catalog.as_ref(),
             schema_revision: 7,
+            compiled: CompiledInput::NotChecked,
         }
     }
 

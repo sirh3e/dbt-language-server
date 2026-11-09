@@ -23,16 +23,24 @@ pub enum PlanStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum OriginView {
-    Template { variant: TemplateVariant },
-    Compiled { staleness: Staleness },
+    Template {
+        variant: TemplateVariant,
+    },
+    #[serde(rename_all = "camelCase")]
+    Compiled {
+        staleness: Staleness,
+        /// Basis points of the compiled text anchored to the template.
+        coverage: u16,
+    },
 }
 
 impl OriginView {
     pub(super) fn of(origin: &SourceOrigin) -> Self {
         match origin {
             SourceOrigin::Template { variant } => OriginView::Template { variant: *variant },
-            SourceOrigin::Compiled { staleness, .. } => OriginView::Compiled {
+            SourceOrigin::Compiled { staleness, map } => OriginView::Compiled {
                 staleness: *staleness,
+                coverage: map.coverage,
             },
         }
     }
@@ -142,10 +150,30 @@ pub struct FixView {
     pub edits: Vec<FixEditView>,
 }
 
+/// Where a finding's `span` points (specs/ir-pipeline/09).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Placement {
+    /// The plan was built from the template; `span` indexes it directly.
+    Template,
+    /// Compiled SQL anchored to the template; `span` indexes the template.
+    Exact,
+    /// Compiled SQL produced by Jinja; `span` is that Jinja region.
+    InJinja,
+    /// No place in the template; `span` keeps its compiled offsets.
+    Unmapped,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FindingView {
     pub id: &'static str,
     pub span: Span,
+    pub placement: Placement,
+    /// False when the finding must not reach the editor as a diagnostic:
+    /// a stale compiled plan, or a span with no place in the template.
+    /// Consumers filter on this and need not know the plan's origin.
+    pub diagnostics_eligible: bool,
     pub level: Level,
     pub severity: &'static str,
     pub message: String,
@@ -191,6 +219,8 @@ impl FindingView {
         FindingView {
             id: finding.id.as_str(),
             span: finding.span,
+            placement: Placement::Template,
+            diagnostics_eligible: true,
             level: finding.level,
             severity: severity(finding.severity),
             message: finding.message.clone(),
@@ -211,6 +241,8 @@ pub struct QueryPlan {
     pub status: PlanStatus,
     /// Set when `status` is `declined`: what to do about it.
     pub guidance: Option<String>,
+    /// Set on a compiled plan of doubtful freshness: show this first.
+    pub banner: Option<String>,
     pub origin: Option<OriginView>,
     pub levels: PlanLevels,
     pub findings: Vec<FindingView>,
@@ -228,6 +260,7 @@ impl QueryPlan {
             schema_revision: input.schema_revision,
             status: PlanStatus::Declined,
             guidance: None,
+            banner: None,
             origin: None,
             levels: PlanLevels {
                 hir: skipped.clone(),
