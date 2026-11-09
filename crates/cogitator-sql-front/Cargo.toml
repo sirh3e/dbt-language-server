@@ -11,3 +11,6 @@ cogitator-dialects = { workspace = true }
 cogitator-error = { workspace = true }
 sqlparser = { workspace = true }
 minijinja = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

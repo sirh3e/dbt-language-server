@@ -32,11 +32,17 @@ participates in surrounding SQL:
 
 | Role | Meaning | Consumers |
 |---|---|---|
-| `Relation` | `{{ ref('x') }}`-style FROM target | exactly one `RelTarget::Jinja` |
+| `Relation` | A FROM target only known as Jinja: `{{ my_macro() }}`, `ref(var('x'))` | exactly one `RelTarget::Jinja` |
 | `Scalar` | Expression position | exactly one `ExprKind::Jinja` or `SelectItem::Jinja` |
 | `Composite` | Multi-role region, e.g. a macro expanding to `WHERE ...` | exactly one |
-| `Blank` | Masked out: comments, control tags, regions inside a `Hole` | zero or one |
+| `Blank` | Masked out: comments, control tags, regions inside a `Hole`, and static `ref`/`source`/`this` (see below) | zero or one |
 | `ClausePosition` | Sits between clauses, no expression | zero or one |
+
+A statically known `ref`, `source` or `this` lowers to
+`RelTarget::{Model, Source, This}`, which carries the name a `JinjaId` cannot.
+Its region stays in the `jinja` arena as an inventory entry with kind
+`Ref`/`Source`/`This` and role `Blank`, because `Relation` requires a
+`RelTarget::Jinja` consumer.
 
 ## Front-end decisions (binding for `feat/ir-hir`)
 
