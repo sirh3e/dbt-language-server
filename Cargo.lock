@@ -669,6 +669,7 @@ dependencies = [
 name = "cogitator-rules"
 version = "0.5.0"
 dependencies = [
+ "cogitator-dialects",
  "cogitator-ir",
  "cogitator-lower",
  "cogitator-sql-front",
