@@ -6,6 +6,7 @@ use std::sync::Arc;
 use cogitator_ir::common::{Materialization, ModelConfig};
 use cogitator_ir::hir::Hir;
 use cogitator_ir::lir::{Backend, PhysicalFacts};
+use cogitator_ir::mir::Mir;
 use cogitator_ir::schema::ProjectSchemas;
 
 use crate::meta::{Need, Needs, RuleMeta};
@@ -26,6 +27,9 @@ pub struct DagFacts {
 pub struct Cx<'a> {
     pub available: Needs,
     pub hir: Option<&'a Hir>,
+    /// The canonical plan, set by the driver for LIR detect: LIR scalars
+    /// and columns are MIR ids.
+    pub mir: Option<&'a Mir>,
     pub dialect: Option<Backend>,
     pub mat: Option<Materialization>,
     pub config: Option<&'a ModelConfig>,
@@ -39,6 +43,7 @@ impl<'a> Cx<'a> {
         Self {
             available,
             hir: None,
+            mir: None,
             dialect: None,
             mat: None,
             config: None,

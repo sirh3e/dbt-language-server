@@ -1,8 +1,7 @@
 //! The rule engine contract (specs/ir-pipeline/04, 05): rule traits,
 //! metadata, findings, the static registry, and pass-manager types.
 //!
-//! Rule bodies and the pass manager are stubs; each rule keeps its own
-//! file so later waves can work on separate rules without conflicts.
+//! Each rule keeps its own file so rules can be worked on independently.
 
 pub mod canon;
 pub mod cx;

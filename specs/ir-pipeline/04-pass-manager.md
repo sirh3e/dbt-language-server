@@ -8,7 +8,12 @@ lower → canonicalise to fixpoint → MIR detect → LIR detect
 ```
 
 Code: `crates/cogitator-rules/src/passes/`. The driver
-(`run_passes(PassInput, &Cx) -> PassOutput`) is a stub until `feat/ir-passes`.
+is `run_passes(PassInput, &Cx) -> PassOutput`. Callers lower LIR through
+`PassInput::lower_lir`, because a pre-lowered `lir` goes stale once
+canonicalisation moves `root`, and the hook verifies its own output. LIR detect
+sees the canonical plan through `Cx::mir`, since LIR scalars and columns are
+MIR ids. Detect rules see the canonical plan, so an empty `on` on a non-Cross
+join may be a rewrite result rather than what the user wrote.
 
 ## Traits
 

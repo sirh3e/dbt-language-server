@@ -9,4 +9,6 @@ cogitator-ir = { workspace = true }
 
 [dev-dependencies]
 cogitator-ir = { workspace = true, features = ["testkit"] }
+cogitator-lower = { workspace = true }
+cogitator-sql-front = { workspace = true }
 insta = { workspace = true }

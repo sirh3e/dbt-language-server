@@ -137,11 +137,15 @@ pub(super) fn run_with(registry: &[Registered], input: PassInput<'_>, cx: &Cx<'_
         (Ok(()), None) => Err(SkipReason::Unavailable(Level::Lir)),
         (Ok(()), Some(level)) => Ok(level),
     };
+    let lir_cx = Cx {
+        mir: Some(&mir),
+        ..*cx
+    };
     detect::run(
         Phase::DetectLir,
         lir_level,
         &lir_rules,
-        cx,
+        &lir_cx,
         &mut findings,
         &mut trace,
     );

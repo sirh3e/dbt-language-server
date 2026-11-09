@@ -29,7 +29,7 @@ preferred or included in `source.fixAll`.
 | `join.distinct_fanout` | MIR | DISTINCT may hide join fan-out (H) | D `join_elimination.cpp`; DF `replace_distinct_aggregate.rs` | tests | no |
 | `model.unused_cte` | HIR | CTE never used (W) | none found | AllBranches | delete (P) |
 | `cross.select_star_chain` | MIR | Only 4 of 31 columns used downstream (I) | D `remove_unused_columns.cpp`; DF `optimize_projections/` | schema, dag, mat | expand (N) |
-| `filter.non_sargable` | LIR | Wrapped column may block pruning (W BigQuery, H others) | D `rule/monotone_preimage.cpp`, `rule/date_trunc_simplification.cpp` | dialect, types, phys | `date(ts)=d` to range (P) |
+| `filter.non_sargable` | LIR | Wrapped column may block pruning (W BigQuery, H others) | D `rule/monotone_preimage.cpp`, `rule/date_trunc_simplification.cpp` | dialect, types, phys | `date(ts)=d` to range (P); BigQuery documents `DATE()` and `CAST` forms that may still prune, so those report as unknown (Hint), never blocked |
 | `incr.missing_guard` | HIR | Reprocesses all input each run (W) | dbt-specific | mat | no |
 | `incr.subquery_watermark` | HIR+LIR | Subquery filter doesn't prune (W BigQuery, I Snowflake) | BigQuery and Snowflake docs | dialect, phys | no |
 | `set.union_distinct` | MIR | UNION dedupes; UNION ALL? (I) | DF `replace_distinct_aggregate.rs`, `optimize_unions.rs` | none | P if disjointness proven, else N |
