@@ -4,12 +4,12 @@
 //! UTC unless told otherwise, so the range selects exactly the rows of
 //! the original, NULL `ts` included (neither form keeps them).
 //!
-//! This is text for the finding's message, not an edit. Fixes need exact
-//! spans (specs/ir-pipeline/08), and the rewrite must replace the whole
-//! predicate: a `Call` span stops before its `)` and parentheses leave
-//! no trace in the HIR (`ExprKind::span_is_exact`), so no such span
-//! exists. `testdata/oracle/filter_non_sargable_date_range` checks the
-//! rewrite itself.
+//! This builds the text; `range_fix` turns it into an edit once the
+//! document confirms the whole predicate, because a `Call` span stops
+//! before its `)` and parentheses leave no trace in the HIR
+//! (`ExprKind::span_is_exact`).
+//! `testdata/oracle/filter_non_sargable_date_range` checks the rewrite
+//! itself.
 
 use cogitator_ir::common::{BinaryOp, Lit};
 use cogitator_ir::mir::{ColId, Mir, ScalarId, ScalarKind};
@@ -30,7 +30,8 @@ pub(super) fn range_rewrite(
         SqlType::Timestamp { .. } => "TIMESTAMP",
         _ => return None,
     };
-    if !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+    let is_name = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'.';
+    if name.is_empty() || !name.bytes().all(is_name) {
         return None;
     }
     let ScalarKind::Binary {

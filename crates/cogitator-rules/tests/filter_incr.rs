@@ -213,7 +213,7 @@ fn no_fix_is_offered_without_an_exact_span() {
 }
 
 #[test]
-fn skipping_a_leading_cluster_key_is_typically_less_effective() {
+fn skipping_a_leading_cluster_key_is_reported_by_cluster_order() {
     let keys = [("a", KeyKind::Cluster), ("b", KeyKind::Cluster)];
     // `a` read or not: required-column pruning removes an unread `a` from
     // the scan, which must not hide that it was skipped.
@@ -222,11 +222,12 @@ fn skipping_a_leading_cluster_key_is_typically_less_effective() {
         "select a, id from {{ ref('events') }} where b = 1",
     ] {
         let r = run(Case::new(sql, Backend::BigQuery, &keys));
-        let f = only(&r, NON_SARGABLE);
+        no_findings(&r, NON_SARGABLE);
+        let f = only(&r, "filter.cluster_order");
         assert_eq!(f.severity, Severity::Hint, "{sql}");
         assert_eq!(f.evidence, Evidence::Unknown, "{sql}");
         assert!(
-            f.message.contains("typically less effective"),
+            f.message.contains("probably won't be as effective"),
             "{}",
             f.message
         );

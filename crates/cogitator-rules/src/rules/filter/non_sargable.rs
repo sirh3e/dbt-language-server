@@ -9,11 +9,11 @@
 //! | `Blocked` on BigQuery | Warning | the form the docs say cannot prune, with the link |
 //! | `Blocked` elsewhere (Postgres functions) | Hint | an index needs the expression |
 //! | `Unknown`, wrapped column | Hint | "may reduce pruning" |
-//! | `Unknown`, BigQuery cluster key after a skipped one | Hint | "typically less effective" |
 //!
-//! `SubqueryValue` and `OrAcrossColumns` are not wrapped columns; they
-//! belong to `incr.subquery_watermark` and the tranche 2
-//! `filter.partition_or`. A conjunct holding an `Opaque` (Jinja, `EXTRACT`,
+//! A bare filter on a later clustering column is not wrapped either; that
+//! belongs to `filter.cluster_order`. `SubqueryValue` and `OrAcrossColumns`
+//! belong to `incr.subquery_watermark` and `filter.partition_or`. A
+//! conjunct holding an `Opaque` (Jinja, `EXTRACT`,
 //! `SUBSTRING`, `TRIM`) or a scan with an open schema makes no claim, and
 //! neither does an `Unknown` key read only above other operators.
 
@@ -24,12 +24,13 @@ use cogitator_ir::{Level, RuleId};
 
 use super::predicate::{use_of, Use};
 use super::range::range_rewrite;
+use super::range_fix::range_fix;
 use super::support::{
     col_name, plan_evidence, scalar_span, scan_conjuncts, scan_is_closed, scans, ScanView,
     BIGQUERY_CLUSTER_DOC, BIGQUERY_PARTITION_DOC, POSTGRES_EXPRESSION_DOC,
 };
 use crate::cx::Cx;
-use crate::findings::{Evidence, Finding, Findings};
+use crate::findings::{Evidence, Finding, Findings, Fix};
 use crate::meta::{FixSafety, Need, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
 use crate::rule::{Detect, Rule};
 
@@ -112,16 +113,14 @@ impl Check<'_> {
             kind_name(key.kind),
             self.rewrite_note(by, key.col, name),
         );
-        Some(self.finding(by, severity, message, plan_evidence(self.cx.hir)))
+        let fixes = self.range_fixes(by, key.col, name);
+        Some(self.finding(by, severity, message, plan_evidence(self.cx.hir), fixes))
     }
 
     fn unknown(&self, key: &PruneKey, above: &[ScalarId]) -> Option<Finding> {
         let (conjunct, used) = above
             .iter()
             .find_map(|c| use_of(self.mir, *c, key.col).map(|u| (*c, u)))?;
-        if used == Use::Bare && self.skips_cluster_key(key) {
-            return self.skipped_cluster(key, conjunct);
-        }
         if matches!(used, Use::Bare | Use::ComparedToColumn) {
             return None;
         }
@@ -133,46 +132,8 @@ impl Check<'_> {
             self.documents_forms(key.kind),
             self.rewrite_note(conjunct, key.col, name),
         );
-        Some(self.finding(conjunct, Severity::Hint, message, Evidence::Unknown))
-    }
-
-    fn skipped_cluster(&self, key: &PruneKey, conjunct: ScalarId) -> Option<Finding> {
-        if use_of(self.mir, conjunct, key.col)? != Use::Bare {
-            return None;
-        }
-        let name = col_name(self.mir, key.col);
-        let message = format!(
-            "`{name}` is a later clustering column and an earlier one is not filtered; \
-             BigQuery documents that block pruning is then typically less effective. \
-             Filter the clustering columns in order. See {BIGQUERY_CLUSTER_DOC}"
-        );
-        Some(self.finding(conjunct, Severity::Hint, message, Evidence::Unknown))
-    }
-
-    /// True on BigQuery when a clustering column before `key` in `CLUSTER
-    /// BY` order (the `TableFacts` order) has no usable filter here.
-    fn skips_cluster_key(&self, key: &PruneKey) -> bool {
-        if self.backend != Backend::BigQuery || key.kind != KeyKind::Cluster {
-            return false;
-        }
-        let name_of = |col: ColId| self.mir.cols.get(col).and_then(|c| c.name);
-        let Some(facts) = self.cx.phys.and_then(|p| p.table(self.scan.table)) else {
-            return false;
-        };
-        let filtered = |name| {
-            self.scan.keys.iter().any(|k| {
-                k.kind == KeyKind::Cluster
-                    && matches!(k.usage, PruneUse::Used(_))
-                    && name_of(k.col) == Some(name)
-            })
-        };
-        let target = name_of(key.col);
-        facts
-            .columns
-            .iter()
-            .filter(|c| c.key == Some(KeyKind::Cluster))
-            .take_while(|c| Some(c.name) != target)
-            .any(|c| !filtered(c.name))
+        let fixes = self.range_fixes(conjunct, key.col, name);
+        Some(self.finding(conjunct, Severity::Hint, message, Evidence::Unknown, fixes))
     }
 
     /// BigQuery's list of forms that can still prune is on the partition
@@ -200,6 +161,18 @@ impl Check<'_> {
             .unwrap_or_default()
     }
 
+    /// The edit behind the message's range, when the document shows
+    /// exactly the predicate the plan holds.
+    fn range_fixes(&self, conjunct: ScalarId, col: ColId, name: &str) -> Vec<Fix> {
+        if self.backend != Backend::BigQuery {
+            return Vec::new();
+        }
+        let ty = self.column_type(col);
+        range_fix(self.mir, self.cx, conjunct, col, &ty, name)
+            .into_iter()
+            .collect()
+    }
+
     /// The plan's type, falling back to the physical column's when the
     /// plan has none.
     fn column_type(&self, col: ColId) -> SqlType {
@@ -225,6 +198,7 @@ impl Check<'_> {
         severity: Severity,
         message: String,
         evidence: Evidence,
+        fixes: Vec<Fix>,
     ) -> Finding {
         Finding {
             id: META.id,
@@ -233,8 +207,7 @@ impl Check<'_> {
             severity,
             message,
             evidence,
-            // See `range`: no exact span covers the predicate yet.
-            fixes: Vec::new(),
+            fixes,
         }
     }
 }

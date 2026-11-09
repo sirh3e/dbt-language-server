@@ -89,7 +89,7 @@ fn may_supply_guard(node: &JinjaNode) -> bool {
 }
 
 /// The `config()` call that made the model incremental, or the query.
-fn anchor(hir: &Hir) -> Span {
+pub(super) fn anchor(hir: &Hir) -> Span {
     hir.jinja
         .values()
         .find(|node| node.kind == JinjaKind::Config)
