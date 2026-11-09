@@ -1,3 +1,4 @@
-//! `cross.*` rules (stubs; `feat/ir-project-schemas`).
+//! `cross.*` rules: facts from more than one model.
 
+pub mod output;
 pub mod select_star_chain;

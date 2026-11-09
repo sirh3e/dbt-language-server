@@ -70,6 +70,7 @@ impl Facts {
             manifest: self.manifest.as_ref(),
             catalog: self.catalog.as_ref(),
             schema_revision: 7,
+            project: None,
         }
     }
 
@@ -84,6 +85,7 @@ fn column(name: &str, data_type: Option<&str>) -> ColumnEntry {
         description: String::new(),
         name_pos: Default::default(),
         data_type: data_type.map(str::to_string),
+        tests: Vec::new(),
     }
 }
 

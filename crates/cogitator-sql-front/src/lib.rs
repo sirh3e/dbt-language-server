@@ -32,6 +32,13 @@ mod types;
 
 pub use types::parse_sql_type;
 
+/// Folds an unquoted name from schema metadata the way the binder folds
+/// identifiers for `dialect`, so names from YAML, a catalog or a manifest
+/// compare equal to names written in SQL.
+pub fn fold_schema_name<'a>(name: &'a str, dialect: &Dialect) -> std::borrow::Cow<'a, str> {
+    dialect::DialectRules::for_dialect(dialect).fold_name(name)
+}
+
 use mask::{scan, Scanned, Stop};
 use segment::Lexed;
 

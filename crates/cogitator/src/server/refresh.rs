@@ -235,7 +235,14 @@ impl RefreshTask {
                             warned = warning;
                         }
                         refresh_revision.fetch_add(1, Ordering::Relaxed);
-                        let _ = ctx_tx.send(Arc::new(ctx));
+                        let ctx = Arc::new(ctx);
+                        refresh_derived.spawn_schema_job(
+                            ctx.clone(),
+                            refresh_limits
+                                .artifact_cap_bytes
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                        );
+                        let _ = ctx_tx.send(ctx);
                     }
                     Err(err) => {
                         progress.end("refresh failed");
@@ -451,6 +458,7 @@ fn enrich_warehouse_columns(
                             description: format!("{} (from warehouse)", c.data_type),
                             name_pos: Default::default(),
                             data_type: None,
+                            tests: Vec::new(),
                         })
                         .collect();
                 }
@@ -499,6 +507,7 @@ fn enrich_catalog_columns(
                     description: format!("{} (from catalog)", column.data_type),
                     name_pos: Default::default(),
                     data_type: None,
+                    tests: Vec::new(),
                 })
                 .collect();
         }

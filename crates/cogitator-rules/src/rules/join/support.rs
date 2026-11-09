@@ -41,13 +41,28 @@ pub(crate) fn is_singleton(op: &RelOp) -> bool {
 }
 
 /// True when every relation under `rel` (CTE bodies and subqueries
-/// included) has a closed schema and none is `Opaque`. A claim about a
-/// plan that fails this could be overturned by what the plan cannot see.
+/// included) has a closed schema and none is `Opaque`. For claims that
+/// range over every column of the input (`join.distinct_fanout`); claims
+/// about what is written use [`no_opaque`].
 pub(crate) fn is_closed(mir: &Mir, rel: RelId) -> bool {
     mir.reachable_from(&[rel])
         .iter()
         .all(|id| match mir.rels.get(*id).map(|r| &r.op) {
             Some(RelOp::Scan { open, .. }) => !*open,
+            Some(op @ RelOp::Opaque { .. }) => is_singleton(op),
+            Some(_) => true,
+            None => false,
+        })
+}
+
+/// True when nothing under `rel` is an `Opaque`. Open scans are allowed:
+/// a claim about what is *written* (a keyless join, a filter on a named
+/// column of a FROM item, a UNION) survives not knowing every column, but
+/// not a node that hides what it reads.
+pub(crate) fn no_opaque(mir: &Mir, rel: RelId) -> bool {
+    mir.reachable_from(&[rel])
+        .iter()
+        .all(|id| match mir.rels.get(*id).map(|r| &r.op) {
             Some(op @ RelOp::Opaque { .. }) => is_singleton(op),
             Some(_) => true,
             None => false,

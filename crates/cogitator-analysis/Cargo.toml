@@ -34,3 +34,7 @@ insta = { workspace = true }
 [[bench]]
 name = "lineage"
 harness = false
+
+[[bench]]
+name = "plan_budgets"
+harness = false

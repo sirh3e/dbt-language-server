@@ -30,13 +30,20 @@ pub fn query_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_c
         Some(root) => derived.artifacts(root, artifact_cap),
         None => ArtifactSet::default(),
     };
-    let revision = schema_revision(snap, &artifacts);
+    let project = snap
+        .ctx
+        .project_root
+        .as_deref()
+        .and_then(|root| derived.project_schemas(root));
+    let revision = project.as_ref().map_or(0, |p| p.revision);
     let compute = |text: &str| {
-        let input = PlanInput::from_context(&snap.ctx, text, Some(&model), &artifacts, revision);
+        let input = PlanInput::from_context(&snap.ctx, text, Some(&model), &artifacts, revision)
+            .with_project(project.as_deref());
         serde_json::to_string(&drive_plan(&input)).ok()
     };
+    let key = cache_key(snap, &artifacts, revision);
     let json: Option<Arc<str>> = match snap.doc.as_deref() {
-        Some(doc) => derived.query_plan(uri, doc.generation, revision, || compute(&doc.text)),
+        Some(doc) => derived.query_plan(uri, doc.generation, key, || compute(&doc.text)),
         None => {
             let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
             let Ok(text) = std::fs::read_to_string(&path) else {
@@ -55,11 +62,12 @@ pub fn query_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_c
     }
 }
 
-/// Changes whenever a plan input does: the context snapshot, or a re-read
-/// manifest or catalog. Pointer identity, like the results slot; 48 bits
-/// so it stays an exact integer in JSON clients that decode to doubles.
-fn schema_revision(snap: &Snapshot, artifacts: &ArtifactSet) -> u64 {
+/// Changes whenever a plan input does: the context snapshot, a re-read
+/// manifest or catalog, or a new schema revision. Pointer identity, like
+/// the results slot; never reported, only the cache key.
+fn cache_key(snap: &Snapshot, artifacts: &ArtifactSet, revision: u64) -> u64 {
     let mut hasher = DefaultHasher::new();
+    revision.hash(&mut hasher);
     (Arc::as_ptr(&snap.ctx) as usize).hash(&mut hasher);
     artifacts
         .manifest
@@ -71,7 +79,7 @@ fn schema_revision(snap: &Snapshot, artifacts: &ArtifactSet) -> u64 {
         .as_ref()
         .map(|c| Arc::as_ptr(c) as usize)
         .hash(&mut hasher);
-    hasher.finish() & 0xFFFF_FFFF_FFFF
+    hasher.finish()
 }
 
 fn invalid(guidance: Guidance) -> Reply {

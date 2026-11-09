@@ -25,6 +25,7 @@ mod facts;
 mod passes;
 mod phys;
 mod report;
+pub mod schemas;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -50,6 +51,9 @@ pub struct PlanInput<'a> {
     pub catalog: Option<&'a CatalogIndex>,
     /// Stamped into the plan's `ProjectSchemas` and echoed in the report.
     pub schema_revision: u64,
+    /// The project-wide schema job's result; before the first job finishes
+    /// the plan lists YAML and catalog columns as `Open`.
+    pub project: Option<&'a schemas::SchemaSnapshot>,
 }
 
 impl<'a> PlanInput<'a> {
@@ -70,7 +74,14 @@ impl<'a> PlanInput<'a> {
             manifest: artifacts.manifest.as_deref(),
             catalog: artifacts.catalog.as_deref(),
             schema_revision,
+            project: None,
         }
+    }
+
+    /// Sets the project snapshot this plan binds against.
+    pub fn with_project(mut self, project: Option<&'a schemas::SchemaSnapshot>) -> Self {
+        self.project = project;
+        self
     }
 }
 

@@ -4,13 +4,14 @@
 use std::sync::Arc;
 
 use cogitator_dialects::Dialect;
+use cogitator_ir::common::Materialization;
 use cogitator_ir::common::ModelConfig;
 use cogitator_ir::origin::{SourceOrigin, TemplateVariant};
 use cogitator_ir::schema::{Completeness, ModelSchema, ProjectSchemas, SchemaCol};
 use cogitator_ir::{ColType, Fidelity, Nullability, SqlType, VerifyMode};
 use cogitator_lower::lower_to_mir;
 use cogitator_rules::passes::{run_passes, Budgets, PassInput, PassOutput};
-use cogitator_rules::{Cx, Finding, Fix, Need, Needs};
+use cogitator_rules::{Cx, DagFacts, Finding, Fix, Need, Needs};
 use cogitator_sql_front::{build_hir, HirInput, SchemaEnv};
 
 /// Every need a detect rule of this package reads, by default.
@@ -67,6 +68,24 @@ pub fn run(sql: &str, schemas: ProjectSchemas, needs: Needs, rule: &str) -> Vec<
 }
 
 pub fn run_raw(sql: &str, schemas: ProjectSchemas, needs: Needs) -> PassOutput {
+    run_raw_with(sql, schemas, needs, Extras::default())
+}
+
+/// `Cx` fields a test adds beyond schemas and text.
+#[derive(Default)]
+pub struct Extras<'a> {
+    pub mat: Option<Materialization>,
+    pub dag: Option<&'a DagFacts>,
+    pub no_text: bool,
+}
+
+/// `run_raw` with extra `Cx` fields.
+pub fn run_raw_with(
+    sql: &str,
+    schemas: ProjectSchemas,
+    needs: Needs,
+    extras: Extras<'_>,
+) -> PassOutput {
     let dialect = Dialect::new("duckdb");
     let input = HirInput {
         text: sql,
@@ -91,7 +110,9 @@ pub fn run_raw(sql: &str, schemas: ProjectSchemas, needs: Needs) -> PassOutput {
     let mut cx = Cx::new(needs);
     cx.hir = Some(&hir);
     cx.schemas = Some(schemas.as_ref());
-    cx.text = Some(sql);
+    cx.text = (!extras.no_text).then_some(sql);
+    cx.mat = extras.mat;
+    cx.dag = extras.dag;
     let pass = PassInput {
         hir: Some(&hir),
         mir,

@@ -10,7 +10,7 @@ use cogitator_ir::{Level, RuleId, Span};
 
 use super::left_fix;
 use super::null_reject::rejects;
-use super::support::{is_closed, join_from, reads};
+use super::support::{join_from, no_opaque, reads};
 use crate::cx::Cx;
 use crate::findings::{Evidence, Finding, Findings, Fix};
 use crate::meta::{FixSafety, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
@@ -58,7 +58,11 @@ fn examine(mir: &Mir, id: RelId, cx: &Cx<'_>) -> Option<Finding> {
         JoinKind::Right => ("RIGHT", *l),
         _ => return None,
     };
-    if !is_closed(mir, *l) || !is_closed(mir, *r) {
+    // Open scans are fine: a conjunct can only reach `first_rejecting`'s
+    // null side through a column the binder pinned to that FROM item
+    // (qualified, or the only item that can supply it); an unqualified
+    // name that could belong to either side is `Candidates`, so opaque.
+    if !no_opaque(mir, *l) || !no_opaque(mir, *r) {
         return None;
     }
     let null_side: BTreeSet<ColId> = mir.rels.get(null_rel)?.out.iter().copied().collect();

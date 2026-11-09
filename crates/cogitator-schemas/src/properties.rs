@@ -50,6 +50,26 @@ pub struct ColumnEntry {
     /// string. Columns filled from the catalog or warehouse leave this unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_type: Option<String>,
+    /// Column tests (`tests:` or `data_tests:`), in file order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tests: Vec<ColumnTest>,
+}
+
+/// One generic test on a column. `strict` says the test passing proves the
+/// property for every row: no `where:` filter, not `severity: warn`, not
+/// disabled.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ColumnTest {
+    /// Lower-cased test name, without a `dbt.` prefix.
+    pub name: String,
+    pub strict: bool,
+}
+
+impl ColumnEntry {
+    /// True when a strict test named `name` covers this column.
+    pub fn proven_by(&self, name: &str) -> bool {
+        self.tests.iter().any(|t| t.strict && t.name == name)
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

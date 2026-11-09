@@ -91,7 +91,14 @@ fn query_plan_is_cached_per_generation_and_replans_after_an_edit() {
         json!({"textDocument": {"uri": probe_uri, "languageId": "sql", "version": 1, "text": text}}),
     );
 
-    let first = plan(&mut lsp, &probe_uri);
+    // the schema job runs after the refresh; compare plans once it has
+    let first = lsp.wait_until("the schema job publishes a revision", |lsp| {
+        let response = plan(lsp, &probe_uri);
+        (response["result"]["schemaRevision"]
+            .as_u64()
+            .is_some_and(|r| r > 0))
+        .then_some(response)
+    });
     let second = plan(&mut lsp, &probe_uri);
     assert_eq!(first["result"], second["result"], "same plan");
     let cache = lsp.request(
@@ -112,7 +119,11 @@ fn query_plan_is_cached_per_generation_and_replans_after_an_edit() {
     let mir = after["result"]["levels"]["mir"]["text"]
         .as_str()
         .expect("mir");
-    assert!(!mir.contains("name"), "the edited text was planned: {mir}");
+    let project_line = mir.lines().next().unwrap_or_default();
+    assert!(
+        project_line.contains("id#") && !project_line.contains("name"),
+        "the edited text was planned: {mir}"
+    );
 
     lsp.shutdown();
 }
@@ -125,5 +136,44 @@ fn query_plan_rejects_a_non_model_uri_with_guidance() {
     let response = plan(&mut lsp, &schema);
     let message = response["error"]["message"].as_str().expect("error");
     assert!(message.contains("needs a model"), "{message}");
+    lsp.shutdown();
+}
+
+#[test]
+fn schema_job_gives_the_plan_a_revision_closed_schemas_and_demand() {
+    let project = jaffle();
+    let (star, reader) = (
+        project.root.join("models/star_orders.sql"),
+        project.root.join("models/reads_star.sql"),
+    );
+    std::fs::write(
+        &star,
+        "{{ config(materialized='table') }}\nselect * from {{ ref('stg_orders') }}\n",
+    )
+    .expect("star model");
+    std::fs::write(&reader, "select order_id from {{ ref('star_orders') }}\n")
+        .expect("reader model");
+    let (mut lsp, _uri) = project.booted();
+    let star_uri = cogitator_lsp::fs_path_to_uri(&star);
+
+    let result = lsp.wait_until("the schema job publishes a revision", |lsp| {
+        let response = plan(lsp, &star_uri);
+        let result = response["result"].clone();
+        (result["schemaRevision"].as_u64().is_some_and(|r| r > 0)).then_some(result)
+    });
+    let needs = result["needs"]["available"].as_array().expect("needs");
+    assert!(needs.contains(&json!("schema")), "{result}");
+    assert!(needs.contains(&json!("dag")), "{result}");
+    let findings = result["findings"].as_array().expect("findings");
+    let finding = findings
+        .iter()
+        .find(|f| f["id"] == "cross.select_star_chain")
+        .expect("select-star finding");
+    assert!(
+        finding["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("1 of 4")),
+        "{finding}"
+    );
     lsp.shutdown();
 }

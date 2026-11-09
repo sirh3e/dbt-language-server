@@ -19,7 +19,7 @@ use crate::cx::Cx;
 use crate::findings::{Evidence, Finding, Findings, Fix, FixEdit};
 use crate::meta::{FixSafety, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
 use crate::rule::{Detect, Rule};
-use crate::rules::join::support::{hir_ref, is_closed, is_one_row};
+use crate::rules::join::support::{hir_ref, is_closed, is_one_row, no_opaque};
 use crate::rules::join::text::{is_word_ci, match_case, slice, word_before};
 
 pub static META: RuleMeta = RuleMeta {
@@ -60,10 +60,16 @@ fn examine(mir: &Mir, id: RelId, cx: &Cx<'_>) -> Option<Finding> {
     else {
         return None;
     };
-    if inputs.iter().any(|a| !is_closed(mir, *a)) || shares_a_relation(mir, inputs) {
+    // "This UNION dedupes" needs no column list; only an `Opaque` arm hides
+    // what it reads from `shares_a_relation`.
+    if inputs.iter().any(|a| !no_opaque(mir, *a)) || shares_a_relation(mir, inputs) {
         return None;
     }
-    let disjoint = literals_disjoint(mir, inputs) && inputs.iter().all(|a| duplicate_free(mir, *a));
+    // Discriminators are found by position, which an open star shifts: the
+    // P proof keeps the closed-schema requirement.
+    let disjoint = inputs.iter().all(|a| is_closed(mir, *a))
+        && literals_disjoint(mir, inputs)
+        && inputs.iter().all(|a| duplicate_free(mir, *a));
     Some(Finding {
         id: META.id,
         span: mir.prov.span(rel.prov).unwrap_or_default(),
