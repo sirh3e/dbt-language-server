@@ -42,7 +42,8 @@ editor "exposes" a command when one of its files holds the quoted name.
   (`cogitator/src/server/handlers/`), long work through `offload_blocking`.
 - An e2e test (`crates/cogitator/tests/e2e_*.rs`) of the command over the wire.
 - The row in `specs/neovim-plugin/00-plugin.md` (§ command table) and, for a
-  `:Dbt*` command, §5.1.
+  `:Dbt*` command, §5.1; a section in `docs/commands.md` (`` ### `dbt.x` ``:
+  argument, result, side effects, editors) — the parity test checks both.
 - Its line in `editors/parity.toml`.
 - README/AGENTS.md where the feature is described.
 
