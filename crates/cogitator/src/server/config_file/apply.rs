@@ -22,6 +22,9 @@ pub enum Change {
     WarehouseColumns(bool),
     ClientLogLevel(u8),
     Perf(PerfSettings),
+    /// cogitator.yml `vars:` (empty: none).
+    Vars(Vec<cogitator_analysis::context::VarOverride>),
+    InlayVars(bool),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -94,6 +97,12 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     {
         out.push(Change::Perf(new.perf_settings(&baseline.perf)));
     }
+    if old.var_overrides != new.var_overrides {
+        out.push(Change::Vars(new.var_overrides.clone()));
+    }
+    if old.inlay.vars != new.inlay.vars {
+        out.push(Change::InlayVars(new.inlay.vars.unwrap_or(true)));
+    }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
         // cogitator.yml diagnostics flag the typo separately
@@ -126,7 +135,9 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::LintFlags(_)
             | Change::WarehouseColumns(_)
             | Change::ClientLogLevel(_)
-            | Change::Perf(_) => true,
+            | Change::Perf(_)
+            | Change::Vars(_)
+            | Change::InlayVars(_) => true,
         })
         .collect()
 }
@@ -201,6 +212,14 @@ pub fn apply(
                 crate::client_log::set_level(*level);
                 applied.push("log.client_level");
             }
+            Change::Vars(vars) => {
+                profiles.lock().expect("profiles config lock").vars_file = vars.clone();
+                applied.push("vars");
+            }
+            Change::InlayVars(on) => {
+                toggles.inlay_vars_off.store(!*on, Ordering::Relaxed);
+                applied.push("inlay.vars");
+            }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc
                 *toggles.perf.write().expect("perf settings lock") =
@@ -272,6 +291,35 @@ mod tests {
             "{changes:?}"
         );
         assert_eq!(changes.len(), 2, "untouched keys stay out: {changes:?}");
+    }
+
+    #[test]
+    fn vars_and_inlay_diff_and_apply() {
+        let old = parse("", Path::new("/p/cogitator.yml")).unwrap();
+        let new = parse(
+            "vars:\n  since: '2024-01-01'\ninlay:\n  vars: false\n",
+            Path::new("/p/cogitator.yml"),
+        )
+        .unwrap();
+        assert_eq!(new.var_overrides.len(), 1);
+        assert_eq!(new.var_overrides[0].name, "since");
+        assert_eq!(new.var_overrides[0].range.start.line, 1);
+        let changes = diff(&old, &new, &baseline());
+        assert_eq!(changes.len(), 2, "{changes:?}");
+        let profiles = std::sync::Mutex::new(ProfilesConfig::default());
+        let toggles = SharedToggles::default();
+        let applied = apply(&changes, &profiles, &SharedLimits::default(), &toggles);
+        assert_eq!(applied, vec!["vars", "inlay.vars"]);
+        assert_eq!(profiles.lock().unwrap().vars_file[0].value, "2024-01-01");
+        assert!(toggles
+            .inlay_vars_off
+            .load(std::sync::atomic::Ordering::Relaxed));
+        // removing them reverts: no overrides, hints on
+        let back = diff(&new, &old, &baseline());
+        assert_eq!(
+            back,
+            vec![Change::Vars(Vec::new()), Change::InlayVars(true)]
+        );
     }
 
     #[test]

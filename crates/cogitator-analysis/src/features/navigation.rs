@@ -13,6 +13,10 @@ pub fn references(
     uri: &str,
     pos: Position,
 ) -> Vec<Location> {
+    let read = |p: &std::path::Path| std::fs::read_to_string(p).ok();
+    if let Some(found) = super::var_references(ctx, doc, uri, pos, &read) {
+        return found;
+    }
     let model = doc
         .and_then(|d| {
             d.parsed

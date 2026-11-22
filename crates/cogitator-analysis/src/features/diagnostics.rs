@@ -15,8 +15,10 @@ pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnos
     let mut out = Vec::new();
     // the source name of the source() call being read, for its table
     let mut current_source: Option<&str> = None;
-    for t in &doc.parsed.tokens {
-        let literal = doc.parsed.literal(t);
+    let parsed = &doc.parsed;
+    let vars = ctx.vars_for(&doc.uri);
+    for (i, t) in parsed.tokens.iter().enumerate() {
+        let literal = parsed.literal(t);
         if t.kind == TokenKind::SourceName {
             current_source = Some(literal);
         }
@@ -67,16 +69,13 @@ pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnos
                 }),
             // var('name', default) is legitimate without a project var —
             // only defaultless lookups can dangle
-            TokenKind::Var if !ctx.variable_detail_map.is_empty() && !has_default(doc, t) => {
-                (!ctx.variable_detail_map.contains_key(literal)).then(|| {
+            TokenKind::Var if !vars.is_empty() && parsed.var_default(i).is_none() => {
+                (!vars.contains_key(literal)).then(|| {
                     entry(
                         t,
                         "unknown-var",
                         Guidance::new(format!("var '{literal}' is not defined in dbt_project.yml"))
-                            .suggest(closest_matches(
-                                literal,
-                                ctx.variable_detail_map.keys().map(String::as_str),
-                            )),
+                            .suggest(closest_matches(literal, vars.keys().map(String::as_str))),
                     )
                 })
             }
@@ -114,13 +113,6 @@ pub fn dangling_doc_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnos
         ));
     }
     out
-}
-
-/// Does this `var()` call carry a second (default) argument?
-fn has_default(doc: &Document, token: &cogitator_parser::Token) -> bool {
-    let rest = &doc.parsed.text[token.end as usize..];
-    let close = rest.find(')').unwrap_or(0);
-    rest[..close].contains(',')
 }
 
 fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Option<Diagnostic> {

@@ -6,6 +6,17 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "inlay": {
+      "description": "Which inlay hints the server sends.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vars": {
+          "description": "Show the value each var() resolves to (default true). (bool)",
+          "type": "boolean"
+        }
+      }
+    },
     "limits": {
       "description": "Hot-tunable size caps.",
       "type": "object",
@@ -395,6 +406,12 @@
           "type": "boolean"
         }
       }
+    },
+    "vars": {
+      "description": "Var overrides, like dbt's --vars: name → value. They win over dbt_project.yml and are passed to the dbt commands the server runs.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {}
     },
     "warehouse": {
       "description": "Warehouse introspection (duckdb builds only).",

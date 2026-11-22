@@ -29,4 +29,7 @@ pub struct InlayHint {
     pub kind: Option<u8>,
     pub padding_left: bool,
     pub padding_right: bool,
+    /// Plain-text tooltip (a var's whole value and where it is defined).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tooltip: Option<String>,
 }

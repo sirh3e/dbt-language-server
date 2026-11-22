@@ -368,6 +368,18 @@ impl Dispatcher {
                 tracing::info!(target, "target from initializationOptions");
                 cfg.target = target.to_string();
             }
+            let vars = params.vars();
+            if !vars.is_empty() {
+                tracing::info!(count = vars.len(), "vars from initializationOptions");
+                cfg.vars_init = vars
+                    .into_iter()
+                    .map(|(name, value)| cogitator_analysis::context::VarOverride {
+                        name,
+                        value,
+                        ..Default::default()
+                    })
+                    .collect();
+            }
             let allow = params.profiles_allow();
             if !allow.is_empty() {
                 cfg.allow = allow;

@@ -175,4 +175,32 @@ mod tests {
             "{tokens:?}"
         );
     }
+
+    fn var_default(text: &str) -> Option<String> {
+        let doc = parse_document(text, &Dialect::default()).unwrap();
+        let i = doc.tokens.iter().position(|t| t.kind == TokenKind::Var)?;
+        doc.var_default(i).map(str::to_string)
+    }
+
+    #[test]
+    fn a_var_call_says_its_default() {
+        assert_eq!(var_default("select {{ var('x') }}"), None);
+        assert_eq!(var_default("select {{ var('x', 7) }}"), Some("7".into()));
+        assert_eq!(
+            var_default("select {{ var('x', 'a') }}"),
+            Some("'a'".into())
+        );
+        assert_eq!(
+            var_default("select {{ var('x', true) }}"),
+            Some("true".into())
+        );
+        assert_eq!(
+            var_default("select {{ var('x', ['a', 'b']) }}"),
+            Some("['a', 'b']".into())
+        );
+        assert_eq!(
+            var_default("{{ var('x', f(1, 2)) | upper }}"),
+            Some("f(1, 2)".into())
+        );
+    }
 }

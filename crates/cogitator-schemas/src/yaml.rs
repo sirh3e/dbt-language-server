@@ -32,6 +32,17 @@ pub fn position_of(node: &MarkedYaml<'_>) -> Position {
     }
 }
 
+/// 0-based LSP range of a node (start to end, end exclusive).
+pub fn range_of(node: &MarkedYaml<'_>) -> cogitator_lsp::Range {
+    cogitator_lsp::Range {
+        start: position_of(node),
+        end: Position {
+            line: node.span.end.line().saturating_sub(1) as u32,
+            character: node.span.end.col() as u32,
+        },
+    }
+}
+
 /// Look up a mapping entry by string key.
 pub fn get<'a, 'input>(node: &'a MarkedYaml<'input>, key: &str) -> Option<&'a MarkedYaml<'input>> {
     match &node.data {

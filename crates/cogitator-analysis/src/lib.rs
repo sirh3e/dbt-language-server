@@ -28,6 +28,8 @@ pub use context::{
 /// step 1 — on tokenize failure `parsed` goes stale while `text` advances).
 #[derive(Debug, Default)]
 pub struct Document {
+    /// The uri the document was opened under (vars are scoped by file).
+    pub uri: Arc<str>,
     pub text: Arc<str>,
     pub parsed: ParsedDocument,
     /// Monotonic per-store counter value at the last open/change: the
@@ -81,8 +83,9 @@ impl Documents {
         let parsed = self.parse_or_last_good(&uri, None, text, dialect, &[]);
         self.generations += 1;
         self.docs.insert(
-            uri,
+            uri.clone(),
             Arc::new(Document {
+                uri: Arc::from(uri.as_str()),
                 text: Arc::from(text),
                 parsed,
                 generation: self.generations,
@@ -123,6 +126,7 @@ impl Documents {
         self.docs.insert(
             uri.to_string(),
             Arc::new(Document {
+                uri: Arc::from(uri),
                 text: Arc::from(text.as_str()),
                 parsed,
                 generation: self.generations,
@@ -162,8 +166,9 @@ impl Documents {
             let parsed = self.parse_or_last_good(&uri, previous, &text, dialect, &[]);
             self.generations += 1;
             self.docs.insert(
-                uri,
+                uri.clone(),
                 Arc::new(Document {
+                    uri: Arc::from(uri.as_str()),
                     text: Arc::from(text.as_str()),
                     parsed,
                     generation: self.generations,

@@ -339,11 +339,24 @@ impl Dispatcher {
         let range = params.range;
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
+        let options = features::InlayOptions {
+            vars: !self
+                .toggles
+                .inlay_vars_off
+                .load(std::sync::atomic::Ordering::Relaxed),
+        };
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
             let hints = match snap.doc.as_deref() {
-                Some(doc) => features::inlay_hints(&snap.ctx, doc, &uri, range, target.as_ref()),
+                Some(doc) => features::inlay_hints_with(
+                    &snap.ctx,
+                    doc,
+                    &uri,
+                    range,
+                    target.as_ref(),
+                    options,
+                ),
                 None => Vec::new(),
             };
             crate::server::reply::Reply::result(&hints)
