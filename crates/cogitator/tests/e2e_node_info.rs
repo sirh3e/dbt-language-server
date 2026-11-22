@@ -70,9 +70,17 @@ fn a_generic_test_says_where_it_is_applied() {
     )
     .unwrap();
     let schema = project.root.join("models/schema.yml");
-    let text = std::fs::read_to_string(&schema).unwrap();
+    // the checkout may have CRLF line endings (Windows)
+    let text = std::fs::read_to_string(&schema)
+        .unwrap()
+        .replace("\r\n", "\n");
+    let anchor = "          - unique\n          - not_null\n";
+    assert!(
+        text.contains(anchor),
+        "the fixture's customer_id tests moved"
+    );
     let text = text.replacen(
-        "          - unique\n          - not_null\n",
+        anchor,
         "          - unique\n          - not_null\n          - not_negative\n",
         1,
     );
