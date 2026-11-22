@@ -634,8 +634,15 @@ fn log_verbosity_tunes_hot() {
     // $/setTrace off: only errors from here — the setTrace is ordered
     // before the flush request, so everything after the drain is quiet
     lsp.notify("$/setTrace", serde_json::json!({"value": "off"}));
-    lsp.wait_status(|_| true);
-    let _ = lsp.take_notifications("window/logMessage");
+    // drain until quiet: work the debug-level didSave started (a plan,
+    // a Jinja preview) may still be logging lines it emitted before the
+    // level dropped; only what comes after the drain must be errors
+    for _ in 0..40 {
+        lsp.wait_status(|_| true);
+        if lsp.take_notifications("window/logMessage").is_empty() {
+            break;
+        }
+    }
     lsp.notify("textDocument/didSave", saved.clone());
     lsp.wait_status(|_| true);
     let after = lsp.take_notifications("window/logMessage");
