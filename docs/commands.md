@@ -248,9 +248,15 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.highlight`
 
-- **Argument**: `{uri}` — the open document or the file; or `{text, language?}` — any text, `dbt` (default) or `sql`; or `{model?, compiled: true}` — the SQL dbt compiled the model (or the file) to
-- **Result**: `{language, spans: [{range, capture}], truncated}`; `null` for a model dbt has not compiled
-- **Side effects**: none: tree-sitter-dbt's own highlights query, the SQL between the tags through tree-sitter-sequel's; captures are the queries' names (`keyword`, `tag.delimiter`, `function.builtin`, `string`, …), ranges in UTF-16
+- **Argument**: one of
+  - `{uri, language?}` — the open document or the file, its language from the path (`.yml` → yaml, `target/compiled|run` → sql, otherwise dbt);
+  - `{text, language?}` — any text, `dbt` (default), `sql` or `yaml`;
+  - `{model?, compiled: true}` — the SQL dbt compiled the model (or the file) to;
+  - `{node: {kind, name}, compiled?}` — a macro's, test's, source's… file, or a test's compiled SQL.
+
+  Any of them may add `range: {start: {line}, end: {line}}` (only those lines' spans) and `version` (echoed).
+- **Result**: `{language, version?, spans: [{range, capture, layer}], truncated, layers}`; `null` for compiled SQL that does not exist (an uncompiled model or test, a macro)
+- **Side effects**: none. The grammars' own highlights: tree-sitter-dbt for the Jinja, tree-sitter-sequel for the SQL between the tags, tree-sitter-yaml for YAML, plus — in YAML — the Jinja and SQL inside values and the dbt-aware captures (`type.dbt.model`, `property.dbt.column`, `function.dbt.test`, …; `.unresolved` for a reference the project lacks). `layer` is `yaml`, `sql`, `jinja` or `dbt`. Whole answers are cached (`dbt.cache` reports them as `highlights`). See [highlighting.md](highlighting.md)
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
 ### `dbt.astGrep`
@@ -258,6 +264,19 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Argument**: `{pattern, language?, rewrite?, uri?, apply?}` — an ast-grep pattern (`{{ ref($M) }}`); `language` `dbt` (default) or `sql`; `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`)
 - **Result**: `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` (at most 500 matches)
 - **Side effects**: with `apply: true` and a `rewrite`, every match is replaced through `workspace/applyEdit`. The project's `sgconfig.yml` rules also show as diagnostics (`source: ast-grep`) with their fixes as quickfixes — see [ast-grep.md](ast-grep.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.nodeInfo`
+
+- **Argument**: `{node: {kind, name}}` — `kind` one of `model`, `macro`, `test`, `generic_test`, `source`, `exposure`, `metric`, `semantic_model`, `analysis`
+- **Result**: the card data of the node, by kind:
+  - `model`: `dbt.modelInfo`'s answer with `kind`;
+  - `macro`: `{package, description, params, uri, range, callers, calls, usedByTests}`;
+  - `generic_test` (a `{% test %}` definition): `{params, uri, range, appliedTo: [{model, column, uri, range}]}`;
+  - any other kind: `{uri, refs, calls, upstream, downstream, compiledUri, description}`.
+
+  Unknown nodes answer `null`.
+- **Side effects**: a WARNING with the closest names for an unknown node
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
 ## Profiles, configuration and health

@@ -12,6 +12,7 @@ tree-sitter = { workspace = true }
 tracing = { workspace = true }
 tree-sitter-sequel = { workspace = true }
 tree-sitter-highlight = { workspace = true }
+tree-sitter-yaml = { workspace = true }
 tree-sitter-dbt = { workspace = true }
 
 [dev-dependencies]
