@@ -1,0 +1,21 @@
+rule = "incr.could_be_incremental"
+fix = "materialized='incremental', append, filtered after the newest ts"
+safety = "P"
+description = "Filter and projection are linear (DBSP: Q^Δ = Q), so over an input that only gains rows with later `ts` the rows the increment appends are exactly the rows a full rebuild adds. The empty fixture holds the guard for a model that is still empty."
+
+[incremental]
+strategy = "append"
+
+[[fixtures]]
+name = "nulls_and_duplicates"
+seed = "seed.sql"
+delta = "delta.sql"
+role = "preserve"
+covers = ["nulls", "duplicates"]
+
+[[fixtures]]
+name = "empty_model"
+seed = "seed_empty.sql"
+delta = "delta_from_empty.sql"
+role = "preserve"
+covers = ["empty"]

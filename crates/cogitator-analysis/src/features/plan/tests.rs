@@ -44,6 +44,44 @@ impl Facts {
         self
     }
 
+    /// A model the scan saw: its kind and its YAML `event_time`.
+    pub(super) fn model(
+        mut self,
+        model: &str,
+        kind: crate::context::ModelKind,
+        event_time: Option<&str>,
+    ) -> Self {
+        self.models.insert(
+            model.to_string(),
+            ModelDetails {
+                kind,
+                event_time: event_time.map(str::to_string),
+                ..ModelDetails::default()
+            },
+        );
+        self
+    }
+
+    /// A source table with the column it declares only grows.
+    pub(super) fn source(mut self, source: &str, table: &str, event_time: Option<&str>) -> Self {
+        let entry = self
+            .sources
+            .entry(source.to_string())
+            .or_insert_with(|| SourceDetails {
+                name: source.to_string(),
+                ..SourceDetails::default()
+            });
+        entry.tables.insert(
+            table.to_string(),
+            crate::context::SourceTableDetails {
+                name: table.to_string(),
+                event_time: event_time.map(str::to_string),
+                ..Default::default()
+            },
+        );
+        self
+    }
+
     pub(super) fn manifest(mut self, model: &str, config: ManifestConfig) -> Self {
         self.manifest
             .get_or_insert_with(ManifestIndex::default)

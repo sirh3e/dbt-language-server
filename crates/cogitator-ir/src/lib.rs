@@ -18,6 +18,7 @@ pub mod origin;
 mod print_snapshots;
 mod print_util;
 pub mod schema;
+pub mod sexp;
 pub mod span;
 #[cfg(any(test, feature = "testkit"))]
 pub mod testkit;

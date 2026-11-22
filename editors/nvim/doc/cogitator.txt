@@ -72,6 +72,12 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtDag        project DAG, dbt-docs style         <leader>dD
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
+  :DbtPlan       IR levels, findings, incrementality
+  :DbtSplit      split a table model at its incrementality frontier:
+                 the plan as an S-expression and the new model's file;
+                 `a` applies the split, `q` closes
+  :DbtIncrementality
+                 table models that could be incremental (quickfix)
 
 `:DbtDag` (a *Neovim-only* feature) draws the whole project as a layered
 DAG in the dbt-docs colours. One node is selected, and movement goes

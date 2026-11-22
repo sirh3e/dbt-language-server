@@ -95,3 +95,36 @@ fn the_explain_json_shape_is_pinned() {
     let shape = plan_shape(&plan).expect("known shape");
     insta::assert_json_snapshot!(shape);
 }
+
+/// The incremental mode can fail: without its `is null` arm the filter
+/// finds nothing to append to a model built empty, and the empty fixture
+/// catches it.
+#[test]
+fn an_increment_without_its_empty_model_guard_is_caught() {
+    let mut case = case("incr_append_linear");
+    if let Some(incremental) = case.incremental.as_mut() {
+        incremental.increment = "select id, ts, amount * 2 as doubled from events \
+            where (status = 'ok' or amount is null) and ts > (select max(ts) from this_model)"
+            .to_owned();
+    }
+    let failures = run_case(&mut DuckDb, &case);
+    assert!(
+        failures.iter().any(|f| f.contains("empty_model")),
+        "{failures:?}"
+    );
+}
+
+/// A split's check can fail: ranking over the part without maintaining it
+/// (the increment dropped) misses what the delta changed.
+#[test]
+fn a_split_whose_part_is_not_maintained_is_caught() {
+    let mut case = case("split_rank_over_users");
+    if let Some(incremental) = case.incremental.as_mut() {
+        incremental.increment = "select * from this_model where false".to_owned();
+    }
+    let failures = run_case(&mut DuckDb, &case);
+    assert!(
+        failures.iter().any(|f| f.contains("touched_and_new_users")),
+        "{failures:?}"
+    );
+}

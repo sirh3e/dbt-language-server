@@ -9,6 +9,7 @@ pub mod ops;
 pub mod print;
 pub mod prov;
 pub mod rel;
+pub mod sexp;
 pub mod verify;
 
 use serde::Serialize;
@@ -20,6 +21,7 @@ pub use ops::{AggCall, Scalar, ScalarKind, SortKey, SubqueryKind, WinCall};
 pub use print::{plan_hash, print_mir};
 pub use prov::{HirNode, HirRef, Origin, ProvTable};
 pub use rel::{GroupingSets, Rel, RelOp, TableDef, TableRef};
+pub use sexp::{mir_sexp, rel_sexp};
 pub use verify::{verify_mir, verify_rewrite};
 
 pub type RelId = Idx<Rel>;

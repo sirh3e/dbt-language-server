@@ -9,6 +9,8 @@ use cogitator_ir::lir::{Backend, PhysicalFacts};
 use cogitator_ir::mir::Mir;
 use cogitator_ir::schema::ProjectSchemas;
 
+use crate::canon::incrementality::IncrementalInputs;
+
 use crate::meta::{Need, Needs, RuleMeta};
 use crate::passes::SkipReason;
 
@@ -79,6 +81,8 @@ pub struct Cx<'a> {
     pub schemas: Option<&'a ProjectSchemas>,
     pub phys: Option<&'a PhysicalFacts>,
     pub dag: Option<&'a DagFacts>,
+    /// What dbt declares about how each input grows, for incrementality.
+    pub inputs: Option<&'a IncrementalInputs>,
 }
 
 impl<'a> Cx<'a> {
@@ -94,6 +98,7 @@ impl<'a> Cx<'a> {
             schemas: None,
             phys: None,
             dag: None,
+            inputs: None,
         }
     }
 

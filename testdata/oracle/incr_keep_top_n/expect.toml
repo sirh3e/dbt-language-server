@@ -1,0 +1,28 @@
+rule = "incr.could_be_incremental"
+fix = "none: LIMIT keeps the model a table; this case shows why"
+safety = "N"
+description = "ORDER BY … LIMIT reads the whole input: a newer row pushes an old one out, which no increment of appended rows can do (DBSP: not linear, it needs the whole history). The analysis keeps the model a table; this case shows the append increment would give wrong rows (witness), though it agrees where nothing arrives (precondition)."
+
+[incremental]
+strategy = "append"
+
+[[fixtures]]
+name = "a_newer_row_displaces_an_old_one"
+seed = "seed.sql"
+delta = "delta.sql"
+role = "witness"
+covers = ["nulls", "duplicates"]
+
+[[fixtures]]
+name = "nothing_arrives"
+seed = "seed.sql"
+delta = "seed.sql"
+role = "precondition"
+covers = ["nulls", "duplicates"]
+
+[[fixtures]]
+name = "empty"
+seed = "seed_empty.sql"
+delta = "seed_empty.sql"
+role = "precondition"
+covers = ["empty"]

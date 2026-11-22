@@ -127,7 +127,8 @@ fn perf_rules_override_and_hot_reload() {
         json!({"command": "dbt.doctor", "arguments": [{}]}),
     );
     assert_eq!(doctor["result"]["perf"]["profile"], "strict", "{doctor}");
-    assert_eq!(doctor["result"]["perf"]["enabledRules"], 22, "{doctor}");
+    // every advice rule but the one turned off; incr.could_be_incremental made it 23
+    assert_eq!(doctor["result"]["perf"]["enabledRules"], 23, "{doctor}");
     lsp.shutdown();
 }
 

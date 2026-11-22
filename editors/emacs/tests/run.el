@@ -179,6 +179,37 @@
   (check (and (member "dbt run" titles) (member "Go to schema" titles))
          "integration: code actions offer the dbt command set" titles))
 
+;; unit: split plan and incrementality rendering
+(let ((text (cogitator--split-render
+             '(:model "m" :sexp "(split m (model m__c))"
+               :part (:name "m__c" :cte "c" :text "select 1\n")))))
+  (check (and (string-prefix-p "(split m" text)
+              (string-match-p ";; m__c.sql" text)
+              (string-match-p "select 1" text))
+         "split: renders the plan and the new model" text))
+(check (equal (cogitator--split-render '(:model "m" :sexp "(split m (refused no-boundary))" :part nil))
+              "(split m (refused no-boundary))\n")
+       "split: a refusal is the S-expression alone")
+(let ((choices (cogitator--incrementality-choices
+                '(:incremental 1
+                  :models [(:model "big" :uri "file:///p/big.sql" :lastRunSeconds 12.5
+                            :view (:verdict "append" :strategy "append" :summary "append by ts"))
+                           (:model "ranked" :uri "file:///p/ranked.sql"
+                            :view (:verdict "keep" :strategy nil :reasons [(:reason "a LIMIT")]))]))))
+  (check (equal (mapcar #'car choices)
+                '("big — append (append) [last run 12.5s]: append by ts"
+                  "ranked — keep: a LIMIT"))
+         "incrementality: labels name verdict, strategy, run time and why" choices))
+
+;; integration: the incrementality commands over the wire
+(let ((report (run--exec "dbt.incrementality" (cogitator--command-argument))))
+  (check (and (numberp (plist-get report :incremental))
+              (vectorp (plist-get report :models)))
+         "integration: dbt.incrementality lists the table models" report))
+(let ((plan (run--exec "dbt.splitPlan" (cogitator--command-argument))))
+  (check (or (null plan) (eq plan :null) (stringp (plist-get plan :sexp)))
+         "integration: dbt.splitPlan answers a plan or null" plan))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")

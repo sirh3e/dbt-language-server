@@ -92,6 +92,12 @@ editor integrations live under `editors/`.
   strings.
 
 ## Server surface beyond stock LSP
+- **Consumer parity is a rule.** A new `dbt.*` command is classified in
+  `editors/parity.toml` and wrapped by Neovim, Emacs and VS Code in the same
+  change (Zed gets code actions and lenses only); the checklist is the
+  `editor-parity` skill (`.claude/skills/editor-parity/SKILL.md`), and
+  `crates/cogitator-lsp/tests/consumer_parity.rs` fails until it holds. The
+  `[gaps.*]` baseline only shrinks.
 - Custom commands (advertised in `cogitator-lsp/src/types/init.rs`,
   documented in `specs/neovim-plugin/00-plugin.md` §1.6): dbt.goToSchema,
   dbt.columnLineage, dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
@@ -108,7 +114,10 @@ editor integrations live under `editors/`.
   dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
   findings and rule trace for one model; `features/plan/`), dbt.deps
   (project-wide `dbt deps`, refreshes the context; the packages.yml
-  quickfix runs it). Every command takes one argument object (`{uri, position?, …}`).
+  quickfix runs it), dbt.incrementality (every table model's DBSP
+  incrementality verdict, slowest first; specs/ir-pipeline/10),
+  dbt.splitPlan (a table model split at its incrementality frontier, as an
+  S-expression and the new part's file; §6). Every command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`), plus
   edit-bearing quickfixes: from a diagnostic's typed `data`
@@ -171,5 +180,5 @@ editor integrations live under `editors/`.
 - `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
 - `specs/rust-port/` — the binding implementation specs (00–09);
   `specs/neovim-plugin/` — the editor-integration spec;
-  `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules and oracles (00–09)
+  `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules, oracles and incrementality (00–10)
 - `testdata/` — shared fixtures (jaffle_shop_duckdb)

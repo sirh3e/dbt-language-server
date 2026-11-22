@@ -1,0 +1,24 @@
+rule = "incr.could_be_incremental"
+fix = "split: the by_user CTE as an incremental model (delete+insert on user_id), the rank as a table over it"
+safety = "P"
+description = "The global rank keeps the model a table, but its CTE aggregates a growing input per user. Maintaining that part by recomputing the users new rows touch, then ranking over it, equals the original model rebuilt in full (DBSP: materializing Q_inc turns Q_keep ∘ Q_inc into Q_keep ∘ T). Rows that only touch a group without changing it (a 'bad' row) are recomputed harmlessly."
+
+[incremental]
+strategy = "delete+insert"
+unique_key = ["user_id"]
+part = "part.sql"
+outer = "outer.sql"
+
+[[fixtures]]
+name = "touched_and_new_users"
+seed = "seed.sql"
+delta = "delta.sql"
+role = "preserve"
+covers = ["nulls", "duplicates"]
+
+[[fixtures]]
+name = "empty_part"
+seed = "seed_empty.sql"
+delta = "delta_from_empty.sql"
+role = "preserve"
+covers = ["empty"]

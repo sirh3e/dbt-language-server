@@ -344,6 +344,94 @@ Returns the buffer (separated from `cogitator-profiles' for testing)."
          (special-mode))
        (pop-to-buffer buf)))))
 
+;; ---------------------------------------------------------------------------
+;; incrementality: the split plan and the project-wide list
+;; (specs/ir-pipeline/10 §6)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--split-render (plan)
+  "The text of a dbt.splitPlan PLAN: its S-expression, then the new model."
+  (let ((part (plist-get plan :part)))
+    (concat (plist-get plan :sexp) "\n"
+            (when (and part (not (eq part :null)))
+              (format "\n;; %s.sql — press a to split, q to close\n%s"
+                      (plist-get part :name)
+                      (string-trim-right (plist-get part :text)))))))
+
+(declare-function eglot-code-actions "eglot")
+
+(defun cogitator--apply-split (source)
+  "Offer the split code action of the model in buffer SOURCE."
+  (pop-to-buffer source)
+  (if (and (featurep 'eglot) (eglot-managed-p))
+      (eglot-code-actions (point-min) (point-min) "refactor.extract" t)
+    (message "cogitator: run the code action \"Split …\" on this model")))
+
+;;;###autoload
+(defun cogitator-split-plan ()
+  "This table model split at its incrementality frontier (dbt.splitPlan).
+Shows the plan as an S-expression and the new model's file; \\`a' applies it."
+  (interactive)
+  (let ((source (current-buffer)))
+    (cogitator--execute
+     "dbt.splitPlan" (cogitator--command-argument)
+     (lambda (plan)
+       (if (or (null plan) (eq plan :null))
+           (message "cogitator: nothing to split (not a table, or nothing keeps it one)")
+         (let ((buf (get-buffer-create "*cogitator-split*")))
+           (with-current-buffer buf
+             (let ((inhibit-read-only t))
+               (erase-buffer)
+               (insert (cogitator--split-render plan))
+               (goto-char (point-min)))
+             (lisp-data-mode)
+             (setq buffer-read-only t)
+             (local-set-key (kbd "q") #'quit-window)
+             (let ((part (plist-get plan :part)))
+               (when (and part (not (eq part :null)))
+                 (local-set-key (kbd "a")
+                                (lambda ()
+                                  (interactive)
+                                  (quit-window)
+                                  (cogitator--apply-split source))))))
+           (pop-to-buffer buf)))))))
+
+(defun cogitator--incrementality-choices (report)
+  "((LABEL . ROW) …) for a dbt.incrementality REPORT, in its order."
+  (mapcar
+   (lambda (row)
+     (let* ((view (plist-get row :view))
+            (strategy (plist-get view :strategy))
+            (seconds (plist-get row :lastRunSeconds))
+            (reasons (append (plist-get view :reasons) nil))
+            (summary (plist-get view :summary))
+            (why (cond ((stringp summary) summary)
+                       (reasons (mapconcat (lambda (r) (plist-get r :reason)) reasons "; ")))))
+       (cons (concat (plist-get row :model) " — " (plist-get view :verdict)
+                     (when (stringp strategy) (format " (%s)" strategy))
+                     (when (numberp seconds) (format " [last run %.1fs]" seconds))
+                     (when why (concat ": " why)))
+             row)))
+   (append (plist-get report :models) nil)))
+
+;;;###autoload
+(defun cogitator-incrementality ()
+  "Pick a table model by whether it could be incremental, and visit it."
+  (interactive)
+  (cogitator--execute
+   "dbt.incrementality" (cogitator--command-argument)
+   (lambda (report)
+     (let ((choices (cogitator--incrementality-choices report)))
+       (if (null choices)
+           (message "cogitator: no table models in this project")
+         (let* ((pick (completing-read
+                       (format "table models (%s could be incremental): "
+                               (plist-get report :incremental))
+                       (mapcar #'car choices) nil t))
+                (row (cdr (assoc pick choices))))
+           (when row
+             (find-file (cogitator--uri-to-path (plist-get row :uri))))))))))
+
 ;;;###autoload
 (defun cogitator-doctor ()
   "Health report: binary, project root, profiles candidates, client state.
