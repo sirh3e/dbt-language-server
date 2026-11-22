@@ -64,6 +64,15 @@ pub struct CallHierarchyIncomingCall {
     pub from_ranges: Vec<Range>,
 }
 
+/// callHierarchy/outgoingCalls answer: a callee with the call ranges
+/// inside the caller.
+#[derive(Debug, Serialize)]
+pub struct CallHierarchyOutgoingCall {
+    pub to: CallHierarchyItem,
+    #[serde(rename = "fromRanges")]
+    pub from_ranges: Vec<Range>,
+}
+
 /// callHierarchy/incomingCalls (and outgoingCalls) params.
 #[derive(Debug, Deserialize)]
 pub struct CallHierarchyCallsParams {

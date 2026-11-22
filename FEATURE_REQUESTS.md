@@ -55,6 +55,29 @@ names what already exists in the codebase.
       updates the properties-YAML entry and renames the model file
       (documentChanges with the file rename last). Caveat: dependents are
       read from disk; unsaved buffers of other files aren't visible here.
+      Plain-scalar `ref('…')` in properties YAML (relationship tests'
+      `to:`, exposures' `depends_on:`) are rewritten too, and a quoted
+      YAML `name:` keeps its quotes.
+- [x] **References for every dbt kind** (`features/references/`):
+      sources (whole or one table, from a `source()` or the YAML entry),
+      macros (call sites resolved as dbt resolves them — bare and
+      `pkg.macro`, in models, tests, analyses and macro files), docs
+      blocks (`doc()` uses from a use or the `{% docs %}` header) and
+      documented columns (the YAML entry, the model's SQL, and direct
+      dependents whose column lineage reads it). `includeDeclaration` adds
+      the definition; the model `ref()` references gain the model file.
+- [x] **Macro rename**: prepareRename accepts a macro call, its
+      `{% macro %}` header or a `macros:` YAML entry; the edit renames the
+      header, every call resolving to it (qualified too) and the YAML
+      entry. Macros of installed packages are refused with the reason
+      (`RequestFailed`), as are invalid and already-taken names.
+- [x] **Macro call hierarchy, both ways**: prepare from a call site or a
+      definition header; incomingCalls lists models, tests, analyses and
+      calling macros; outgoingCalls lists the macros a macro's body (or a
+      model) calls.
+- [x] **Document links** for macro calls (to the defining file) and
+      `doc()` (to the docs block), plus plain-scalar `ref()`/`source()` in
+      properties YAML.
 - [x] **CodeLens batch** on model files — "N downstream" / "N upstream"
       counts (graph; dbt terminology: `downstream_of`/`upstream_of`),
       "Go to schema" (navigates via window/showDocument), "Column lineage"

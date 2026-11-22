@@ -25,8 +25,10 @@ pub mod lint;
 mod model_info;
 mod navigation;
 pub mod plan;
+mod references;
 mod relation;
 mod rename;
+mod rename_macro;
 mod signature;
 mod structure;
 mod tests_nav;
@@ -34,7 +36,10 @@ mod vars;
 mod workspace_diagnostics;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
-pub use call_hierarchy::{macro_incoming_calls, prepare_macro_hierarchy};
+pub use call_hierarchy::{
+    macro_incoming_calls, macro_outgoing_calls, outgoing_in_text, prepare_call_hierarchy,
+    prepare_macro_hierarchy,
+};
 pub use code_actions::convert_relation::{convert_literal_relations, RelationCatalog};
 pub use code_actions::declare_missing::declare_missing_actions;
 pub use code_actions::define_missing::define_missing_actions;
@@ -54,7 +59,7 @@ pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc}
 pub use diagnostics::{
     citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
 };
-pub use document_links::document_links;
+pub use document_links::{document_links, document_links_at};
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use governance::{contract_diagnostics, private_ref_diagnostics};
 pub use graph_nav::{
@@ -68,8 +73,10 @@ pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
 pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
+pub use references::references_at;
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
 pub use rename::{prepare_rename, rename_model};
+pub use rename_macro::{prepare_rename_at, rename_at};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};

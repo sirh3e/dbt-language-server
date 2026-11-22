@@ -51,6 +51,9 @@ pub mod error_codes {
     pub const INTERNAL_ERROR: i32 = -32603;
     /// LSP: the client cancelled the request ($/cancelRequest).
     pub const REQUEST_CANCELLED: i32 = -32800;
+    /// LSP: the request was valid but could not be carried out (a rename
+    /// the server refuses, with the reason).
+    pub const REQUEST_FAILED: i32 = -32803;
 }
 
 impl ErrorResponse {

@@ -99,8 +99,10 @@ buffers inside a dbt project (a `dbt_project.yml` upward).
 ## Everyday use
 
 Hover, completion, go to definition (`ref()`, `source()`, macros, columns),
-references, rename, signature help, diagnostics, formatting and code
-actions are the standard LSP ones. On top:
+references (models, sources, macros, docs blocks, columns), rename (models
+and the project's own macros), the macro call hierarchy (incoming and
+outgoing), document links, signature help, diagnostics, formatting and
+code actions are the standard LSP ones. On top:
 
 | Key | Command | Does |
 |---|---|---|
