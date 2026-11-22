@@ -415,7 +415,9 @@ vim.lsp.enable("cogitator")
 | `:DbtTarget` | `dbt.profiles` + `dbt.setTarget` | picker over allowed profile×target; the choice persists per project in the manager store, `<leader>dT` |
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
-| `:DbtPlan` | `dbt.queryPlan` | each IR level, findings and the rule trace (including skip reasons) in a scratch split |
+| `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
+| `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
+| `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
 | `:DbtQuery` | `dbt.relation` | `select * from <relation> limit <query_limit>` through vim-dadbod when configured, else a scratch sql buffer, `<leader>dx` |
 
 The manager store is a JSON file (default

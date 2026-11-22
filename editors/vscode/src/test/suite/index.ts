@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { CogitatorApi } from "../../extension";
+import { incrementalityLabel, splitText } from "../../extension";
 
 let failures = 0;
 
@@ -132,10 +133,51 @@ export async function run(): Promise<void> {
     graph?.upstream
   );
 
+  // the incrementality surface: the project list and the split plan
+  const report = (await exec("dbt.incrementality", {
+    uri: document.uri.toString(),
+  })) as { models?: unknown[]; incremental?: number } | null;
+  check(
+    Array.isArray(report?.models) && typeof report?.incremental === "number",
+    "vscode: dbt.incrementality lists the table models",
+    report
+  );
+  const split = (await exec("dbt.splitPlan", {
+    uri: document.uri.toString(),
+  })) as { sexp?: string } | null;
+  check(
+    split === null || typeof split?.sexp === "string",
+    "vscode: dbt.splitPlan answers a plan or null",
+    split
+  );
+  check(
+    splitText({
+      model: "m",
+      sexp: "(split m)",
+      part: { name: "m__c", cte: "c", text: "select 1\n" },
+    }) === "(split m)\n\n;; m__c.sql\nselect 1\n",
+    "vscode: splitText renders the plan and the new model"
+  );
+  check(
+    incrementalityLabel({
+      model: "big",
+      uri: "file:///p/big.sql",
+      lastRunSeconds: 12.5,
+      view: { verdict: "append", strategy: "append", summary: "append by ts" },
+    }) === "big — append (append) [last run 12.5s]: append by ts",
+    "vscode: incrementality labels name verdict, strategy, run time and why"
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
-    ["cogitator.run", "cogitator.status", "cogitator.restart"].every((c) =>
+    [
+      "cogitator.run",
+      "cogitator.status",
+      "cogitator.restart",
+      "cogitator.splitPlan",
+      "cogitator.incrementality",
+    ].every((c) =>
       commands.includes(c)
     ),
     "vscode: palette commands registered"

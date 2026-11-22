@@ -96,7 +96,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   a table by one blocker (a global `rank()`) over an aggregating CTE can be
   **split**: the CTE becomes its own incremental model and the rest a table
   over it (code action and `dbt.splitPlan`); the analysis, the frontier and
-  the split are also emitted as S-expressions
+  the split are also emitted as S-expressions. In the editors: `:DbtSplit`
+  and `:DbtIncrementality` (Neovim), `M-x cogitator-split-plan` and
+  `cogitator-incrementality` (Emacs), the `dbt: Split model…` and `dbt:
+  Table models that could be incremental` palette commands (VS Code); Zed
+  gets the code action
 - **Refactors**: "Expand `c.*`" to the relation's known columns,
   "Extract CTE to a model" (the CTE becomes its own model and is
   `ref()`'d), and "Extract schema YAML" as an edit for editors that run

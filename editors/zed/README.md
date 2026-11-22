@@ -77,3 +77,10 @@ Zed out of the box. The `dbt.*` executeCommand surface (doctor,
 impact, deadModels, expandJinja, runSelection/cancel, …) has no
 generic Zed UI yet — use the Neovim or Emacs integrations, or any
 client that can send workspace/executeCommand.
+
+Splitting a table model at its incrementality frontier is a code
+action, so it works here: "Split 'cte' into the incremental model … and
+a table over it" in the code-actions menu creates the new incremental
+model and rewrites this one to read it. Its plan as an S-expression
+(`dbt.splitPlan`) and the project-wide `dbt.incrementality` list need
+an executeCommand client.
