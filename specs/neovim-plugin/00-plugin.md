@@ -106,7 +106,7 @@ writer wins).
   `dbt.sourceFreshness`, `dbt.cancel`, `dbt.runSelection`,
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
-  `dbt.splitPlan`, `dbt.syntaxTree`, `dbt.highlight`, `dbt.astGrep`
+  `dbt.splitPlan`, `dbt.syntaxTree`, `dbt.highlight`, `dbt.astGrep`, `dbt.nodeInfo`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -156,7 +156,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the wire cap (2 MiB default; `limits.compiled_sql_mib`) |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
-| `dbt.cache` | `{profiles, lineage, results, artifacts, plans}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
+| `dbt.cache` | `{profiles, lineage, results, artifacts, plans, highlights}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 | `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
 | `dbt.sourceFreshness` | `{token}` (immediately) | async `dbt source freshness` (project-wide); the refreshed sources.json feeds the freshness lenses on source YAML entries |
 | `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`) |
@@ -168,8 +168,9 @@ Every command takes **one argument object**, not positional values:
 | `dbt.queryPlan` | `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}}` | none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan |
 | `dbt.syntaxTree` | `{nodes: [{depth, kind, field, error, missing, range}], truncated}` or InvalidParams | none (read-only): the open document's tree-sitter-dbt tree, named + ERROR + MISSING nodes in pre-order, ranges in UTF-16, at most 20 000 nodes — :DbtSyntaxTree |
 | `dbt.preview` | `{token}` (job started) | `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit] |
-| `dbt.highlight` | `{language, spans: [{range, capture}], truncated}`, or `null` for `{compiled: true}` of a model dbt has not compiled | none (read-only): tree-sitter-dbt's highlights query over `{uri}` (open text, else the file), `{text, language?: dbt\|sql}` or `{model?, compiled: true}`; the SQL between the tags through tree-sitter-sequel's query (the grammar's injection); captures are the queries' names (`keyword`, `tag.delimiter`, `function.builtin`…), ranges in UTF-16; at most 50 000 spans, nothing past 2 MiB |
+| `dbt.highlight` | `{language, version?, spans: [{range, capture, layer}], truncated, layers}`, or `null` for compiled SQL that does not exist (an uncompiled model or test, a macro) | none (read-only): the grammars' highlights (specs/highlighting §2) of `{uri, language?}` (open text, else the file; the language from the path: `.yml` → yaml, `target/compiled\|run` → sql, else dbt), `{text, language?: dbt\|sql\|yaml}`, `{model?, compiled: true}` or `{node: {kind, name}, compiled?}`; `range: {start: {line}, end: {line}}` answers those lines' spans, `version` is echoed; YAML gets its base layer, Jinja and SQL inside values and dbt-aware captures (§3–§5); whole answers cached per document generation / file stamp; at most 50 000 spans, nothing past 2 MiB |
 | `dbt.astGrep` | `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` or InvalidParams Guidance | ast-grep (`cogitator-astgrep`) over tree-sitter-dbt (`dbt`: Jinja structure; the SQL is opaque text) or tree-sitter-sequel (`sql`, compiled SQL, whole statements): `{pattern, language?, rewrite?, uri?}` — `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`); at most 500 matches; `apply: true` with a `rewrite` sends workspace/applyEdit. The project's `sgconfig.yml` rules (`language: dbt\|sql`) are pull diagnostics (`source: ast-grep`) and their `fix` a quickfix |
+| `dbt.nodeInfo` | `{kind, name, …}` per kind (specs/highlighting §6.1), or `null` + a WARNING with the closest names | none (read-only): `{node: {kind, name}}` — `model` (modelInfo's answer + kind), `macro` (package, description, params, uri, range, callers, calls, usedByTests), `test` / `analysis` / `source` / `exposure` / `metric` / `semantic_model` (uri, refs, calls, upstream, downstream, compiledUri for tests and analyses), `generic_test` (a `{% test %}` definition: params, uri, range, appliedTo [{model, column, uri, range}]) |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
