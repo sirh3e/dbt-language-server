@@ -344,4 +344,44 @@ return function(ctx)
   end)
   H.feed("q")
   vim.api.nvim_set_current_buf(bufnr)
+
+  -- vars: the value after var() as an inlay hint; definition to its key
+  vim.api.nvim_set_current_buf(bufnr)
+  local var_row
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)) do
+    if l:find("var('jaffle_string')", 1, true) then
+      var_row = i
+    end
+  end
+  local var_hint
+  client:request("textDocument/inlayHint", {
+    textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+    range = { start = { line = 0, character = 0 }, ["end"] = { line = 500, character = 0 } },
+  }, function(_, result)
+    for _, h in ipairs(result or {}) do
+      if type(h.label) == "string" and h.label:sub(1, 1) == "=" then
+        var_hint = h
+      end
+    end
+  end, bufnr)
+  H.wait("vars: the var's value is an inlay hint", 10000, function()
+    return var_hint ~= nil
+  end)
+  H.check(
+    var_hint and var_hint.label == "= 'jaffle'" and var_hint.position.line == var_row - 1,
+    "vars: the hint says the value on the var's line",
+    vim.inspect(var_hint)
+  )
+  local line_text = vim.api.nvim_buf_get_lines(bufnr, var_row - 1, var_row, false)[1]
+  vim.api.nvim_win_set_cursor(0, { var_row, line_text:find("jaffle_string", 1, true) + 1 })
+  vim.lsp.buf.definition()
+  H.wait("vars: definition opens dbt_project.yml", 10000, function()
+    return vim.api.nvim_buf_get_name(0):find("dbt_project.yml", 1, true) ~= nil
+  end)
+  H.check(
+    vim.api.nvim_get_current_line():find("jaffle_string:", 1, true) ~= nil,
+    "vars: definition lands on the var's key",
+    vim.api.nvim_get_current_line()
+  )
+  vim.api.nvim_set_current_buf(bufnr)
 end

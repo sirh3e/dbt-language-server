@@ -53,6 +53,12 @@ Defaults shown: >lua
       },
       keymaps = true,             -- the buffer-local <leader>d maps below
       semantic_tokens = true,
+      inlay_hints = false,        -- true: relations after ref(), the value
+                                  -- of each var() (= 'jaffle'), macro params
+      highlight = {               -- |cogitator-nvim-highlight|
+        server = "auto",          -- "always" | false: colours from the server
+        layers = { yaml = true, sql = true, jinja = true, dbt = true },
+      },
       lineage = {                 -- column-lineage graphs (|cogitator-nvim-lineage|)
         depth = 3,                -- hops followed each way
         max_requests = 60,        -- dbt.columnLineage calls per graph, at most

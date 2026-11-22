@@ -8,7 +8,9 @@ The server currently implements exactly the original Go server's surface:
 | `initialize` / `shutdown` / `exit` | capabilities per `specs/rust-port/01-protocol.md` §3.1 |
 | `textDocument/didOpen` / `didChange` / `didSave` | incremental sync (`textDocumentSync: 2`) |
 | `textDocument/hover` | refs, sources, vars, macros, dialect SQL functions |
-| `textDocument/definition` | models, sources/tables, vars, macros, in-file CTEs |
+| `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), macros, in-file CTEs |
+| `textDocument/references` | models, vars |
+| `textDocument/inlayHint` | relations, var values, macro parameters |
 | `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `{{` |
 | `workspace/executeCommand` → `dbt.goToSchema` | jump to the model's properties-YAML entry |
 | `textDocument/publishDiagnostics` (push) | dbt Fusion compile only (`--fusion`) |
@@ -143,7 +145,7 @@ Still open, with reasons:
 - `textDocument/formatting` / `rangeFormatting` / `onTypeFormatting`
   (would mean embedding a SQL formatter)
 - `textDocument/codeAction`, `prepareRename`,
-  `inlayHint`, `inlineValue`, `documentLink`, `linkedEditingRange`,
+  `inlineValue`,
   `documentColor`
 - `textDocument/typeDefinition` / `implementation` / `declaration`
   (little meaning for dbt sources)
