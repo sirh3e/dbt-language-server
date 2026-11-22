@@ -65,7 +65,11 @@ impl Detect<Mir> for CouldBeIncremental {
             } else {
                 Evidence::Heuristic
             },
-            fixes: Vec::new(),
+            fixes: cx
+                .text
+                .and_then(|text| super::rewrite::rewrite(hir, text, &analysis.verdict))
+                .into_iter()
+                .collect(),
         });
     }
 }
@@ -87,8 +91,8 @@ pub fn describe(analysis: &Analysis) -> Option<String> {
             format!(
                 "This table could be built incrementally with `incremental_strategy='append'`: \
                  it is linear in {} (filters, projections and joins to unchanging inputs), so \
-                 each run needs only the rows added since the last, those with `{out_column}` at \
-                 or after the newest `{out_column}` already in the model.",
+                 each run needs only the rows added since the last, those with `{out_column}` \
+                 after the newest `{out_column}` already in the model.",
                 names.join(" and ")
             )
         }

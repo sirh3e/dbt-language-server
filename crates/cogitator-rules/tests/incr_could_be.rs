@@ -66,3 +66,68 @@ fn jinja_the_plan_cannot_see_into_gives_no_verdict() {
     let sql = table("select id, ts from {{ ref('events') }} where {{ my_filter() }}");
     no_findings(&run(Case::new(&sql, Backend::DuckDb, &[])), RULE);
 }
+
+fn with_text(sql: &str) -> Case<'_> {
+    let mut case = Case::new(sql, Backend::DuckDb, &[]);
+    case.with_text = true;
+    case
+}
+
+/// The finding's one fix applied to `sql`.
+fn rewritten(sql: &str) -> String {
+    let r = run(with_text(sql));
+    let f = only(&r, RULE);
+    assert_eq!(f.fixes.len(), 1, "{f:?}");
+    let fix = &f.fixes[0];
+    assert_eq!(fix.safety, cogitator_rules::FixSafety::ChangesIntent);
+    let mut out = sql.to_string();
+    for edit in fix.edits.iter().rev() {
+        out.replace_range(
+            edit.span.start as usize..edit.span.end as usize,
+            &edit.new_text,
+        );
+    }
+    out
+}
+
+#[test]
+fn the_rewrite_makes_an_appending_model_and_keeps_an_or_whole() {
+    let sql = table("select id, ts from {{ ref('events') }} where a > 0 or b > 0");
+    assert_eq!(
+        rewritten(&sql),
+        "{{ config(materialized='incremental', incremental_strategy='append') }}\n\
+         select id, ts from {{ ref('events') }} where (a > 0 or b > 0)\n\
+         {% if is_incremental() %}\n\
+         and ts > (select max(ts) from {{ this }})\n\
+         {% endif %}"
+    );
+}
+
+#[test]
+fn the_rewrite_adds_a_where_after_the_from_and_qualifies_by_alias() {
+    let sql = table(
+        "select e.id, e.ts from {{ ref('events') }} e join {{ ref('events') }} x on x.id = e.id",
+    );
+    // two reads of the driving input: no single place, no fix
+    let r = run(with_text(&sql));
+    assert!(r.findings(RULE).iter().all(|f| f.fixes.is_empty()));
+
+    let sql = table("select date_trunc('day', e.ts) as day, count(*) as n from {{ ref('events') }} e group by 1");
+    assert_eq!(
+        rewritten(&sql),
+        "{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day') }}\n\
+         select date_trunc('day', e.ts) as day, count(*) as n from {{ ref('events') }} e\n\
+         {% if is_incremental() %}\n\
+         where e.ts >= (select max(day) from {{ this }})\n\
+         {% endif %} group by 1"
+    );
+}
+
+#[test]
+fn the_rewritten_model_is_an_incremental_model_with_its_guard() {
+    let sql = table("select id, ts from {{ ref('events') }}");
+    let after = rewritten(&sql);
+    let r = run(Case::new(&after, Backend::DuckDb, &[]));
+    no_findings(&r, RULE);
+    no_findings(&r, "incr.missing_guard");
+}
