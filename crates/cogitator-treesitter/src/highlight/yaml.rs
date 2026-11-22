@@ -46,6 +46,8 @@ pub enum Reference {
     Source(String, String),
     /// `doc('name')`
     Doc(String),
+    /// `var('name')`, and whether the call gives a default
+    Var(String, bool),
 }
 
 fn no_config_key(_: &str) -> bool {
@@ -96,6 +98,7 @@ pub const DBT_CAPTURES: &[&str] = &[
     "type.dbt.semantic_model",
     "type.dbt.snapshot",
     "type.dbt.source_table",
+    "variable.dbt.var",
     "variable.parameter.dbt",
 ];
 
@@ -492,7 +495,7 @@ struct Call {
 fn calls(text: &str) -> Vec<Call> {
     let bytes = text.as_bytes();
     let mut out = Vec::new();
-    for name in ["ref", "source", "doc"] {
+    for name in ["ref", "source", "doc", "var"] {
         let mut from = 0;
         while let Some(i) = text[from..].find(name).map(|i| i + from) {
             from = i + name.len();
@@ -621,12 +624,17 @@ pub(super) fn spans(src: &str, ctx: &YamlContext) -> Option<Vec<ByteSpan>> {
                     let (name, a, b) = call.args[0].clone();
                     (Reference::Doc(name), to_doc(&pieces, a, b))
                 }
+                "var" => {
+                    let (name, a, b) = call.args[0].clone();
+                    let defaulted = text[b..call.end].contains(',');
+                    (Reference::Var(name, defaulted), to_doc(&pieces, a, b))
+                }
                 _ => continue,
             };
-            let base = if call.name == "doc" {
-                "string.special.dbt.doc"
-            } else {
-                "type.dbt.reference"
+            let base = match call.name {
+                "doc" => "string.special.dbt.doc",
+                "var" => "variable.dbt.var",
+                _ => "type.dbt.reference",
             };
             let capture = if (ctx.resolves)(&reference) {
                 base.to_string()
@@ -709,5 +717,33 @@ mod unit {
         );
         assert_eq!(YamlFile::of_path("profiles.yml"), YamlFile::Profiles);
         assert_eq!(YamlFile::of_path("dependencies.yml"), YamlFile::Packages);
+    }
+
+    #[test]
+    fn a_var_in_a_value_is_a_dbt_reference() {
+        let src = "models:\n  - name: m\n    config:\n      where: \"d > '{{ var('since') }}' and {{ var('gone') }} and {{ var('maybe', 1) }}\"\n";
+        let unresolved_unless_since = |r: &Reference| match r {
+            Reference::Var(name, defaulted) => *defaulted || name == "since",
+            _ => true,
+        };
+        let ctx = YamlContext {
+            resolves: &unresolved_unless_since,
+            ..Default::default()
+        };
+        let found = spans(src, &ctx).unwrap();
+        let at = |word: &str| {
+            let start = src.find(&format!("'{word}'")).unwrap() + 1;
+            found
+                .iter()
+                .find(|s| s.start == start && s.end == start + word.len() && s.layer == Layer::Dbt)
+                .map(|s| s.capture.clone())
+        };
+        assert_eq!(at("since").as_deref(), Some("variable.dbt.var"));
+        assert_eq!(at("gone").as_deref(), Some("variable.dbt.var.unresolved"));
+        assert_eq!(
+            at("maybe").as_deref(),
+            Some("variable.dbt.var"),
+            "a default resolves"
+        );
     }
 }

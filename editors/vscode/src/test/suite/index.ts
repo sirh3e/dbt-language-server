@@ -134,6 +134,26 @@ export async function run(): Promise<void> {
     definitions?.map((loc) => loc.uri.fsPath)
   );
 
+  // vars: the value after var() as an inlay hint
+  const hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+    "vscode.executeInlayHintProvider",
+    document.uri,
+    new vscode.Range(0, 0, document.lineCount, 0)
+  );
+  const hintLabels = (hints ?? []).map((h) =>
+    typeof h.label === "string" ? h.label : h.label.map((p) => p.value).join("")
+  );
+  check(
+    hintLabels.includes("= 'jaffle'"),
+    "vscode: a var's value is an inlay hint",
+    hintLabels
+  );
+  check(
+    captureColor("variable.dbt.var") === "symbolIcon.variableForeground" &&
+      captureColor("variable.dbt.var.unresolved") === "editorWarning.foreground",
+    "vscode: a var in YAML has a colour, an undefined one a warning's"
+  );
+
   // the dbt.* command surface over the live client
   const graph = (await exec("dbt.modelGraph", {
     uri: document.uri.toString(),

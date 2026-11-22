@@ -230,6 +230,7 @@ knows the parent still colours them.
 | an exposure / metric / semantic model / saved query `name` | `type.dbt.exposure` (`.metric`, `.semantic_model`, `.saved_query`) | `type` |
 | a `ref('x')` / `source('a','b')` value in YAML (e.g. `relationships.to`, `depends_on`) | `type.dbt.reference` | `type` |
 | `doc('x')` inside a description | `string.special.dbt.doc` | `string.special` |
+| `var('x')` inside a value (its name) | `variable.dbt.var` (resolved by the file's var scope; a default argument counts as resolved) | `variable` |
 | a dbt config key (`materialized`, `tags`, `enabled`, `contract`, `access`, …) | `keyword.dbt.config` | `keyword` |
 | a reference that does not resolve in the project | the capture above + `.unresolved` (e.g. `type.dbt.reference.unresolved`) | the capture above |
 

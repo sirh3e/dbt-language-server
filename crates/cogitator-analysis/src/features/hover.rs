@@ -69,14 +69,17 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
                 table.map(|t| t.description.as_str()).unwrap_or_default(),
             )
         }
-        TokenKind::Var => {
-            let value = ctx
-                .variable_detail_map
-                .get(literal)
-                .map(|v| display_value(&v.value))
-                .unwrap_or_default();
-            format!("{literal}: {value}")
-        }
+        TokenKind::Var => match ctx.var_for(&doc.uri, literal) {
+            Some(v) => format!(
+                "{literal}: {}\n\n{}",
+                display_value(&v.value),
+                super::var_source_words(v)
+            ),
+            None => match parsed.var_default(idx) {
+                Some(default) => format!("{literal}: {default}\n\nundefined; the default applies"),
+                None => format!("{literal}: undefined"),
+            },
+        },
         TokenKind::Macro => {
             let package = parsed
                 .lookback_find(idx, TokenKind::Package, 2)

@@ -122,14 +122,20 @@ impl Dispatcher {
             self.fusion_path.clone()
         };
         let link = self.link.clone();
-        let (target, profiles_dir, profile) = {
+        let (target, profiles_dir, profile, vars) = {
             let cfg = self.profiles.lock().expect("profiles config lock");
             (
                 (!cfg.target.is_empty()).then(|| cfg.target.clone()),
                 (!cfg.dir_override.is_empty()).then(|| cfg.dir_override.clone()),
                 (!cfg.profile.is_empty()).then(|| cfg.profile.clone()),
+                cfg.dbt_vars_arg(),
             )
         };
+        // overrides reach dbt as --vars, so what runs is what is shown
+        let mut extra_args = extra_args;
+        if let Some(vars) = vars.filter(|_| kind != "deps") {
+            extra_args.extend(["--vars".to_string(), vars]);
+        }
         // parse, deps and source freshness are project-wide (no
         // --select); parse and deps also refresh the context on success
         // (deps installs packages whose macros and models the scan reads)

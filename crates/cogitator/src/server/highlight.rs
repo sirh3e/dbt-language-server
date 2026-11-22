@@ -112,8 +112,9 @@ pub fn config_keys() -> &'static HashSet<String> {
     })
 }
 
-/// Does a reference resolve in the project?
-fn resolves(ctx: &DbtContext, reference: &Reference) -> bool {
+/// Does a reference resolve in the project? `uri` is the file's, for the
+/// vars it sees.
+fn resolves(ctx: &DbtContext, uri: &str, reference: &Reference) -> bool {
     match reference {
         Reference::Model(name) => {
             ctx.model_detail_map.contains_key(name)
@@ -124,6 +125,8 @@ fn resolves(ctx: &DbtContext, reference: &Reference) -> bool {
         }
         Reference::Source(source, _table) => ctx.source_detail_map.contains_key(source),
         Reference::Doc(name) => ctx.doc_detail_map.contains_key(name),
+        // a default makes any var() resolve
+        Reference::Var(name, defaulted) => *defaulted || ctx.var_for(uri, name).is_some(),
     }
 }
 
@@ -290,7 +293,12 @@ fn resolve(snap: &Snapshot, source: Source) -> Result<Option<Resolved>, Reply> {
 fn compute(ctx: &DbtContext, r: &Resolved) -> Option<Highlights> {
     let keys = config_keys();
     let config_key = |k: &str| keys.contains(k.trim_start_matches('+'));
-    let resolver = |reference: &Reference| resolves(ctx, reference);
+    let uri = r
+        .path
+        .as_deref()
+        .map(|p| cogitator_lsp::fs_path_to_uri(Path::new(p)))
+        .unwrap_or_default();
+    let resolver = |reference: &Reference| resolves(ctx, &uri, reference);
     let yaml = YamlContext {
         file: r
             .path

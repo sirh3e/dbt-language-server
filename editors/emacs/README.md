@@ -73,6 +73,7 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-incrementality` | pick a table model by whether it could be incremental (slowest last run first) and visit it |
 | `M-x cogitator-syntax-tree` | the model's tree-sitter-dbt tree (`dbt.syntaxTree`) in a buffer; `RET` jumps to a node in the model |
 | `M-x cogitator-highlight-buffer` | colour this buffer as the server highlights it (`dbt.highlight`): Jinja, the SQL between the tags, YAML with dbt-aware captures (models, columns, tests; `.unresolved` references as warnings); `C-u` takes the colours off. `cogitator-highlight-on-open` (default `t`) turns on `cogitator-highlight-mode`, which keeps them up to date, in the project's SQL and YAML buffers |
+| inlay hints | with `eglot-inlay-hints-mode` (or lsp-mode's): the relation after `ref()`, the value of each `var()` (`= 'jaffle'`, see docs/variables.md), macro parameter names |
 | `M-x cogitator-node-info` | a node's card (`dbt.nodeInfo`): `[kind:]name` — a macro's signature, callers and calls; a test's refs; a generic test's places in YAML |
 | `M-x cogitator-ast-grep` | structural search with ast-grep (`dbt.astGrep`): `{{ ref($M) }}` over the project's dbt files, `sql:select $$$C from $T` over the compiled SQL; matches in a grep buffer; `pattern => rewrite` rewrites every match after asking |
 

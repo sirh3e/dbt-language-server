@@ -94,6 +94,46 @@ pub struct MacroDetails {
 pub struct VariableDetails {
     pub name: String,
     pub value: serde_json::Value,
+    /// The file that decided the value (dbt_project.yml, a package's
+    /// dbt_project.yml, cogitator.yml); empty for an override from
+    /// initializationOptions.
+    pub uri: PathBuf,
+    /// The entry's KEY range in that file.
+    pub range: Range,
+    pub source: VarSource,
+}
+
+/// Where a var's value came from, lowest precedence first (dbt's
+/// variable precedence: --vars, root project scoped, root project
+/// global, package scoped, package global).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum VarSource {
+    /// A package's own dbt_project.yml (global or scoped to itself).
+    Package(String),
+    /// The root project's top-level `vars:`.
+    #[default]
+    Project,
+    /// The root project's `vars: {<scope>: …}` block for this scope.
+    Scoped(String),
+    /// cogitator.yml `vars:` or initializationOptions.vars (like `--vars`).
+    Override,
+}
+
+/// One override (`--vars` equivalent) with where it was written.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct VarOverride {
+    pub name: String,
+    pub value: serde_json::Value,
+    /// cogitator.yml, or empty for initializationOptions.
     pub uri: PathBuf,
     pub range: Range,
+}
+
+/// An installed package's vars as its own models and macros see them.
+#[derive(Debug, Clone, Default)]
+pub struct PackageVars {
+    /// The package's project name (its dbt_project.yml `name`).
+    pub name: String,
+    pub root: PathBuf,
+    pub vars: std::collections::HashMap<String, VariableDetails>,
 }

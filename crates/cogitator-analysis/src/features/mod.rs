@@ -30,6 +30,7 @@ mod rename;
 mod signature;
 mod structure;
 mod tests_nav;
+mod vars;
 mod workspace_diagnostics;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
@@ -61,7 +62,7 @@ pub use graph_nav::{
 };
 pub use hover::{hover, hover_with_lineage};
 pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
-pub use inlay_hints::inlay_hints;
+pub use inlay_hints::{inlay_hints, inlay_hints_with, InlayOptions};
 pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
@@ -72,6 +73,7 @@ pub use rename::{prepare_rename, rename_model};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
+pub use vars::{key_definition, var_key_at, var_references};
 pub use workspace_diagnostics::project_diagnostics;
 
 use std::path::Path;
@@ -106,6 +108,37 @@ pub(crate) fn token_range(t: &Token) -> Range {
             line: t.line,
             character: t.column + t.len(),
         },
+    }
+}
+
+/// 0-based position of a byte offset (byte columns, like tokens).
+pub(crate) fn byte_position(text: &str, byte: u32) -> Position {
+    let before = &text[..(byte as usize).min(text.len())];
+    let line = before.matches('\n').count() as u32;
+    let start = before.rfind('\n').map_or(0, |i| i + 1);
+    Position {
+        line,
+        character: (before.len() - start) as u32,
+    }
+}
+
+/// Where a var's value came from, in words.
+pub(crate) fn var_source_words(v: &crate::context::VariableDetails) -> String {
+    use crate::context::VarSource;
+    let file = v
+        .uri
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| "initializationOptions".to_string());
+    let line = v.range.start.line + 1;
+    match &v.source {
+        VarSource::Project => format!("{file}:{line}"),
+        VarSource::Scoped(scope) => format!("{file}:{line}, vars.{scope}"),
+        VarSource::Package(pkg) => format!("package {pkg}, {file}:{line}"),
+        VarSource::Override if v.uri.as_os_str().is_empty() => {
+            "override from initializationOptions".to_string()
+        }
+        VarSource::Override => format!("override, {file}:{line}"),
     }
 }
 

@@ -172,6 +172,17 @@ From `project_yaml.vars` (empty map → empty result).
    same way, **skipping entries whose value is null**; these can overwrite step-1
    entries with the same name.
 
+**Amended (vars support):** the steps above are the root project's scope.
+A top-level key naming the root project **or an installed package** with
+a mapping value is a scope block, never a var. Each installed package
+gets a scope of its own, built lowest precedence first: the package's
+top-level vars, its own `vars.<package>`, the root's top-level vars, the
+root's `vars.<package>` (nulls skipped), then overrides (cogitator.yml
+`vars:` over `initializationOptions.vars`), which also end every root
+scope. A file's scope is the package whose root contains it. `range` is
+the entry's KEY range, read from the raw text (before env_var
+resolution). See docs/variables.md.
+
 `value` keeps the YAML-typed scalar (string/int/bool/float/seq…); it is only ever
 displayed via to-string formatting (hover: `"{name}: {value}"`; completion docs).
 Go's `fmt` prints e.g. ints without quotes, nested maps as Go map syntax — exact
@@ -428,7 +439,11 @@ returned whenever lookup fails at any point.
   `uri = "file://" + source.uri`, range = source.range.
 - `SOURCE_TABLE` → lookback `(SOURCE, 4)`; table entry's
   `"file://" + uri` + its range (if `name != ""`).
-- `VAR` → if variable exists: `"file://" + var.uri`, var.range.
+- `VAR` → if the variable exists in the file's scope (§4): its uri
+  (dbt_project.yml, a package's, or cogitator.yml for an override) and its
+  key range; else, when the call has a default argument, that argument's
+  range in the request uri. A cursor on a `vars:` key of a dbt_project.yml
+  goes to the entry deciding that var's value.
 - `MACRO` → package as in hover; if macro exists: `"file://" + macro.uri`, macro.range.
 - default → CTE jump: uri stays the request uri; if `def_tokens[lit]` exists,
   range = zero-width at the definition token's (line, column).

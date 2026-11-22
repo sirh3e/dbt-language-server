@@ -69,6 +69,15 @@ impl Token {
     }
 }
 
+/// What follows a `var('name'` (see [`ParsedDocument::var_call`]).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct VarCall {
+    /// Byte span of the default argument, trimmed.
+    pub default: Option<(u32, u32)>,
+    /// Index of the closing `)` token.
+    pub close: Option<usize>,
+}
+
 /// Byte-offset → (line, column) conversion for one document.
 pub struct LineTable {
     /// Byte offset of each line start; `starts[0] == 0`.
@@ -177,6 +186,47 @@ impl ParsedDocument {
             .rev()
             .take(max_steps)
             .find(|t| t.kind == kind)
+    }
+
+    /// The rest of the `var('name', default)` call whose name is the
+    /// Var token `var_index`: the default argument's text (trimmed, byte
+    /// span) and the closing parenthesis' token, when the call closes.
+    pub fn var_call(&self, var_index: usize) -> VarCall {
+        let mut call = VarCall::default();
+        let mut depth = 0u32;
+        let mut default_start: Option<u32> = None;
+        for (i, t) in self.tokens.iter().enumerate().skip(var_index + 1) {
+            match t.kind {
+                TokenKind::Symbol('(' | '[' | '{') => depth += 1,
+                TokenKind::Symbol(')') if depth == 0 => {
+                    call.close = Some(i);
+                    if let Some(start) = default_start {
+                        let text = &self.text[start as usize..t.start as usize];
+                        let lead = text.len() - text.trim_start().len();
+                        let trimmed = text.trim();
+                        if !trimmed.is_empty() {
+                            let s = start + lead as u32;
+                            call.default = Some((s, s + trimmed.len() as u32));
+                        }
+                    }
+                    break;
+                }
+                TokenKind::Symbol(')' | ']' | '}') => depth = depth.saturating_sub(1),
+                TokenKind::Symbol(',') if depth == 0 && default_start.is_none() => {
+                    default_start = Some(t.end);
+                }
+                TokenKind::JinjaClose(_) => break,
+                _ => {}
+            }
+        }
+        call
+    }
+
+    /// The default argument's text of a `var()` call, if it has one.
+    pub fn var_default(&self, var_index: usize) -> Option<&str> {
+        self.var_call(var_index)
+            .default
+            .map(|(s, e)| &self.text[s as usize..e as usize])
     }
 
     pub(crate) fn build_indexes(&mut self) {

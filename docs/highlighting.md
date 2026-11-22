@@ -49,7 +49,9 @@ models:
   exposures, metrics, semantic models, saved queries, macros, sources,
   source tables, columns and tests; test arguments; dbt config keys (from
   dbt's own JSON schemas); `ref()`, `source()` and `doc()` — with
-  `.unresolved` when the project has no such model, source or doc block.
+  `.unresolved` when the project has no such model, source or doc block;
+  `var()` as `variable.dbt.var`, `.unresolved` when nothing defines the
+  var and no default is given ([variables.md](variables.md)).
 - `dbt_project.yml`: its keys and `+` config keys, the profile name;
   `profiles.yml`: profile and target names; `selectors.yml`: selector names.
 
@@ -99,6 +101,7 @@ only knows the parent still colours them:
 | `property.dbt.column` | `property` |
 | `function.dbt.test`, `function.dbt.macro`, `function.dbt.selector` | `function` |
 | `variable.parameter.dbt` | `variable.parameter` |
+| `variable.dbt.var` | `variable` |
 | `string.special.dbt.doc` | `string.special` |
 | `keyword.dbt.config` | `keyword` |
 | `….unresolved` | the capture without it |

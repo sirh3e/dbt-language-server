@@ -109,6 +109,7 @@ impl RefreshTask {
                         builder.set_profiles_dir(cfg.dir_override.clone());
                         builder.set_profile_override(cfg.profile.clone());
                         builder.set_target_override(cfg.target.clone());
+                        builder.set_var_overrides(cfg.var_overrides());
                         // cold process + persisted snapshot → warm start
                         if builder.scan_is_cold() {
                             if let Some(project_root) = cogitator_analysis::util::get_project_root(
@@ -288,6 +289,7 @@ async fn secondary_refresh(
             builder.set_profiles_dir(cfg.dir_override.clone());
             builder.set_profile_override(cfg.profile.clone());
             builder.set_target_override(cfg.target.clone());
+            builder.set_var_overrides(cfg.var_overrides());
             if builder.scan_is_cold() {
                 if let Some(project_root) = cogitator_analysis::util::get_project_root(
                     "dbt_project.yml",
