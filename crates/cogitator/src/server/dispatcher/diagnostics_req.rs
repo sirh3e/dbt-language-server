@@ -142,6 +142,17 @@ impl Dispatcher {
                         let lineage = crate::server::handlers::commands::lineage_for(
                             &derived, &snap.ctx, None, &model_uri,
                         );
+                        extra.extend(read(&details.uri).and_then(|sql| {
+                            features::unit_test_scaffold_action(
+                                &snap.ctx,
+                                model,
+                                details,
+                                &sql,
+                                &doc.text,
+                                &uri,
+                                (*lineage).as_ref(),
+                            )
+                        }));
                         if let Some(lineage) = (*lineage).as_ref() {
                             extra.extend(features::inherit_description_actions(
                                 &snap.ctx, &doc.text, &uri, details, lineage,
@@ -174,6 +185,7 @@ impl Dispatcher {
                     extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
                     extra.extend(features::extract_cte_action(&snap.ctx, doc, &uri, range));
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
+                    extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
                     extra.extend(
                         crate::server::handlers::plan::split_plan_of(
                             &snap,
@@ -331,4 +343,30 @@ impl Dispatcher {
             crate::server::reply::Reply::result(&cogitator_lsp::WorkspaceDiagnosticReport { items })
         });
     }
+}
+
+/// "Scaffold a unit test" on a model with a properties YAML, its rows
+/// keyed by the lineage's columns where the model's lineage is known.
+fn unit_test_action(
+    snap: &crate::server::snapshot::Snapshot,
+    derived: &crate::server::derived_cache::DerivedCache,
+    doc: &cogitator_analysis::Document,
+    uri: &str,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+) -> Option<cogitator_lsp::CodeAction> {
+    let model = features::model_name_from_uri(uri)?;
+    let details = snap.ctx.model_detail_map.get(&model)?;
+    let schema = details.schema_uri.as_ref()?;
+    let yaml = read(schema)?;
+    let lineage =
+        crate::server::handlers::commands::lineage_for(derived, &snap.ctx, Some(doc), uri);
+    features::unit_test_scaffold_action(
+        &snap.ctx,
+        &model,
+        details,
+        &doc.text,
+        &yaml,
+        &cogitator_lsp::fs_path_to_uri(schema),
+        (*lineage).as_ref(),
+    )
 }

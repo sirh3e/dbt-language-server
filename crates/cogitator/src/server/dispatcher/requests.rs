@@ -268,6 +268,7 @@ impl Dispatcher {
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         self.offload_blocking(id, "textDocument/codeLens", move || {
             let mut lenses = features::code_lenses(&snap.ctx, &uri);
+            lenses.extend(quality_lenses(&snap, &derived, &uri, cap));
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, cap);
                 lenses.extend(features::run_lens(&snap.ctx, &uri, &set));
@@ -380,4 +381,35 @@ impl Dispatcher {
             features::workspace_symbols(&ctx, &query),
         ));
     }
+}
+
+/// The coverage and run-this-test lenses: YAML from the open buffer (or
+/// the file), lineage only for a model that has a YAML entry to count
+/// against.
+fn quality_lenses(
+    snap: &crate::server::snapshot::Snapshot,
+    derived: &crate::server::derived_cache::DerivedCache,
+    uri: &str,
+    cap: u64,
+) -> Vec<cogitator_lsp::CodeLens> {
+    let is_yaml = uri.ends_with(".yml") || uri.ends_with(".yaml");
+    let text = match snap.doc.as_deref() {
+        Some(doc) => Some(doc.text.clone()),
+        None if is_yaml => cogitator_lsp::uri_to_fs_path(uri)
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .map(std::sync::Arc::<str>::from),
+        None => None,
+    };
+    let counted = !is_yaml
+        && features::model_name_from_uri(uri)
+            .and_then(|m| snap.ctx.model_detail_map.get(&m))
+            .is_some_and(|d| d.schema_uri.is_some());
+    let lineage = counted
+        .then(|| crate::server::handlers::lineage::typed_lineage_for(snap, derived, uri, cap));
+    features::quality::quality_lenses(
+        &snap.ctx,
+        uri,
+        text.as_deref(),
+        lineage.as_ref().and_then(|l| (**l).as_ref()),
+    )
 }
