@@ -119,6 +119,10 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  true, as a unified diff in a split (`q` closes)
   :DbtIncrementality
                  table models that could be incremental (quickfix)
+  :DbtUnresolved [kind…]
+                 every unresolved ref, source, source_table, doc, macro
+                 and var of the project (quickfix; `:DbtFind unresolved`
+                 is the same list in the picker)
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtReloadConfig  re-read cogitator.yml now

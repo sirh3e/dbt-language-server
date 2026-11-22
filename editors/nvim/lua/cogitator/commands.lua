@@ -428,6 +428,57 @@ function M.dead_models()
   end)
 end
 
+--- The quickfix items of a dbt.unresolved answer (exposed for the test
+--- suite and the picker): one per unresolved name, at its place.
+---@param result table
+---@return table[]
+function M.unresolved_items(result)
+  local items = {}
+  for _, u in ipairs(result.items or {}) do
+    local start = type(u.range) == "table" and u.range.start or {}
+    items[#items + 1] = {
+      filename = u.uri and vim.uri_to_fname(u.uri) or "",
+      lnum = (start.line or 0) + 1,
+      col = (start.character or 0) + 1,
+      text = ("[%s] %s — %s"):format(u.kind, u.name, u.message or ""),
+      type = "W",
+      user_data = { kind = u.kind, name = u.name },
+    }
+  end
+  return items
+end
+
+--- :DbtUnresolved [kind…] — every unresolved ref, source, doc, macro and
+--- var of the project, as a quickfix list.
+---@param opts {fargs?: string[], args?: string}?
+function M.unresolved(opts)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local words = (opts and opts.fargs) or vim.split((opts and opts.args) or "", "%s+", { trimempty = true })
+  local kinds = #words > 0 and words or nil
+  client:exec_cmd({
+    command = "dbt.unresolved",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr), kinds = kinds } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.unresolved failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    if result.count == 0 then
+      vim.notify("nothing unresolved — every ref, source, doc, macro and var resolves", vim.log.levels.INFO)
+      return
+    end
+    vim.fn.setqflist({}, " ", {
+      title = ("dbt unresolved (%d)"):format(result.count),
+      items = M.unresolved_items(result),
+    })
+    vim.cmd.copen()
+  end)
+end
+
 --- The lines of a dbt.splitPlan answer (exposed for the test suite): the
 --- plan as an S-expression, then the new model's file when there is one.
 ---@param plan table

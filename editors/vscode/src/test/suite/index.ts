@@ -19,6 +19,7 @@ import {
   parseAstGrep,
   parseNode,
   skippedLayers,
+  unresolvedLabel,
   spansByColor,
   splitText,
   syntaxLine,
@@ -341,6 +342,35 @@ export async function run(): Promise<void> {
   })) as { matches?: unknown[] } | null;
   check(found?.matches?.length === 4, "vscode: dbt.astGrep finds the model's refs", found?.matches?.length);
 
+  check(
+    JSON.stringify(
+      unresolvedLabel(
+        {
+          kind: "ref",
+          name: "ghost",
+          uri: "file:///p/models/a.sql",
+          range: { start: { line: 2, character: 14 }, end: { line: 2, character: 19 } },
+          message: "model 'ghost' not found in the project",
+        },
+        () => "models/a.sql"
+      )
+    ) ===
+      JSON.stringify({
+        label: "[ref] ghost",
+        description: "models/a.sql:3",
+        detail: "model 'ghost' not found in the project",
+      }),
+    "vscode: an unresolved name's quick-pick entry shows its kind and place"
+  );
+  const unresolvedResult = (await exec("dbt.unresolved", {
+    uri: document.uri.toString(),
+  })) as { count?: number; items?: unknown[] } | null;
+  check(
+    typeof unresolvedResult?.count === "number" && Array.isArray(unresolvedResult?.items),
+    "vscode: dbt.unresolved lists the project's unresolved names",
+    unresolvedResult
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -355,6 +385,7 @@ export async function run(): Promise<void> {
       "cogitator.highlight",
       "cogitator.astGrep",
       "cogitator.nodeInfo",
+      "cogitator.unresolved",
     ].every((c) =>
       commands.includes(c)
     ),

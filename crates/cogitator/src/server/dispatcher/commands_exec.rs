@@ -285,6 +285,15 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.unresolved" => {
+                let ctx = self.snapshot_for(&uri).ctx;
+                let open = self.documents.texts();
+                let request = crate::server::unresolved::Request::of(arg);
+                self.offload_blocking(req.id, "dbt.unresolved", move || {
+                    crate::server::unresolved::reply(&ctx, open, &request)
+                });
+                return;
+            }
             "dbt.highlight" => {
                 let snap = self.snapshot_for(&uri);
                 let derived = self.derived.clone();

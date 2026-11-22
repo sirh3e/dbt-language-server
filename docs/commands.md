@@ -286,6 +286,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: a WARNING with the closest names for an unknown node
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.unresolved`
+
+- **Argument**: `{kinds?}` — a list of `ref`, `source`, `source_table`, `doc`, `macro`, `var` to keep (all when absent)
+- **Result**: `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind: {kind: n}, truncated}` — every unresolved name of the root project's models, snapshots, macros, tests, analyses and property YAML, by file then position (at most 5 000 items; `count` is the total). The same checks as the dangling-ref diagnostics (`dangling-ref`, `dangling-source`, `dangling-source-table`, `unknown-var`, `dangling-doc`, `dangling-exposure-ref`), plus `{{ macro() }}` calls no package defines and dbt does not provide; open documents count with their unsaved text
+- **Side effects**: none
+- **Editors**: Neovim ✓ (`:DbtUnresolved` quickfix, `:DbtFind unresolved` picker) · Emacs ✓ (`M-x cogitator-unresolved`) · VS Code ✓ (`dbt: Unresolved references`)
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`
