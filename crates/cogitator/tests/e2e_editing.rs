@@ -529,6 +529,131 @@ fn editing_actions_declare_table_and_docs_block() {
     lsp.shutdown();
 }
 
+/// `dbt.incrementality` over the project: a table model linear in an
+/// input with a growing timestamp is offered `append`; one with a LIMIT
+/// stays a table and says why.
+#[test]
+fn incrementality_lists_table_models_with_their_verdicts() {
+    let project = jaffle();
+    let root = project.root.clone();
+    std::fs::write(
+        root.join("models/raw_events.sql"),
+        "select 1 as id, cast('2024-01-01' as timestamp) as loaded_at\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/raw_events.yml"),
+        "version: 2\n\nmodels:\n  - name: raw_events\n    columns:\n      - name: id\n        data_type: bigint\n      - name: loaded_at\n        data_type: timestamp\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/probe_append.sql"),
+        "{{ config(materialized='table') }}\nselect id, loaded_at from {{ ref('raw_events') }}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/probe_top.sql"),
+        "{{ config(materialized='table') }}\nselect id, loaded_at from {{ ref('raw_events') }} order by loaded_at desc limit 3\n",
+    )
+    .unwrap();
+    let (mut lsp, _uri) = project.booted();
+    let reply = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.incrementality", "arguments": [{}]}),
+    );
+    let models = reply["result"]["models"].as_array().expect("models");
+    let find = |name: &str| {
+        models
+            .iter()
+            .find(|m| m["model"] == name)
+            .unwrap_or_else(|| panic!("no {name} in {models:?}"))
+    };
+    let append = find("probe_append");
+    assert_eq!(append["verdict"], "append", "{append}");
+    assert_eq!(append["inputs"][0]["column"], "loaded_at", "{append}");
+    let top = find("probe_top");
+    assert_eq!(top["verdict"], "keep", "{top}");
+    assert!(
+        top["reasons"][0]["reason"]
+            .as_str()
+            .is_some_and(|r| r.contains("LIMIT")),
+        "{top}"
+    );
+    assert!(reply["result"]["incremental"].as_u64().unwrap() >= 1);
+    lsp.shutdown();
+}
+
+/// `dbt.splitPlan` and its code action: a table model whose global rank
+/// sits over an aggregating CTE splits into an incremental model and a
+/// table over it, said as an S-expression.
+#[test]
+fn split_plan_cuts_the_incremental_part_out_of_a_ranked_rollup() {
+    let project = jaffle();
+    let root = project.root.clone();
+    std::fs::write(
+        root.join("models/raw_events.sql"),
+        "select 1 as user_id, 2.0 as amount, 'ok' as status, cast('2024-01-01' as timestamp) as loaded_at\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/raw_events.yml"),
+        "version: 2\n\nmodels:\n  - name: raw_events\n    columns:\n      - name: user_id\n        data_type: bigint\n      - name: amount\n        data_type: decimal(18,2)\n      - name: status\n        data_type: varchar\n      - name: loaded_at\n        data_type: timestamp\n",
+    )
+    .unwrap();
+    let ranked = "{{ config(materialized='table') }}\nwith by_user as (\n  select user_id, sum(amount) as total, max(loaded_at) as last_at\n  from {{ ref('raw_events') }}\n  group by user_id\n)\nselect user_id, total, rank() over (order by total desc) as rnk from by_user\n";
+    let path = root.join("models/probe_ranked.sql");
+    std::fs::write(&path, ranked).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&path);
+    let (mut lsp, _) = project.booted();
+
+    let reply = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.splitPlan", "arguments": [{"uri": uri}]}),
+    );
+    let plan = &reply["result"];
+    assert_eq!(plan["part"]["name"], "probe_ranked__by_user", "{plan}");
+    let sexp = plan["sexp"].as_str().expect("an S-expression");
+    assert!(sexp.starts_with("(split probe_ranked"), "{sexp}");
+    assert!(sexp.contains("(reduces aggregate)"), "{sexp}");
+    assert!(
+        plan["part"]["text"]
+            .as_str()
+            .is_some_and(|t| t.contains("is_incremental()")),
+        "{plan}"
+    );
+
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1,
+            "text": ranked}}),
+    );
+    let actions = lsp.request(
+        "textDocument/codeAction",
+        serde_json::json!({"textDocument": {"uri": uri},
+                           "range": {"start": {"line": 0, "character": 0},
+                                     "end": {"line": 0, "character": 0}},
+                           "context": {"diagnostics": []}}),
+    );
+    let split = actions["result"]
+        .as_array()
+        .and_then(|list| {
+            list.iter()
+                .find(|a| {
+                    a["title"]
+                        .as_str()
+                        .is_some_and(|t| t.starts_with("Split 'by_user'"))
+                })
+                .cloned()
+        })
+        .unwrap_or_else(|| panic!("no split action in {actions}"));
+    assert_eq!(split["kind"], "refactor.extract");
+    assert_eq!(
+        split["edit"]["documentChanges"][0]["kind"], "create",
+        "{split}"
+    );
+    lsp.shutdown();
+}
+
 /// Go-to-definition on a built-in SQL function (03 §9): the bundled
 /// documentation materializes under target/.cogitator/docs/ and the
 /// Location jumps into it; plain unknown words keep the self-location

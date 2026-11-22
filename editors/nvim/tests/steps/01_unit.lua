@@ -74,6 +74,56 @@ return function(ctx)
     plan_text
   )
 
+  -- :DbtSplit rendering: the S-expression, then the part's file
+  local split_text = table.concat(
+    require("cogitator.commands").split_lines({
+      model = "orders_ranked",
+      sexp = "(split orders_ranked\n  (model orders_ranked__by_user (materialized incremental)))",
+      part = {
+        name = "orders_ranked__by_user",
+        cte = "by_user",
+        text = "select 1\n{% if is_incremental() %}\n",
+      },
+    }),
+    "\n"
+  )
+  H.check(
+    split_text:find("(split orders_ranked", 1, true) == 1
+      and split_text:find(";; orders_ranked__by_user.sql", 1, true) ~= nil
+      and split_text:find("is_incremental()", 1, true) ~= nil,
+    "commands: split_lines renders the plan and the new model",
+    split_text
+  )
+  local refused =
+    require("cogitator.commands").split_lines({ model = "m", sexp = "(split m (refused no-boundary))" })
+  H.check(#refused == 1, "commands: a refused split is the S-expression alone", vim.inspect(refused))
+
+  -- :DbtIncrementality quickfix items
+  local items = require("cogitator.commands").incrementality_items({
+    incremental = 1,
+    models = {
+      {
+        model = "big",
+        uri = "file:///p/models/big.sql",
+        lastRunSeconds = 12.5,
+        view = { verdict = "append", strategy = "append", summary = "append by ts" },
+      },
+      {
+        model = "ranked",
+        uri = "file:///p/models/ranked.sql",
+        view = { verdict = "keep", reasons = { { reason = "a LIMIT" } } },
+      },
+    },
+  })
+  H.check(
+    #items == 2
+      and items[1].text == "big — append (append) [last run 12.5s]: append by ts"
+      and items[2].text == "ranked — keep: a LIMIT"
+      and items[2].filename == "/p/models/ranked.sql",
+    "commands: incrementality_items name verdict, strategy, run time and why",
+    vim.inspect(items)
+  )
+
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")

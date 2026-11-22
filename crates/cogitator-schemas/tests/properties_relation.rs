@@ -157,3 +157,37 @@ models:
     );
     assert!(columns[4].proven_by("not_null"), "test_name is the test");
 }
+
+#[test]
+fn the_column_that_only_grows_is_read_wherever_dbt_accepts_it() {
+    let yaml = r#"
+version: 2
+models:
+  - name: clicks
+    config:
+      event_time: clicked_at
+  - name: plain
+sources:
+  - name: raw
+    loaded_at_field: _loaded_at
+    tables:
+      - name: payments
+      - name: events
+        config:
+          event_time: occurred_at
+  - name: bare
+    tables:
+      - name: t
+"#;
+    let parsed = parse_properties(yaml, Path::new("schema.yml")).expect("parses");
+    assert_eq!(parsed.models[0].event_time.as_deref(), Some("clicked_at"));
+    assert_eq!(parsed.models[1].event_time, None);
+    let raw = &parsed.sources[0];
+    assert_eq!(raw.event_time.as_deref(), Some("_loaded_at"));
+    assert_eq!(
+        raw.tables[0].event_time, None,
+        "inherits at the analysis layer"
+    );
+    assert_eq!(raw.tables[1].event_time.as_deref(), Some("occurred_at"));
+    assert_eq!(parsed.sources[1].event_time, None);
+}

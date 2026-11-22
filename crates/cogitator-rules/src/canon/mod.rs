@@ -2,6 +2,7 @@
 //! before detection; each appends nodes and moves `root`, and preserves
 //! the root's columns and every node's origin span.
 
+pub mod incrementality;
 mod join_sides;
 mod pred;
 pub mod predicates;

@@ -65,6 +65,14 @@
         "title": "dbt: Show column lineage"
       },
       {
+        "command": "cogitator.splitPlan",
+        "title": "dbt: Split model at its incrementality frontier"
+      },
+      {
+        "command": "cogitator.incrementality",
+        "title": "dbt: Table models that could be incremental"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },

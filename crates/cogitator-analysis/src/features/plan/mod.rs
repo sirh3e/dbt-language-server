@@ -27,10 +27,14 @@ pub mod diagnostics_config;
 mod drive;
 mod env;
 mod facts;
+mod incremental;
+mod incrementality;
+mod incrementality_report;
 mod passes;
 mod phys;
 mod report;
 pub mod schemas;
+mod split;
 pub mod suppress;
 #[cfg(test)]
 mod tests;
@@ -40,10 +44,13 @@ mod tests_compiled;
 mod tests_facts;
 mod trace;
 
+pub use incrementality::{DeltaView, IncrementalityView, ReasonView};
+pub use incrementality_report::{incrementality_report, IncrementalityReport, ModelIncrementality};
 pub use report::{
     EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, Placement,
     PlanLevels, PlanStatus, QueryPlan,
 };
+pub use split::{split_plan, SplitPart, SplitPlan};
 pub use trace::{NeedsView, TraceRow, TraceView};
 
 /// What the shell found at the model's `target/compiled` path. The file

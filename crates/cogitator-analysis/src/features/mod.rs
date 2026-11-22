@@ -40,6 +40,7 @@ pub use code_actions::define_missing::define_missing_actions;
 pub use code_actions::extract_cte::extract_cte_action;
 pub use code_actions::governance_fixes::private_ref_actions;
 pub use code_actions::refactors::{expand_star_action, extract_yaml_action};
+pub use code_actions::split_model::split_action;
 pub use code_actions::yaml_columns::{
     add_missing_columns_action, remove_unproduced_columns_action,
 };

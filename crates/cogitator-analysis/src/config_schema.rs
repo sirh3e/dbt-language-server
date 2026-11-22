@@ -137,6 +137,7 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("filter.constant_false", "Filter is always false.", RULE_SEVERITIES),
             key("limit.no_scan_reduction", "LIMIT does not reduce bytes read.", RULE_SEVERITIES),
             key("incr.no_unique_key", "Merge strategy without a unique_key.", RULE_SEVERITIES),
+            key("incr.could_be_incremental", "A table that could be built incrementally.", RULE_SEVERITIES),
         ],
     },
 ];

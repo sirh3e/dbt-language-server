@@ -80,6 +80,7 @@ pub(super) fn build_model_details(
                     access: schema.and_then(|m| m.access.clone()),
                     group: schema.and_then(|m| m.group.clone()),
                     contract_enforced: schema.is_some_and(|m| m.contract_enforced),
+                    event_time: schema.and_then(|m| m.event_time.clone()),
                 },
             );
         }
@@ -160,6 +161,7 @@ pub(super) struct SchemaModel {
     pub(super) name_pos: Position,
     pub(super) columns: Vec<cogitator_schemas::ColumnEntry>,
     pub(super) tags: Vec<String>,
+    pub(super) event_time: Option<String>,
 }
 
 /// Properties YAML files under the model paths (03 §6.2): cached per file;
@@ -202,6 +204,7 @@ fn schema_entries(
                         name_pos: model.name_pos,
                         columns: model.columns.clone(),
                         tags: model.tags.clone(),
+                        event_time: model.event_time.clone(),
                     },
                 );
             }
@@ -232,6 +235,7 @@ fn source_details(
                     identifier: resolve_opt(t.identifier.as_deref()),
                     loader: resolve_opt(t.loader.as_deref()),
                     columns: t.columns.clone(),
+                    event_time: t.event_time.clone().or_else(|| source.event_time.clone()),
                 },
             )
         })

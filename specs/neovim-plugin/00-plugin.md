@@ -105,7 +105,8 @@ writer wins).
   `dbt.setProfilesDir`, `dbt.cache`, `dbt.reloadConfig`,
   `dbt.sourceFreshness`, `dbt.cancel`, `dbt.runSelection`,
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
-  `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.syntaxTree`
+  `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
+  `dbt.splitPlan`, `dbt.syntaxTree`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -140,6 +141,8 @@ Every command takes **one argument object**, not positional values:
 | `dbt.run` / `dbt.test` / `dbt.compile` | `{token}` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument; the token feeds `dbt.cancel` |
 | `dbt.parse` | `{token}` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
 | `dbt.deps` | `{token}` (immediately) | async showMessage/$\/progress; project-wide `dbt deps`, success refreshes the server context (the packages.yml quickfix runs it) |
+| `dbt.incrementality` | `{models, incremental}` | none; every table model's incrementality verdict, slowest last run first (specs/ir-pipeline/10) |
+| `dbt.splitPlan` | `{model, sexp, part: {name, cte, text}}` or `null` | none; the split at the incrementality frontier as an S-expression (specs/ir-pipeline/10 §6) |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -436,7 +439,9 @@ vim.lsp.enable("cogitator")
 | `:DbtTarget` | `dbt.profiles` + `dbt.setTarget` | picker over allowed profile×target; the choice persists per project in the manager store, `<leader>dT` |
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
-| `:DbtPlan` | `dbt.queryPlan` | each IR level, findings and the rule trace (including skip reasons) in a scratch split |
+| `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
+| `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
+| `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
 | `:DbtColumnLineage [column]` | `dbt.projectGraph` + `dbt.columnLineage` | the column-lineage graph of this model (or one column) in :DbtDag (§5.3b) |
 | `:DbtDeps` | `dbt.deps` | project-wide; the job token is kept for `:DbtCancel` |
 | `:DbtReloadConfig` | `dbt.reloadConfig` | re-read cogitator.yml now |

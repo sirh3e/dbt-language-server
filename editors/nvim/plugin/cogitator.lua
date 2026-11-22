@@ -31,6 +31,8 @@ cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
+cmd("DbtSplit", "split", "split this table model at its incrementality frontier (dbt.splitPlan)")
+cmd("DbtIncrementality", "incrementality", "table models that could be incremental (quickfix)")
 vim.api.nvim_create_user_command("DbtImpact", function(opts)
   require("cogitator.commands").impact(opts)
 end, { nargs = "?", desc = "downstream impact of this model (optionally of one column)" })

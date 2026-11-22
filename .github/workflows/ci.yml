@@ -34,6 +34,7 @@ jobs:
               - '.github/workflows/ci.yml'
             editors:
               - 'editors/**'
+              - 'specs/neovim-plugin/**'
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -189,6 +190,12 @@ jobs:
           neovim: true
 
       - uses: Swatinem/rust-cache@v2
+
+      # every dbt.* command classified and wrapped by every editor
+      # (editors/parity.toml, the editor-parity skill); an editors-only
+      # change does not trigger the Rust test job, so it runs here too
+      - name: Consumer parity
+        run: cargo test -p cogitator-lsp --test consumer_parity
 
       - name: Editor system suites
         run: xvfb-run -a cargo test -p cogitator --features e2e --test system_editors -- --ignored --nocapture

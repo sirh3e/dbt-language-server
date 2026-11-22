@@ -1,0 +1,18 @@
+---
+source: crates/cogitator-analysis/src/features/plan/split.rs
+expression: plan.sexp
+---
+(split orders_ranked
+  (model orders_ranked__by_user
+    (materialized incremental)
+    (strategy delete+insert)
+    (unique-key user_id)
+    (from-cte by_user)
+    (reduces aggregate)
+    (increment
+      (filter
+        (or
+          (is-null (max-of this last_ts))
+          (in user_id (select user_id (scan events) (> ts (max-of this last_ts))))))))
+  (model orders_ranked (materialized table) (reads orders_ranked__by_user))
+  (cost (before (full-scan events)) (after (delta-scan events) (full-scan orders_ranked__by_user))))

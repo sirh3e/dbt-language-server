@@ -36,6 +36,10 @@ pub struct ModelEntry {
     pub group: Option<String>,
     /// `config.contract.enforced: true` (or entry-level `contract:`).
     pub contract_enforced: bool,
+    /// The column that only grows with the rows: `event_time` (entry or
+    /// `config:`), for incrementality.
+    #[serde(default)]
+    pub event_time: Option<String>,
 }
 
 /// A documented column from the properties YAML (write-assist completion,
@@ -83,6 +87,10 @@ pub struct SourceEntry {
     pub schema: Option<String>,
     pub loader: Option<String>,
     pub tables: Vec<TableEntry>,
+    /// `event_time`, else `loaded_at_field` (entry or `config:`): the
+    /// column that only grows with the source's rows.
+    #[serde(default)]
+    pub event_time: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -94,6 +102,9 @@ pub struct TableEntry {
     pub identifier: Option<String>,
     pub loader: Option<String>,
     pub columns: Vec<ColumnEntry>,
+    /// As on `SourceEntry`; the table's own wins over its source's.
+    #[serde(default)]
+    pub event_time: Option<String>,
 }
 
 /// Parse one properties YAML file. Failures degrade per file (Go returned an
@@ -137,6 +148,22 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                 .collect()
         })
         .unwrap_or_default();
+    let model_event_times: Vec<Option<String>> = yaml::get(&marked, "models")
+        .map(|models| yaml::items(models).map(event_time_of).collect())
+        .unwrap_or_default();
+    let source_event_times: Vec<(Option<String>, Vec<Option<String>>)> =
+        yaml::get(&marked, "sources")
+            .map(|sources| {
+                yaml::items(sources)
+                    .map(|s| {
+                        let tables = yaml::get(s, "tables")
+                            .map(|t| yaml::items(t).map(event_time_of).collect())
+                            .unwrap_or_default();
+                        (event_time_of(s), tables)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
     type TableSide = (Position, Vec<ColumnSide>);
     let source_nodes: Vec<(Position, Vec<TableSide>)> = yaml::get(&marked, "sources")
         .map(|sources| {
@@ -172,6 +199,7 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                 access: governance.access,
                 group: governance.group,
                 contract_enforced: governance.contract_enforced,
+                event_time: model_event_times.get(i).cloned().flatten(),
             }
         })
         .collect();
@@ -206,14 +234,33 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                             identifier: t.identifier.clone(),
                             loader: t.loader.clone(),
                             columns: columns_of(&t.columns, &column_side),
+                            event_time: source_event_times
+                                .get(i)
+                                .and_then(|(_, tables)| tables.get(j).cloned().flatten()),
                         }
                     })
                     .collect(),
+                event_time: source_event_times.get(i).and_then(|(own, _)| own.clone()),
             }
         })
         .collect();
 
     Ok(PropertiesFile { models, sources })
+}
+
+/// The column an entry declares only grows: `event_time` (dbt 1.9+,
+/// microbatch), else a source's freshness `loaded_at_field` — each at
+/// the entry or under `config:`, as dbt accepts both.
+fn event_time_of(entry: &saphyr::MarkedYaml<'_>) -> Option<String> {
+    let key = |name: &str| {
+        yaml::get(entry, name)
+            .or_else(|| yaml::get(entry, "config").and_then(|config| yaml::get(config, name)))
+            .and_then(yaml::as_str)
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    key("event_time").or_else(|| key("loaded_at_field"))
 }
 
 /// Governance keys of one model entry, entry- or config-level

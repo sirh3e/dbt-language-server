@@ -204,6 +204,7 @@ const PERF_RULE_KEYS: &[&str] = &[
     "filter.constant_false",
     "limit.no_scan_reduction",
     "incr.no_unique_key",
+    "incr.could_be_incremental",
 ];
 
 /// Unknown keys warn with did-you-mean — never a hard error, so a

@@ -45,6 +45,25 @@ return function(ctx)
     vim.fn.getreg('"')
   )
 
+  local incr_result = H.exec_cmd(client, bufnr, "dbt.incrementality", {
+    uri = vim.uri_from_bufnr(bufnr),
+  }, "integration: dbt.incrementality")
+  H.check(
+    type(incr_result) == "table"
+      and type(incr_result.models) == "table"
+      and type(incr_result.incremental) == "number",
+    "integration: dbt.incrementality lists the table models",
+    vim.inspect(incr_result):sub(1, 200)
+  )
+  local split_result, split_null = H.exec_cmd(client, bufnr, "dbt.splitPlan", {
+    uri = vim.uri_from_bufnr(bufnr),
+  }, "integration: dbt.splitPlan")
+  H.check(
+    split_null or (type(split_result) == "table" and type(split_result.sexp) == "string"),
+    "integration: dbt.splitPlan answers a plan or null",
+    vim.inspect(split_result):sub(1, 200)
+  )
+
   local cache_result = H.exec_cmd(client, bufnr, "dbt.cache", {
     uri = vim.uri_from_bufnr(bufnr),
     action = "stats",

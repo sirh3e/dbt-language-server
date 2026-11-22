@@ -70,6 +70,9 @@ included.
 ## Palette commands
 
 `dbt: Run/Test/Compile/Preview current model`, `dbt: Parse project`,
-`dbt: Show column lineage`, `dbt: Language server status`,
+`dbt: Show column lineage`, `dbt: Split model at its incrementality
+frontier` (the plan as an S-expression beside the model, with an
+"Apply split" button), `dbt: Table models that could be incremental`
+(a quick pick, slowest last run first), `dbt: Language server status`,
 `dbt: Restart language server`. Everything else (code lenses, code
 actions, rename, call hierarchy) rides the standard LSP features.

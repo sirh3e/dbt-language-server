@@ -60,6 +60,45 @@ pub struct Expect {
     pub fixtures: Vec<FixtureSpec>,
     #[serde(default)]
     pub plan: PlanClaims,
+    /// An incremental case (specs/ir-pipeline/10): the model built on the
+    /// seed, maintained through the delta by `strategy`, must equal it
+    /// rebuilt in full on seed and delta. `after` is unused.
+    #[serde(default)]
+    pub incremental: Option<IncrementalSpec>,
+}
+
+/// `[incremental]` of an incremental case.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IncrementalSpec {
+    pub strategy: IncrementalStrategy,
+    /// The key `delete+insert` replaces rows by.
+    #[serde(default)]
+    pub unique_key: Vec<String>,
+    /// The model's `is_incremental()` branch rendered, `{{ this }}` as
+    /// `this_model`.
+    #[serde(default = "default_increment")]
+    pub increment: String,
+    /// A split (specs/ir-pipeline/10 §6): the incremental part as a model
+    /// of its own. The part is maintained, then `outer` — the model over
+    /// the part, read as `__next` — must equal `model.sql` in full.
+    #[serde(default)]
+    pub part: Option<String>,
+    #[serde(default)]
+    pub outer: Option<String>,
+}
+
+/// The dbt strategies an incremental case applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum IncrementalStrategy {
+    #[serde(rename = "append")]
+    Append,
+    #[serde(rename = "delete+insert")]
+    DeleteInsert,
+}
+
+fn default_increment() -> String {
+    "increment.sql".to_owned()
 }
 
 fn default_after() -> String {
@@ -76,6 +115,10 @@ pub struct FixtureSpec {
     pub role: Role,
     #[serde(default)]
     pub covers: Vec<Cover>,
+    /// Incremental cases: what arrives after the seed, as statements that
+    /// replace the input tables with their rows then.
+    #[serde(default)]
+    pub delta: Option<String>,
 }
 
 /// A fixture with its seed SQL loaded.
@@ -84,6 +127,24 @@ pub struct Fixture {
     pub name: String,
     pub seed: String,
     pub role: Role,
+    /// Incremental cases: the delta's SQL.
+    pub delta: Option<String>,
+}
+
+/// An incremental case's strategy and increment, loaded.
+#[derive(Debug, Clone)]
+pub struct Incremental {
+    pub strategy: IncrementalStrategy,
+    pub unique_key: Vec<String>,
+    pub increment: String,
+    /// A split: the part's full SQL and the model over it.
+    pub split: Option<Split>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Split {
+    pub part: String,
+    pub outer: String,
 }
 
 /// One loaded and validated case.
@@ -97,6 +158,7 @@ pub struct Case {
     pub after: String,
     pub fixtures: Vec<Fixture>,
     pub plan: PlanClaims,
+    pub incremental: Option<Incremental>,
 }
 
 impl Case {
@@ -140,16 +202,40 @@ pub fn load_case(dir: &Path) -> Result<Case, String> {
             name: spec.name.clone(),
             seed: read(&dir.join(&spec.seed)).map_err(context)?,
             role: spec.role,
+            delta: match &spec.delta {
+                Some(file) => Some(read(&dir.join(file)).map_err(context)?),
+                None => None,
+            },
         });
     }
+    let incremental = match &expect.incremental {
+        Some(spec) => Some(Incremental {
+            strategy: spec.strategy,
+            unique_key: spec.unique_key.clone(),
+            increment: read(&dir.join(&spec.increment)).map_err(context)?,
+            split: match (&spec.part, &spec.outer) {
+                (Some(part), Some(outer)) => Some(Split {
+                    part: read(&dir.join(part)).map_err(context)?,
+                    outer: read(&dir.join(outer)).map_err(context)?,
+                }),
+                (None, None) => None,
+                _ => return Err(context("a split names both part and outer".to_owned())),
+            },
+        }),
+        None => None,
+    };
     Ok(Case {
         rule: expect.rule,
         safety: expect.safety,
         schema: read(&dir.join("schema.sql")).map_err(context)?,
         model: read(&dir.join("model.sql")).map_err(context)?,
-        after: read(&dir.join(&expect.after)).map_err(context)?,
+        after: match incremental {
+            Some(_) => String::new(),
+            None => read(&dir.join(&expect.after)).map_err(context)?,
+        },
         fixtures,
         plan: expect.plan,
+        incremental,
         name,
     })
 }
@@ -177,6 +263,14 @@ pub fn validate(expect: &Expect) -> Result<(), String> {
             if has(Role::Preserve) {
                 return Err("an N fix takes no preserve fixtures".to_owned());
             }
+        }
+    }
+    if let Some(spec) = &expect.incremental {
+        if expect.fixtures.iter().any(|f| f.delta.is_none()) {
+            return Err("an incremental case needs a delta on every fixture".to_owned());
+        }
+        if spec.strategy == IncrementalStrategy::DeleteInsert && spec.unique_key.is_empty() {
+            return Err("delete+insert needs a unique_key".to_owned());
         }
     }
     let covered: BTreeSet<Cover> = expect
@@ -210,9 +304,11 @@ mod tests {
                     seed: "seed.sql".to_owned(),
                     role: *role,
                     covers: vec![Cover::Nulls, Cover::Duplicates, Cover::Empty],
+                    delta: None,
                 })
                 .collect(),
             plan: PlanClaims::default(),
+            incremental: None,
         }
     }
 
@@ -240,6 +336,25 @@ mod tests {
         let mut e = expect(Safety::P, &[Role::Preserve]);
         e.fixtures[0].covers = vec![Cover::Nulls, Cover::Duplicates];
         assert!(validate(&e).unwrap_err().contains("Empty"));
+    }
+
+    #[test]
+    fn an_incremental_case_needs_deltas_and_a_key_to_replace_by() {
+        let mut e = expect(Safety::P, &[Role::Preserve]);
+        e.incremental = Some(IncrementalSpec {
+            strategy: IncrementalStrategy::DeleteInsert,
+            unique_key: Vec::new(),
+            increment: default_increment(),
+            part: None,
+            outer: None,
+        });
+        assert!(validate(&e).unwrap_err().contains("delta"));
+        e.fixtures[0].delta = Some("delta.sql".into());
+        assert!(validate(&e).unwrap_err().contains("unique_key"));
+        if let Some(spec) = e.incremental.as_mut() {
+            spec.unique_key = vec!["day".into()];
+        }
+        assert!(validate(&e).is_ok());
     }
 
     #[test]

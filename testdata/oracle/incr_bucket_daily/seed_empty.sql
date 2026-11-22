@@ -1,0 +1,1 @@
+-- events stays empty: the model is built empty, so max(ts) of it is NULL

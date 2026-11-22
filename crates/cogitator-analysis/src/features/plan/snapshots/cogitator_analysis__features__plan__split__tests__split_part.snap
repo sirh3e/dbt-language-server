@@ -1,0 +1,12 @@
+---
+source: crates/cogitator-analysis/src/features/plan/split.rs
+expression: part.text
+---
+{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='user_id') }}
+select user_id, sum(amount) as total, max(ts) as last_ts
+  from {{ ref('events') }}
+  where (status = 'ok')
+{% if is_incremental() %}
+and ((select max(last_ts) from {{ this }}) is null or user_id in (select user_id from {{ ref('events') }} where ts > (select max(last_ts) from {{ this }})))
+{% endif %}
+  group by user_id

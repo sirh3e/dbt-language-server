@@ -46,6 +46,8 @@ pub struct Case<'a> {
     pub without: Option<Need>,
     /// Leave `events` out of the schema, so its scan is open.
     pub open_schema: bool,
+    /// Hand the rules the template text, which fixes are checked against.
+    pub with_text: bool,
 }
 
 impl<'a> Case<'a> {
@@ -67,6 +69,7 @@ impl<'a> Case<'a> {
             origin: None,
             without: None,
             open_schema: false,
+            with_text: false,
         }
     }
 }
@@ -211,6 +214,9 @@ pub fn run_on(case: &Case<'_>, hir: &Hir) -> Run {
     cx.dialect = Some(case.backend);
     cx.mat = hir.config.materialized;
     cx.phys = Some(&phys);
+    if case.with_text {
+        cx.text = Some(case.sql);
+    }
     let out = run_passes(
         PassInput {
             hir: Some(hir),

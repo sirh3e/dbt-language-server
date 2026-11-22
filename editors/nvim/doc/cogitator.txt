@@ -87,6 +87,12 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtDag        project DAG, dbt-docs style         <leader>dD
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
+  :DbtPlan       IR levels, findings, incrementality
+  :DbtSplit      split a table model at its incrementality frontier:
+                 the plan as an S-expression and the new model's file;
+                 `a` applies the split, `q` closes
+  :DbtIncrementality
+                 table models that could be incremental (quickfix)
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtReloadConfig  re-read cogitator.yml now

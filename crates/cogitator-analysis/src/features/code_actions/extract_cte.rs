@@ -27,13 +27,56 @@ pub fn extract_cte_action(
     range: Range,
 ) -> Option<CodeAction> {
     let parsed = &doc.parsed;
-    let tokens = &parsed.tokens;
     let at = parsed.find_token_at_cursor(range.start.line, range.start.character)?;
-    let name = plain_name(parsed.literal(&tokens[at]))?;
-    let def = parsed.def_tokens.get(name)?;
+    let name = plain_name(parsed.literal(&parsed.tokens[at]))?;
     if ctx.model_detail_map.contains_key(name) {
         return None;
     }
+    let extraction = extraction(doc, name, name)?;
+    let path = cogitator_lsp::uri_to_fs_path(uri)?;
+    let new_uri = file_uri(&Path::new(&path).parent()?.join(format!("{name}.sql")));
+    Some(CodeAction {
+        title: format!("Extract CTE '{name}' to a model"),
+        kind: Some("refactor.extract"),
+        diagnostics: None,
+        edit: Some(WorkspaceEdit {
+            document_changes: vec![
+                DocumentChange::Create(CreateFile::new(new_uri.clone())),
+                DocumentChange::Edit(TextDocumentEdit::new(
+                    new_uri,
+                    vec![TextEdit {
+                        range: Range::zero_width(Position {
+                            line: 0,
+                            character: 0,
+                        }),
+                        new_text: format!("{}\n", extraction.body),
+                    }],
+                )),
+                DocumentChange::Edit(TextDocumentEdit::new(uri.to_string(), extraction.edits)),
+            ],
+        }),
+        command: None,
+        is_preferred: None,
+    })
+}
+
+/// A CTE taken out of its model: its body's SQL, and the edits of the
+/// model that remove it and read `model` in its place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Extraction {
+    pub body: String,
+    pub edits: Vec<TextEdit>,
+}
+
+/// The CTE `cte` of `doc` as the model `model`: refused where the body
+/// would not stand alone (it reads another CTE, it has a column list).
+/// Each FROM/JOIN of the CTE becomes `{{ ref('<model>') }}`, aliased by
+/// the CTE's name where it had no alias.
+pub fn extraction(doc: &Document, cte: &str, model: &str) -> Option<Extraction> {
+    let parsed = &doc.parsed;
+    let tokens = &parsed.tokens;
+    let name = cte;
+    let def = parsed.def_tokens.get(name)?;
     let def_i = tokens.iter().position(|t| t.start == def.start)?;
     // `name as (`: anything else (a column list) is left alone
     let as_i = def_i + 1;
@@ -54,7 +97,9 @@ pub fn extract_cte_action(
         return None;
     }
     let text = &parsed.text;
-    let body = text[tokens[open_i].end as usize..tokens[close_i].start as usize].trim();
+    let body = text[tokens[open_i].end as usize..tokens[close_i].start as usize]
+        .trim()
+        .to_string();
 
     let mut edits = vec![TextEdit {
         range: cte_removal(tokens, def_i, close_i)?,
@@ -76,7 +121,7 @@ pub fn extract_cte_action(
             tokens.get(i + 1).map(|n| n.kind),
             Some(TokenKind::Word(Keyword::AS)) | Some(TokenKind::Word(Keyword::NoKeyword))
         );
-        let call = format!("{{{{ ref('{name}') }}}}");
+        let call = format!("{{{{ ref('{model}') }}}}");
         edits.push(TextEdit {
             range: span(t, t),
             new_text: if aliased {
@@ -86,32 +131,7 @@ pub fn extract_cte_action(
             },
         });
     }
-
-    let path = cogitator_lsp::uri_to_fs_path(uri)?;
-    let new_uri = file_uri(&Path::new(&path).parent()?.join(format!("{name}.sql")));
-    Some(CodeAction {
-        title: format!("Extract CTE '{name}' to a model"),
-        kind: Some("refactor.extract"),
-        diagnostics: None,
-        edit: Some(WorkspaceEdit {
-            document_changes: vec![
-                DocumentChange::Create(CreateFile::new(new_uri.clone())),
-                DocumentChange::Edit(TextDocumentEdit::new(
-                    new_uri,
-                    vec![TextEdit {
-                        range: Range::zero_width(Position {
-                            line: 0,
-                            character: 0,
-                        }),
-                        new_text: format!("{body}\n"),
-                    }],
-                )),
-                DocumentChange::Edit(TextDocumentEdit::new(uri.to_string(), edits)),
-            ],
-        }),
-        command: None,
-        is_preferred: None,
-    })
+    Some(Extraction { body, edits })
 }
 
 /// What leaves the file with the CTE `tokens[def_i..=close_i]`: with

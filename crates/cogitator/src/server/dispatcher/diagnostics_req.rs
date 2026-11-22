@@ -144,6 +144,15 @@ impl Dispatcher {
                     extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
                     extra.extend(features::extract_cte_action(&snap.ctx, doc, &uri, range));
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
+                    extra.extend(
+                        crate::server::handlers::plan::split_plan_of(
+                            &snap,
+                            &derived,
+                            &uri,
+                            artifact_cap,
+                        )
+                        .and_then(|plan| features::split_action(&plan, &uri)),
+                    );
                 }
             }
             extra.retain(|action| action.allowed_by(only.as_deref()));

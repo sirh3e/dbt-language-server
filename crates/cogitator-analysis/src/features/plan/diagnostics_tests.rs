@@ -47,6 +47,7 @@ fn plan(findings: Vec<FindingView>, origin: Option<OriginView>) -> QueryPlan {
         findings,
         trace: TraceView::unavailable(Level::Hir),
         needs: NeedsView::of(Needs::NONE),
+        incrementality: None,
     }
 }
 

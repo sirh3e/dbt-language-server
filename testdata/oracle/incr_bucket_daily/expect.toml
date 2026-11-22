@@ -1,0 +1,22 @@
+rule = "incr.could_be_incremental"
+fix = "materialized='incremental', delete+insert on day, the newest day recomputed"
+safety = "P"
+description = "COUNT and SUM are linear per group; grouped by a bucket of a time that only grows, new rows touch only the newest buckets. Recomputing every bucket from the newest one already built and replacing them by day equals a full rebuild, rows arriving late into that bucket included."
+
+[incremental]
+strategy = "delete+insert"
+unique_key = ["day"]
+
+[[fixtures]]
+name = "late_rows_in_the_newest_day"
+seed = "seed.sql"
+delta = "delta.sql"
+role = "preserve"
+covers = ["nulls", "duplicates"]
+
+[[fixtures]]
+name = "empty_model"
+seed = "seed_empty.sql"
+delta = "delta_from_empty.sql"
+role = "preserve"
+covers = ["empty"]

@@ -175,6 +175,8 @@ pub const COMMANDS: &[&str] = &[
     "dbt.preview",
     "dbt.queryPlan",
     "dbt.deps",
+    "dbt.incrementality",
+    "dbt.splitPlan",
     "dbt.syntaxTree",
 ];
 
