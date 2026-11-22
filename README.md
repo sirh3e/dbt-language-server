@@ -105,7 +105,13 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   and `:DbtIncrementality` (Neovim), `M-x cogitator-split-plan` and
   `cogitator-incrementality` (Emacs), the `dbt: Split model…` and `dbt:
   Table models that could be incremental` palette commands (VS Code); Zed
-  gets the code action
+  gets the code action. An incremental model gets a "Compare incremental /
+  full refresh" lens: `dbt.incrementalDiff` renders it with
+  `is_incremental()` false and true and opens the unified diff
+  (`:DbtIncrementalDiff`, `M-x cogitator-incremental-diff`, `dbt: Compare
+  incremental / full refresh`). With catalog.json statistics, each CTE shows
+  the row count they prove as an inlay hint (`1,200 rows`, `≤ 1,200 rows`;
+  `perf.row_hints`)
 - **Refactors**: "Expand `c.*`" to the relation's known columns,
   "Extract CTE to a model" (the CTE becomes its own model and is
   `ref()`'d), and "Extract schema YAML" as an edit for editors that run
@@ -341,6 +347,7 @@ startup:                 # honored only via --config at launch
 perf:
   profile: off             # off | recommended | strict: which plan rules
   catalog_stats: true      # report as diagnostics (dbt.queryPlan always works)
+  row_hints: true          # CTE row counts proven by catalog stats, as inlay hints
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off

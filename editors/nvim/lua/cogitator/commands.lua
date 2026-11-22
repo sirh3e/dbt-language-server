@@ -130,6 +130,49 @@ function M.expand_jinja()
   end)
 end
 
+--- The lines of a dbt.incrementalDiff answer (exposed for the test
+--- suite): the unified diff, or a note and the SQL when the two renders
+--- of `is_incremental()` are the same.
+---@param result table
+---@return string[]
+function M.incremental_diff_lines(result)
+  if result.identical then
+    local lines = {
+      ("-- %s: is_incremental() changes nothing in the rendered SQL"):format(tostring(result.model)),
+      "",
+    }
+    vim.list_extend(lines, vim.split((result.fullRefresh or ""):gsub("\n$", ""), "\n"))
+    return lines
+  end
+  return vim.split((result.diff or ""):gsub("\n$", ""), "\n")
+end
+
+--- :DbtIncrementalDiff — this model rendered with is_incremental() false
+--- and true (dbt.incrementalDiff), as a unified diff in a split.
+function M.incremental_diff()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.incrementalDiff",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.incrementalDiff failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    vim.cmd.vsplit()
+    local scratch = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(scratch, 0, -1, false, M.incremental_diff_lines(result))
+    vim.bo[scratch].filetype = result.identical and "sql" or "diff"
+    vim.bo[scratch].modifiable = false
+    vim.api.nvim_win_set_buf(0, scratch)
+    vim.keymap.set("n", "q", vim.cmd.close, { buffer = scratch, nowait = true })
+  end)
+end
+
 --- The dbt.queryPlan payload as display lines (exposed for the test suite).
 ---@param plan table the server's result
 ---@param line_of fun(span: {start: integer}): integer byte span to 1-based line

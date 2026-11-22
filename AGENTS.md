@@ -119,7 +119,9 @@ editor integrations live under `editors/`.
   dbt.incrementality (every table model's DBSP incrementality verdict,
   slowest first; specs/ir-pipeline/10), dbt.splitPlan (a table model split
   at its incrementality frontier, as an S-expression and the new part's
-  file; §6). Every command takes one argument object (`{uri, position?, …}`).
+  file; §6), dbt.incrementalDiff (the model rendered with `is_incremental()`
+  false and true, and the unified diff; `show: true`, the lens on
+  incremental models, opens it as a document). Every command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`), plus
   edit-bearing quickfixes: from a diagnostic's typed `data`
@@ -153,7 +155,7 @@ editor integrations live under `editors/`.
   `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`, `--config [path]`.
 - **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
   `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
-  `refresh.debounce_ms`, `perf.{profile,catalog_stats}` and `perf_rules`
+  `refresh.debounce_ms`, `perf.{profile,catalog_stats,row_hints}` and `perf_rules`
   (rule id → severity or off; profile default `off`, specs/ir-pipeline/08)
   hot-reload (2 s stamp poll + didSave fast-path +
   `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch

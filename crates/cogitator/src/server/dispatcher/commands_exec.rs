@@ -60,6 +60,17 @@ impl Dispatcher {
                 self.split_plan(req.id, uri);
                 return;
             }
+            "dbt.incrementalDiff" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.incrementalDiff", move || {
+                    crate::server::handlers::incremental::incremental_diff(
+                        &snap, &derived, &uri, show,
+                    )
+                });
+                return;
+            }
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;

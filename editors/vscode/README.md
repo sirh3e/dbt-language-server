@@ -72,7 +72,9 @@ included.
 `dbt: Run/Test/Compile/Preview current model`, `dbt: Parse project`,
 `dbt: Show column lineage`, `dbt: Split model at its incrementality
 frontier` (the plan as an S-expression beside the model, with an
-"Apply split" button), `dbt: Table models that could be incremental`
+"Apply split" button), `dbt: Compare incremental / full refresh` (the
+model rendered with `is_incremental()` false and true, as a unified diff
+beside it), `dbt: Table models that could be incremental`
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the
 model's tree-sitter-dbt tree beside it), `dbt: Highlight with
 tree-sitter-dbt` (colours the editor as the server highlights it — the

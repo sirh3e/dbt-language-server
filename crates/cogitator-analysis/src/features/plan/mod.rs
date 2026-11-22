@@ -33,6 +33,8 @@ mod incrementality_report;
 mod passes;
 mod phys;
 mod report;
+mod row_hints;
+mod row_inlay;
 pub mod schemas;
 mod split;
 pub mod suppress;
@@ -50,6 +52,8 @@ pub use report::{
     EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, Placement,
     PlanLevels, PlanStatus, QueryPlan,
 };
+pub use row_hints::{RowHintView, Rows};
+pub use row_inlay::row_inlay_hints;
 pub use split::{split_plan, SplitPart, SplitPlan};
 pub use trace::{NeedsView, TraceRow, TraceView};
 

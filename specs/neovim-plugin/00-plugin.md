@@ -106,7 +106,8 @@ writer wins).
   `dbt.sourceFreshness`, `dbt.cancel`, `dbt.runSelection`,
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
-  `dbt.splitPlan`, `dbt.syntaxTree`, `dbt.highlight`, `dbt.astGrep`, `dbt.nodeInfo`
+  `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
+  `dbt.astGrep`, `dbt.nodeInfo`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -143,6 +144,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.deps` | `{token}` (immediately) | async showMessage/$\/progress; project-wide `dbt deps`, success refreshes the server context (the packages.yml quickfix runs it) |
 | `dbt.incrementality` | `{models, incremental}` | none; every table model's incrementality verdict, slowest last run first (specs/ir-pipeline/10) |
 | `dbt.splitPlan` | `{model, sexp, part: {name, cte, text}}` or `null` | none; the split at the incrementality frontier as an S-expression (specs/ir-pipeline/10 §6) |
+| `dbt.incrementalDiff` | `{model, fullRefresh, incremental, diff, identical}` or InvalidParams Guidance | none, or with `show: true` (the "Compare incremental / full refresh" lens) the diff written to `target/.cogitator/incremental/<model>.diff` and opened via showDocument |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -480,6 +482,7 @@ vim.lsp.enable("cogitator")
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
 | `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
+| `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
 | `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
 | `:DbtColumnLineage [column]` | `dbt.projectGraph` + `dbt.columnLineage` | the column-lineage graph of this model (or one column) in :DbtDag (§5.3b) |

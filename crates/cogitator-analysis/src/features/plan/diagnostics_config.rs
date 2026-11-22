@@ -100,6 +100,8 @@ pub struct PerfSettings {
     pub profile: PerfProfile,
     pub catalog_stats: bool,
     pub rules: BTreeMap<String, RuleOverride>,
+    /// `perf.row_hints`: catalog-proven CTE row counts as inlay hints.
+    pub row_hints: bool,
 }
 
 impl Default for PerfSettings {
@@ -108,6 +110,7 @@ impl Default for PerfSettings {
             profile: PerfProfile::Off,
             catalog_stats: true,
             rules: BTreeMap::new(),
+            row_hints: true,
         }
     }
 }
@@ -162,6 +165,7 @@ mod tests {
             profile,
             catalog_stats: true,
             rules: rules.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+            row_hints: true,
         }
     }
 

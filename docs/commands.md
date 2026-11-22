@@ -214,7 +214,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.queryPlan`
 
 - **Argument**: `{uri}` — the document the command is about
-- **Result**: `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}}`
+- **Result**: `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}, rowHints?: [{cte, span, rows: {exact\|atMost}}]}`
 - **Side effects**: none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
@@ -230,6 +230,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Argument**: `{uri}` — the document the command is about
 - **Result**: `{model, sexp, part: {name, cte, text}}` or `null`
 - **Side effects**: none; the split at the incrementality frontier as an S-expression (specs/ir-pipeline/10 §6)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.incrementalDiff`
+
+- **Argument**: `{uri, show?}` — the model; `show: true` also opens the diff as a document (what the code lens sends)
+- **Result**: `{model, fullRefresh, incremental, diff, identical}` — the model rendered with the dbt.expandJinja stubs and `is_incremental()` false (a full refresh) and true, `{{ this }}` as the model's relation, and the unified diff full refresh → incremental (empty when identical); a render error is InvalidParams Guidance
+- **Side effects**: none; with `show: true` writes `target/.cogitator/incremental/<model>.diff` and opens it via showDocument. Incremental models (the file's `config(materialized=…)`, else the manifest's) carry the code lens "Compare incremental / full refresh" — :DbtIncrementalDiff
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
 ### `dbt.expandJinja`

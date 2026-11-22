@@ -671,6 +671,7 @@ dependencies = [
  "saphyr",
  "serde",
  "serde_json",
+ "similar",
  "sqlformat",
  "sqlparser",
  "tracing",

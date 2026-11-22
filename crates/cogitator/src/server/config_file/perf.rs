@@ -20,6 +20,9 @@ impl FileConfig {
         if let Some(on) = self.perf.catalog_stats {
             settings.catalog_stats = on;
         }
+        if let Some(on) = self.perf.row_hints {
+            settings.row_hints = on;
+        }
         let known: Vec<&str> = advice_rule_ids().collect();
         for (id, value) in &self.perf_rules {
             if !known.contains(&id.as_str()) {

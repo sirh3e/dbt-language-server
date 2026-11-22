@@ -75,6 +75,10 @@
         "title": "dbt: Split model at its incrementality frontier"
       },
       {
+        "command": "cogitator.incrementalDiff",
+        "title": "dbt: Compare incremental / full refresh"
+      },
+      {
         "command": "cogitator.incrementality",
         "title": "dbt: Table models that could be incremental"
       },

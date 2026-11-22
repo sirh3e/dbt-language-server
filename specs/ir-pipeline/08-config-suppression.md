@@ -3,7 +3,7 @@
 `cogitator.yml`:
 
 ```yaml
-perf: { profile: off, catalog_stats: true }   # off | recommended | strict
+perf: { profile: off, catalog_stats: true, row_hints: true }   # off | recommended | strict
 perf_rules: { join.cartesian: warning, filter.non_sargable: off }
 ```
 
@@ -19,6 +19,13 @@ names that rule itself; the existing style lint keeps working beside it.
 `catalog_stats: false` makes catalog row counts unusable as a fact
 (`Need::Stats` stays unmet); clustering keys are physical layout and stay.
 No rule reorders by statistics yet.
+
+`row_hints` (default true) shows each CTE's row count as an inlay hint when
+catalog statistics prove it (06): an exact count through row-preserving
+operators, an upper bound through filters, groups, DISTINCT, LIMIT and
+semi/anti joins, and nothing through other joins, unnest, opaque holes or
+without statistics. It needs `catalog_stats` and a catalog with row counts;
+the `profile` does not gate it, as hints are no rule findings.
 
 ## Profiles
 

@@ -182,6 +182,20 @@ names what already exists in the codebase.
       - [x] "Add missing columns" offered from the model's YAML entry too
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
+- [x] **Inline plan hints** (specs/ir-pipeline/06): each CTE's row count as
+      an inlay hint when catalog.json statistics prove it — exact through
+      projections, sorts and windows, an upper bound (`≤`) through filters,
+      groups, DISTINCT, LIMIT and semi/anti joins, nothing through other
+      joins or without statistics (`features/plan/row_hints.rs`,
+      `row_inlay.rs`; `perf.row_hints`, off with `perf.catalog_stats`). The
+      plan rules' findings already sit at their source as diagnostics
+      (`features/plan/diagnostics.rs`, `perf_rules`).
+- [x] **Incremental-model helper**: `dbt.incrementalDiff {uri, show?}` renders
+      the model with `is_incremental()` false and true (the dbt.expandJinja
+      stubs, `{{ this }}` as the model's relation) and diffs them; incremental
+      models carry the "Compare incremental / full refresh" lens
+      (`features/incremental_diff.rs`; :DbtIncrementalDiff,
+      `cogitator-incremental-diff`, the VS Code palette).
 - [ ] **AST-driven features for duckdb projects** (spec 07 §4,
       `json_serialize_sql` AST): column-name completion, AST-based graph
       edges, better CTE information.

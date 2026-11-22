@@ -17,6 +17,7 @@ mod governance;
 mod graph_nav;
 mod hover;
 mod impact;
+mod incremental_diff;
 mod inlay_hints;
 mod jinja_preview;
 mod lenses;
@@ -70,6 +71,10 @@ pub use graph_nav::{
 };
 pub use hover::{hover, hover_with_lineage};
 pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
+pub use incremental_diff::{
+    config_materialized, incremental_diff, incremental_lens, is_incremental_model, IncrementalDiff,
+    INCREMENTAL_LENS_TITLE,
+};
 pub use inlay_hints::{inlay_hints, inlay_hints_with, InlayOptions};
 pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;

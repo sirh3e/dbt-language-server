@@ -200,6 +200,7 @@ fn cached(name: &str, text: &str, plan: QueryPlan) {
         profile: PerfProfile::Recommended,
         catalog_stats: true,
         rules: BTreeMap::new(),
+        row_hints: true,
     };
     let mut map: HashMap<String, ((u64, u64), Arc<QueryPlan>)> = HashMap::new();
     map.insert("file:///m.sql".to_string(), ((1, 1), Arc::new(plan)));

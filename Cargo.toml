@@ -40,6 +40,7 @@ sqlparser = "0.63"
 sqlformat = "0.3"   # textDocument/formatting engine (05 §9)
 minijinja = { version = "3", features = ["unstable_machinery"] }
 petgraph = "0.8"
+similar = "2.7"     # dbt.incrementalDiff unified diffs
 saphyr = "0.3"
 typify = "0.8"      # compile-time import_types! for the dbt schemas (08 §2.2)
 tokio = { version = "1", features = [

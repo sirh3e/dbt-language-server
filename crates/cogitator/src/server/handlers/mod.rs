@@ -6,8 +6,10 @@
 
 pub mod commands;
 pub mod doctor;
+pub mod incremental;
 pub mod lineage;
 pub mod navigation;
 pub mod plan;
 mod plan_compiled;
+pub mod plan_hints;
 pub mod profiles;

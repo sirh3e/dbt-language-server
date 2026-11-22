@@ -114,6 +114,9 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtSplit      split a table model at its incrementality frontier:
                  the plan as an S-expression and the new model's file;
                  `a` applies the split, `q` closes
+  :DbtIncrementalDiff
+                 this model rendered with is_incremental() false and
+                 true, as a unified diff in a split (`q` closes)
   :DbtIncrementality
                  table models that could be incremental (quickfix)
   :DbtColumnLineage [column]  column-lineage graph of this model

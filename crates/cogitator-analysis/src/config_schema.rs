@@ -116,6 +116,11 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Use catalog statistics when ordering findings; statistics never raise a severity.",
                 "bool",
             ),
+            key(
+                "row_hints",
+                "Show the row counts catalog statistics prove for each CTE as inlay hints (default true).",
+                "bool",
+            ),
         ],
     },
     SectionSchema {
