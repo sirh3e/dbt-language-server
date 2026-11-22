@@ -52,6 +52,12 @@ preferred or included in `source.fixAll`.
 | `incr.no_unique_key` | dbt-specific |
 | `filter.constant_false` | D `empty_result_pullup.cpp`; DF `eliminate_filter.rs`, `propagate_empty_relation.rs` |
 
+## Tranche 3 — incrementality
+
+| Rule | Level | Developer sees | Upstream / evidence | Needs | Fix |
+|---|---|---|---|---|---|
+| `incr.could_be_incremental` | MIR | This table could be built incrementally (I declared, H inferred) | DBSP (SIGMOD Record 53(1) 2024; PVLDB 16(7) 2023); see 10 | Mat | config + `is_incremental()` filter (N) |
+
 ## Deliberately no advice
 
 Engines do these better: join order, build/probe side, common aggregates,

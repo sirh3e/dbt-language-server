@@ -108,7 +108,8 @@ editor integrations live under `editors/`.
   dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
   findings and rule trace for one model; `features/plan/`), dbt.deps
   (project-wide `dbt deps`, refreshes the context; the packages.yml
-  quickfix runs it). Every command takes one argument object (`{uri, position?, …}`).
+  quickfix runs it), dbt.incrementality (every table model's DBSP
+  incrementality verdict, slowest first; specs/ir-pipeline/10). Every command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`), plus
   edit-bearing quickfixes: from a diagnostic's typed `data`
@@ -171,5 +172,5 @@ editor integrations live under `editors/`.
 - `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
 - `specs/rust-port/` — the binding implementation specs (00–09);
   `specs/neovim-plugin/` — the editor-integration spec;
-  `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules and oracles (00–09)
+  `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules, oracles and incrementality (00–10)
 - `testdata/` — shared fixtures (jaffle_shop_duckdb)

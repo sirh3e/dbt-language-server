@@ -87,6 +87,12 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   contracted ones the model never produces; for a ref into another
   group's private model, "Make 'x' protected" or "Move into group";
   "Run dbt deps" in a packages.yml naming uninstalled packages
+- **Incrementality** (DBSP, specs/ir-pipeline/10): a `table` model that
+  could be built incrementally gets a hint naming the dbt strategy
+  (`append`, `delete+insert` on a time bucket or group keys, `merge` for a
+  DISTINCT) and a fix rewriting it into an incremental model;
+  `dbt.queryPlan` says why the others must stay tables, and
+  `dbt.incrementality` lists every table model, slowest first
 - **Refactors**: "Expand `c.*`" to the relation's known columns,
   "Extract CTE to a model" (the CTE becomes its own model and is
   `ref()`'d), and "Extract schema YAML" as an edit for editors that run
