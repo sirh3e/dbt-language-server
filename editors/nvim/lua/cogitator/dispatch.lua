@@ -186,6 +186,15 @@ M.SUBCOMMANDS = {
     desc = "the tree-sitter-dbt grammar: install, status, start",
   },
   manage = { run = module_call("cogitator.manager", "manage"), desc = "manage a known project" },
+  find = {
+    run = function(args)
+      require("cogitator.pick").find(args)
+    end,
+    complete = function()
+      return require("cogitator.pick.sources").ORDER
+    end,
+    desc = "fuzzy-find models, definitions, columns, lineage… [source]",
+  },
   dag = { run = module_call("cogitator.dag", "open"), desc = "the project DAG" },
   graph = { run = module_call("cogitator.graph", "open"), desc = "the three-pane model graph" },
   explorer = { run = module_call("cogitator.explorer", "open"), desc = "the project explorer" },
@@ -209,7 +218,7 @@ function M.run(line)
   if name == "" then
     local names = vim.tbl_keys(M.SUBCOMMANDS)
     table.sort(names)
-    vim.ui.select(names, {
+    require("cogitator.pick").select(names, {
       prompt = "dbt",
       format_item = function(n)
         return ("%-10s %s"):format(n, M.SUBCOMMANDS[n].desc)

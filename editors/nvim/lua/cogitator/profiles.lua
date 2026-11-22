@@ -108,7 +108,7 @@ function M.pick_target()
       )
       return
     end
-    vim.ui.select(choices, {
+    require("cogitator.pick").select(choices, {
       prompt = "dbt target",
       format_item = function(c)
         return c.label
