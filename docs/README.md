@@ -16,5 +16,5 @@ Elsewhere:
 - The top-level [README](../README.md) — the server's features and its
   configuration file, `cogitator.yml`.
 - [`specs/`](../specs) — the binding specifications: the editor contract
-  (`specs/neovim-plugin/00-plugin.md`) and the IR pipeline
-  (`specs/ir-pipeline/`).
+  (`specs/neovim-plugin/00-plugin.md`), the IR pipeline
+  (`specs/ir-pipeline/`) and highlighting (`specs/highlighting/`).
