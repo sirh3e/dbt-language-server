@@ -97,3 +97,21 @@ end, {
   complete = "dir",
   desc = "show the dbt profiles resolution, or switch the profiles directory",
 })
+
+vim.api.nvim_create_user_command("DbtDeps", function()
+  require("cogitator.dispatch").deps()
+end, { desc = "dbt deps for the project (cancellable with :DbtCancel)" })
+
+vim.api.nvim_create_user_command("DbtReloadConfig", function()
+  require("cogitator.dispatch").reload_config()
+end, { desc = "re-read cogitator.yml now" })
+
+vim.api.nvim_create_user_command("Dbt", function(opts)
+  require("cogitator.dispatch").run(opts.args)
+end, {
+  nargs = "*",
+  complete = function(lead, cmdline)
+    return require("cogitator.dispatch").complete(lead, cmdline)
+  end,
+  desc = "every :Dbt* command as :Dbt <subcommand> [args]",
+})

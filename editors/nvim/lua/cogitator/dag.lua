@@ -327,7 +327,7 @@ end
 --- Fetch dbt.projectGraph and open the DAG in a new tab; with `opts.columns`
 --- it opens straight on that model's (or column's) lineage graph, `true`
 --- meaning the model of the current buffer (and `opts.column`, if any).
----@param opts {columns?: {model: string, column?: string}|true, column?: string}?
+---@param opts {columns?: {model: string, column?: string}|true, column?: string, select?: string}?
 function M.open(opts)
   opts = opts or {}
   if M._state then
@@ -363,7 +363,7 @@ function M.open(opts)
       client = client,
     }
     local modes = require("cogitator.dag_modes")
-    M.show(data, M.node_of_buffer(data, src_buf))
+    M.show(data, opts.select or M.node_of_buffer(data, src_buf))
     require("cogitator.dag_keys").attach(buf, {
       state = function()
         return M._state

@@ -129,6 +129,80 @@ local function step_center(explorer, delta)
   explorer._select_current()
 end
 
+--- Close the explorer and open a file in a split, a vsplit or a tab.
+---@param explorer table
+---@param uri string|vim.NIL|nil
+---@param how "split"|"vsplit"|"tabedit"
+local function open_in(explorer, uri, how)
+  if not uri or uri == vim.NIL then
+    vim.notify("no file on disk for this entry", vim.log.levels.WARN)
+    return
+  end
+  explorer.close()
+  vim.cmd[how](vim.fn.fnameescape(vim.uri_to_fname(uri)))
+end
+
+--- The explorer's actions on an entry (the center selection or a side
+--- pane's line): open it elsewhere, compile it, show it in the DAG or
+--- its column lineage; and parse the project.
+---@param explorer table
+---@param entry_of fun(): cogitator.GraphEntry?
+---@param map fun(lhs: string, fn: fun())
+local function entry_actions(explorer, entry_of, map)
+  local function with(fn)
+    return function()
+      local e = entry_of()
+      if e then
+        fn(e)
+      end
+    end
+  end
+  for lhs, how in pairs({ s = "split", v = "vsplit", t = "tabedit" }) do
+    map(
+      lhs,
+      with(function(e)
+        open_in(explorer, e.uri, how)
+      end)
+    )
+  end
+  map(
+    "c",
+    with(function(e)
+      if e.kind ~= "model" or not e.uri or e.uri == vim.NIL then
+        vim.notify("only a model with a file compiles", vim.log.levels.WARN)
+        return
+      end
+      local s = explorer._state
+      local client, src_buf = s.client, s.src_buf
+      -- the compiled SQL arrives through showDocument: give it a window
+      explorer.close()
+      actions.exec_with(client, src_buf, "dbt.compile", { uri = e.uri })
+    end)
+  )
+  map("P", function()
+    local s = explorer._state
+    actions.exec_with(s.client, s.src_buf, "dbt.parse", { uri = "" })
+  end)
+  map(
+    "g",
+    with(function(e)
+      explorer.close()
+      require("cogitator.dag").open({ select = e.kind .. ":" .. e.name })
+    end)
+  )
+  map(
+    "L",
+    with(function(e)
+      if e.kind ~= "model" then
+        vim.notify("column lineage follows models; this is a " .. e.kind, vim.log.levels.INFO)
+        return
+      end
+      explorer.close()
+      require("cogitator.dag").open({ columns = { model = e.name } })
+    end)
+  )
+end
+
 local function yank(name)
   vim.fn.setreg(vim.v.register, name)
   vim.notify("yanked " .. name, vim.log.levels.INFO)
@@ -224,6 +298,7 @@ function M.attach(explorer, pane, buf)
     end
     map("<CR>", open_center)
     map("o", open_center)
+    entry_actions(explorer, explorer._selected_node, map)
   else
     map("<Esc>", explorer.close)
     map("<CR>", function()
@@ -241,6 +316,9 @@ function M.attach(explorer, pane, buf)
         open_uri(explorer, e.uri)
       end
     end)
+    entry_actions(explorer, function()
+      return side_entry(explorer, pane)
+    end, map)
   end
 end
 

@@ -103,4 +103,78 @@ return function(ctx)
   end)
   dag.close()
   vim.api.nvim_set_current_buf(bufnr)
+
+  -- the explorer's actions: g shows the selection in the DAG, L its
+  -- column lineage, v opens it in a vsplit
+  local explorer = require("cogitator.explorer")
+  local function open_explorer(label)
+    vim.api.nvim_set_current_buf(bufnr)
+    explorer.open()
+    local ok = H.wait(label, 10000, function()
+      return explorer._state ~= nil and #explorer._state.nodes > 0 and explorer._selected_node() ~= nil
+    end)
+    if ok then
+      vim.api.nvim_set_current_win(explorer._state.wins.center)
+    end
+    return ok
+  end
+  if open_explorer("graphs: explorer opens for g") then
+    local picked = explorer._selected_node()
+    H.feed("g")
+    H.wait("graphs: explorer g opens the DAG on the selection", 15000, function()
+      return explorer._state == nil and dag._state ~= nil and dag._state.selected == "model:" .. picked.name
+    end, function()
+      return dag._state and dag._state.selected
+    end)
+    dag.close()
+  end
+  if open_explorer("graphs: explorer opens for L") then
+    -- customers has column lineage (the first model in the list may not)
+    explorer._apply_filter("customers")
+    for i, n in ipairs(explorer._state.filtered) do
+      if n.name == "customers" then
+        vim.api.nvim_win_set_cursor(explorer._state.wins.center, { i, 0 })
+        explorer._select_current()
+      end
+    end
+    local picked = explorer._selected_node()
+    H.feed("L")
+    H.wait("graphs: explorer L opens the selection's column graph", 20000, function()
+      return dag._state ~= nil and dag._state.mode == "columns" and dag._state.start.model == picked.name
+    end)
+    dag.close()
+  end
+  if open_explorer("graphs: explorer opens for v") then
+    local picked = explorer._selected_node()
+    local wins = #vim.api.nvim_tabpage_list_wins(0)
+    H.feed("v")
+    H.check(
+      explorer._state == nil
+        and vim.uri_from_bufnr(0) == picked.uri
+        and #vim.api.nvim_tabpage_list_wins(0) == wins - 3,
+      "graphs: explorer v closes the explorer and opens the model in a vsplit",
+      vim.api.nvim_buf_get_name(0)
+    )
+    vim.cmd.only()
+  end
+  vim.api.nvim_set_current_buf(bufnr)
+
+  -- :Dbt routes to the same commands
+  vim.cmd("Dbt dag")
+  H.wait("graphs: :Dbt dag opens the DAG", 15000, function()
+    return dag._state ~= nil and dag._state.selected ~= nil
+  end)
+  dag.close()
+  vim.api.nvim_set_current_buf(bufnr)
+  local reloaded = false
+  local notify = vim.notify
+  vim.notify = function(msg, ...)
+    reloaded = reloaded or tostring(msg):find("reload requested", 1, true) ~= nil
+    return notify(msg, ...)
+  end
+  vim.cmd("Dbt reload")
+  H.wait("graphs: :Dbt reload asks the server to re-read cogitator.yml", 10000, function()
+    return reloaded
+  end)
+  vim.notify = notify
 end
