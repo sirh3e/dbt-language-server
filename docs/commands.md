@@ -134,7 +134,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 - **Argument**: `{uri, selector, kind?}` — any dbt selector; `kind` is `run` (default), `test`, `build` or `compile`
 - **Result**: `{token}` or InvalidParams
-- **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`)
+- **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
 ### `dbt.cancel`
@@ -163,7 +163,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.modelInfo`
 
 - **Argument**: `{uri?, model?}` — `model` wins
-- **Result**: `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri}` or `null`
+- **Result**: `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri, coverage}` or `null` — `coverage` is `{columns, documented, tested, described}` from the YAML entry
 - **Side effects**: none
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
@@ -312,7 +312,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.status`
 
 - **Argument**: `{uri}` — the document the command is about
-- **Result**: server/project/profiles/refresh/caches/config snapshot
+- **Result**: server/project/profiles/refresh/caches/config snapshot; `project.coverage` is `{models, modelsDescribed, columns, documented, tested}` over the project's own models
 - **Side effects**: none
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 

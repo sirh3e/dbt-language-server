@@ -66,6 +66,8 @@ pub struct ProjectStatus {
     pub graph_edges: usize,
     /// Secondary project roots with a live context (multi-root).
     pub extra_roots: Vec<String>,
+    /// Column documentation/test coverage over the project's own models.
+    pub coverage: cogitator_analysis::features::quality::ProjectCoverage,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,6 +142,7 @@ pub fn status_report(
             graph_nodes: ctx.graph.node_count(),
             graph_edges: ctx.graph.edge_count(),
             extra_roots,
+            coverage: cogitator_analysis::features::quality::project_coverage(ctx),
         },
         profiles: ProfilesStatus {
             active_profile,
