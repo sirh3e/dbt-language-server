@@ -29,6 +29,8 @@ pub struct ModelInfo {
     pub versions: Option<ModelVersions>,
     pub tests: Vec<ModelTest>,
     pub compiled_uri: Option<String>,
+    /// Column documentation/test coverage from the YAML entry.
+    pub coverage: super::quality::ModelCoverage,
 }
 
 #[derive(Debug, Serialize)]
@@ -86,6 +88,10 @@ pub fn model_info(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Optio
         versions,
         tests,
         compiled_uri,
+        coverage: super::quality::model_coverage(
+            ctx.model_detail_map.get(&base).unwrap_or(details),
+            None,
+        ),
         model: name,
     })
 }

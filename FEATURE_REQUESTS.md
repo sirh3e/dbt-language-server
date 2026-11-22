@@ -87,6 +87,27 @@ names what already exists in the codebase.
       target/compiled/<project>/<model>.sql in the editor. Macro files get
       per-macro "N call sites" lenses. Server→client requests use an
       outgoing-id counter; client responses are ignored by a response guard.
+- [x] **Quality lenses** (`features/quality/`): a coverage lens on a
+      model's SQL file and its YAML entry ("3/7 columns documented · 2/7
+      tested", "· no description" for an undescribed model; the SQL side
+      counts produced-but-undeclared columns from lineage), a lens on each
+      YAML column lacking a description or a test, and the figures in
+      dbt.modelInfo (`coverage`) and dbt.status (`project.coverage`).
+      "Run this test" lenses on every generic test entry of a properties
+      YAML (models, seeds, snapshots, versions, sources), on unit tests and
+      on singular test files run exactly that test through dbt.runSelection
+      — the selector is dbt's full generic-test name
+      (`synthesize_generic_test_names`: `<test>_<target>_<args>`,
+      `source_` and package prefixes, `name:` overrides), which a bare
+      `--select` matches as the FQN's last element. Caveat: a test on a
+      versioned model's base entry is named after the base model.
+- [x] **Unit-test scaffold** code action ("Scaffold a unit test for 'm'",
+      on the model's SQL and on its YAML entry): a dbt ≥ 1.8 `unit_tests:`
+      entry with one `given:` input per ref()/source(), each with a row of
+      the columns the model reads from it (lineage, else the input's
+      documented columns), and an `expect:` row of the output columns,
+      every value `null`; appended to an existing `unit_tests:` list or
+      started at the end of the file.
 - [x] **rootUri / workspaceFolders** honored at initialize (modern clients
       that omit the deprecated rootPath find the project again).
 - [x] **Actionable error feedback**: failures report through
