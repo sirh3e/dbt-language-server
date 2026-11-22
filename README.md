@@ -4,6 +4,11 @@
 projects: hover, completion, navigation, lineage, refactoring and dbt
 execution for your models, sources, macros and schema YAML.
 
+Guides live in [`docs/`](docs/README.md): [Neovim](docs/neovim.md),
+[incrementality](docs/incrementality.md), the
+[command reference](docs/commands.md) and, for contributors,
+[editor parity](docs/editor-parity.md).
+
 ## Origin
 
 This project is a **complete Rust rewrite** of
@@ -442,16 +447,16 @@ First-party plugin at [`editors/nvim`](editors/nvim)
 ([install guide](editors/nvim/README.md), spec:
 `specs/neovim-plugin/00-plugin.md`): `:DbtRun/Test/Compile/Schema/
 Lineage/Graph/Profiles`, the yazi-style model-graph browser, code-lens
-wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim:
+wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim
+it is one line (the repository's [`lazy.lua`](lazy.lua) does the rest):
 
 ```lua
-{
-  dir = "/path/to/dbt-language-server/editors/nvim",
-  config = function()
-    require("cogitator").setup({})
-  end,
-}
+{ "sirh3e/dbt-language-server", opts = {} }
 ```
+
+A fuller spec — lazy-loading, and an opt-in `build` that installs the
+server from the latest release — is
+[editors/nvim/examples/lazy.lua](editors/nvim/examples/lazy.lua).
 
 Or configure any LSP client manually (binary on `$PATH`):
 

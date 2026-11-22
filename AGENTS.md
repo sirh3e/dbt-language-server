@@ -161,6 +161,9 @@ editor integrations live under `editors/`.
   `server/config_watcher.rs`; `dbt.status` reports path/loaded/error.
 
 ## Project Structure (specs/rust-port/09 §1)
+- `docs/` — user and contributor guides (`neovim.md`, `incrementality.md`,
+  `commands.md` — a section per `dbt.*` command, checked by the parity test —
+  `editor-parity.md`); `specs/` stays the binding contract
 - `crates/cogitator-error` — error type
 - `crates/cogitator-lsp` — protocol types + Content-Length framing + URI helpers
 - `crates/cogitator-dialects` — dialect + bundled SQL function docs
