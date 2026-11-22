@@ -271,6 +271,7 @@ fn a_growing_input_without_a_readable_event_column_stays_a_table() {
             InputFacts {
                 growth: InputGrowth::Append,
                 event_time: None,
+                inferred: false,
             },
         )]),
     };
@@ -287,6 +288,7 @@ fn declarations_win_over_names_and_a_snapshot_changes() {
                 InputFacts {
                     growth: InputGrowth::Append,
                     event_time: Some(Arc::from("paid_at")),
+                    inferred: false,
                 },
             ),
             (
@@ -294,6 +296,7 @@ fn declarations_win_over_names_and_a_snapshot_changes() {
                 InputFacts {
                     growth: InputGrowth::Changing,
                     event_time: None,
+                    inferred: false,
                 },
             ),
         ]),

@@ -71,12 +71,54 @@ pub struct InputFacts {
     /// The column that only grows with the rows (`event_time`, a source's
     /// `loaded_at_field`), when declared.
     pub event_time: Option<Arc<str>>,
+    /// `event_time` was inferred from the relation's columns, not declared.
+    pub inferred: bool,
 }
 
 /// Every input dbt declares something about. Sorted, for determinism.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IncrementalInputs {
     pub by_name: BTreeMap<Arc<str>, InputFacts>,
+}
+
+/// What dbt declares, completed by what each relation's columns suggest:
+/// the HIR's FROM items list a relation's whole known schema, where the
+/// plan keeps only the columns a query reads. A relation dbt says nothing
+/// about with an event-time-like temporal column is taken to grow by it,
+/// marked inferred; one dbt describes keeps what dbt says.
+pub fn inputs_for(
+    hir: &cogitator_ir::hir::Hir,
+    declared: Option<&IncrementalInputs>,
+) -> IncrementalInputs {
+    use cogitator_ir::hir::{FromKind, RelTarget};
+    let mut out = declared.cloned().unwrap_or_default();
+    for from in hir.from.values() {
+        let FromKind::Base { target, .. } = &from.kind else {
+            continue;
+        };
+        let name = match target {
+            RelTarget::Model { name, .. } => hir.syms.text(*name).to_string(),
+            RelTarget::Source { source, table } => {
+                format!("{}.{}", hir.syms.text(*source), hir.syms.text(*table))
+            }
+            _ => continue,
+        };
+        let entry = out.by_name.entry(Arc::from(name.as_str()));
+        let std::collections::btree_map::Entry::Vacant(slot) = entry else {
+            continue;
+        };
+        let event = from.output.iter().find(|c| {
+            scalar::temporal(&c.ty.ty) && scalar::looks_like_event_time(hir.syms.text(c.name))
+        });
+        if let Some(col) = event {
+            slot.insert(InputFacts {
+                growth: InputGrowth::Unknown,
+                event_time: Some(Arc::from(hir.syms.text(col.name))),
+                inferred: true,
+            });
+        }
+    }
+    out
 }
 
 /// The input whose new rows drive the increment, and the column that

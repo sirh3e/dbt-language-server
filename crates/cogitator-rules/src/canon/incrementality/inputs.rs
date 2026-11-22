@@ -47,11 +47,12 @@ impl Walk<'_> {
                 .map(|s| mir.syms.text(s))
         };
         let declared_col = declared.as_ref().and_then(|f| f.event_time.clone());
+        let by_dbt = !declared.as_ref().is_some_and(|f| f.inferred);
         let event = match &declared_col {
             Some(want) => cols
                 .iter()
                 .find(|c| name_of(c).is_some_and(|n| n.eq_ignore_ascii_case(want)))
-                .map(|c| (*c, true)),
+                .map(|c| (*c, by_dbt)),
             None => None,
         }
         .or_else(|| {
@@ -64,6 +65,20 @@ impl Walk<'_> {
         });
         let append_declared = declared.as_ref().map(|f| f.growth) == Some(InputGrowth::Append);
         let Some((col, by_declaration)) = event else {
+            if let Some(column) = declared_col {
+                // grows by a column this query does not read: new rows
+                // still arrive, but no output column tracks them
+                self.drivers.push(DeltaInput {
+                    relation,
+                    column: column.to_string(),
+                    declared: by_dbt || append_declared,
+                });
+                return Node {
+                    growth: Growth::Append,
+                    mono: BTreeMap::new(),
+                    group: None,
+                };
+            }
             if append_declared {
                 // grows, but by no column the analysis can read back
                 return self.block(Blocker::NoMonotoneColumn, prov);

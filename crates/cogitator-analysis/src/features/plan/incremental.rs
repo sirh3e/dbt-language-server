@@ -44,6 +44,7 @@ pub(super) fn incremental_inputs(input: &PlanInput<'_>) -> IncrementalInputs {
             InputFacts {
                 growth,
                 event_time: event_time.map(Arc::from),
+                inferred: false,
             },
         );
     }
@@ -57,6 +58,7 @@ pub(super) fn incremental_inputs(input: &PlanInput<'_>) -> IncrementalInputs {
                 InputFacts {
                     growth: InputGrowth::Unknown,
                     event_time: Some(Arc::from(event_time)),
+                    inferred: false,
                 },
             );
         }

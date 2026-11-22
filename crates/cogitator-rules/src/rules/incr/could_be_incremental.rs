@@ -14,7 +14,9 @@ use cogitator_ir::mir::Mir;
 use cogitator_ir::{Level, RuleId};
 
 use super::missing_guard::anchor;
-use crate::canon::incrementality::{analyse, Analysis, DeltaInput, Note, Strategy, Verdict};
+use crate::canon::incrementality::{
+    analyse, inputs_for, Analysis, DeltaInput, Note, Strategy, Verdict,
+};
 use crate::cx::Cx;
 use crate::findings::{Evidence, Finding, Findings};
 use crate::meta::{FixSafety, Need, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
@@ -45,7 +47,8 @@ impl Detect<Mir> for CouldBeIncremental {
         let Some(hir) = cx.hir else {
             return;
         };
-        let analysis = analyse(ir, cx.inputs);
+        let inputs = inputs_for(hir, cx.inputs);
+        let analysis = analyse(ir, Some(&inputs));
         let Some(message) = describe(&analysis) else {
             return;
         };

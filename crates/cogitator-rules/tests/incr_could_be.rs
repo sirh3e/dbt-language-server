@@ -131,3 +131,22 @@ fn the_rewritten_model_is_an_incremental_model_with_its_guard() {
     no_findings(&r, RULE);
     no_findings(&r, "incr.missing_guard");
 }
+
+#[test]
+fn the_rewrite_recomputes_the_groups_new_rows_touch() {
+    let sql =
+        table("select id, count(*) as n, max(ts) as last_ts from {{ ref('events') }} group by id");
+    assert_eq!(
+        rewritten(&sql),
+        "{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='id') }}\n\
+         select id, count(*) as n, max(ts) as last_ts from {{ ref('events') }}\n\
+         {% if is_incremental() %}\n\
+         where ((select max(last_ts) from {{ this }}) is null or id in \
+         (select id from {{ ref('events') }} where ts > (select max(last_ts) from {{ this }})))\n\
+         {% endif %} group by id"
+    );
+    // without a column holding each group's newest ts there is no rewrite
+    let blind = table("select id, count(*) as n from {{ ref('events') }} group by id");
+    let r = run(with_text(&blind));
+    assert!(only(&r, RULE).fixes.is_empty());
+}

@@ -10,6 +10,9 @@
 //!      appended twice;
 //!    - buckets: `col >= max(bucket)` of `{{ this }}` — the newest bucket
 //!      is recomputed whole and replaced by delete+insert;
+//!    - one group key with a high-water column: `key in (select key from
+//!      <input> where col > max(high_water))` — every group a new row
+//!      touches is recomputed whole and replaced on the key;
 //!    - either way `max(..) is null or …`: a model built empty has no
 //!      newest value, and a comparison with NULL would let no row in, ever.
 //!
@@ -25,7 +28,7 @@
 //! finding stands alone and says what to write. It changes what the
 //! model is, so it is never preferred and never part of fix-all.
 
-use cogitator_ir::hir::{Body, FromKind, Hir, JinjaKind, RelTarget, Select};
+use cogitator_ir::hir::{Body, FromId, FromKind, Hir, JinjaKind, RelTarget, Select};
 use cogitator_ir::origin::SourceOrigin;
 use cogitator_ir::Span;
 
@@ -38,7 +41,18 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
     if !matches!(hir.origin, SourceOrigin::Template { .. }) {
         return None;
     }
-    let (input, args, (op, newest)) = match verdict {
+    let quoted = |keys: &[String]| match keys {
+        [one] => format!("'{one}'"),
+        many => format!(
+            "[{}]",
+            many.iter()
+                .map(|k| format!("'{k}'"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    };
+    // the input, the config arguments, and the newest value in the model
+    let (input, args, newest) = match verdict {
         Verdict::Append { inputs, out_column } => {
             let [input] = inputs.as_slice() else {
                 return None;
@@ -46,42 +60,76 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
             (
                 input,
                 "incremental_strategy='append'".to_string(),
-                (">", out_column.clone()),
+                out_column,
             )
         }
         Verdict::ByBucket {
             input,
             bucket,
             keys,
-        } => {
-            let keys = match keys.as_slice() {
-                [one] => format!("'{one}'"),
-                many => format!(
-                    "[{}]",
-                    many.iter()
-                        .map(|k| format!("'{k}'"))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                ),
-            };
-            (
-                input,
-                format!("incremental_strategy='delete+insert', unique_key={keys}"),
-                (">=", bucket.clone()),
+        } => (
+            input,
+            format!(
+                "incremental_strategy='delete+insert', unique_key={}",
+                quoted(keys)
+            ),
+            bucket,
+        ),
+        // the touched groups: one key, and a column with each group's
+        // newest event time to find the new rows by
+        Verdict::ByKey {
+            input,
+            keys,
+            strategy,
+            high_water: Some(high_water),
+        } if keys.len() == 1 => (
+            input,
+            format!(
+                "incremental_strategy='{}', unique_key={}",
+                strategy.dbt_name(),
+                quoted(keys)
+            ),
+            high_water,
+        ),
+        _ => return None,
+    };
+    let (select, qualifier, leaf) = driving_select(hir, input)?;
+    let qualify = |name: &str| match &qualifier {
+        Some(q) => format!("{q}.{name}"),
+        None => name.to_string(),
+    };
+    let max = format!("(select max({newest}) from {{{{ this }}}})");
+    let column = qualify(&input.column);
+    let grows = match verdict {
+        Verdict::Append { .. } => format!("{column} > {max}"),
+        Verdict::ByBucket { .. } => format!("{column} >= {max}"),
+        Verdict::ByKey { keys, .. } => {
+            // every row of a group a new row touches, so the group is
+            // recomputed whole
+            let key = &keys[0];
+            let from = hir.from.get(leaf)?;
+            if !from
+                .output
+                .iter()
+                .any(|c| hir.syms.text(c.name).eq_ignore_ascii_case(key))
+            {
+                return None; // the key is renamed on its way out
+            }
+            let source = text
+                .get(from.span.start as usize..from.span.end as usize)?
+                .trim();
+            format!(
+                "{} in (select {key} from {source} where {} > {max})",
+                qualify(key),
+                input.column
             )
         }
         _ => return None,
     };
-    let (select, qualifier) = driving_select(hir, input)?;
-    let column = match qualifier {
-        Some(q) => format!("{q}.{}", input.column),
-        None => input.column.clone(),
-    };
     let mut edits = config_edits(hir, text, &args)?;
-    let max = format!("(select max({newest}) from {{{{ this }}}})");
     let guard = |keyword: &str| {
         format!(
-            "\n{{% if is_incremental() %}}\n{keyword} ({max} is null or {column} {op} {max})\n{{% endif %}}"
+            "\n{{% if is_incremental() %}}\n{keyword} ({max} is null or {grows})\n{{% endif %}}"
         )
     };
     match select.filter.and_then(|f| hir.exprs.get(f)).map(|e| e.span) {
@@ -122,7 +170,7 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
 
 /// Where a FROM item ends in the text: its own span stops before an
 /// alias, so the aliases of every relation in it count too.
-fn from_end(hir: &Hir, id: cogitator_ir::hir::FromId) -> Option<u32> {
+fn from_end(hir: &Hir, id: FromId) -> Option<u32> {
     let own = hir.from.get(id)?.span.end;
     let aliases = from_leaves(hir, id).into_iter().filter_map(|leaf| {
         match hir.from.get(leaf).map(|f| &f.kind) {
@@ -137,7 +185,10 @@ fn from_end(hir: &Hir, id: cogitator_ir::hir::FromId) -> Option<u32> {
 
 /// The one SELECT reading `input`, and what to qualify its column with:
 /// None when the SELECT reads that relation alone.
-fn driving_select<'h>(hir: &'h Hir, input: &DeltaInput) -> Option<(&'h Select, Option<String>)> {
+fn driving_select<'h>(
+    hir: &'h Hir,
+    input: &DeltaInput,
+) -> Option<(&'h Select, Option<String>, FromId)> {
     let mut found = Vec::new();
     for query in hir.queries.values() {
         let Body::Select(select) = &query.body else {
@@ -161,7 +212,7 @@ fn driving_select<'h>(hir: &'h Hir, input: &DeltaInput) -> Option<(&'h Select, O
                 (None, 1) => None,
                 (None, _) => return None, // no name to qualify the column with
             };
-            found.push((&**select, qualifier));
+            found.push((&**select, qualifier, *leaf));
         }
     }
     match found.len() {

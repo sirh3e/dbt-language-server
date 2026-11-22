@@ -102,8 +102,10 @@ impl Passes<'_, '_> {
         Run {
             findings: output.findings.iter().map(FindingView::of).collect(),
             trace,
-            incrementality: (hir.config.materialized == Some(Materialization::Table))
-                .then(|| super::incrementality::IncrementalityView::of(&output.mir, Some(&inputs))),
+            incrementality: (hir.config.materialized == Some(Materialization::Table)).then(|| {
+                let inputs = cogitator_rules::canon::incrementality::inputs_for(hir, Some(&inputs));
+                super::incrementality::IncrementalityView::of(&output.mir, Some(&inputs))
+            }),
             mir: output.mir,
             lir: output.lir,
             lir_outcome: outcome.into_inner(),
