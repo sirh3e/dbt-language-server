@@ -177,10 +177,6 @@ impl Dispatcher {
         self.send(&ResultResponse::new(id, item));
     }
 
-    pub(super) fn references(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/references", features::references);
-    }
-
     pub(super) fn document_symbol(&mut self, content: &[u8]) {
         self.respond_position(content, "textDocument/documentSymbol", |_, doc, uri, _| {
             doc.map(|d| features::document_symbols(d, uri))
@@ -234,46 +230,6 @@ impl Dispatcher {
         );
     }
 
-    pub(super) fn rename(&mut self, content: &[u8]) {
-        let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::RenameParams>>(content)
-        else {
-            self.invalid_params(content, "textDocument/rename");
-            return;
-        };
-        let Some(params) = req.params else {
-            self.invalid_params(content, "textDocument/rename");
-            return;
-        };
-        let uri = params.text_document.uri.into_owned();
-        let new_name = params.new_name.into_owned();
-        let position = params.position;
-        let snap = self.snapshot_for(&uri);
-        self.offload_blocking(req.id, "textDocument/rename", move || {
-            let edit =
-                features::rename_model(&snap.ctx, snap.doc.as_deref(), &uri, position, &new_name);
-            crate::server::reply::Reply::result(&edit)
-        });
-    }
-
-    pub(super) fn prepare_rename(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/prepareRename", |_, doc, _, pos| {
-            doc.and_then(|d| features::prepare_rename(d, pos))
-        });
-    }
-
-    /// prepare answers `[item]` for a macro call under the cursor, null
-    /// anywhere else (the LSP contract for "nothing here").
-    pub(super) fn prepare_call_hierarchy(&mut self, content: &[u8]) {
-        self.respond_position(
-            content,
-            "textDocument/prepareCallHierarchy",
-            |ctx, doc, _, pos| {
-                doc.and_then(|d| features::prepare_macro_hierarchy(ctx, d, pos))
-                    .map(|item| vec![item])
-            },
-        );
-    }
-
     pub(super) fn call_hierarchy_incoming(&mut self, content: &[u8]) {
         let Ok(req) =
             serde_json::from_slice::<Envelope<cogitator_lsp::CallHierarchyCallsParams>>(content)
@@ -291,17 +247,6 @@ impl Dispatcher {
             let calls = features::macro_incoming_calls(&ctx, &params.item);
             crate::server::reply::Reply::result(&calls)
         });
-    }
-
-    pub(super) fn call_hierarchy_outgoing(&mut self, content: &[u8]) {
-        let Ok(req) =
-            serde_json::from_slice::<Envelope<cogitator_lsp::CallHierarchyCallsParams>>(content)
-        else {
-            self.invalid_params(content, "callHierarchy/outgoingCalls");
-            return;
-        };
-        let empty: Vec<cogitator_lsp::CallHierarchyIncomingCall> = Vec::new();
-        self.send(&ResultResponse::new(req.id, empty));
     }
 
     pub(super) fn code_lens(&mut self, content: &[u8]) {
@@ -364,8 +309,8 @@ impl Dispatcher {
     }
 
     pub(super) fn document_link(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/documentLink", |ctx, doc, _, _| {
-            doc.map(|d| features::document_links(ctx, d))
+        self.respond_position(content, "textDocument/documentLink", |ctx, doc, uri, _| {
+            doc.map(|d| features::document_links_at(ctx, d, uri))
                 .unwrap_or_default()
         });
     }

@@ -291,6 +291,24 @@ pub struct PositionParams<'a> {
     pub position: Position,
 }
 
+/// textDocument/references params: a position plus the context's
+/// `includeDeclaration` (absent = false).
+#[derive(Debug, Deserialize)]
+pub struct ReferenceParams<'a> {
+    #[serde(borrow, rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier<'a>,
+    #[serde(default)]
+    pub position: Position,
+    #[serde(default)]
+    pub context: ReferenceContext,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ReferenceContext {
+    #[serde(default, rename = "includeDeclaration")]
+    pub include_declaration: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ExecuteCommandParams<'a> {
     #[serde(borrow, default)]
