@@ -210,6 +210,23 @@
   (check (or (null plan) (eq plan :null) (stringp (plist-get plan :sexp)))
          "integration: dbt.splitPlan answers a plan or null" plan))
 
+;; unit + integration: dbt.incrementalDiff
+(check (equal (cogitator--incremental-diff-render
+               '(:model "m" :identical :json-false :diff "--- a\n+++ b\n" :fullRefresh "x"))
+              "--- a\n+++ b\n")
+       "incremental diff: a change shows the unified diff")
+(check (string-match-p "changes nothing"
+                       (cogitator--incremental-diff-render
+                        '(:model "m" :identical t :diff "" :fullRefresh "select 1\n")))
+       "incremental diff: an unchanged model says so")
+(let ((diff (run--exec "dbt.incrementalDiff"
+                       (list :uri (concat "file://"
+                                          (expand-file-name "models/staging/stg_customers.sql"
+                                                            run--fixture))))))
+  (check (and (stringp (plist-get diff :fullRefresh))
+              (stringp (plist-get diff :incremental)))
+         "integration: dbt.incrementalDiff renders both ways" diff))
+
 ;; unit + integration: the syntax tree
 (check (equal (cogitator--syntax-line
                '(:depth 1 :kind "select" :field "body" :missing :json-false

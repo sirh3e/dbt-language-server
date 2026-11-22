@@ -273,6 +273,9 @@ impl Dispatcher {
                 let set = derived.artifacts(root, cap);
                 lenses.extend(features::run_lens(&snap.ctx, &uri, &set));
                 lenses.extend(features::freshness_lenses(&snap.ctx, &uri, &set));
+                lenses.extend(crate::server::handlers::incremental::lens(
+                    &snap, &set, &uri,
+                ));
             }
             crate::server::reply::Reply::result(&lenses)
         });
@@ -298,10 +301,12 @@ impl Dispatcher {
                 .inlay_vars_off
                 .load(std::sync::atomic::Ordering::Relaxed),
         };
+        let perf = self.perf_settings();
+        let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
-            let hints = match snap.doc.as_deref() {
+            let mut hints = match snap.doc.as_deref() {
                 Some(doc) => features::inlay_hints_with(
                     &snap.ctx,
                     doc,
@@ -312,6 +317,9 @@ impl Dispatcher {
                 ),
                 None => Vec::new(),
             };
+            hints.extend(crate::server::handlers::plan_hints::row_hints(
+                &snap, &derived, &uri, range, &perf, cap,
+            ));
             crate::server::reply::Reply::result(&hints)
         });
     }

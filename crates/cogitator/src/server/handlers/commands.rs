@@ -214,5 +214,7 @@ pub fn preview_inputs(
         } else {
             snap.profiles.target.clone()
         },
+        is_incremental: false,
+        this: None,
     }
 }

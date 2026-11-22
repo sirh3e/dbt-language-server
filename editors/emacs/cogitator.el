@@ -347,6 +347,40 @@ Returns the buffer (separated from `cogitator-profiles' for testing)."
        (pop-to-buffer buf)))))
 
 ;; ---------------------------------------------------------------------------
+;; is_incremental(): the model rendered both ways (dbt.incrementalDiff)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--incremental-diff-render (result)
+  "The text of a dbt.incrementalDiff RESULT: the unified diff, or a note
+and the SQL when `is_incremental()' changes nothing."
+  (let ((identical (plist-get result :identical)))
+    (if (and identical (not (eq identical :json-false)))
+        (format "-- %s: is_incremental() changes nothing in the rendered SQL\n\n%s"
+                (plist-get result :model)
+                (plist-get result :fullRefresh))
+      (plist-get result :diff))))
+
+;;;###autoload
+(defun cogitator-incremental-diff ()
+  "This model rendered with `is_incremental()' false and true, as a diff."
+  (interactive)
+  (cogitator--execute
+   "dbt.incrementalDiff" (cogitator--command-argument)
+   (lambda (result)
+     (if (or (null result) (eq result :null))
+         (message "cogitator: no incremental diff for this buffer")
+       (let ((buf (get-buffer-create "*cogitator-incremental-diff*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (cogitator--incremental-diff-render result))
+             (goto-char (point-min)))
+           (diff-mode)
+           (setq buffer-read-only t)
+           (local-set-key (kbd "q") #'quit-window))
+         (pop-to-buffer buf))))))
+
+;; ---------------------------------------------------------------------------
 ;; incrementality: the split plan and the project-wide list
 ;; (specs/ir-pipeline/10 §6)
 ;; ---------------------------------------------------------------------------

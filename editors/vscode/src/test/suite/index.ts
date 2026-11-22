@@ -12,6 +12,7 @@ import type { CogitatorApi } from "../../extension";
 import {
   astGrepLabel,
   captureColor,
+  incrementalDiffText,
   incrementalityLabel,
   languageOf,
   nodeMarkdown,
@@ -182,6 +183,25 @@ export async function run(): Promise<void> {
     "vscode: dbt.splitPlan answers a plan or null",
     split
   );
+  // customers.sql calls a package macro the preview cannot stub
+  const diff = (await exec("dbt.incrementalDiff", {
+    uri: vscode.Uri.file(path.join(workspace, "models", "staging", "stg_customers.sql")).toString(),
+  })) as { fullRefresh?: string; incremental?: string } | null;
+  check(
+    typeof diff?.fullRefresh === "string" && typeof diff?.incremental === "string",
+    "vscode: dbt.incrementalDiff renders both ways",
+    diff
+  );
+  check(
+    incrementalDiffText({
+      model: "m",
+      fullRefresh: "select 1\n",
+      incremental: "select 1\nwhere x\n",
+      diff: "--- a\n+++ b\n",
+      identical: false,
+    }) === "--- a\n+++ b\n",
+    "vscode: incrementalDiffText shows the unified diff"
+  );
   check(
     splitText({
       model: "m",
@@ -329,6 +349,7 @@ export async function run(): Promise<void> {
       "cogitator.status",
       "cogitator.restart",
       "cogitator.splitPlan",
+      "cogitator.incrementalDiff",
       "cogitator.incrementality",
       "cogitator.syntaxTree",
       "cogitator.highlight",

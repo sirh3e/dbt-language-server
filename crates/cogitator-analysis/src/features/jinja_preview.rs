@@ -28,6 +28,11 @@ pub struct PreviewInputs {
     /// project var name → value.
     pub vars: HashMap<String, serde_json::Value>,
     pub target_name: String,
+    /// What `is_incremental()` answers: `false` is a full refresh
+    /// (dbt.incrementalDiff renders both).
+    pub is_incremental: bool,
+    /// `{{ this }}`: the model's own relation, when the shell knows it.
+    pub this: Option<String>,
 }
 
 pub fn expand_jinja(body: &str, inputs: &PreviewInputs) -> Result<ExpandedSql, Guidance> {
@@ -69,7 +74,13 @@ pub fn expand_jinja(body: &str, inputs: &PreviewInputs) -> Result<ExpandedSql, G
     env.add_function("config", |_kwargs: minijinja::value::Kwargs| {
         Ok::<Value, Error>(Value::from(""))
     });
-    env.add_function("is_incremental", || Ok::<Value, Error>(Value::from(false)));
+    let incremental = inputs.is_incremental;
+    env.add_function("is_incremental", move || {
+        Ok::<Value, Error>(Value::from(incremental))
+    });
+    if let Some(this) = &inputs.this {
+        env.add_global("this", Value::from(this.clone()));
+    }
     env.add_global(
         "target",
         Value::from(std::collections::BTreeMap::from([(
@@ -148,6 +159,8 @@ mod tests {
             )]),
             vars: HashMap::from([("n".to_string(), serde_json::json!(3))]),
             target_name: "dev".to_string(),
+            is_incremental: false,
+            this: None,
         }
     }
 

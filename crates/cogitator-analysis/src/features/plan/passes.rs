@@ -31,6 +31,8 @@ pub(super) struct Run {
     pub(super) findings: Vec<FindingView>,
     pub(super) trace: TraceView,
     pub(super) needs: NeedsView,
+    /// Catalog-proven row counts per CTE, before the passes rewrite them.
+    pub(super) row_hints: Vec<super::row_hints::RowHintView>,
     /// For a `table` model: could it be built incrementally, or why not.
     pub(super) incrementality: Option<super::incrementality::IncrementalityView>,
 }
@@ -58,6 +60,7 @@ impl Passes<'_, '_> {
         let schemas = built.env.schemas.clone();
         let phys = physical_facts(&mut mir, &schemas, caps.pruning_keys, input.model, input);
         let available = needs(input, hir, &built, &phys, caps.backend);
+        let row_hints = super::row_hints::cte_rows(hir, &mir, &phys.facts);
 
         let outcome: RefCell<Option<LirOutcome>> = RefCell::new(None);
         // `lower_to_lir` runs `verify_lir` against this backend's table.
@@ -102,6 +105,7 @@ impl Passes<'_, '_> {
         Run {
             findings: output.findings.iter().map(FindingView::of).collect(),
             trace,
+            row_hints,
             incrementality: (hir.config.materialized == Some(Materialization::Table)).then(|| {
                 let inputs = cogitator_rules::canon::incrementality::inputs_for(hir, Some(&inputs));
                 super::incrementality::IncrementalityView::of(
