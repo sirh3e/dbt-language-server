@@ -329,7 +329,7 @@ fn applied(text: &str, edits: &serde_json::Value) -> String {
             )
         })
         .collect();
-    edits.sort_by(|a, b| b.0.cmp(&a.0));
+    edits.sort_by_key(|e| std::cmp::Reverse(e.0));
     let mut out = text.to_string();
     for (start, end, new) in edits {
         out.replace_range(start..end, &new);
@@ -404,4 +404,25 @@ fn a_cte_that_would_not_stand_alone_is_not_extracted() {
     // a model of that name exists
     let text = "with orders as (\n    select 1 as id\n)\nselect * from orders\n";
     assert!(extract(text, "orders as").is_none());
+}
+
+#[test]
+fn a_packages_file_naming_missing_packages_offers_dbt_deps() {
+    let mut ctx = ctx();
+    ctx.declared_packages.push("not_installed_pkg".into());
+    let uri = model_uri("packages.yml");
+    let actions = features::code_actions(&ctx, None, &uri, Range::default(), None, None, &[]);
+    let deps = actions
+        .iter()
+        .find(|a| a.command.as_ref().is_some_and(|c| c.command == "dbt.deps"))
+        .unwrap_or_else(|| panic!("{:?}", titles(&actions)));
+    assert_eq!(deps.title, "Run dbt deps (1 package(s) missing)");
+    assert_eq!(deps.kind, Some("quickfix"));
+    // a quickfix request gets it too; elsewhere there is none
+    let only = ["quickfix".to_string()];
+    let fixes = features::code_actions(&ctx, None, &uri, Range::default(), Some(&only), None, &[]);
+    assert_eq!(titles(&fixes), vec![deps.title.clone()]);
+    let model = model_uri("models/customers.sql");
+    let elsewhere = features::code_actions(&ctx, None, &model, Range::default(), None, None, &[]);
+    assert!(elsewhere.iter().all(|a| cmd(a).command != "dbt.deps"));
 }
