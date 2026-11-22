@@ -49,6 +49,10 @@ pub struct FileConfig {
 pub struct InlaySection {
     /// The value after each `var()` call.
     pub vars: Option<bool>,
+    /// The value after each `env_var()` call (secrets masked; default on).
+    pub env_vars: Option<bool>,
+    /// What short `{{ … }}` expressions render to (default off).
+    pub jinja: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -223,7 +227,7 @@ const LINT_KEYS: &[&str] = &[
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints"];
-const INLAY_KEYS: &[&str] = &["vars"];
+const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
     "join.left_nullified",

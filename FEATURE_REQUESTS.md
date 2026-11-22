@@ -7,10 +7,10 @@ The server currently implements exactly the original Go server's surface:
 |---|---|
 | `initialize` / `shutdown` / `exit` | capabilities per `specs/rust-port/01-protocol.md` §3.1 |
 | `textDocument/didOpen` / `didChange` / `didSave` | incremental sync (`textDocumentSync: 2`) |
-| `textDocument/hover` | refs, sources, vars, macros, dialect SQL functions |
-| `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), macros, in-file CTEs |
+| `textDocument/hover` | refs, sources, vars, env vars, macros, dialect SQL functions, what a `{{ … }}` renders to |
+| `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), env vars (`.env` line, else profiles.yml), macros, in-file CTEs |
 | `textDocument/references` | models, vars |
-| `textDocument/inlayHint` | relations, var values, macro parameters |
+| `textDocument/inlayHint` | relations, var values, env var values (secrets masked), macro parameters, opt-in Jinja renderings |
 | `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `{{` |
 | `workspace/executeCommand` → `dbt.goToSchema` | jump to the model's properties-YAML entry |
 | `textDocument/publishDiagnostics` (push) | dbt Fusion compile only (`--fusion`) |
@@ -78,6 +78,20 @@ names what already exists in the codebase.
 - [x] **Document links** for macro calls (to the defining file) and
       `doc()` (to the docs block), plus plain-scalar `ref()`/`source()` in
       properties YAML.
+- [x] **Var rename** (`textDocument/rename` + `prepareRename`) on a
+      `var('x')` call or a `vars:` key (root, scoped, a package's, or a
+      cogitator.yml override): every call that resolves to the same
+      definition and the keys that decide it, scope-aware
+      (docs/variables.md, "Renaming a var").
+- [x] **env_var() support**: the value inline (`inlay.env_vars`), hover
+      with its source, definition into `.env` (else the profiles.yml
+      use), an `env-var-unset` warning for a defaultless env_var() the
+      server's environment lacks; secret-looking names are masked.
+- [x] **Unused vars**: `unused-var` hints (Unnecessary) on root
+      dbt_project.yml `vars:` keys no scope reads, with a removal quickfix.
+- [x] **Inline Jinja preview**: hover inside `{{ … }}` shows what it
+      renders to (dbt.expandJinja's stubs, fuel- and size-capped); opt-in
+      inlay hints for short single-line renderings (`inlay.jinja`).
 - [x] **CodeLens batch** on model files — "N downstream" / "N upstream"
       counts (graph; dbt terminology: `downstream_of`/`upstream_of`),
       "Go to schema" (navigates via window/showDocument), "Column lineage"

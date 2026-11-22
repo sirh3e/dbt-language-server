@@ -78,6 +78,10 @@ pub struct SharedToggles {
     pub warehouse_columns: std::sync::atomic::AtomicBool,
     /// cogitator.yml `inlay.vars: false` (hints are on by default).
     pub inlay_vars_off: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.env_vars: false` (on by default).
+    pub inlay_env_vars_off: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.jinja: true` (off by default).
+    pub inlay_jinja: std::sync::atomic::AtomicBool,
     /// `perf`/`perf_rules`: an atomic can't hold a severity per rule, so
     /// readers clone this snapshot (cheap) and a config change swaps it.
     pub perf: std::sync::RwLock<
@@ -265,6 +269,12 @@ pub async fn run(
     }
     if let Some(on) = launch.inlay.vars {
         toggles.inlay_vars_off.store(!on, Ordering::Relaxed);
+    }
+    if let Some(on) = launch.inlay.env_vars {
+        toggles.inlay_env_vars_off.store(!on, Ordering::Relaxed);
+    }
+    if let Some(on) = launch.inlay.jinja {
+        toggles.inlay_jinja.store(on, Ordering::Relaxed);
     }
     *toggles.perf.write().expect("perf settings lock") =
         Arc::new(launch.perf_settings(&Default::default()));

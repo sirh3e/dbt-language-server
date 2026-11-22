@@ -48,6 +48,9 @@ impl Dispatcher {
         if self.compiled_hover(content) {
             return;
         }
+        if self.hover_jinja(content) {
+            return;
+        }
         let derived = self.derived.clone();
         self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
@@ -72,6 +75,39 @@ impl Dispatcher {
             }
         });
         self.warm_lineage(content);
+    }
+
+    /// A hover inside a SQL file's `{{ … }}` with nothing else to say
+    /// (not on a ref, var, macro… name that has its own hover): what the
+    /// expression renders to, offloaded (the renderer reads the macro
+    /// files and runs on a fuel budget). `false`: not such a position.
+    fn hover_jinja(&mut self, content: &[u8]) -> bool {
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            return false;
+        };
+        if !uri.ends_with(".sql") {
+            return false;
+        }
+        let snap = self.snapshot_for(&uri);
+        let Some(doc) = snap.doc.clone() else {
+            return false;
+        };
+        if features::jinja_expression_at(&doc, pos).is_none() {
+            return false;
+        }
+        // a token with a hover of its own keeps exactly that hover
+        let ctx = self.ctx_for(&uri);
+        if !features::hover_with_lineage(&ctx, &doc, pos, None).is_empty() {
+            return false;
+        }
+        let derived = self.derived.clone();
+        self.offload_blocking(id, "textDocument/hover", move || {
+            let inputs = crate::server::handlers::commands::preview_inputs(&snap, &derived);
+            let renderer = features::InlineRenderer::new(&inputs);
+            let contents = features::jinja_hover(&doc, pos, &renderer).unwrap_or_default();
+            crate::server::reply::Reply::result(&HoverResult { contents })
+        });
+        true
     }
 
     /// Fills the lineage cache after a hover missed it, off the
@@ -296,21 +332,39 @@ impl Dispatcher {
                 .toggles
                 .inlay_vars_off
                 .load(std::sync::atomic::Ordering::Relaxed),
+            env_vars: !self
+                .toggles
+                .inlay_env_vars_off
+                .load(std::sync::atomic::Ordering::Relaxed),
         };
+        let jinja = self
+            .toggles
+            .inlay_jinja
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && uri.ends_with(".sql");
         let perf = self.perf_settings();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
             let mut hints = match snap.doc.as_deref() {
-                Some(doc) => features::inlay_hints_with(
-                    &snap.ctx,
-                    doc,
-                    &uri,
-                    range,
-                    target.as_ref(),
-                    options,
-                ),
+                Some(doc) => {
+                    let mut hints = features::inlay_hints_with(
+                        &snap.ctx,
+                        doc,
+                        &uri,
+                        range,
+                        target.as_ref(),
+                        options,
+                    );
+                    if jinja {
+                        let inputs =
+                            crate::server::handlers::commands::preview_inputs(&snap, &derived);
+                        let renderer = features::InlineRenderer::new(&inputs);
+                        hints.extend(features::jinja_inlay_hints(doc, range, &renderer));
+                    }
+                    hints
+                }
                 None => Vec::new(),
             };
             hints.extend(crate::server::handlers::plan_hints::row_hints(

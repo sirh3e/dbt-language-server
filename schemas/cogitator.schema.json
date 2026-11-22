@@ -11,6 +11,14 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "env_vars": {
+          "description": "Show the value each env_var() reads, secret-looking names masked (default true). (bool)",
+          "type": "boolean"
+        },
+        "jinja": {
+          "description": "Show what short single-line {{ … }} expressions render to (default false). (bool)",
+          "type": "boolean"
+        },
         "vars": {
           "description": "Show the value each var() resolves to (default true). (bool)",
           "type": "boolean"

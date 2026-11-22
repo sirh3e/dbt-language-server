@@ -54,14 +54,14 @@ fn key_in(
         .map(|(name, _)| (name.clone(), None))
 }
 
-fn contains(range: &Range, pos: Position) -> bool {
+pub(crate) fn contains(range: &Range, pos: Position) -> bool {
     range.start.line == pos.line
         && range.start.character <= pos.character
         && pos.character <= range.end.character
 }
 
 /// The vars a scope's files see (`None`: the root project's).
-fn scope_vars<'a>(
+pub(crate) fn scope_vars<'a>(
     ctx: &'a DbtContext,
     scope: Option<&str>,
 ) -> &'a std::collections::HashMap<String, VariableDetails> {
@@ -176,7 +176,7 @@ pub fn var_references(
 
 /// Every SQL and YAML file a `var()` may be written in: the resource
 /// paths of the root project and of each installed package.
-fn var_files(ctx: &DbtContext) -> Vec<PathBuf> {
+pub(crate) fn var_files(ctx: &DbtContext) -> Vec<PathBuf> {
     let Some(root) = ctx.project_root.as_deref() else {
         return Vec::new();
     };

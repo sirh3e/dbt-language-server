@@ -25,6 +25,8 @@ pub enum Change {
     /// cogitator.yml `vars:` (empty: none).
     Vars(Vec<cogitator_analysis::context::VarOverride>),
     InlayVars(bool),
+    InlayEnvVars(bool),
+    InlayJinja(bool),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -103,6 +105,12 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.inlay.vars != new.inlay.vars {
         out.push(Change::InlayVars(new.inlay.vars.unwrap_or(true)));
     }
+    if old.inlay.env_vars != new.inlay.env_vars {
+        out.push(Change::InlayEnvVars(new.inlay.env_vars.unwrap_or(true)));
+    }
+    if old.inlay.jinja != new.inlay.jinja {
+        out.push(Change::InlayJinja(new.inlay.jinja.unwrap_or(false)));
+    }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
         // cogitator.yml diagnostics flag the typo separately
@@ -137,7 +145,9 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::ClientLogLevel(_)
             | Change::Perf(_)
             | Change::Vars(_)
-            | Change::InlayVars(_) => true,
+            | Change::InlayVars(_)
+            | Change::InlayEnvVars(_)
+            | Change::InlayJinja(_) => true,
         })
         .collect()
 }
@@ -219,6 +229,14 @@ pub fn apply(
             Change::InlayVars(on) => {
                 toggles.inlay_vars_off.store(!*on, Ordering::Relaxed);
                 applied.push("inlay.vars");
+            }
+            Change::InlayEnvVars(on) => {
+                toggles.inlay_env_vars_off.store(!*on, Ordering::Relaxed);
+                applied.push("inlay.env_vars");
+            }
+            Change::InlayJinja(on) => {
+                toggles.inlay_jinja.store(*on, Ordering::Relaxed);
+                applied.push("inlay.jinja");
             }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc

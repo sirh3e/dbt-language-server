@@ -14,11 +14,16 @@ use super::{relation_info, DbtContext, Document};
 pub struct InlayOptions {
     /// The value after each `var()` call.
     pub vars: bool,
+    /// The value after each `env_var()` call (secrets masked).
+    pub env_vars: bool,
 }
 
 impl Default for InlayOptions {
     fn default() -> Self {
-        InlayOptions { vars: true }
+        InlayOptions {
+            vars: true,
+            env_vars: true,
+        }
     }
 }
 
@@ -70,6 +75,9 @@ pub fn inlay_hints_with(
                 });
             }
             TokenKind::Var if options.vars => out.push(var_hint(ctx, doc, uri, i, token)),
+            TokenKind::EnvVar if options.env_vars => {
+                out.push(super::env_vars::env_hint(ctx, doc, i, token))
+            }
             // parameter names for positional macro arguments
             TokenKind::Macro => out.extend(macro_param_hints(ctx, doc, i, token)),
             _ => {}

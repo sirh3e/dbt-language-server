@@ -126,7 +126,19 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     SectionSchema {
         name: "inlay",
         doc: "Which inlay hints the server sends.",
-        keys: &[key("vars", "Show the value each var() resolves to (default true).", "bool")],
+        keys: &[
+            key("vars", "Show the value each var() resolves to (default true).", "bool"),
+            key(
+                "env_vars",
+                "Show the value each env_var() reads, secret-looking names masked (default true).",
+                "bool",
+            ),
+            key(
+                "jinja",
+                "Show what short single-line {{ … }} expressions render to (default false).",
+                "bool",
+            ),
+        ],
     },
     SectionSchema {
         name: "vars",

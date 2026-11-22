@@ -50,33 +50,37 @@ impl Dispatcher {
         let new_name = params.new_name.into_owned();
         let position = params.position;
         let snap = self.snapshot_for(&uri);
-        self.offload_blocking(
-            req.id,
-            "textDocument/rename",
-            move || match features::rename_at(
-                &snap.ctx,
-                snap.doc.as_deref(),
-                &uri,
-                position,
-                &new_name,
-            ) {
+        self.offload_blocking(req.id, "textDocument/rename", move || {
+            let doc = snap.doc.as_deref();
+            let read = |p: &std::path::Path| std::fs::read_to_string(p).ok();
+            // var → macro → model
+            let answer =
+                match features::rename_var_at(&snap.ctx, doc, &uri, position, &new_name, &read) {
+                    Some(var) => var.map(Some),
+                    None => features::rename_at(&snap.ctx, doc, &uri, position, &new_name),
+                };
+            match answer {
                 Ok(edit) => Reply::result(&edit),
                 Err(reason) => Reply::error(error_codes::REQUEST_FAILED, reason),
-            },
-        );
+            }
+        });
     }
 
-    /// A ref or a macro of this project prepares; an installed package's
-    /// macro is refused with the reason, anything else answers null.
+    /// A var (call or `vars:` key), a ref or a macro of this project
+    /// prepares; an installed package's macro is refused with the reason,
+    /// anything else answers null.
     pub(super) fn prepare_rename(&mut self, content: &[u8]) {
         let Some((id, uri, pos)) = Self::position_request(content) else {
             self.invalid_params(content, "textDocument/prepareRename");
             return;
         };
         let ctx = self.ctx_for(&uri);
-        let answer = match self.documents.get(&uri) {
-            Some(doc) => features::prepare_rename_at(&ctx, doc, &uri, pos),
-            None => Ok(None),
+        let doc = self.documents.get(&uri);
+        // a var call or `vars:` key first, then macros and models
+        let answer = match (features::prepare_rename_var(&ctx, doc, &uri, pos), doc) {
+            (Some(var), _) => Ok(Some(var)),
+            (None, Some(doc)) => features::prepare_rename_at(&ctx, doc, &uri, pos),
+            (None, None) => Ok(None),
         };
         match answer {
             Ok(result) => self.send(&ResultResponse::new(id, result)),

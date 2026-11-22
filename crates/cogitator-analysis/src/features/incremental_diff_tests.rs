@@ -14,6 +14,7 @@ fn inputs() -> PreviewInputs {
         target_name: "dev".to_string(),
         is_incremental: false,
         this: Some("jaffle.main.events".to_string()),
+        env: HashMap::new(),
     }
 }
 
