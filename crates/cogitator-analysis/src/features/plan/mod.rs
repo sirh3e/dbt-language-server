@@ -27,6 +27,7 @@ pub mod diagnostics_config;
 mod drive;
 mod env;
 mod facts;
+mod incremental;
 mod passes;
 mod phys;
 mod report;

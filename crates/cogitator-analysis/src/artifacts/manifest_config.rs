@@ -19,6 +19,8 @@ pub struct ManifestConfig {
     /// The raw value, normally a list of `{columns, unique, type}` dicts.
     /// `None` when absent or null.
     pub indexes: Option<Value>,
+    /// `event_time` (dbt 1.9+): the column that only grows with the rows.
+    pub event_time: Option<String>,
 }
 
 pub(super) fn parse_config(config: Value) -> ManifestConfig {
@@ -32,6 +34,7 @@ pub(super) fn parse_config(config: Value) -> ManifestConfig {
         partition_by: raw(&mut map, "partition_by"),
         cluster_by: keys(&mut map, "cluster_by"),
         indexes: raw(&mut map, "indexes"),
+        event_time: text(&mut map, "event_time"),
     }
 }
 
@@ -72,11 +75,13 @@ mod tests {
             "partition_by": {"field": "ts", "data_type": "date"},
             "cluster_by": ["a", "b"],
             "indexes": [{"columns": ["a"], "unique": true}],
+            "event_time": "ts",
             "alias": null,
         }));
         assert_eq!(config.materialized.as_deref(), Some("incremental"));
         assert_eq!(config.unique_key, ["id"]);
         assert_eq!(config.incremental_strategy.as_deref(), Some("merge"));
+        assert_eq!(config.event_time.as_deref(), Some("ts"));
         assert_eq!(
             config.partition_by,
             Some(json!({"field": "ts", "data_type": "date"}))

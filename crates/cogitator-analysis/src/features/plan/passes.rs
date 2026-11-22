@@ -69,6 +69,7 @@ impl Passes<'_, '_> {
             });
             lir
         };
+        let inputs = super::incremental::incremental_inputs(input);
         let cx = Cx {
             available,
             hir: Some(hir),
@@ -80,6 +81,7 @@ impl Passes<'_, '_> {
             schemas: built.schema_known.then_some(&*schemas),
             phys: phys.has_keys.then_some(&phys.facts),
             dag: built.dag.as_ref(),
+            inputs: Some(&inputs),
         };
         let output = run_passes(
             PassInput {

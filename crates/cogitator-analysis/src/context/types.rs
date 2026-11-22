@@ -34,6 +34,8 @@ pub struct ModelDetails {
     pub group: Option<String>,
     /// `contract.enforced: true` on the YAML entry.
     pub contract_enforced: bool,
+    /// `event_time` of the YAML entry: the column that only grows.
+    pub event_time: Option<String>,
 }
 
 /// One entry of the project-root `selectors.yml` (selector search).
@@ -71,6 +73,9 @@ pub struct SourceTableDetails {
     pub identifier: Option<String>,
     pub loader: Option<String>,
     pub columns: Vec<cogitator_schemas::ColumnEntry>,
+    /// `event_time` or `loaded_at_field` of the table, else of its
+    /// source: the column that only grows with the rows.
+    pub event_time: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
