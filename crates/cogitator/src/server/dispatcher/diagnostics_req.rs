@@ -155,6 +155,13 @@ impl Dispatcher {
                     );
                 }
             }
+            if let (Some(doc), Some(root)) = (snap.doc.as_deref(), snap.ctx.project_root.as_deref())
+            {
+                let rules = derived.astgrep_rules(root);
+                extra.extend(crate::server::astgrep::actions(
+                    &rules, &uri, &doc.text, range,
+                ));
+            }
             extra.retain(|action| action.allowed_by(only.as_deref()));
             actions.extend(extra);
             crate::server::reply::Reply::result(&actions)
@@ -195,6 +202,10 @@ impl Dispatcher {
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, artifact_cap);
                 items.extend(features::artifact_diagnostics(&snap.ctx, &uri, &set));
+                if let Some(doc) = snap.doc.as_deref() {
+                    let rules = derived.astgrep_rules(root);
+                    items.extend(crate::server::astgrep::diagnostics(&rules, &uri, &doc.text));
+                }
             }
             if perf.active() {
                 if let (Some(doc), Some(plan)) = (

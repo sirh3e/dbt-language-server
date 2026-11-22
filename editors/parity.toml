@@ -48,6 +48,8 @@
 "dbt.incrementality" = { kind = "user" }
 "dbt.splitPlan" = { kind = "user" }
 "dbt.syntaxTree" = { kind = "user" }
+"dbt.highlight" = { kind = "user" }
+"dbt.astGrep" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

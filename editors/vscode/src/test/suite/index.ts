@@ -9,7 +9,15 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { CogitatorApi } from "../../extension";
-import { incrementalityLabel, splitText, syntaxLine } from "../../extension";
+import {
+  astGrepLabel,
+  captureColor,
+  incrementalityLabel,
+  parseAstGrep,
+  spansByColor,
+  splitText,
+  syntaxLine,
+} from "../../extension";
 
 let failures = 0;
 
@@ -187,6 +195,59 @@ export async function run(): Promise<void> {
     "vscode: a syntax-tree line has depth, field, kind and range"
   );
 
+  // highlighting from the server: the model's spans, and their colours
+  const spans = (await exec("dbt.highlight", {
+    uri: document.uri.toString(),
+  })) as { spans?: Array<{ capture: string }> } | null;
+  check(
+    spans?.spans?.some((s) => s.capture === "tag.delimiter"),
+    "vscode: dbt.highlight colours the model's Jinja",
+    spans?.spans?.length
+  );
+  check(
+    captureColor("keyword.conditional") === "symbolIcon.keywordForeground" &&
+      captureColor("variable.parameter") === "symbolIcon.variableForeground" &&
+      captureColor("spell") === undefined,
+    "vscode: a capture takes its longest prefix's colour"
+  );
+  const grouped = spansByColor([
+    { capture: "keyword", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } } },
+    { capture: "keyword.operator", range: { start: { line: 0, character: 7 }, end: { line: 0, character: 9 } } },
+    { capture: "spell", range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } } },
+  ]);
+  check(
+    grouped.size === 1 && grouped.get("symbolIcon.keywordForeground")?.length === 2,
+    "vscode: spans are grouped by colour, colourless ones dropped"
+  );
+
+  // ast-grep: the query, a match's label, and the command over the wire
+  check(
+    JSON.stringify(parseAstGrep("{{ ref($M) }} => {{ ref('x', $M) }}")) ===
+      JSON.stringify({ pattern: "{{ ref($M) }}", rewrite: "{{ ref('x', $M) }}", language: "dbt" }) &&
+      parseAstGrep("sql: select $$$C from $T")?.language === "sql" &&
+      parseAstGrep("  ") === undefined,
+    "vscode: an ast-grep query reads [sql:]pattern [=> rewrite]"
+  );
+  check(
+    JSON.stringify(
+      astGrepLabel(
+        {
+          uri: "file:///p/models/a.sql",
+          range: { start: { line: 2, character: 5 }, end: { line: 2, character: 19 } },
+          text: "{{ ref('a') }}",
+          replacement: "{{ ref('x', 'a') }}",
+        },
+        () => "models/a.sql"
+      )
+    ) === JSON.stringify({ label: "{{ ref('a') }}  →  {{ ref('x', 'a') }}", description: "models/a.sql:3" }),
+    "vscode: a match's quick-pick entry shows its rewrite and place"
+  );
+  const found = (await exec("dbt.astGrep", {
+    uri: document.uri.toString(),
+    pattern: "{{ ref($M) }}",
+  })) as { matches?: unknown[] } | null;
+  check(found?.matches?.length === 4, "vscode: dbt.astGrep finds the model's refs", found?.matches?.length);
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -197,6 +258,8 @@ export async function run(): Promise<void> {
       "cogitator.splitPlan",
       "cogitator.incrementality",
       "cogitator.syntaxTree",
+      "cogitator.highlight",
+      "cogitator.astGrep",
     ].every((c) =>
       commands.includes(c)
     ),

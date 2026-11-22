@@ -23,6 +23,7 @@ cogitator-parser = { path = "crates/cogitator-parser" }
 cogitator-analysis = { path = "crates/cogitator-analysis" }
 cogitator-duckdb = { path = "crates/cogitator-duckdb" }
 cogitator-treesitter = { path = "crates/cogitator-treesitter" }
+cogitator-astgrep = { path = "crates/cogitator-astgrep" }
 cogitator-ir = { path = "crates/cogitator-ir" }
 cogitator-sql-front = { path = "crates/cogitator-sql-front" }
 cogitator-lower = { path = "crates/cogitator-lower" }
@@ -47,6 +48,10 @@ tokio = { version = "1", features = [
 walkdir = "2"
 toml = "1"
 tree-sitter = "0.27"           # C runtime bindings (06 §3.2)
+tree-sitter-highlight = "0.27"  # highlights.scm with injections, for dbt.highlight
+tree-sitter-sequel = "0.3"
+ast-grep-core = "0.51"   # structural search over tree-sitter-dbt (dbt.astGrep)
+ast-grep-config = "0.51"
 # Jinja over SQL; its own repository so others can use it without this server
 tree-sitter-dbt = { git = "https://github.com/sirh3e/tree-sitter-dbt", rev = "ca6ce2d5dec7a8958f2a160637bd2bafa1fcfb98" }
 

@@ -246,6 +246,20 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none (read-only): the open document's tree-sitter-dbt tree, named + ERROR + MISSING nodes in pre-order, ranges in UTF-16, at most 20 000 nodes — :DbtSyntaxTree
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.highlight`
+
+- **Argument**: `{uri}` — the open document or the file; or `{text, language?}` — any text, `dbt` (default) or `sql`; or `{model?, compiled: true}` — the SQL dbt compiled the model (or the file) to
+- **Result**: `{language, spans: [{range, capture}], truncated}`; `null` for a model dbt has not compiled
+- **Side effects**: none: tree-sitter-dbt's own highlights query, the SQL between the tags through tree-sitter-sequel's; captures are the queries' names (`keyword`, `tag.delimiter`, `function.builtin`, `string`, …), ranges in UTF-16
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.astGrep`
+
+- **Argument**: `{pattern, language?, rewrite?, uri?, apply?}` — an ast-grep pattern (`{{ ref($M) }}`); `language` `dbt` (default) or `sql`; `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`)
+- **Result**: `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` (at most 500 matches)
+- **Side effects**: with `apply: true` and a `rewrite`, every match is replaced through `workspace/applyEdit`. The project's `sgconfig.yml` rules also show as diagnostics (`source: ast-grep`) with their fixes as quickfixes — see [ast-grep.md](ast-grep.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`
@@ -296,4 +310,3 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Result**: `{profiles, lineage, results, artifacts, plans}` each `{entries, hits, misses}`
 - **Side effects**: `{action: "clear"}` empties the derived caches and refreshes the context
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code —
-

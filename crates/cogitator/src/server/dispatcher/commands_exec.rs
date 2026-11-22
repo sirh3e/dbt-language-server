@@ -250,6 +250,22 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.astGrep" => {
+                let snap = self.snapshot_for(&uri);
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.astGrep", move || {
+                    crate::server::astgrep::search_reply(&snap, &arg, &uri)
+                });
+                return;
+            }
+            "dbt.highlight" => {
+                let snap = self.snapshot_for(&uri);
+                let source = HighlightSource::of(arg, &uri);
+                self.offload_blocking(req.id, "dbt.highlight", move || {
+                    highlight_reply(&snap, source)
+                });
+                return;
+            }
             "dbt.syntaxTree" => {
                 let snap = self.snapshot_for(&uri);
                 self.offload_blocking(req.id, "dbt.syntaxTree", move || {
@@ -454,5 +470,130 @@ fn syntax_tree_reply(text: Option<&str>) -> crate::server::reply::Reply {
     crate::server::reply::Reply::result(&serde_json::json!({
         "nodes": nodes,
         "truncated": tree.truncated,
+    }))
+}
+
+/// Cap on the spans one `dbt.highlight` answer carries.
+const HIGHLIGHT_MAX_SPANS: usize = 50_000;
+/// Larger texts are not highlighted (2 MiB, as the compiled SQL's cap).
+const HIGHLIGHT_MAX_BYTES: usize = 2 * 1024 * 1024;
+
+/// What `dbt.highlight` was asked to colour.
+enum HighlightSource {
+    /// `{text, language?}`: any text, `dbt` unless it says `sql`.
+    Text(String, Option<String>),
+    /// `{model?, compiled: true}`: the SQL dbt compiled the model to.
+    Compiled(String, Option<String>),
+    /// `{uri}`: the open document, else the file on disk.
+    Uri(String),
+}
+
+impl HighlightSource {
+    fn of(arg: &serde_json::Map<String, serde_json::Value>, uri: &str) -> Self {
+        let text = |k: &str| arg.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        if let Some(t) = text("text") {
+            return Self::Text(t, text("language"));
+        }
+        if arg.get("compiled").and_then(|v| v.as_bool()) == Some(true) {
+            return Self::Compiled(uri.to_string(), text("model"));
+        }
+        Self::Uri(uri.to_string())
+    }
+}
+
+/// `dbt.highlight`: tree-sitter-dbt's highlights (and the SQL grammar's
+/// between the tags) as `{language, spans: [{range, capture}], truncated}`.
+fn highlight_reply(
+    snap: &crate::server::snapshot::Snapshot,
+    source: HighlightSource,
+) -> crate::server::reply::Reply {
+    use crate::server::reply::Reply;
+    use cogitator_treesitter::HighlightLanguage;
+    let refuse = |what: String, fix: &str| {
+        Reply::error(
+            error_codes::INVALID_PARAMS,
+            cogitator_error::guidance::Guidance::new(what)
+                .fix(fix)
+                .to_message(),
+        )
+    };
+    let (text, language) = match source {
+        HighlightSource::Text(text, language) => {
+            let language = match language.as_deref() {
+                None => HighlightLanguage::Dbt,
+                Some(name) => match HighlightLanguage::parse(name) {
+                    Some(l) => l,
+                    None => {
+                        return refuse(
+                            format!("dbt.highlight does not know the language '{name}'."),
+                            "pass language \"dbt\" (Jinja over SQL) or \"sql\".",
+                        )
+                    }
+                },
+            };
+            (text, language)
+        }
+        HighlightSource::Compiled(uri, model) => {
+            let (compiled, _) = crate::server::compiled::compiled_sql(
+                &snap.ctx,
+                &uri,
+                model.as_deref(),
+                snap.compiled_cap_bytes,
+            );
+            match compiled.and_then(|c| c.content) {
+                Some(text) => (text, HighlightLanguage::Sql),
+                None => return Reply::null(),
+            }
+        }
+        HighlightSource::Uri(uri) => {
+            let text = match snap.doc.as_deref() {
+                Some(doc) => doc.text.to_string(),
+                None => {
+                    let Some(path) = cogitator_lsp::uri_to_fs_path(&uri) else {
+                        return refuse(
+                            "dbt.highlight needs a uri, a text, or compiled: true.".into(),
+                            "pass {\"uri\": \"file://…\"} or {\"text\": \"…\"}.",
+                        );
+                    };
+                    match std::fs::read_to_string(&path) {
+                        Ok(t) => t,
+                        Err(e) => {
+                            return refuse(
+                                format!("cannot read {path}: {e}"),
+                                "pass an existing file.",
+                            )
+                        }
+                    }
+                }
+            };
+            (text, HighlightLanguage::Dbt)
+        }
+    };
+    if text.len() > HIGHLIGHT_MAX_BYTES {
+        return Reply::result(&serde_json::json!({
+            "language": language.name(), "spans": [], "truncated": true,
+        }));
+    }
+    let Some(found) = cogitator_treesitter::highlight(&text, language, HIGHLIGHT_MAX_SPANS) else {
+        return Reply::error(
+            error_codes::INTERNAL_ERROR,
+            "the tree-sitter-dbt grammar could not be loaded".to_string(),
+        );
+    };
+    let position = |p: cogitator_treesitter::Point| serde_json::json!({"line": p.line, "character": p.character});
+    let spans: Vec<serde_json::Value> = found
+        .spans
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "range": {"start": position(s.start), "end": position(s.end)},
+                "capture": s.capture,
+            })
+        })
+        .collect();
+    Reply::result(&serde_json::json!({
+        "language": language.name(),
+        "spans": spans,
+        "truncated": found.truncated,
     }))
 }

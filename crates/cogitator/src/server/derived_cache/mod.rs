@@ -110,9 +110,40 @@ pub struct DerivedCache {
     plans_stats: Counters,
     /// The project-schema job's snapshot and state, per project root.
     schemas: schemas::SchemaSlot,
+    /// The project's ast-grep rules, with the stamps of the files they
+    /// were loaded from.
+    astgrep: Mutex<Option<AstGrepSlot>>,
 }
 
+type AstGrepSlot = (
+    PathBuf,
+    Vec<(PathBuf, Option<FileStamp>)>,
+    Arc<cogitator_astgrep::Rules>,
+);
+
 impl DerivedCache {
+    /// The ast-grep rules of the project at `root`, loaded again when
+    /// sgconfig.yml or a rule file changed, appeared or went away.
+    pub fn astgrep_rules(&self, root: &Path) -> Arc<cogitator_astgrep::Rules> {
+        let (files, _) = cogitator_astgrep::rule_files(root);
+        let stamps: Vec<(PathBuf, Option<FileStamp>)> = files
+            .into_iter()
+            .map(|f| {
+                let s = stamp(&f);
+                (f, s)
+            })
+            .collect();
+        let mut slot = self.astgrep.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_root, cached, rules)) = slot.as_ref() {
+            if cached_root == root && *cached == stamps {
+                return rules.clone();
+            }
+        }
+        let rules = Arc::new(cogitator_astgrep::Rules::load(root));
+        *slot = Some((root.to_path_buf(), stamps, rules.clone()));
+        rules
+    }
+
     /// The scoped inventory for `path`, re-parsed only when the file
     /// stamp or the (project, allowlist) scope changed.
     pub fn profiles_inventory(

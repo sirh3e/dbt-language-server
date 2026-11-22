@@ -178,6 +178,8 @@ pub const COMMANDS: &[&str] = &[
     "dbt.incrementality",
     "dbt.splitPlan",
     "dbt.syntaxTree",
+    "dbt.highlight",
+    "dbt.astGrep",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

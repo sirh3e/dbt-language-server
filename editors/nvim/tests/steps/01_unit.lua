@@ -144,4 +144,5 @@ return function(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_async.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_pick.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_explorer.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_tshl.lua"))(ctx)
 end

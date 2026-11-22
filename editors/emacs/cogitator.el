@@ -19,6 +19,8 @@
 (require 'cl-lib)
 (require 'subr-x)
 (require 'url-util)
+(require 'seq)
+(declare-function grep-mode "grep")
 
 (defgroup cogitator nil
   "The cogitator dbt language server."
@@ -496,6 +498,165 @@ RET jumps to a node's place in the model, q closes."
                  cogitator--syntax-nodes (append (plist-get tree :nodes) nil))
            (local-set-key (kbd "RET") #'cogitator-syntax-jump))
          (pop-to-buffer buf))))))
+
+;; ---------------------------------------------------------------------------
+;; tree-sitter-dbt highlighting from the server (dbt.highlight)
+;; ---------------------------------------------------------------------------
+
+(defconst cogitator--highlight-faces
+  '(("comment" . font-lock-comment-face)
+    ("string" . font-lock-string-face)
+    ("number" . font-lock-constant-face)
+    ("boolean" . font-lock-constant-face)
+    ("constant" . font-lock-constant-face)
+    ("keyword" . font-lock-keyword-face)
+    ("operator" . font-lock-keyword-face)
+    ("function" . font-lock-function-name-face)
+    ("type" . font-lock-type-face)
+    ("variable.parameter" . font-lock-variable-name-face)
+    ("variable" . font-lock-variable-name-face)
+    ("field" . font-lock-property-name-face)
+    ("property" . font-lock-property-name-face)
+    ("tag" . font-lock-preprocessor-face)
+    ("punctuation" . font-lock-punctuation-face))
+  "Capture → face, by the longest matching prefix of the capture's name.")
+
+(defun cogitator--highlight-face (capture)
+  "The face of a tree-sitter CAPTURE name (\"keyword.conditional\"), or nil."
+  (let ((best nil) (best-len -1))
+    (dolist (entry cogitator--highlight-faces)
+      (let ((prefix (car entry)))
+        (when (and (> (length prefix) best-len)
+                   (or (string= capture prefix)
+                       (string-prefix-p (concat prefix ".") capture)))
+          (setq best (cdr entry) best-len (length prefix)))))
+    (and best (facep best) best)))
+
+(defun cogitator--utf16-point (line character)
+  "The buffer position of LSP LINE (0-based) and UTF-16 CHARACTER."
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line line)
+    (let ((units 0) (limit (line-end-position)))
+      (while (and (< units character) (< (point) limit))
+        (setq units (+ units (if (> (char-after) #xFFFF) 2 1)))
+        (forward-char 1))
+      (point))))
+
+(defun cogitator--highlight-apply (result)
+  "Paint dbt.highlight's RESULT into the current buffer as overlays.
+Returns how many spans were painted."
+  (remove-overlays (point-min) (point-max) 'cogitator-highlight t)
+  (let ((count 0))
+    (seq-doseq (span (plist-get result :spans))
+      (let* ((range (plist-get span :range))
+             (start (plist-get range :start))
+             (end (plist-get range :end))
+             (face (cogitator--highlight-face (plist-get span :capture))))
+        (when face
+          (let ((ov (make-overlay
+                     (cogitator--utf16-point (plist-get start :line) (plist-get start :character))
+                     (cogitator--utf16-point (plist-get end :line) (plist-get end :character)))))
+            (overlay-put ov 'cogitator-highlight t)
+            (overlay-put ov 'face face)
+            (overlay-put ov 'priority 10)
+            (setq count (1+ count))))))
+    count))
+
+;;;###autoload
+(defun cogitator-highlight-buffer (&optional clear)
+  "Colour this buffer with tree-sitter-dbt, as the server highlights it.
+The Jinja by the grammar's highlights, the SQL between the tags by the SQL
+grammar it injects; compiled SQL (target/compiled) as plain SQL. With a
+prefix argument CLEAR, take the colours off."
+  (interactive "P")
+  (if clear
+      (remove-overlays (point-min) (point-max) 'cogitator-highlight t)
+    (let ((buffer (current-buffer))
+          (language (if (string-match-p "/target/\\(compiled\\|run\\)/" (or (buffer-file-name) ""))
+                        "sql" "dbt")))
+      (cogitator--execute
+       "dbt.highlight"
+       (list :text (buffer-substring-no-properties (point-min) (point-max)) :language language)
+       (lambda (result)
+         (when (buffer-live-p buffer)
+           (with-current-buffer buffer
+             (message "cogitator: %d spans coloured by tree-sitter-dbt"
+                      (cogitator--highlight-apply result)))))))))
+
+;; ---------------------------------------------------------------------------
+;; ast-grep through the server (dbt.astGrep)
+;; ---------------------------------------------------------------------------
+
+(defconst cogitator-ast-grep-default "{{ ref($M) }}"
+  "The pattern `cogitator-ast-grep' offers first.")
+
+(defun cogitator--ast-grep-parse (text)
+  "TEXT as `[sql:]pattern [=> rewrite]' → (:pattern :rewrite :language), or nil."
+  (let* ((text (string-trim (or text "")))
+         (language "dbt"))
+    (cond ((string-match "\\`sql:[ \t]*" text)
+           (setq language "sql" text (substring text (match-end 0))))
+          ((string-match "\\`dbt:[ \t]*" text)
+           (setq text (substring text (match-end 0)))))
+    (let* ((arrow (string-match "[ \t]*=>[ \t]*" text))
+           (pattern (string-trim (if arrow (substring text 0 arrow) text)))
+           (rewrite (and arrow (string-trim (substring text (match-end 0))))))
+      (unless (string-empty-p pattern)
+        (list :pattern pattern :rewrite rewrite :language language)))))
+
+(defun cogitator--ast-grep-line (match)
+  "One grep-style line for a dbt.astGrep MATCH: file:line:column: text."
+  (let* ((start (plist-get (plist-get match :range) :start))
+         (text (replace-regexp-in-string "[ \t]*\n[ \t]*" " " (plist-get match :text)))
+         (replacement (plist-get match :replacement)))
+    (format "%s:%d:%d: %s%s"
+            (cogitator--uri-to-file (plist-get match :uri))
+            (1+ (plist-get start :line))
+            (1+ (plist-get start :character))
+            text
+            (if (stringp replacement) (concat "  →  " replacement) ""))))
+
+(defun cogitator--uri-to-file (uri)
+  "The file name of a file:// URI."
+  (url-unhex-string (replace-regexp-in-string "\\`file://" "" uri)))
+
+;;;###autoload
+(defun cogitator-ast-grep (query)
+  "Structural search with ast-grep (dbt.astGrep) over the project.
+QUERY is `[sql:]pattern [=> rewrite]': a pattern over tree-sitter-dbt
+\(Jinja; `$M' a metavariable), or prefixed `sql:' a whole SQL statement
+over the compiled SQL.  Matches land in a grep buffer; with a rewrite,
+it is applied to every match after asking."
+  (interactive (list (read-string "ast-grep ([sql:]pattern [=> rewrite]): "
+                                  cogitator-ast-grep-default)))
+  (let ((parsed (cogitator--ast-grep-parse query)))
+    (unless parsed
+      (user-error "cogitator: give a pattern, e.g. %s" cogitator-ast-grep-default))
+    (let ((argument (list :uri "" :pattern (plist-get parsed :pattern)
+                          :language (plist-get parsed :language))))
+      (when (plist-get parsed :rewrite)
+        (setq argument (append argument (list :rewrite (plist-get parsed :rewrite)))))
+      (cogitator--execute
+       "dbt.astGrep" argument
+       (lambda (result)
+         (let ((matches (append (plist-get result :matches) nil))
+               (buf (get-buffer-create "*cogitator-ast-grep*")))
+           (with-current-buffer buf
+             (let ((inhibit-read-only t))
+               (erase-buffer)
+               (insert (format "-*- ast-grep %s: %d matches -*-\n\n"
+                               (plist-get parsed :pattern) (length matches)))
+               (insert (mapconcat #'cogitator--ast-grep-line matches "\n") "\n"))
+             (require 'grep)
+             (grep-mode))
+           (display-buffer buf)
+           (when (and (plist-get parsed :rewrite) matches
+                      (y-or-n-p (format "Rewrite %d matches into %s? "
+                                        (length matches) (plist-get parsed :rewrite))))
+             (cogitator--execute
+              "dbt.astGrep" (append argument (list :apply t))
+              (lambda (_) (message "cogitator: rewrote %d matches" (length matches)))))))))))
 
 ;;;###autoload
 (defun cogitator-doctor ()

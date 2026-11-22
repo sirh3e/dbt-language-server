@@ -1,0 +1,32 @@
+# ast-grep for a dbt project: copy this file, sgconfig.compiled.yml and
+# rules/ to the project's root (next to dbt_project.yml). The cogitator
+# server reads the same rules — every rule of language dbt or sql shows as
+# a diagnostic in the editor, its `fix` as a quickfix — and the CLI runs
+# them in CI:
+#
+#   ast-grep scan                                    # dbt rules, the project
+#   ast-grep scan -c sgconfig.compiled.yml target/compiled   # sql rules
+#   ast-grep run -l dbt -p '{{ ref($M) }}' models/
+#
+# The two libraries are the server's own grammars, built by
+# editors/ast-grep/build-libs.sh (`just ast-grep-libs`); point
+# libraryPath at wherever they went (.dylib on macOS, .dll on Windows).
+#
+# The CLI gives an extension to one language only, and (as of 0.42) its
+# languageGlobs do not reach custom languages, so `.sql` is dbt here and
+# plain SQL in sgconfig.compiled.yml. The server needs no such split: it
+# reads target/compiled and target/run as SQL and the rest as dbt.
+ruleDirs:
+  - rules
+customLanguages:
+  dbt:
+    libraryPath: target/ast-grep/dbt.so
+    extensions: [sql]
+    # `$` is no Jinja identifier character; patterns are parsed with `_`
+    # in its place, as the server does
+    expandoChar: _
+  sql:
+    libraryPath: target/ast-grep/sql.so
+    # no file of the project is plain SQL: see sgconfig.compiled.yml
+    extensions: [compiledsql]
+    expandoChar: _

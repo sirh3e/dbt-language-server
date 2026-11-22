@@ -224,6 +224,185 @@ async function syntaxTree(): Promise<void> {
   });
 }
 
+/** One span of a dbt.highlight answer. */
+export interface HighlightSpan {
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  capture: string;
+}
+
+/** The theme colour of a tree-sitter capture, by its longest known
+ *  prefix (`keyword.conditional` → keyword's); undefined for none. */
+export function captureColor(capture: string): string | undefined {
+  const colors: Record<string, string> = {
+    comment: "editorLineNumber.foreground",
+    string: "debugTokenExpression.string",
+    number: "debugTokenExpression.number",
+    boolean: "debugTokenExpression.boolean",
+    constant: "symbolIcon.constantForeground",
+    keyword: "symbolIcon.keywordForeground",
+    operator: "symbolIcon.operatorForeground",
+    function: "symbolIcon.functionForeground",
+    type: "symbolIcon.classForeground",
+    variable: "symbolIcon.variableForeground",
+    field: "symbolIcon.fieldForeground",
+    property: "symbolIcon.propertyForeground",
+    tag: "symbolIcon.keywordForeground",
+  };
+  let best: string | undefined;
+  let bestLength = -1;
+  for (const prefix of Object.keys(colors)) {
+    if ((capture === prefix || capture.startsWith(`${prefix}.`)) && prefix.length > bestLength) {
+      best = colors[prefix];
+      bestLength = prefix.length;
+    }
+  }
+  return best;
+}
+
+/** dbt.highlight's spans grouped by the colour they take. */
+export function spansByColor(spans: HighlightSpan[]): Map<string, HighlightSpan["range"][]> {
+  const out = new Map<string, HighlightSpan["range"][]>();
+  for (const span of spans) {
+    const color = captureColor(span.capture);
+    if (!color) {
+      continue;
+    }
+    const list = out.get(color) ?? [];
+    list.push(span.range);
+    out.set(color, list);
+  }
+  return out;
+}
+
+const decorations = new Map<string, vscode.TextEditorDecorationType>();
+
+/** Colour the active editor with tree-sitter-dbt as the server highlights
+ *  it: the Jinja, and the SQL between the tags; compiled SQL as SQL. */
+async function highlight(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return;
+  }
+  const compiled = /[/\\]target[/\\](compiled|run)[/\\]/.test(editor.document.uri.fsPath);
+  const result = (await execDbt("dbt.highlight", {
+    text: editor.document.getText(),
+    language: compiled ? "sql" : "dbt",
+  })) as { spans: HighlightSpan[] } | undefined;
+  if (!result) {
+    return;
+  }
+  for (const type of decorations.values()) {
+    editor.setDecorations(type, []);
+  }
+  for (const [color, ranges] of spansByColor(result.spans)) {
+    let type = decorations.get(color);
+    if (!type) {
+      type = vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor(color) });
+      decorations.set(color, type);
+    }
+    editor.setDecorations(
+      type,
+      ranges.map(
+        (r) => new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character)
+      )
+    );
+  }
+}
+
+/** `[sql:]pattern [=> rewrite]` → its parts. */
+export function parseAstGrep(
+  text: string
+): { pattern: string; rewrite?: string; language: "dbt" | "sql" } | undefined {
+  let rest = text.trim();
+  let language: "dbt" | "sql" = "dbt";
+  const sql = /^sql:\s*/.exec(rest);
+  if (sql) {
+    language = "sql";
+    rest = rest.slice(sql[0].length);
+  } else {
+    rest = rest.replace(/^dbt:\s*/, "");
+  }
+  const arrow = /\s*=>\s*/.exec(rest);
+  const pattern = (arrow ? rest.slice(0, arrow.index) : rest).trim();
+  if (!pattern) {
+    return undefined;
+  }
+  const rewrite = arrow ? rest.slice(arrow.index + arrow[0].length).trim() : undefined;
+  return rewrite ? { pattern, rewrite, language } : { pattern, language };
+}
+
+/** One dbt.astGrep match. */
+export interface AstGrepMatch {
+  uri: string;
+  range: HighlightSpan["range"];
+  text: string;
+  replacement?: string | null;
+}
+
+/** A match as a quick-pick entry: the text, and where it is. */
+export function astGrepLabel(match: AstGrepMatch, relative: (uri: string) => string): {
+  label: string;
+  description: string;
+} {
+  const text = match.text.replace(/\s*\n\s*/g, " ");
+  return {
+    label: match.replacement ? `${text}  →  ${match.replacement}` : text,
+    description: `${relative(match.uri)}:${match.range.start.line + 1}`,
+  };
+}
+
+/** Structural search with ast-grep over the project (dbt.astGrep). */
+async function astGrep(): Promise<void> {
+  const input = await vscode.window.showInputBox({
+    prompt: "ast-grep: [sql:]pattern [=> rewrite] — $M is a metavariable",
+    value: "{{ ref($M) }}",
+  });
+  const query = input ? parseAstGrep(input) : undefined;
+  if (!query) {
+    return;
+  }
+  const result = (await execDbt("dbt.astGrep", { uri: "", ...query })) as
+    | { matches: AstGrepMatch[]; truncated: boolean }
+    | undefined;
+  if (!result) {
+    return;
+  }
+  if (result.matches.length === 0) {
+    void vscode.window.showInformationMessage(`ast-grep: no match of ${query.pattern}`);
+    return;
+  }
+  if (query.rewrite) {
+    const answer = await vscode.window.showWarningMessage(
+      `Rewrite ${result.matches.length} matches into ${query.rewrite}?`,
+      { modal: true },
+      "Rewrite"
+    );
+    if (answer === "Rewrite") {
+      await execDbt("dbt.astGrep", { uri: "", ...query, apply: true });
+    }
+    return;
+  }
+  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
+  const pick = await vscode.window.showQuickPick(
+    result.matches.map((m) => ({ ...astGrepLabel(m, relative), match: m })),
+    {
+      matchOnDescription: true,
+      placeHolder: `${result.matches.length} matches of ${query.pattern}${
+        result.truncated ? " (the first 500)" : ""
+      }`,
+    }
+  );
+  if (pick) {
+    const r = pick.match.range;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.match.uri), {
+      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
+    });
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -237,6 +416,8 @@ export async function activate(
     ["cogitator.splitPlan", splitPlan],
     ["cogitator.incrementality", incrementality],
     ["cogitator.syntaxTree", syntaxTree],
+    ["cogitator.highlight", highlight],
+    ["cogitator.astGrep", astGrep],
     [
       "cogitator.status",
       async () => {

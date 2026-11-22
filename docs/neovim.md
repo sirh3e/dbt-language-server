@@ -142,7 +142,10 @@ buffer, or one you pick:
 - **Jump anywhere**: `f` or `/` opens the models picker (fuzzy).
 - **The SQL panes**: `p` enters the dbt SQL, `h`/`l` move between it and the
   compiled SQL, `<Esc>` returns; `J`/`K` scroll both together from any pane.
-  A model dbt has not compiled says so — press `c` to compile.
+  Both are coloured by tree-sitter-dbt through the server — the Jinja and
+  the SQL between the tags — in your colourscheme's tree-sitter colours,
+  with nothing to install. A model dbt has not compiled says so — press `c`
+  to compile.
 - **Several models at once**: `<Space>` marks the model or a side entry; `y`
   yanks the marked names, `r` runs them in one `dbt run`.
 
@@ -170,7 +173,8 @@ highlighted, and a preview. Choose with `setup({ picker = "fzf-lua" |
 | `<leader>dd` | definitions: models, sources, macros, selectors | `times_five` |
 | `<leader>dk` | documented columns, as `model.column` | `^customers.customer` |
 | `<leader>du` / `dU` | everything upstream / downstream of this model, nearest first | `↑1` |
-| `<leader>dF` | choose what to find: also `sources`, `all`, `macros`, `lineage`, `refs` (this file's `ref()`s, CTEs, macros), `tests`, `tags`, `selectors` | |
+| `<leader>da` | ast-grep matches of a structural pattern (asked first) — see [ast-grep.md](ast-grep.md) | `ref` |
+| `<leader>dF` | choose what to find: also `sources`, `all`, `macros`, `lineage`, `refs` (this file's `ref()`s, CTEs, macros), `tests`, `tags`, `selectors`, `astgrep` | |
 
 The query is fzf's: `stg cust` (both, fuzzy), `'exact`, `^prefix`,
 `suffix$`, `!not`, `a | b`.
@@ -182,6 +186,9 @@ The query is fzf's: `stg cust` (both, fuzzy), `'exact`, `^prefix`,
 | `<C-g>` | show it in the explorer (for a column: its lineage graph) |
 | `<C-y>` / `<C-r>` | yank the names / dbt run them |
 | `<Tab>` | mark several |
+
+Previews of `.sql` files are coloured by tree-sitter-dbt like the
+explorer's panes (in the built-in picker, fzf-lua and telescope).
 
 Every other list the plugin shows (`:Dbt`, `:DbtTests`, `:DbtTags`,
 `:DbtCancel`, targets, projects) uses the same picker.
@@ -199,6 +206,11 @@ Every other list the plugin shows (`:Dbt`, `:DbtTests`, `:DbtTags`,
 - `:DbtIncrementality`, `:DbtSplit` — which table models could be
   incremental; split one at its frontier. See
   [incrementality.md](incrementality.md).
+- `:DbtAstGrep {{ ref($M) }}` — structural search with ast-grep over the
+  project into quickfix; `pattern => rewrite` rewrites after asking;
+  `sql:` searches the compiled SQL. Your `sgconfig.yml` rules are
+  diagnostics with quickfixes. See [ast-grep.md](ast-grep.md).
+- `:DbtHighlight` — colour any buffer with tree-sitter-dbt from the server.
 - `:DbtDeadModels`, `:DbtExpandJinja`, `:DbtSyntaxTree`, `:DbtDoctor`.
 
 ## Nothing waits

@@ -1,0 +1,7 @@
+id: ref-of-a-variable
+language: dbt
+severity: warning
+message: "ref() of a variable: dbt cannot see this dependency when it builds the DAG"
+note: name the model in ref(), or read the relation from a source()
+rule:
+  pattern: "{{ ref(var($V)) }}"

@@ -1,0 +1,16 @@
+[package]
+name = "cogitator-astgrep"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ast-grep-core = { workspace = true }
+ast-grep-config = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-dbt = { workspace = true }
+tree-sitter-sequel = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = { workspace = true }

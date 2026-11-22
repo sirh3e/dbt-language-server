@@ -132,6 +132,17 @@ end, {
   desc = "every :Dbt* command as :Dbt <subcommand> [args]",
 })
 
+vim.api.nvim_create_user_command("DbtHighlight", function()
+  require("cogitator.tshl").toggle()
+end, { desc = "colour this buffer with tree-sitter-dbt from the server, or stop (toggle)" })
+
+vim.api.nvim_create_user_command("DbtAstGrep", function(opts)
+  require("cogitator.astgrep").command(opts)
+end, {
+  nargs = "*",
+  desc = "ast-grep: [sql:]pattern [=> rewrite] — matches to quickfix, a rewrite after asking",
+})
+
 vim.api.nvim_create_user_command("DbtSyntaxTree", function()
   require("cogitator.syntax").toggle()
 end, { desc = "the tree-sitter-dbt syntax tree of this buffer, in a split (toggle)" })

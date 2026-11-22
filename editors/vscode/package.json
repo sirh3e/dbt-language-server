@@ -77,6 +77,14 @@
         "title": "dbt: Show syntax tree"
       },
       {
+        "command": "cogitator.highlight",
+        "title": "dbt: Highlight with tree-sitter-dbt"
+      },
+      {
+        "command": "cogitator.astGrep",
+        "title": "dbt: Structural search (ast-grep)"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },

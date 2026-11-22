@@ -48,6 +48,7 @@ function M.open(source, items, run)
             if vim.api.nvim_buf_is_valid(buf) then
               vim.api.nvim_buf_set_lines(buf, 0, -1, false, p.lines or {})
               vim.bo[buf].filetype = p.filetype or ""
+              require("cogitator.tshl").preview(buf, p)
             end
           end)
         end,

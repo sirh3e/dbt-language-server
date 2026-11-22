@@ -78,7 +78,7 @@ function M.find(name)
       )
       return
     end
-    M.open(sources.build(name, ctx))
+    M.open_named(name, ctx)
     return
   end
   M.select(sources.ORDER, {
@@ -88,9 +88,24 @@ function M.find(name)
     end,
   }, function(choice)
     if choice then
-      M.open(sources.build(choice, ctx))
+      M.open_named(choice, ctx)
     end
   end)
+end
+
+--- Open a named source; ast-grep's first asks for its pattern.
+---@param name string
+---@param ctx table
+function M.open_named(name, ctx)
+  local sources = require("cogitator.pick.sources")
+  if name == "astgrep" and not ctx.query then
+    require("cogitator.astgrep").prompt(function(query)
+      ctx.query = query
+      M.open(sources.build(name, ctx))
+    end)
+    return
+  end
+  M.open(sources.build(name, ctx))
 end
 
 --- The picker setup() asked for ("auto" unless set).
