@@ -79,6 +79,13 @@ pub struct IncrementalSpec {
     /// `this_model`.
     #[serde(default = "default_increment")]
     pub increment: String,
+    /// A split (specs/ir-pipeline/10 §6): the incremental part as a model
+    /// of its own. The part is maintained, then `outer` — the model over
+    /// the part, read as `__next` — must equal `model.sql` in full.
+    #[serde(default)]
+    pub part: Option<String>,
+    #[serde(default)]
+    pub outer: Option<String>,
 }
 
 /// The dbt strategies an incremental case applies.
@@ -130,6 +137,14 @@ pub struct Incremental {
     pub strategy: IncrementalStrategy,
     pub unique_key: Vec<String>,
     pub increment: String,
+    /// A split: the part's full SQL and the model over it.
+    pub split: Option<Split>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Split {
+    pub part: String,
+    pub outer: String,
 }
 
 /// One loaded and validated case.
@@ -198,6 +213,14 @@ pub fn load_case(dir: &Path) -> Result<Case, String> {
             strategy: spec.strategy,
             unique_key: spec.unique_key.clone(),
             increment: read(&dir.join(&spec.increment)).map_err(context)?,
+            split: match (&spec.part, &spec.outer) {
+                (Some(part), Some(outer)) => Some(Split {
+                    part: read(&dir.join(part)).map_err(context)?,
+                    outer: read(&dir.join(outer)).map_err(context)?,
+                }),
+                (None, None) => None,
+                _ => return Err(context("a split names both part and outer".to_owned())),
+            },
         }),
         None => None,
     };
@@ -322,6 +345,8 @@ mod tests {
             strategy: IncrementalStrategy::DeleteInsert,
             unique_key: Vec::new(),
             increment: default_increment(),
+            part: None,
+            outer: None,
         });
         assert!(validate(&e).unwrap_err().contains("delta"));
         e.fixtures[0].delta = Some("delta.sql".into());

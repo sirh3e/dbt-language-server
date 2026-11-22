@@ -138,6 +138,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.parse` | `{token}` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
 | `dbt.deps` | `{token}` (immediately) | async showMessage/$\/progress; project-wide `dbt deps`, success refreshes the server context (the packages.yml quickfix runs it) |
 | `dbt.incrementality` | `{models, incremental}` | none; every table model's incrementality verdict, slowest last run first (specs/ir-pipeline/10) |
+| `dbt.splitPlan` | `{model, sexp, part: {name, cte, text}}` or `null` | none; the split at the incrementality frontier as an S-expression (specs/ir-pipeline/10 §6) |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |

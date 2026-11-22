@@ -92,7 +92,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   (`append`, `delete+insert` on a time bucket or group keys, `merge` for a
   DISTINCT) and a fix rewriting it into an incremental model;
   `dbt.queryPlan` says why the others must stay tables, and
-  `dbt.incrementality` lists every table model, slowest first
+  `dbt.incrementality` lists every table model, slowest first. A model kept
+  a table by one blocker (a global `rank()`) over an aggregating CTE can be
+  **split**: the CTE becomes its own incremental model and the rest a table
+  over it (code action and `dbt.splitPlan`); the analysis, the frontier and
+  the split are also emitted as S-expressions
 - **Refactors**: "Expand `c.*`" to the relation's known columns,
   "Extract CTE to a model" (the CTE becomes its own model and is
   `ref()`'d), and "Extract schema YAML" as an edit for editors that run

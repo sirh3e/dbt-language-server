@@ -44,7 +44,9 @@
 //!   `increment.sql`, the `is_incremental()` branch with `{{ this }}` as
 //!   `this_model`); every fixture names a `delta` that replaces the input
 //!   tables. The model maintained through the delta must equal it rebuilt
-//!   in full ([`run::incremental_setup`]); `after` is unused.
+//!   in full ([`run::incremental_setup`]); `after` is unused. A split
+//!   (`part` and `outer`) maintains `part` instead, and compares `outer`,
+//!   which reads the maintained part as `__next`, with `model.sql`.
 //!
 //! The optional `[plan]` table states which columns we call unused and which
 //! we require, per base table. The check is one-way, see [`claims`]: an

@@ -109,8 +109,92 @@ differs, a precondition that agrees).
 - Materialization is read from `config()` and the manifest; a project-level
   `+materialized: table` in `dbt_project.yml` is seen only once
   `manifest.json` exists.
-- `ByKey` verdicts carry no fix yet: the touched-groups filter needs the
-  input-side key, which may be renamed on the way to the output.
-- Splitting a model into an incremental part and a small full part
-  (e.g. an incremental per-key aggregate under a global rank) is not
-  proposed.
+- A `ByKey` verdict gets a fix only with one key, passed through unrenamed
+  from the input, and a high-water column (`max(event)`) in the output: the
+  touched-groups filter reads the key on the input side. Otherwise it is
+  advice alone.
+- Splitting is the subject of §6.
+
+## 6. Splitting at the frontier, and S-expressions
+
+### When a split pays
+
+One blocker keeps a whole model a table. When most of its work is
+incremental — a CTE that scans and aggregates a large growing input under a
+global `rank()` — materializing that part changes `Q = Q_keep ∘ Q_inc` into
+`Q_keep ∘ T`, with `T` maintained by `Q_inc^Δ`: `Q_inc` then costs the new
+rows only, and `Q_keep` still rebuilds, but over `T`. That pays only when `T`
+is smaller than what `Q_inc` reads, so a cut must **reduce**: aggregate,
+deduplicate or filter. Cuts are text boundaries (CTEs) whose body reads no
+other CTE, so the SQL is the one written.
+
+`canon::incrementality::frontier` finds the cuts of a model whose verdict is
+`keep`; each CTE body is classified as a model of its own (`classify_at`).
+Refused, each with its reason: `no-reduction` (the part only projects),
+`no-boundary` (the growing work shares a SELECT with its blocker),
+`reads-cte`, `not-incremental`. `features::plan::split_plan` takes the first
+cut: the CTE becomes `<model>__<cte>`, planned as a table model and rewritten
+by `incr.could_be_incremental`'s own fix — for a per-key aggregate with a
+column of each group's newest event time, the touched-groups form
+`key in (select key from <input> where col > max(high_water))` with
+`delete+insert` on the key — and the model reads it.
+
+### Format
+
+One printer, `cogitator_ir::sexp` (flat where it fits, one child a line under
+its head otherwise), and `mir::sexp` for plans: relations by operator,
+columns and tables by name, no ids, CTE references with their body inline.
+
+```
+plan   := (scan NAME) | (filter PRED PLAN) | (project (items …) PLAN)
+        | (join KIND (on PRED) PLAN PLAN) | (aggregate (keys …) (aggs …) PLAN)
+        | (window (fn F (partition …) (order …) NAME) PLAN) | (distinct PLAN)
+        | (union-all PLAN…) | (sort … PLAN) | (limit N PLAN) | (cte-ref NAME PLAN) | (opaque)
+class  := (class grows | static | linear | bilinear | per-group | per-bucket
+                | dedupe | per-partition | kept | (blocked REASON))
+```
+
+1. **Analysis** (`dbt.queryPlan` → `incrementality.sexp`): the verdict, the
+   notes, and the plan with each node's class appended.
+2. **Frontier** (`incrementality.frontier`, for a kept model): each cut with
+   its boundary span, its own verdict and what it reduces by; each refusal
+   with `(because "…")`.
+3. **Split** (`dbt.splitPlan` → `sexp`): the part (materialization, strategy,
+   unique key, CTE, reduction, increment filter), the model over it, and the
+   cost before and after.
+4. **Refusal**: `(split MODEL (refused REASON (cte NAME) (because "…")))`.
+
+The worked example, a global rank over a per-user rollup:
+
+```lisp
+(split orders_ranked
+  (model orders_ranked__by_user
+    (materialized incremental)
+    (strategy delete+insert)
+    (unique-key user_id)
+    (from-cte by_user)
+    (reduces aggregate)
+    (increment
+      (filter
+        (or
+          (is-null (max-of this last_ts))
+          (in user_id (select user_id (scan events) (> ts (max-of this last_ts))))))))
+  (model orders_ranked (materialized table) (reads orders_ranked__by_user))
+  (cost (before (full-scan events)) (after (delta-scan events) (full-scan orders_ranked__by_user))))
+```
+
+### Surfaces and proof
+
+A `refactor.extract` code action carries the split out (the part created, the
+model edited); `dbt.splitPlan {uri}` returns the S-expression and the part's
+file. The oracle's split mode (`part` and `outer` under `[incremental]`)
+maintains the part through the delta, computes `outer` over it as `__next`,
+and requires it to equal `model.sql` rebuilt in full
+(`testdata/oracle/split_rank_over_users`).
+
+### Limits
+
+- One cut per plan, CTEs only; a model with everything in one SELECT is
+  refused `no-boundary` (cutting anywhere needs a MIR→SQL printer).
+- A per-key part needs one key and a column with each group's newest event
+  time (`max(ts)`) in its output; otherwise it is refused `not-incremental`.

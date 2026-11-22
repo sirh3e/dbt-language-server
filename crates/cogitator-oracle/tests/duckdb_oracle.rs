@@ -113,3 +113,18 @@ fn an_increment_without_its_empty_model_guard_is_caught() {
         "{failures:?}"
     );
 }
+
+/// A split's check can fail: ranking over the part without maintaining it
+/// (the increment dropped) misses what the delta changed.
+#[test]
+fn a_split_whose_part_is_not_maintained_is_caught() {
+    let mut case = case("split_rank_over_users");
+    if let Some(incremental) = case.incremental.as_mut() {
+        incremental.increment = "select * from this_model where false".to_owned();
+    }
+    let failures = run_case(&mut DuckDb, &case);
+    assert!(
+        failures.iter().any(|f| f.contains("touched_and_new_users")),
+        "{failures:?}"
+    );
+}

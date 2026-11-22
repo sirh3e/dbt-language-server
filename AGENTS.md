@@ -109,7 +109,9 @@ editor integrations live under `editors/`.
   findings and rule trace for one model; `features/plan/`), dbt.deps
   (project-wide `dbt deps`, refreshes the context; the packages.yml
   quickfix runs it), dbt.incrementality (every table model's DBSP
-  incrementality verdict, slowest first; specs/ir-pipeline/10). Every command takes one argument object (`{uri, position?, …}`).
+  incrementality verdict, slowest first; specs/ir-pipeline/10),
+  dbt.splitPlan (a table model split at its incrementality frontier, as an
+  S-expression and the new part's file; §6). Every command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`), plus
   edit-bearing quickfixes: from a diagnostic's typed `data`

@@ -62,7 +62,10 @@ fn check_fixture<E: Engine>(engine: &mut E, case: &Case, fixture: &Fixture) -> V
     let (bag_setup, right) = match &case.incremental {
         Some(incremental) => (
             incremental_setup(case, fixture, incremental),
-            "select * from __next".to_owned(),
+            match &incremental.split {
+                Some(split) => split.outer.trim().trim_end_matches(';').to_owned(),
+                None => "select * from __next".to_owned(),
+            },
         ),
         None => (setup.clone(), case.after.clone()),
     };
@@ -116,7 +119,8 @@ pub fn incremental_setup(case: &Case, fixture: &Fixture, incremental: &Increment
     format!(
         "{}\ncreate table this_model as {};\n{}\ncreate table __increment as {};\ncreate table __next as {next};",
         case.setup(fixture),
-        body(&case.model),
+        // a split maintains its part; anything else, the model itself
+        body(incremental.split.as_ref().map_or(&case.model, |s| &s.part)),
         fixture.delta.as_deref().unwrap_or_default(),
         body(&incremental.increment),
     )
