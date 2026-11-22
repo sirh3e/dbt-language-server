@@ -210,6 +210,23 @@
   (check (or (null plan) (eq plan :null) (stringp (plist-get plan :sexp)))
          "integration: dbt.splitPlan answers a plan or null" plan))
 
+;; unit + integration: dbt.incrementalDiff
+(check (equal (cogitator--incremental-diff-render
+               '(:model "m" :identical :json-false :diff "--- a\n+++ b\n" :fullRefresh "x"))
+              "--- a\n+++ b\n")
+       "incremental diff: a change shows the unified diff")
+(check (string-match-p "changes nothing"
+                       (cogitator--incremental-diff-render
+                        '(:model "m" :identical t :diff "" :fullRefresh "select 1\n")))
+       "incremental diff: an unchanged model says so")
+(let ((diff (run--exec "dbt.incrementalDiff"
+                       (list :uri (concat "file://"
+                                          (expand-file-name "models/staging/stg_customers.sql"
+                                                            run--fixture))))))
+  (check (and (stringp (plist-get diff :fullRefresh))
+              (stringp (plist-get diff :incremental)))
+         "integration: dbt.incrementalDiff renders both ways" diff))
+
 ;; unit + integration: the syntax tree
 (check (equal (cogitator--syntax-line
                '(:depth 1 :kind "select" :field "body" :missing :json-false
@@ -224,6 +241,104 @@
               (> (length (plist-get tree :nodes)) 0)
               (equal (plist-get (aref (plist-get tree :nodes) 0) :depth) 0))
          "integration: dbt.syntaxTree answers the model's tree" (plist-get tree :truncated)))
+
+;; unit + integration: highlighting from the server
+(check (eq (cogitator--highlight-face "keyword.conditional") 'font-lock-keyword-face)
+       "highlight: a dotted capture takes its prefix's face")
+(check (eq (cogitator--highlight-face "variable.parameter") 'font-lock-variable-name-face)
+       "highlight: the longest prefix wins")
+(check (null (cogitator--highlight-face "spell"))
+       "highlight: a capture of no colour has no face")
+(with-temp-buffer
+  (insert "-- \U0001F980 x\nselect 1")
+  (check (= (cogitator--utf16-point 0 5) 5) "highlight: a surrogate pair is one character"
+         (cogitator--utf16-point 0 5))
+  (check (= (cogitator--highlight-apply
+             '(:spans [(:range (:start (:line 1 :character 0) :end (:line 1 :character 6))
+                        :capture "keyword")]))
+            1)
+         "highlight: a span becomes an overlay")
+  (check (eq (get-char-property 10 'face) 'font-lock-keyword-face)
+         "highlight: the overlay carries the face" (get-char-property 10 'face)))
+(let ((result (run--exec "dbt.highlight" (list :text "select {{ ref('a') }}" :language "dbt"))))
+  (check (seq-some (lambda (s) (equal (plist-get s :capture) "tag.delimiter"))
+                   (plist-get result :spans))
+         "integration: dbt.highlight colours the Jinja" (plist-get result :language)))
+
+;; unit + integration: highlight v2, dbt captures, node info (specs/highlighting)
+(check (eq (cogitator--highlight-face "type.dbt.model") 'font-lock-type-face)
+       "highlight: a dbt capture falls back to its parent's face")
+(check (eq (cogitator--highlight-face "type.dbt.reference.unresolved") 'font-lock-warning-face)
+       "highlight: an unresolved reference is a warning")
+(check (equal (mapcar #'cogitator--highlight-language
+                      '("/p/models/schema.yml" "/p/target/compiled/p/a.sql" "/p/models/a.sql" nil))
+              '("yaml" "sql" "dbt" "dbt"))
+       "highlight: the language of a file")
+(with-temp-buffer
+  (insert "name: customers")
+  (cogitator--highlight-apply
+   '(:spans [(:range (:start (:line 0 :character 0) :end (:line 0 :character 4))
+              :capture "property" :layer "yaml")
+             (:range (:start (:line 0 :character 6) :end (:line 0 :character 15))
+              :capture "type.dbt.model" :layer "dbt")])
+   '("yaml"))
+  (let ((ovs (seq-filter (lambda (o) (overlay-get o 'cogitator-highlight))
+                         (overlays-in (point-min) (point-max)))))
+    (check (and (= (length ovs) 1) (= (overlay-get (car ovs) 'priority) 13))
+           "highlight: a skipped layer is left out, the dbt layer on top" (length ovs))))
+(check (equal (cogitator--node-parse "macro:times_five") '("macro" . "times_five"))
+       "node: kind and name")
+(check (equal (cogitator--node-parse " orders ") '(nil . "orders"))
+       "node: a name alone")
+(let ((text (cogitator--node-render
+             '(:kind "macro" :name "cents" :params [(:name "col" :default :null)]
+               :callers [(:kind "model" :name "orders")] :calls []))))
+  (check (and (string-match-p "cents(col)" text) (string-match-p "called by (1)" text)
+              (string-match-p "orders  \\[model\\]" text))
+         "node: a macro's card" text))
+(let ((info (run--exec "dbt.nodeInfo" (list :node (list :kind "macro" :name "times_five")))))
+  (check (equal (plist-get info :kind) "macro")
+         "integration: dbt.nodeInfo answers for a macro" info))
+(let* ((schema (expand-file-name "models/schema.yml" run--fixture))
+       (result (run--exec "dbt.highlight" (list :uri (concat "file://" schema)))))
+  (check (and (equal (plist-get result :language) "yaml")
+              (seq-some (lambda (s) (equal (plist-get s :capture) "type.dbt.model"))
+                        (plist-get result :spans)))
+         "integration: a YAML file is highlighted with dbt captures" (plist-get result :language)))
+
+(check (eq (cogitator--highlight-face "variable.dbt.var") 'font-lock-variable-name-face)
+       "highlight: a var in YAML takes the variable face")
+(check (eq (cogitator--highlight-face "variable.dbt.var.unresolved") 'font-lock-warning-face)
+       "highlight: an undefined var is a warning")
+
+;; unit + integration: ast-grep
+(check (equal (cogitator--ast-grep-parse "{{ ref($M) }} => {{ ref('x', $M) }}")
+              '(:pattern "{{ ref($M) }}" :rewrite "{{ ref('x', $M) }}" :language "dbt"))
+       "astgrep: a pattern and its rewrite")
+(check (equal (plist-get (cogitator--ast-grep-parse "sql: select $$$C from $T") :language) "sql")
+       "astgrep: sql: picks the SQL grammar")
+(check (null (cogitator--ast-grep-parse "  ")) "astgrep: no pattern, no query")
+(check (equal (cogitator--ast-grep-line
+               '(:uri "file:///p/models/a.sql" :text "{{ ref('a') }}" :replacement :null
+                 :range (:start (:line 2 :character 5) :end (:line 2 :character 19))))
+              "/p/models/a.sql:3:6: {{ ref('a') }}")
+       "astgrep: a match is a grep line")
+(let ((found (run--exec "dbt.astGrep" (append (cogitator--command-argument)
+                                               (list :pattern "{{ ref($M) }}")))))
+  (check (= (length (plist-get found :matches)) 4)
+         "integration: dbt.astGrep finds the model's refs" (length (plist-get found :matches))))
+
+;; unit + integration: unresolved names
+(check (equal (cogitator--unresolved-line
+               '(:kind "ref" :name "ghost" :uri "file:///p/models/a.sql"
+                 :message "model 'ghost' not found in the project"
+                 :range (:start (:line 2 :character 14) :end (:line 2 :character 19))))
+              "/p/models/a.sql:3:15: [ref] ghost — model 'ghost' not found in the project")
+       "unresolved: an item is a grep line")
+(let ((found (run--exec "dbt.unresolved" (cogitator--command-argument))))
+  (check (and (numberp (plist-get found :count))
+              (= (plist-get found :count) (length (plist-get found :items))))
+         "integration: dbt.unresolved lists the project's unresolved names" found))
 
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))

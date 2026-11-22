@@ -7,8 +7,10 @@ The server currently implements exactly the original Go server's surface:
 |---|---|
 | `initialize` / `shutdown` / `exit` | capabilities per `specs/rust-port/01-protocol.md` §3.1 |
 | `textDocument/didOpen` / `didChange` / `didSave` | incremental sync (`textDocumentSync: 2`) |
-| `textDocument/hover` | refs, sources, vars, macros, dialect SQL functions |
-| `textDocument/definition` | models, sources/tables, vars, macros, in-file CTEs |
+| `textDocument/hover` | refs, sources, vars, env vars, macros, dialect SQL functions, what a `{{ … }}` renders to |
+| `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), env vars (`.env` line, else profiles.yml), macros, in-file CTEs |
+| `textDocument/references` | models, vars |
+| `textDocument/inlayHint` | relations, var values, env var values (secrets masked), macro parameters, opt-in Jinja renderings |
 | `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `{{` |
 | `workspace/executeCommand` → `dbt.goToSchema` | jump to the model's properties-YAML entry |
 | `textDocument/publishDiagnostics` (push) | dbt Fusion compile only (`--fusion`) |
@@ -53,6 +55,50 @@ names what already exists in the codebase.
       updates the properties-YAML entry and renames the model file
       (documentChanges with the file rename last). Caveat: dependents are
       read from disk; unsaved buffers of other files aren't visible here.
+      Plain-scalar `ref('…')` in properties YAML (relationship tests'
+      `to:`, exposures' `depends_on:`) are rewritten too, and a quoted
+      YAML `name:` keeps its quotes.
+- [x] **References for every dbt kind** (`features/references/`):
+      sources (whole or one table, from a `source()` or the YAML entry),
+      macros (call sites resolved as dbt resolves them — bare and
+      `pkg.macro`, in models, tests, analyses and macro files), docs
+      blocks (`doc()` uses from a use or the `{% docs %}` header) and
+      documented columns (the YAML entry, the model's SQL, and direct
+      dependents whose column lineage reads it). `includeDeclaration` adds
+      the definition; the model `ref()` references gain the model file.
+- [x] **Macro rename**: prepareRename accepts a macro call, its
+      `{% macro %}` header or a `macros:` YAML entry; the edit renames the
+      header, every call resolving to it (qualified too) and the YAML
+      entry. Macros of installed packages are refused with the reason
+      (`RequestFailed`), as are invalid and already-taken names.
+- [x] **Macro call hierarchy, both ways**: prepare from a call site or a
+      definition header; incomingCalls lists models, tests, analyses and
+      calling macros; outgoingCalls lists the macros a macro's body (or a
+      model) calls.
+- [x] **Document links** for macro calls (to the defining file) and
+      `doc()` (to the docs block), plus plain-scalar `ref()`/`source()` in
+      properties YAML.
+- [x] **Var rename** (`textDocument/rename` + `prepareRename`) on a
+      `var('x')` call or a `vars:` key (root, scoped, a package's, or a
+      cogitator.yml override): every call that resolves to the same
+      definition and the keys that decide it, scope-aware
+      (docs/variables.md, "Renaming a var").
+- [x] **env_var() support**: the value inline (`inlay.env_vars`), hover
+      with its source, definition into `.env` (else the profiles.yml
+      use), an `env-var-unset` warning for a defaultless env_var() the
+      server's environment lacks; secret-looking names are masked.
+- [x] **Unused vars**: `unused-var` hints (Unnecessary) on root
+      dbt_project.yml `vars:` keys no scope reads, with a removal quickfix.
+- [x] **Inline Jinja preview**: hover inside `{{ … }}` shows what it
+      renders to (dbt.expandJinja's stubs, fuel- and size-capped); opt-in
+      inlay hints for short single-line renderings (`inlay.jinja`).
+- [x] **Macro calls inside Jinja blocks**: calls in `{% set %}`, `{% if
+      %}`, `{% for %}`, `{% do %}` and `{% call %}`, nested and filter
+      arguments are call tokens like `{{ m() }}` (parser,
+      `cogitator-parser/src/calls.rs`), so references, rename, the call
+      hierarchy, links, hover/definition, the graph's model→macro edges and
+      `dbt.unresolved` see them; context functions, methods, filters,
+      tests and template-bound names are not calls.
 - [x] **CodeLens batch** on model files — "N downstream" / "N upstream"
       counts (graph; dbt terminology: `downstream_of`/`upstream_of`),
       "Go to schema" (navigates via window/showDocument), "Column lineage"
@@ -62,6 +108,33 @@ names what already exists in the codebase.
       target/compiled/<project>/<model>.sql in the editor. Macro files get
       per-macro "N call sites" lenses. Server→client requests use an
       outgoing-id counter; client responses are ignored by a response guard.
+- [x] **Quality lenses** (`features/quality/`): a coverage lens on a
+      model's SQL file and its YAML entry ("3/7 columns documented · 2/7
+      tested", "· no description" for an undescribed model; the SQL side
+      counts produced-but-undeclared columns from lineage), a lens on each
+      YAML column lacking a description or a test, and the figures in
+      dbt.modelInfo (`coverage`) and dbt.status (`project.coverage`).
+      "Run this test" lenses on every generic test entry of a properties
+      YAML (models, seeds, snapshots, versions, sources), on unit tests and
+      on singular test files run exactly that test through dbt.runSelection
+      — the selector is dbt's full generic-test name
+      (`synthesize_generic_test_names`: `<test>_<target>_<args>`,
+      `source_` and package prefixes, `name:` overrides), which a bare
+      `--select` matches as the FQN's last element, also past dbt's
+      64-character md5 alias. A test on a versioned model's base entry is
+      one dbt test per version it applies to (versions without their own
+      `data_tests:`, columns their `include`/`exclude` keeps), and its lens
+      selects them all (`not_null_m_v1_id not_null_m_v2_id`). Arguments
+      are read as PyYAML (YAML 1.1: `yes`, `010`, `1e3`) and written as
+      Python's `str()`. Checked against dbt-core 1.11.17 on
+      testdata/test_names (golden.json, regenerated by golden.sh).
+- [x] **Unit-test scaffold** code action ("Scaffold a unit test for 'm'",
+      on the model's SQL and on its YAML entry): a dbt ≥ 1.8 `unit_tests:`
+      entry with one `given:` input per ref()/source(), each with a row of
+      the columns the model reads from it (lineage, else the input's
+      documented columns), and an `expect:` row of the output columns,
+      every value `null`; appended to an existing `unit_tests:` list or
+      started at the end of the file.
 - [x] **rootUri / workspaceFolders** honored at initialize (modern clients
       that omit the deprecated rootPath find the project again).
 - [x] **Actionable error feedback**: failures report through
@@ -87,6 +160,21 @@ names what already exists in the codebase.
 - [x] **Snowflake coverage closed out**: profiles.yml → dialect, keyword
       suggestions, function docs/completion (743 entries), and lineage
       parsing Snowflake syntax (QUALIFY) — all tested.
+
+- [x] **Unresolved references, project-wide** (`dbt.unresolved`): every
+      unresolved `ref`, `source`, source table, `doc`, macro and `var` of the
+      root project in one list (kind, name, uri, range, message,
+      suggestions), from the dangling-ref diagnostics' per-document checks
+      plus `{{ macro() }}` calls no package defines and dbt does not
+      provide; unsaved buffers count. Neovim `:DbtUnresolved` (quickfix) and
+      `:DbtFind unresolved` (picker), Emacs `cogitator-unresolved`, VS Code
+      "dbt: Unresolved references".
+- [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
+      `target/run/…`, hover shows the Jinja source lines a compiled line came
+      from (a link to them) above the SQL hover, and definition jumps there
+      (a CTE of the compiled file still wins). The line map is a patience
+      diff of the normalized texts: copied lines are exact anchors, the
+      lines between anchors come from the source lines between them.
 
 ## P2 — quality of life
 
@@ -117,7 +205,13 @@ names what already exists in the codebase.
       `rev` in the workspace Cargo.toml.
 - [x] **Tree-sitter batch — token-based v1 shipped** (06 §3.6, the tree can
       later upgrade fidelity: richer folding/symbols from real nodes):
-      - [x] `textDocument/semanticTokens` (full)
+      - [x] `textDocument/semanticTokens` (full and range); YAML property
+            files get the dbt-aware captures of `dbt.highlight` (models,
+            sources, columns, tests, macros, refs, `doc()`, config keys,
+            `.unresolved`) and the Jinja/SQL inside values through the same
+            stream — legend types `type`/`property`/`parameter` and
+            modifiers `declaration`, `dbt`, `unresolved` (specs/highlighting
+            §12), so stock clients (Zed) colour YAML too
       - [x] `textDocument/foldingRange` (multi-line paren pairs)
       - [x] `textDocument/documentSymbol` (CTEs + macros, flat)
       - [x] `textDocument/selectionRange` (token → line → document)
@@ -126,8 +220,35 @@ names what already exists in the codebase.
             and properties files
       - [x] property-name completion in dbt `.yml` files (heuristic section
             detection; enum-value completion still open)
+      - [x] schema-driven properties completion (docs/properties-yaml.md):
+            keys and enum/boolean values at any path from the vendored
+            schema, generic test names (built-ins, `{% test %}` blocks,
+            `test_*` macros, packages') with their arguments, and the
+            model's output columns under `columns:`
+      - [x] `yaml-unproduced-column`: tests on a column the model does not
+            produce (lineage-certain only), rename/remove quickfixes
+      - [x] "Add missing columns" offered from the model's YAML entry too
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
+- [x] **Inline plan hints** (specs/ir-pipeline/06): each CTE's row count as
+      an inlay hint when catalog.json statistics prove it — exact through
+      projections, sorts and windows, an upper bound (`≤`) through filters,
+      groups, DISTINCT, LIMIT and semi/anti joins, nothing through other
+      joins or without statistics (`features/plan/row_hints.rs`,
+      `row_inlay.rs`; `perf.row_hints`, off with `perf.catalog_stats`). The
+      plan rules' findings sit at their source as diagnostics
+      (`features/plan/diagnostics.rs`, `perf_rules`) and, with
+      `perf.inline_findings` (default false), as inlay hints too —
+      `⚠ join.cartesian`, the whole finding as the tooltip, a label part
+      running `dbt.queryPlan`, merged with the CTE's row count into one hint
+      (`1,200 rows · ⚠ model.unused_cte`; `features/plan/finding_inlay.rs`,
+      `perf.inlineFindings` in dbt.status/dbt.doctor).
+- [x] **Incremental-model helper**: `dbt.incrementalDiff {uri, show?}` renders
+      the model with `is_incremental()` false and true (the dbt.expandJinja
+      stubs, `{{ this }}` as the model's relation) and diffs them; incremental
+      models carry the "Compare incremental / full refresh" lens
+      (`features/incremental_diff.rs`; :DbtIncrementalDiff,
+      `cogitator-incremental-diff`, the VS Code palette).
 - [ ] **AST-driven features for duckdb projects** (spec 07 §4,
       `json_serialize_sql` AST): column-name completion, AST-based graph
       edges, better CTE information.
@@ -143,7 +264,7 @@ Still open, with reasons:
 - `textDocument/formatting` / `rangeFormatting` / `onTypeFormatting`
   (would mean embedding a SQL formatter)
 - `textDocument/codeAction`, `prepareRename`,
-  `inlayHint`, `inlineValue`, `documentLink`, `linkedEditingRange`,
+  `inlineValue`,
   `documentColor`
 - `textDocument/typeDefinition` / `implementation` / `declaration`
   (little meaning for dbt sources)

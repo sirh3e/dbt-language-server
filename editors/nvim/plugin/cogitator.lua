@@ -28,9 +28,28 @@ vim.api.nvim_create_user_command("DbtPreview", function(opts)
   require("cogitator.commands").preview(opts)
 end, { nargs = "?", desc = "dbt show for the current model (optional row limit, default 50)" })
 cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
+cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, as a diff in a split")
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
+vim.api.nvim_create_user_command("DbtUnresolved", function(opts)
+  require("cogitator.commands").unresolved(opts)
+end, {
+  nargs = "*",
+  complete = function()
+    return { "ref", "source", "source_table", "doc", "macro", "var" }
+  end,
+  desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
+})
+vim.api.nvim_create_user_command("DbtFind", function(opts)
+  require("cogitator.pick").find(opts.args)
+end, {
+  nargs = "?",
+  complete = function()
+    return require("cogitator.pick.sources").ORDER
+  end,
+  desc = "fuzzy-find models, definitions, columns, lineage… (fzf-lua/snacks/telescope or built-in)",
+})
 cmd("DbtSplit", "split", "split this table model at its incrementality frontier (dbt.splitPlan)")
 cmd("DbtIncrementality", "incrementality", "table models that could be incremental (quickfix)")
 vim.api.nvim_create_user_command("DbtImpact", function(opts)
@@ -124,6 +143,31 @@ end, {
     return require("cogitator.dispatch").complete(lead, cmdline)
   end,
   desc = "every :Dbt* command as :Dbt <subcommand> [args]",
+})
+
+vim.api.nvim_create_user_command("DbtHighlight", function(opts)
+  require("cogitator.tshl").command(opts)
+end, {
+  bang = true,
+  nargs = "?",
+  complete = function()
+    return { "auto", "always", "off" }
+  end,
+  desc = "colour this buffer from the server, or stop (toggle); ! auto|always|off sets the mode",
+})
+
+vim.api.nvim_create_user_command("DbtNode", function(opts)
+  require("cogitator.commands").node(opts)
+end, {
+  nargs = "?",
+  desc = "a node's card (dbt.nodeInfo): [kind:]name, e.g. macro:cents_to_dollars",
+})
+
+vim.api.nvim_create_user_command("DbtAstGrep", function(opts)
+  require("cogitator.astgrep").command(opts)
+end, {
+  nargs = "*",
+  desc = "ast-grep: [sql:]pattern [=> rewrite] — matches to quickfix, a rewrite after asking",
 })
 
 vim.api.nvim_create_user_command("DbtSyntaxTree", function()

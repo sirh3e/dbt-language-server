@@ -2,10 +2,12 @@
 //! reader → dispatcher (owns Documents) → writer; debounced refresh task
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
+mod astgrep;
 mod cache_persist;
 mod client_link;
 mod commands;
 mod compiled;
+mod compiled_source;
 pub(crate) mod config_file;
 mod config_watcher;
 mod derived_cache;
@@ -14,14 +16,18 @@ mod dispatcher;
 mod function_docs;
 mod fusion;
 mod handlers;
+mod highlight;
 mod jobs;
 mod multi_root;
+mod node_info;
 mod offload;
 mod refresh;
 mod reply;
+mod semantic_yaml;
 mod snapshot;
 mod status;
 mod test_hooks;
+mod unresolved;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -70,6 +76,12 @@ pub struct SharedToggles {
     /// `config_file::lint_flags` bits; 0 = every check off.
     pub lints: std::sync::atomic::AtomicU32,
     pub warehouse_columns: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.vars: false` (hints are on by default).
+    pub inlay_vars_off: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.env_vars: false` (on by default).
+    pub inlay_env_vars_off: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.jinja: true` (off by default).
+    pub inlay_jinja: std::sync::atomic::AtomicBool,
     /// `perf`/`perf_rules`: an atomic can't hold a severity per rule, so
     /// readers clone this snapshot (cheap) and a config change swaps it.
     pub perf: std::sync::RwLock<
@@ -89,6 +101,30 @@ pub struct ProfilesConfig {
     pub profile: String,
     /// Active target override; empty → the profile's default target.
     pub target: String,
+    /// `initializationOptions.vars` (`--vars` equivalents).
+    pub vars_init: Vec<cogitator_analysis::context::VarOverride>,
+    /// cogitator.yml `vars:`, which wins over the init options.
+    pub vars_file: Vec<cogitator_analysis::context::VarOverride>,
+}
+
+impl ProfilesConfig {
+    /// Every override, the file's after (so winning over) the init options'.
+    pub fn var_overrides(&self) -> Vec<cogitator_analysis::context::VarOverride> {
+        self.vars_init
+            .iter()
+            .chain(&self.vars_file)
+            .cloned()
+            .collect()
+    }
+
+    /// The overrides as dbt's `--vars` JSON, or `None` when there are none.
+    pub fn dbt_vars_arg(&self) -> Option<String> {
+        let mut map = serde_json::Map::new();
+        for o in self.var_overrides() {
+            map.insert(o.name, o.value);
+        }
+        (!map.is_empty()).then(|| serde_json::Value::Object(map).to_string())
+    }
 }
 
 /// Input fingerprint for the modelInfo/modelTests result cache: the
@@ -230,6 +266,15 @@ pub async fn run(
     toggles.lints.store(launch.lint.flags(0), Ordering::Relaxed);
     if let Some(on) = launch.warehouse.columns {
         toggles.warehouse_columns.store(on, Ordering::Relaxed);
+    }
+    if let Some(on) = launch.inlay.vars {
+        toggles.inlay_vars_off.store(!on, Ordering::Relaxed);
+    }
+    if let Some(on) = launch.inlay.env_vars {
+        toggles.inlay_env_vars_off.store(!on, Ordering::Relaxed);
+    }
+    if let Some(on) = launch.inlay.jinja {
+        toggles.inlay_jinja.store(on, Ordering::Relaxed);
     }
     *toggles.perf.write().expect("perf settings lock") =
         Arc::new(launch.perf_settings(&Default::default()));

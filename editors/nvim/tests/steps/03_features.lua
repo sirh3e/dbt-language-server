@@ -63,6 +63,30 @@ return function(ctx)
     "integration: dbt.splitPlan answers a plan or null",
     vim.inspect(split_result):sub(1, 200)
   )
+  -- customers.sql calls a package macro the preview cannot stub; the
+  -- staging model renders, and has no is_incremental() to differ on
+  local diff_result = H.exec_cmd(client, bufnr, "dbt.incrementalDiff", {
+    uri = vim.uri_from_fname(vim.fs.joinpath(ctx.fixture, "models", "staging", "stg_customers.sql")),
+  }, "integration: dbt.incrementalDiff")
+  H.check(
+    type(diff_result) == "table"
+      and type(diff_result.fullRefresh) == "string"
+      and type(diff_result.incremental) == "string"
+      and diff_result.identical == true,
+    "integration: dbt.incrementalDiff renders both ways",
+    vim.inspect(diff_result):sub(1, 200)
+  )
+
+  local unresolved_result = H.exec_cmd(client, bufnr, "dbt.unresolved", {
+    uri = vim.uri_from_bufnr(bufnr),
+  }, "integration: dbt.unresolved")
+  H.check(
+    type(unresolved_result) == "table"
+      and type(unresolved_result.items) == "table"
+      and type(unresolved_result.count) == "number",
+    "integration: dbt.unresolved lists the project's unresolved names",
+    vim.inspect(unresolved_result):sub(1, 200)
+  )
 
   local cache_result = H.exec_cmd(client, bufnr, "dbt.cache", {
     uri = vim.uri_from_bufnr(bufnr),

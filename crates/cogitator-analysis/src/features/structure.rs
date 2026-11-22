@@ -141,9 +141,11 @@ pub fn semantic_tokens(doc: &Document) -> SemanticTokens {
             TokenKind::Config => keyword,
             TokenKind::Macro => macro_t,
             TokenKind::Package => namespace,
-            TokenKind::Ref | TokenKind::SourceName | TokenKind::SourceTable | TokenKind::Var => {
-                variable
-            }
+            TokenKind::Ref
+            | TokenKind::SourceName
+            | TokenKind::SourceTable
+            | TokenKind::Var
+            | TokenKind::EnvVar => variable,
             TokenKind::StringLit => string_t,
             TokenKind::Number => number,
             _ => continue,

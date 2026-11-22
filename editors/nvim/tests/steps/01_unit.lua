@@ -98,6 +98,29 @@ return function(ctx)
     require("cogitator.commands").split_lines({ model = "m", sexp = "(split m (refused no-boundary))" })
   H.check(#refused == 1, "commands: a refused split is the S-expression alone", vim.inspect(refused))
 
+  -- :DbtIncrementalDiff rendering: the diff, or a note when nothing differs
+  local diff_lines = require("cogitator.commands").incremental_diff_lines({
+    model = "events",
+    identical = false,
+    diff = "--- events (full refresh)\n+++ events (incremental)\n@@ -1 +1,2 @@\n select 1\n+where x > 1\n",
+  })
+  H.check(
+    diff_lines[1] == "--- events (full refresh)" and diff_lines[#diff_lines] == "+where x > 1",
+    "commands: incremental_diff_lines shows the unified diff",
+    vim.inspect(diff_lines)
+  )
+  local same = require("cogitator.commands").incremental_diff_lines({
+    model = "m",
+    identical = true,
+    fullRefresh = "select 1\n",
+    diff = "",
+  })
+  H.check(
+    same[1]:find("changes nothing", 1, true) ~= nil and same[#same] == "select 1",
+    "commands: an unchanged model says so and shows its SQL",
+    vim.inspect(same)
+  )
+
   -- :DbtIncrementality quickfix items
   local items = require("cogitator.commands").incrementality_items({
     incremental = 1,
@@ -124,6 +147,29 @@ return function(ctx)
     vim.inspect(items)
   )
 
+  -- :DbtUnresolved quickfix items
+  local unresolved = require("cogitator.commands").unresolved_items({
+    count = 1,
+    items = {
+      {
+        kind = "ref",
+        name = "ghost",
+        uri = "file:///p/models/a.sql",
+        range = { start = { line = 2, character = 14 }, ["end"] = { line = 2, character = 19 } },
+        message = "model 'ghost' not found in the project",
+      },
+    },
+  })
+  H.check(
+    #unresolved == 1
+      and unresolved[1].filename == "/p/models/a.sql"
+      and unresolved[1].lnum == 3
+      and unresolved[1].col == 15
+      and unresolved[1].text == "[ref] ghost — model 'ghost' not found in the project",
+    "commands: unresolved_items place each name at its line and column",
+    vim.inspect(unresolved)
+  )
+
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")
@@ -141,4 +187,8 @@ return function(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_graphs.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_dispatch.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_tools.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_async.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_pick.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_explorer.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_tshl.lua"))(ctx)
 end

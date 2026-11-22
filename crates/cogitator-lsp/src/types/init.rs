@@ -80,6 +80,8 @@ pub struct CompletionOptions {
 pub struct SemanticTokensOptions {
     pub legend: SemanticTokensLegend,
     pub full: bool,
+    /// `textDocument/semanticTokens/range`: the full stream cut to lines.
+    pub range: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -126,7 +128,17 @@ pub const SEMANTIC_TOKEN_TYPES: &[&str] = &[
     "number",
     "operator",
     "namespace",
+    // appended for YAML property files (specs/highlighting §12): the
+    // dbt-aware captures of §5 as standard types
+    "type",
+    "property",
+    "parameter",
 ];
+
+/// Semantic token modifiers (bit `i` = entry `i`): `declaration` marks a
+/// name a YAML entry defines, `dbt` every dbt-aware capture, `unresolved`
+/// a ref/source/doc the project lacks.
+pub const SEMANTIC_TOKEN_MODIFIERS: &[&str] = &["declaration", "dbt", "unresolved"];
 
 #[derive(Debug, Serialize)]
 pub struct ExecuteCommandOptions {
@@ -177,7 +189,12 @@ pub const COMMANDS: &[&str] = &[
     "dbt.deps",
     "dbt.incrementality",
     "dbt.splitPlan",
+    "dbt.incrementalDiff",
     "dbt.syntaxTree",
+    "dbt.highlight",
+    "dbt.astGrep",
+    "dbt.nodeInfo",
+    "dbt.unresolved",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {
@@ -204,9 +221,10 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 semantic_tokens_provider: SemanticTokensOptions {
                     legend: SemanticTokensLegend {
                         token_types: SEMANTIC_TOKEN_TYPES,
-                        token_modifiers: &[],
+                        token_modifiers: SEMANTIC_TOKEN_MODIFIERS,
                     },
                     full: true,
+                    range: true,
                 },
                 signature_help_provider: SignatureHelpOptions {
                     trigger_characters: &["(", ","],

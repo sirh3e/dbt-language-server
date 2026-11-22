@@ -119,7 +119,13 @@ editor integrations live under `editors/`.
   dbt.incrementality (every table model's DBSP incrementality verdict,
   slowest first; specs/ir-pipeline/10), dbt.splitPlan (a table model split
   at its incrementality frontier, as an S-expression and the new part's
-  file; §6). Every command takes one argument object (`{uri, position?, …}`).
+  file; §6), dbt.incrementalDiff (the model rendered with `is_incremental()`
+  false and true, and the unified diff; `show: true`, the lens on
+  incremental models, opens it as a document), dbt.unresolved (every
+  unresolved ref/source/doc/macro/var of the project;
+  `features/unresolved.rs`). Every command takes one argument object
+  (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
+  files map a line back to its Jinja source (`features/compiled_map.rs`).
 - `textDocument/codeAction` serves the executable lens set as
   command-only actions (shared truth: `lenses::model_commands`), plus
   edit-bearing quickfixes: from a diagnostic's typed `data`
@@ -128,7 +134,9 @@ editor integrations live under `editors/`.
   (`define_missing.rs`: create model, define var; `declare_missing.rs`:
   declare a source, a source table, a docs block; `governance_fixes.rs`:
   private refs; `yaml_columns.rs`: add undocumented or undeclared
-  columns, drop contracted ones; `refactors.rs`: expand a star, extract
+  columns, drop contracted ones — offered from the YAML entry too;
+  `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
+  rename/remove fixes; `refactors.rs`: expand a star, extract
   schema YAML; `extract_cte.rs`: CTE → model). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion
@@ -151,7 +159,7 @@ editor integrations live under `editors/`.
   `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`, `--config [path]`.
 - **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
   `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
-  `refresh.debounce_ms`, `perf.{profile,catalog_stats}` and `perf_rules`
+  `refresh.debounce_ms`, `perf.{profile,catalog_stats,row_hints,inline_findings}` and `perf_rules`
   (rule id → severity or off; profile default `off`, specs/ir-pipeline/08)
   hot-reload (2 s stamp poll + didSave fast-path +
   `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch
@@ -161,12 +169,17 @@ editor integrations live under `editors/`.
   `server/config_watcher.rs`; `dbt.status` reports path/loaded/error.
 
 ## Project Structure (specs/rust-port/09 §1)
+- `docs/` — user and contributor guides (`neovim.md`, `incrementality.md`,
+  `commands.md` — a section per `dbt.*` command, checked by the parity test —
+  `editor-parity.md`); `specs/` stays the binding contract
 - `crates/cogitator-error` — error type
 - `crates/cogitator-lsp` — protocol types + Content-Length framing + URI helpers
 - `crates/cogitator-dialects` — dialect + bundled SQL function docs
 - `crates/cogitator-schemas` — typify-generated dbt schema types (`schemas/dbt/`) + saphyr position side-tables
 - `crates/cogitator-parser` — minijinja+sqlparser pipeline, refinement, TokenIndex, jinja_scan
 - `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
+- `crates/cogitator-treesitter/src/highlight/` — `dbt.highlight`'s grammars, layers and merge (`mod.rs`) and the YAML composition (`yaml.rs`: Jinja and SQL inside values, dbt-aware captures); the server side is `server/highlight.rs` (v2 arguments, YAML context, cache) and `server/node_info.rs` (`dbt.nodeInfo`); `server/semantic_yaml.rs` serves the same YAML captures as `textDocument/semanticTokens` (§12); binding spec `specs/highlighting/00-highlighting.md`
+- `crates/cogitator-astgrep` — ast-grep over tree-sitter-dbt (`dbt`) and tree-sitter-sequel (`sql`): `Search` (patterns, rewrites), `Rules` (sgconfig.yml rule dirs → findings with fixes); the server's `dbt.astGrep` and rule diagnostics (`server/astgrep.rs`). `editors/ast-grep/` is the CLI config and the example rules, tested in `tests/example_rules.rs`
 - `crates/cogitator-duckdb` — Jinja masking + feature-gated DuckDB 2.0 parse diagnostics
 - `crates/cogitator-treesitter` — tree-sitter document backend (grammar: the `tree-sitter-dbt` git dependency, its own repository sirh3e/tree-sitter-dbt; change the grammar there and bump the pinned `rev`)
 - `crates/cogitator-ir` — IR arenas, HIR/MIR/LIR types, verifiers, printers, `testkit` feature (serde and petgraph only)

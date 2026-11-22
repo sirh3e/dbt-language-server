@@ -674,7 +674,11 @@ end
 function M.select(items, opts, on_choice)
   opts = opts or {}
   if not enabled() then
-    return vim.ui.select(items, opts, on_choice)
+    return require("cogitator.pick").select(items, opts, on_choice)
+  end
+  if #items == 0 then
+    on_choice(nil, nil)
+    return
   end
   local format = opts.format_item or tostring
   local entries = {}

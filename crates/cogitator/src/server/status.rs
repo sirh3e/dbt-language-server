@@ -29,6 +29,8 @@ pub struct StatusReport {
 pub struct PerfStatus {
     pub profile: &'static str,
     pub catalog_stats: bool,
+    pub row_hints: bool,
+    pub inline_findings: bool,
     pub enabled_rules: usize,
 }
 
@@ -37,6 +39,8 @@ impl PerfStatus {
         PerfStatus {
             profile: settings.profile.as_str(),
             catalog_stats: settings.catalog_stats,
+            row_hints: settings.row_hints,
+            inline_findings: settings.inline_findings,
             enabled_rules: settings.enabled_rule_count(),
         }
     }
@@ -66,6 +70,8 @@ pub struct ProjectStatus {
     pub graph_edges: usize,
     /// Secondary project roots with a live context (multi-root).
     pub extra_roots: Vec<String>,
+    /// Column documentation/test coverage over the project's own models.
+    pub coverage: cogitator_analysis::features::quality::ProjectCoverage,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,6 +146,7 @@ pub fn status_report(
             graph_nodes: ctx.graph.node_count(),
             graph_edges: ctx.graph.edge_count(),
             extra_roots,
+            coverage: cogitator_analysis::features::quality::project_coverage(ctx),
         },
         profiles: ProfilesStatus {
             active_profile,

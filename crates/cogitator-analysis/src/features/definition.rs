@@ -11,6 +11,10 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
         uri: uri.to_string(),
         range: Range::zero_width(pos),
     };
+    // a `vars:` key in dbt_project.yml: where its value is decided
+    if let Some(loc) = super::key_definition(ctx, uri, pos) {
+        return loc;
+    }
     let Some(idx) = doc.parsed.find_token_at_cursor(pos.line, pos.character) else {
         return fallback;
     };
@@ -46,14 +50,29 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 range: t.range,
             })
             .unwrap_or(fallback),
-        TokenKind::Var => ctx
-            .variable_detail_map
-            .get(literal)
-            .map(|v| Location {
+        // the KEY of the entry that decided the value; an undefined var
+        // with a default goes to its default argument
+        TokenKind::Var => match ctx.var_for(&doc.uri, literal) {
+            Some(v) if !v.uri.as_os_str().is_empty() => Location {
                 uri: file_uri(&v.uri),
                 range: v.range,
-            })
-            .unwrap_or(fallback),
+            },
+            Some(_) => fallback,
+            None => parsed
+                .var_call(idx)
+                .default
+                .map(|(s, e)| Location {
+                    uri: uri.to_string(),
+                    range: Range {
+                        start: super::byte_position(&parsed.text, s),
+                        end: super::byte_position(&parsed.text, e),
+                    },
+                })
+                .unwrap_or(fallback),
+        },
+        TokenKind::EnvVar => {
+            super::env_vars::env_definition(ctx, doc, uri, idx).unwrap_or(fallback)
+        }
         TokenKind::Doc => ctx
             .doc_detail_map
             .get(literal)

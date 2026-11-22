@@ -9,7 +9,21 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { CogitatorApi } from "../../extension";
-import { incrementalityLabel, splitText, syntaxLine } from "../../extension";
+import {
+  astGrepLabel,
+  captureColor,
+  incrementalDiffText,
+  incrementalityLabel,
+  languageOf,
+  nodeMarkdown,
+  parseAstGrep,
+  parseNode,
+  skippedLayers,
+  unresolvedLabel,
+  spansByColor,
+  splitText,
+  syntaxLine,
+} from "../../extension";
 
 let failures = 0;
 
@@ -122,6 +136,26 @@ export async function run(): Promise<void> {
     definitions?.map((loc) => loc.uri.fsPath)
   );
 
+  // vars: the value after var() as an inlay hint
+  const hints = await vscode.commands.executeCommand<vscode.InlayHint[]>(
+    "vscode.executeInlayHintProvider",
+    document.uri,
+    new vscode.Range(0, 0, document.lineCount, 0)
+  );
+  const hintLabels = (hints ?? []).map((h) =>
+    typeof h.label === "string" ? h.label : h.label.map((p) => p.value).join("")
+  );
+  check(
+    hintLabels.includes("= 'jaffle'"),
+    "vscode: a var's value is an inlay hint",
+    hintLabels
+  );
+  check(
+    captureColor("variable.dbt.var") === "symbolIcon.variableForeground" &&
+      captureColor("variable.dbt.var.unresolved") === "editorWarning.foreground",
+    "vscode: a var in YAML has a colour, an undefined one a warning's"
+  );
+
   // the dbt.* command surface over the live client
   const graph = (await exec("dbt.modelGraph", {
     uri: document.uri.toString(),
@@ -149,6 +183,25 @@ export async function run(): Promise<void> {
     split === null || typeof split?.sexp === "string",
     "vscode: dbt.splitPlan answers a plan or null",
     split
+  );
+  // customers.sql calls a package macro the preview cannot stub
+  const diff = (await exec("dbt.incrementalDiff", {
+    uri: vscode.Uri.file(path.join(workspace, "models", "staging", "stg_customers.sql")).toString(),
+  })) as { fullRefresh?: string; incremental?: string } | null;
+  check(
+    typeof diff?.fullRefresh === "string" && typeof diff?.incremental === "string",
+    "vscode: dbt.incrementalDiff renders both ways",
+    diff
+  );
+  check(
+    incrementalDiffText({
+      model: "m",
+      fullRefresh: "select 1\n",
+      incremental: "select 1\nwhere x\n",
+      diff: "--- a\n+++ b\n",
+      identical: false,
+    }) === "--- a\n+++ b\n",
+    "vscode: incrementalDiffText shows the unified diff"
   );
   check(
     splitText({
@@ -187,6 +240,137 @@ export async function run(): Promise<void> {
     "vscode: a syntax-tree line has depth, field, kind and range"
   );
 
+  // highlighting from the server: the model's spans, and their colours
+  const spans = (await exec("dbt.highlight", {
+    uri: document.uri.toString(),
+  })) as { spans?: Array<{ capture: string }> } | null;
+  check(
+    spans?.spans?.some((s) => s.capture === "tag.delimiter"),
+    "vscode: dbt.highlight colours the model's Jinja",
+    spans?.spans?.length
+  );
+  check(
+    captureColor("keyword.conditional") === "symbolIcon.keywordForeground" &&
+      captureColor("variable.parameter") === "symbolIcon.variableForeground" &&
+      captureColor("spell") === undefined,
+    "vscode: a capture takes its longest prefix's colour"
+  );
+  const grouped = spansByColor([
+    { capture: "keyword", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 6 } } },
+    { capture: "keyword.operator", range: { start: { line: 0, character: 7 }, end: { line: 0, character: 9 } } },
+    { capture: "spell", range: { start: { line: 1, character: 0 }, end: { line: 1, character: 1 } } },
+  ]);
+  check(
+    grouped.size === 1 && grouped.get("symbolIcon.keywordForeground")?.length === 2,
+    "vscode: spans are grouped by colour, colourless ones dropped"
+  );
+
+  // highlighting v2 and node info (specs/highlighting)
+  check(
+    captureColor("type.dbt.model") === "symbolIcon.classForeground" &&
+      captureColor("type.dbt.reference.unresolved") === "editorWarning.foreground" &&
+      captureColor("property.dbt.column") === "symbolIcon.fieldForeground",
+    "vscode: dbt captures and unresolved references have colours"
+  );
+  check(
+    languageOf("/p/models/schema.yml") === "yaml" &&
+      languageOf("/p/target/compiled/p/a.sql") === "sql" &&
+      languageOf("/p/models/a.sql") === "dbt",
+    "vscode: the language of a file"
+  );
+  check(
+    JSON.stringify(skippedLayers("yaml", "auto")) === JSON.stringify(["yaml"]) &&
+      skippedLayers("yaml", "always").length === 0 &&
+      skippedLayers("dbt", "auto").length === 0,
+    "vscode: auto leaves YAML's own colours, always paints everything"
+  );
+  const layered = spansByColor(
+    [
+      { capture: "property", layer: "yaml", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } } },
+      { capture: "type.dbt.model", layer: "dbt", range: { start: { line: 0, character: 6 }, end: { line: 0, character: 9 } } },
+    ],
+    ["yaml"]
+  );
+  check(layered.size === 1 && layered.has("symbolIcon.classForeground"), "vscode: a skipped layer is not drawn");
+  check(
+    JSON.stringify(parseNode("macro:times_five")) === JSON.stringify({ kind: "macro", name: "times_five" }) &&
+      parseNode(" orders ").kind === undefined,
+    "vscode: a node is [kind:]name"
+  );
+  const markdown = nodeMarkdown({
+    kind: "macro",
+    name: "cents",
+    params: [{ name: "col" }],
+    callers: [{ name: "orders", kind: "model" }],
+    calls: [],
+  });
+  check(
+    markdown.includes("`cents(col)`") && markdown.includes("## called by (1)") && markdown.includes("- orders _model_"),
+    "vscode: a macro's card as markdown",
+    markdown
+  );
+  const macroInfo = (await exec("dbt.nodeInfo", {
+    node: { kind: "macro", name: "times_five" },
+  })) as { kind?: string } | null;
+  check(macroInfo?.kind === "macro", "vscode: dbt.nodeInfo answers for a macro", macroInfo);
+
+  // ast-grep: the query, a match's label, and the command over the wire
+  check(
+    JSON.stringify(parseAstGrep("{{ ref($M) }} => {{ ref('x', $M) }}")) ===
+      JSON.stringify({ pattern: "{{ ref($M) }}", rewrite: "{{ ref('x', $M) }}", language: "dbt" }) &&
+      parseAstGrep("sql: select $$$C from $T")?.language === "sql" &&
+      parseAstGrep("  ") === undefined,
+    "vscode: an ast-grep query reads [sql:]pattern [=> rewrite]"
+  );
+  check(
+    JSON.stringify(
+      astGrepLabel(
+        {
+          uri: "file:///p/models/a.sql",
+          range: { start: { line: 2, character: 5 }, end: { line: 2, character: 19 } },
+          text: "{{ ref('a') }}",
+          replacement: "{{ ref('x', 'a') }}",
+        },
+        () => "models/a.sql"
+      )
+    ) === JSON.stringify({ label: "{{ ref('a') }}  →  {{ ref('x', 'a') }}", description: "models/a.sql:3" }),
+    "vscode: a match's quick-pick entry shows its rewrite and place"
+  );
+  const found = (await exec("dbt.astGrep", {
+    uri: document.uri.toString(),
+    pattern: "{{ ref($M) }}",
+  })) as { matches?: unknown[] } | null;
+  check(found?.matches?.length === 4, "vscode: dbt.astGrep finds the model's refs", found?.matches?.length);
+
+  check(
+    JSON.stringify(
+      unresolvedLabel(
+        {
+          kind: "ref",
+          name: "ghost",
+          uri: "file:///p/models/a.sql",
+          range: { start: { line: 2, character: 14 }, end: { line: 2, character: 19 } },
+          message: "model 'ghost' not found in the project",
+        },
+        () => "models/a.sql"
+      )
+    ) ===
+      JSON.stringify({
+        label: "[ref] ghost",
+        description: "models/a.sql:3",
+        detail: "model 'ghost' not found in the project",
+      }),
+    "vscode: an unresolved name's quick-pick entry shows its kind and place"
+  );
+  const unresolvedResult = (await exec("dbt.unresolved", {
+    uri: document.uri.toString(),
+  })) as { count?: number; items?: unknown[] } | null;
+  check(
+    typeof unresolvedResult?.count === "number" && Array.isArray(unresolvedResult?.items),
+    "vscode: dbt.unresolved lists the project's unresolved names",
+    unresolvedResult
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -195,8 +379,13 @@ export async function run(): Promise<void> {
       "cogitator.status",
       "cogitator.restart",
       "cogitator.splitPlan",
+      "cogitator.incrementalDiff",
       "cogitator.incrementality",
       "cogitator.syntaxTree",
+      "cogitator.highlight",
+      "cogitator.astGrep",
+      "cogitator.nodeInfo",
+      "cogitator.unresolved",
     ].every((c) =>
       commands.includes(c)
     ),

@@ -108,7 +108,7 @@ function M.pick_target()
       )
       return
     end
-    require("cogitator.picker").select(choices, {
+    require("cogitator.pick").select(choices, {
       prompt = "dbt target",
       format_item = function(c)
         return c.label
@@ -154,14 +154,18 @@ function M.set(dir)
 
   local bufnr = vim.api.nvim_get_current_buf()
   local client = actions.client_for(bufnr, true)
-  local commands = client and vim.tbl_get(client.server_capabilities, "executeCommandProvider", "commands")
+  local commands = client
+    and vim.tbl_get(client.server_capabilities, "executeCommandProvider", "commands")
   if client and vim.tbl_contains(commands or {}, "dbt.setProfilesDir") then
     client:exec_cmd({
       command = "dbt.setProfilesDir",
       arguments = { { dir = expanded } },
     }, { bufnr = bufnr }, function(err, result)
       if err or not result or result == vim.NIL then
-        vim.notify("dbt.setProfilesDir failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+        vim.notify(
+          "dbt.setProfilesDir failed" .. (err and (": " .. err.message) or ""),
+          vim.log.levels.ERROR
+        )
         return
       end
       if client.root_dir then

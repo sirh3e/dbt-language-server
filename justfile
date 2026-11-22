@@ -175,11 +175,25 @@ vscode-test:
     cargo build -p cogitator
     cd editors/vscode && npm install --no-audit --no-fund && npm test
 
+# The server's two grammars as shared libraries for the ast-grep CLI
+# (editors/ast-grep/sgconfig.yml), into target/ast-grep
+[group('editors')]
+ast-grep-libs:
+    sh editors/ast-grep/build-libs.sh
+
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
 [group('editors')]
 nvim-test:
     cargo build -p cogitator
     nvim --headless -l editors/nvim/tests/run.lua
+
+# lazy.nvim installs the plugin from this checkout by name alone (the
+# root lazy.lua), then with editors/nvim/examples/lazy.lua; sandboxed, but
+# needs the network to clone lazy.nvim, so it is not part of nvim-test
+[group('editors')]
+nvim-lazy-test:
+    nvim --headless -l editors/nvim/tests/lazy/run.lua
+    COGITATOR_LAZY_SPEC=example nvim --headless -l editors/nvim/tests/lazy/run.lua
 
 # Batch Emacs integration tests (needs emacs >= 29 and a debug server build)
 [group('editors')]

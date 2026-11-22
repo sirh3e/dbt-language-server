@@ -107,6 +107,15 @@ return function(ctx)
   H.feed("q")
   H.check(got == nil and picker._state == nil, "picker: q cancels with nil")
 
+  -- pick.select, every choice dialog of the plugin, opens the yazi picker
+  local pick_got = "unset"
+  require("cogitator.pick").select({ "x", "y" }, { prompt = "dialog" }, function(item)
+    pick_got = item
+  end)
+  H.check(picker._state ~= nil, "picker: pick.select opens the yazi picker by default")
+  H.feed("j<CR>")
+  H.check(pick_got == "y", "picker: pick.select answers through it", pick_got)
+
   -- the vim.ui.input drop-in
   local typed = "unset"
   picker.input({ prompt = "name: ", default = "abc" }, function(text)

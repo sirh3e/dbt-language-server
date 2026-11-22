@@ -62,11 +62,15 @@ pub struct Dispatcher {
 }
 
 mod commands_exec;
+mod compiled_nav;
 mod dbt_ops;
 mod diagnostics_req;
+mod navigation;
 mod plan;
 mod requests;
+mod semantic;
 mod sync;
+mod yaml_props;
 
 impl Dispatcher {
     // constructed exactly once, in server::run — the shared handles are
@@ -246,7 +250,8 @@ impl Dispatcher {
             "textDocument/documentHighlight" => self.document_highlight(content),
             "textDocument/foldingRange" => self.folding_range(content),
             "textDocument/selectionRange" => self.selection_range(content),
-            "textDocument/semanticTokens/full" => self.semantic_tokens(content),
+            "textDocument/semanticTokens/full" => self.semantic_tokens(content, false),
+            "textDocument/semanticTokens/range" => self.semantic_tokens(content, true),
             "textDocument/signatureHelp" => self.signature_help(content),
             "textDocument/rename" => self.rename(content),
             "textDocument/prepareRename" => self.prepare_rename(content),
@@ -367,6 +372,18 @@ impl Dispatcher {
             if let Some(target) = params.target() {
                 tracing::info!(target, "target from initializationOptions");
                 cfg.target = target.to_string();
+            }
+            let vars = params.vars();
+            if !vars.is_empty() {
+                tracing::info!(count = vars.len(), "vars from initializationOptions");
+                cfg.vars_init = vars
+                    .into_iter()
+                    .map(|(name, value)| cogitator_analysis::context::VarOverride {
+                        name,
+                        value,
+                        ..Default::default()
+                    })
+                    .collect();
             }
             let allow = params.profiles_allow();
             if !allow.is_empty() {

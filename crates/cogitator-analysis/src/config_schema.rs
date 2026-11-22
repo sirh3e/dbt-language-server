@@ -21,6 +21,14 @@ pub struct SectionSchema {
     pub keys: &'static [KeyDoc],
 }
 
+impl SectionSchema {
+    /// A section whose keys are the user's own (`vars:` names vars),
+    /// so no key of it is unknown.
+    pub fn is_free_form(&self) -> bool {
+        self.name == "vars"
+    }
+}
+
 const fn key(key: &'static str, doc: &'static str, value_hint: &'static str) -> KeyDoc {
     KeyDoc {
         key,
@@ -108,7 +116,39 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Use catalog statistics when ordering findings; statistics never raise a severity.",
                 "bool",
             ),
+            key(
+                "row_hints",
+                "Show the row counts catalog statistics prove for each CTE as inlay hints (default true).",
+                "bool",
+            ),
+            key(
+                "inline_findings",
+                "Also show the reported findings as inlay hints, with the whole finding as the tooltip (default false).",
+                "bool",
+            ),
         ],
+    },
+    SectionSchema {
+        name: "inlay",
+        doc: "Which inlay hints the server sends.",
+        keys: &[
+            key("vars", "Show the value each var() resolves to (default true).", "bool"),
+            key(
+                "env_vars",
+                "Show the value each env_var() reads, secret-looking names masked (default true).",
+                "bool",
+            ),
+            key(
+                "jinja",
+                "Show what short single-line {{ … }} expressions render to (default false).",
+                "bool",
+            ),
+        ],
+    },
+    SectionSchema {
+        name: "vars",
+        doc: "Var overrides, like dbt's --vars: name → value. They win over dbt_project.yml and are passed to the dbt commands the server runs.",
+        keys: &[],
     },
     SectionSchema {
         name: "perf_rules",
@@ -254,7 +294,7 @@ pub mod json {
                         Section {
                             description: section.doc,
                             ty: "object",
-                            additional: false,
+                            additional: section.is_free_form(),
                             properties: section
                                 .keys
                                 .iter()

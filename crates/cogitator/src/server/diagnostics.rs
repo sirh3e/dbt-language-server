@@ -25,9 +25,12 @@ pub fn static_diagnostics(
         items.extend(features::citizen_diagnostics(ctx, uri));
         items.extend(features::packages_diagnostics(ctx, uri));
         items.extend(features::dangling_doc_diagnostics(ctx, doc));
+        items.extend(features::unused_var_diagnostics(ctx, uri, &doc.text));
+        items.extend(features::env_var_diagnostics(ctx, doc));
         items
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);
+        items.extend(features::env_var_diagnostics(ctx, doc));
         items.extend(features::private_ref_diagnostics(ctx, doc, uri));
         if let Some(lineage) = lineage {
             items.extend(features::contract_diagnostics(ctx, uri, lineage));

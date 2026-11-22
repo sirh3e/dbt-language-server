@@ -52,6 +52,21 @@ local function keymaps(bufnr, config)
   map("<leader>dP", function()
     require("cogitator.manager").pick_project()
   end, "dbt: pick a known dbt project")
+  local function find(source)
+    return function()
+      require("cogitator.pick").find(source)
+    end
+  end
+  map("<leader>df", find("models"), "dbt: find a model")
+  map("<leader>da", find("astgrep"), "dbt: ast-grep — find by a structural pattern")
+  map("<leader>dF", find(nil), "dbt: find… (pick what to search)")
+  map("<leader>dd", find("definitions"), "dbt: find a definition (model, source, macro, selector)")
+  map("<leader>dk", find("columns"), "dbt: find a column")
+  map("<leader>du", find("upstream"), "dbt: find upstream of this model")
+  map("<leader>dU", find("downstream"), "dbt: find downstream of this model")
+  map("<leader>dn", function()
+    require("cogitator.explorer").open({ focus_buffer = true })
+  end, "dbt: the yazi-style navigator, at this model")
   -- the code-action menu: the server's actions and the plugin's own in
   -- the yazi-style picker; it takes over Neovim's default `gra` here
   local function code_actions()
@@ -61,7 +76,7 @@ local function keymaps(bufnr, config)
       vim.lsp.buf.code_action()
     end
   end
-  vim.keymap.set({ "n", "x" }, "<leader>da", code_actions, { buffer = bufnr, desc = "dbt: code actions" })
+  vim.keymap.set({ "n", "x" }, "<leader>dA", code_actions, { buffer = bufnr, desc = "dbt: code actions" })
   if config.ui.picker then
     vim.keymap.set({ "n", "x" }, "gra", code_actions, { buffer = bufnr, desc = "dbt: code actions" })
   end
@@ -92,6 +107,58 @@ local function on_attach(client, bufnr, config)
   end
   require("cogitator.lens").attach(bufnr, config)
   require("cogitator.treesitter").attach(bufnr)
+  -- after the grammar: the server paints what Neovim's parsers do not
+  require("cogitator.tshl").attach(bufnr)
+  -- what completion and :checkhealth read, fetched in the background so
+  -- neither ever waits on the server
+  M.prefetch_columns(bufnr)
+  require("cogitator.health").prefetch(client)
+end
+
+local COLUMN_DEBOUNCE_MS = 300
+
+--- Keep `bufnr`'s column list (for :Dbt impact / :DbtColumnLineage
+--- completion) fresh: fetched now, and again a moment after the buffer is
+--- entered, insert mode is left or it is saved.
+---@param bufnr integer
+function M.prefetch_columns(bufnr)
+  local dispatch = require("cogitator.dispatch")
+  local timer
+  local function soon()
+    if timer then
+      timer:stop()
+    else
+      timer = vim.uv.new_timer()
+    end
+    timer:start(
+      COLUMN_DEBOUNCE_MS,
+      0,
+      vim.schedule_wrap(function()
+        if vim.api.nvim_buf_is_valid(bufnr) then
+          dispatch.fetch_columns(bufnr)
+        end
+      end)
+    )
+  end
+  local group = vim.api.nvim_create_augroup("CogitatorColumns" .. bufnr, { clear = true })
+  vim.api.nvim_create_autocmd({ "BufEnter", "InsertLeave", "BufWritePost" }, {
+    group = group,
+    buffer = bufnr,
+    callback = soon,
+  })
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      if timer then
+        timer:stop()
+        timer:close()
+        timer = nil
+      end
+      dispatch._columns[bufnr] = nil
+    end,
+  })
+  dispatch.fetch_columns(bufnr)
 end
 
 --- (Re-)register the server definition; assignment form replaces any
@@ -153,8 +220,23 @@ function M.setup(opts)
   end
 
   require("cogitator.highlight").setup()
+  require("cogitator.health").prefetch_versions(config)
   M.register(config)
   vim.lsp.enable("cogitator")
+
+  -- when the server finishes a piece of work it reports (a project
+  -- refresh, a dbt job), what :checkhealth shows is fetched again
+  vim.api.nvim_create_autocmd("LspProgress", {
+    group = vim.api.nvim_create_augroup("CogitatorProgress", { clear = true }),
+    pattern = "end",
+    callback = function(args)
+      local client = vim.lsp.get_client_by_id(args.data.client_id)
+      if client and client.name == "cogitator" then
+        require("cogitator.health").prefetch(client)
+        require("cogitator.pick.graph").invalidate(client.id)
+      end
+    end,
+  })
 
   vim.api.nvim_create_autocmd("LspAttach", {
     group = vim.api.nvim_create_augroup("CogitatorAttach", { clear = true }),

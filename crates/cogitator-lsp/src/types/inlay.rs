@@ -29,4 +29,40 @@ pub struct InlayHint {
     pub kind: Option<u8>,
     pub padding_left: bool,
     pub padding_right: bool,
+    /// Plain-text tooltip (a var's whole value and where it is defined).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tooltip: Option<String>,
+}
+
+/// One part of a parted inlay label (LSP 3.17 `InlayHintLabelPart`):
+/// its own tooltip, and a command a click runs.
+#[derive(Debug, Clone, Serialize)]
+pub struct InlayHintLabelPart {
+    pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tooltip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<super::results::Command>,
+}
+
+/// An inlay hint whose label is a list of parts (the plan findings').
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartedInlayHint {
+    pub position: Position,
+    pub label: Vec<InlayHintLabelPart>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<u8>,
+    pub padding_left: bool,
+    pub padding_right: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tooltip: Option<String>,
+}
+
+/// Either label shape; serialises as the hint itself.
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum AnyInlayHint {
+    Plain(InlayHint),
+    Parted(PartedInlayHint),
 }

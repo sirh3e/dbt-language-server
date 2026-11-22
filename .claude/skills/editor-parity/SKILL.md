@@ -42,7 +42,8 @@ editor "exposes" a command when one of its files holds the quoted name.
   (`cogitator/src/server/handlers/`), long work through `offload_blocking`.
 - An e2e test (`crates/cogitator/tests/e2e_*.rs`) of the command over the wire.
 - The row in `specs/neovim-plugin/00-plugin.md` (§ command table) and, for a
-  `:Dbt*` command, §5.1.
+  `:Dbt*` command, §5.1; a section in `docs/commands.md` (`` ### `dbt.x` ``:
+  argument, result, side effects, editors) — the parity test checks both.
 - Its line in `editors/parity.toml`.
 - README/AGENTS.md where the feature is described.
 
@@ -55,6 +56,14 @@ editor "exposes" a command when one of its files holds the quoted name.
 - A unit check in `tests/steps/01_unit.lua` (the pure function) and a wire
   check in `tests/steps/03_features.lua` (`H.exec_cmd`, which returns
   `nil, true` for a `null` that did arrive).
+
+- **Never block the editor.** Server calls are `client:exec_cmd` with a
+  callback, or `actions.request` (timeout, staleness guard, cancel) for
+  other LSP methods; never `request_sync`, `vim.wait(` or `:wait(` — a scan
+  in `tests/steps/unit_async.lua` fails on them. What must answer at once
+  (command-line completion, `:checkhealth`) answers from a cache filled in
+  the background (`dispatch.fetch_columns`, `health.prefetch`). Long drawing
+  paints in slices (`dag_paint.static_async`).
 
 **Emacs** (`editors/emacs`)
 - An autoloaded `cogitator-*` command through `cogitator--execute`; a pure

@@ -113,6 +113,7 @@ pub(super) fn drive(
         trace: run.trace,
         needs: run.needs,
         incrementality: run.incrementality,
+        row_hints: run.row_hints,
     }
 }
 
@@ -212,6 +213,7 @@ fn declined(
         trace: TraceView::unavailable(Level::Hir),
         needs: NeedsView::of(Needs::NONE),
         incrementality: None,
+        row_hints: Vec::new(),
     }
 }
 
@@ -265,6 +267,7 @@ fn without_mir(
         trace: TraceView::unavailable(Level::Mir),
         needs: NeedsView::of(Needs::NONE),
         incrementality: None,
+        row_hints: Vec::new(),
     }
 }
 

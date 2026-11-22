@@ -27,12 +27,15 @@ pub mod diagnostics_config;
 mod drive;
 mod env;
 mod facts;
+mod finding_inlay;
 mod incremental;
 mod incrementality;
 mod incrementality_report;
 mod passes;
 mod phys;
 mod report;
+mod row_hints;
+mod row_inlay;
 pub mod schemas;
 mod split;
 pub mod suppress;
@@ -44,12 +47,15 @@ mod tests_compiled;
 mod tests_facts;
 mod trace;
 
+pub use finding_inlay::{finding_hints, merge_plan_hints, FindingHint};
 pub use incrementality::{DeltaView, IncrementalityView, ReasonView};
 pub use incrementality_report::{incrementality_report, IncrementalityReport, ModelIncrementality};
 pub use report::{
     EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, Placement,
     PlanLevels, PlanStatus, QueryPlan,
 };
+pub use row_hints::{RowHintView, Rows};
+pub use row_inlay::row_inlay_hints;
 pub use split::{split_plan, SplitPart, SplitPlan};
 pub use trace::{NeedsView, TraceRow, TraceView};
 

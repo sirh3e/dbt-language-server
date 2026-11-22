@@ -34,6 +34,7 @@ cogitator-analysis = { workspace = true }
 cogitator-parser = { workspace = true }
 cogitator-duckdb = { workspace = true }
 cogitator-treesitter = { workspace = true }
+cogitator-astgrep = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 clap = { workspace = true }

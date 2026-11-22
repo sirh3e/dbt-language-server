@@ -60,6 +60,17 @@ impl Dispatcher {
                 self.split_plan(req.id, uri);
                 return;
             }
+            "dbt.incrementalDiff" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.incrementalDiff", move || {
+                    crate::server::handlers::incremental::incremental_diff(
+                        &snap, &derived, &uri, show,
+                    )
+                });
+                return;
+            }
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;
@@ -247,6 +258,48 @@ impl Dispatcher {
                             guidance.to_message(),
                         ),
                     }
+                });
+                return;
+            }
+            "dbt.astGrep" => {
+                let snap = self.snapshot_for(&uri);
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.astGrep", move || {
+                    crate::server::astgrep::search_reply(&snap, &arg, &uri)
+                });
+                return;
+            }
+            "dbt.nodeInfo" => {
+                let node = arg.get("node").and_then(|n| n.as_object());
+                let field = |k: &str| {
+                    node.and_then(|n| n.get(k))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string()
+                };
+                let (kind, name) = (field("kind"), field("name"));
+                let quiet = arg.get("quiet").and_then(|q| q.as_bool()) == Some(true);
+                let ctx = self.snapshot();
+                self.offload_blocking(req.id, "dbt.nodeInfo", move || {
+                    crate::server::node_info::reply(&ctx, &kind, &name, quiet)
+                });
+                return;
+            }
+            "dbt.unresolved" => {
+                let ctx = self.snapshot_for(&uri).ctx;
+                let open = self.documents.texts();
+                let request = crate::server::unresolved::Request::of(arg);
+                self.offload_blocking(req.id, "dbt.unresolved", move || {
+                    crate::server::unresolved::reply(&ctx, open, &request)
+                });
+                return;
+            }
+            "dbt.highlight" => {
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                let request = crate::server::highlight::Request::of(arg, &uri);
+                self.offload_blocking(req.id, "dbt.highlight", move || {
+                    crate::server::highlight::reply(&snap, &derived, request)
                 });
                 return;
             }

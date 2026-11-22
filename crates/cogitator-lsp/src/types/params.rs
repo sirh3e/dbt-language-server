@@ -112,6 +112,16 @@ impl InitializeParams<'_> {
         self.init_option_str(&["target"])
     }
 
+    /// `initializationOptions.vars`: `--vars` equivalents, name → value.
+    pub fn vars(&self) -> Vec<(String, serde_json::Value)> {
+        self.initialization_options
+            .as_ref()
+            .and_then(|opts| opts.get("vars"))
+            .and_then(|v| v.as_object())
+            .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default()
+    }
+
     /// `initializationOptions.profilesAllow` (or `profiles_allow`): extra
     /// profiles the server may read besides the project's own.
     pub fn profiles_allow(&self) -> Vec<String> {
@@ -279,6 +289,24 @@ pub struct PositionParams<'a> {
     pub text_document: TextDocumentIdentifier<'a>,
     #[serde(default)]
     pub position: Position,
+}
+
+/// textDocument/references params: a position plus the context's
+/// `includeDeclaration` (absent = false).
+#[derive(Debug, Deserialize)]
+pub struct ReferenceParams<'a> {
+    #[serde(borrow, rename = "textDocument")]
+    pub text_document: TextDocumentIdentifier<'a>,
+    #[serde(default)]
+    pub position: Position,
+    #[serde(default)]
+    pub context: ReferenceContext,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ReferenceContext {
+    #[serde(default, rename = "includeDeclaration")]
+    pub include_declaration: bool,
 }
 
 #[derive(Debug, Deserialize)]

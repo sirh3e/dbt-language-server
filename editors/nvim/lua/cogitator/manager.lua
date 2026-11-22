@@ -103,7 +103,7 @@ function M.pick_project()
     )
     return
   end
-  require("cogitator.picker").select(roots, {
+  require("cogitator.pick").select(roots, {
     prompt = "dbt project",
     format_item = function(root)
       return M.describe(root, current)
@@ -224,7 +224,7 @@ function M.project_actions(root)
     {
       label = "forget",
       run = function()
-        require("cogitator.picker").select(
+        require("cogitator.pick").select(
           { "no", "yes" },
           { prompt = "forget " .. root .. "?" },
           function(answer)
@@ -247,7 +247,7 @@ function M.manage()
     vim.notify("No dbt projects remembered yet.", vim.log.levels.INFO)
     return
   end
-  require("cogitator.picker").select(roots, {
+  require("cogitator.pick").select(roots, {
     prompt = "dbt project",
     format_item = function(root)
       return M.describe(root, current)
@@ -257,7 +257,7 @@ function M.manage()
       return
     end
     local choices = M.project_actions(root)
-    require("cogitator.picker").select(choices, {
+    require("cogitator.pick").select(choices, {
       prompt = root,
       format_item = function(choice)
         return choice.label

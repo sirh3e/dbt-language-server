@@ -53,7 +53,10 @@ pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<Comple
         );
     }
     if VAR_RE.is_match(before) {
-        return providers::var_items(ctx, &providers::suffix_for(line, after, "var"));
+        return providers::var_items(
+            ctx.vars_for(&doc.uri),
+            &providers::suffix_for(line, after, "var"),
+        );
     }
     if DOC_RE.is_match(before) {
         return providers::doc_items(ctx, &providers::suffix_for(line, after, "doc"));
@@ -102,10 +105,18 @@ pub fn resolve_completion_documentation(
                 source.description, t.name, t.description
             ))
         }
+        // resolve carries no document: the root's, else a package's
         cogitator_lsp::CompletionData::Variable { name } => ctx
             .variable_detail_map
             .get(&name)
-            .map(|v| display_value(&v.value)),
+            .or_else(|| ctx.package_variables.iter().find_map(|p| p.vars.get(&name)))
+            .map(|v| {
+                format!(
+                    "{}\n\n{}",
+                    display_value(&v.value),
+                    super::var_source_words(v)
+                )
+            }),
         cogitator_lsp::CompletionData::Doc { name } => {
             ctx.doc_detail_map.get(&name).map(|d| d.content.clone())
         }

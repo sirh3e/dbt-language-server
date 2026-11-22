@@ -130,6 +130,49 @@ function M.expand_jinja()
   end)
 end
 
+--- The lines of a dbt.incrementalDiff answer (exposed for the test
+--- suite): the unified diff, or a note and the SQL when the two renders
+--- of `is_incremental()` are the same.
+---@param result table
+---@return string[]
+function M.incremental_diff_lines(result)
+  if result.identical then
+    local lines = {
+      ("-- %s: is_incremental() changes nothing in the rendered SQL"):format(tostring(result.model)),
+      "",
+    }
+    vim.list_extend(lines, vim.split((result.fullRefresh or ""):gsub("\n$", ""), "\n"))
+    return lines
+  end
+  return vim.split((result.diff or ""):gsub("\n$", ""), "\n")
+end
+
+--- :DbtIncrementalDiff — this model rendered with is_incremental() false
+--- and true (dbt.incrementalDiff), as a unified diff in a split.
+function M.incremental_diff()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.incrementalDiff",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.incrementalDiff failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    vim.cmd.vsplit()
+    local scratch = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(scratch, 0, -1, false, M.incremental_diff_lines(result))
+    vim.bo[scratch].filetype = result.identical and "sql" or "diff"
+    vim.bo[scratch].modifiable = false
+    vim.api.nvim_win_set_buf(0, scratch)
+    vim.keymap.set("n", "q", vim.cmd.close, { buffer = scratch, nowait = true })
+  end)
+end
+
 --- The dbt.queryPlan payload as display lines (exposed for the test suite).
 ---@param plan table the server's result
 ---@param line_of fun(span: {start: integer}): integer byte span to 1-based line
@@ -245,6 +288,113 @@ function M.doctor()
   end)
 end
 
+--- `[kind:]name` → kind (or nil) and name.
+---@param args string
+---@return string? kind, string name
+function M.parse_node(args)
+  args = vim.trim(args or "")
+  local kind, name = args:match("^([%w_]+):(.+)$")
+  if kind then
+    return kind, vim.trim(name)
+  end
+  return nil, args
+end
+
+--- The kinds :DbtNode tries, in order, when none is given.
+M.NODE_KINDS =
+  { "model", "macro", "test", "generic_test", "source", "exposure", "metric", "semantic_model", "analysis" }
+
+--- Show a dbt.nodeInfo card in a float; <CR> on a line with a target
+--- opens it, q / <Esc> close.
+---@param info table
+local function node_float(info)
+  local ui = require("cogitator.ui")
+  local width = math.min(90, math.max(50, vim.o.columns - 10))
+  local card = require("cogitator.explorer.card").node(info, width - 2)
+  local height = math.min(#card.lines, math.max(5, vim.o.lines - 8))
+  local buf, win = ui.float({
+    row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1),
+    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    width = width,
+    height = height,
+    title = (info.kind or "node") .. " · " .. (info.name or info.model or "?"),
+    cursorline = true,
+  })
+  ui.set_lines(buf, card.lines)
+  for _, line in ipairs(card.headings) do
+    vim.api.nvim_buf_add_highlight(buf, -1, "Title", line - 1, 0, -1)
+  end
+  vim.api.nvim_set_current_win(win)
+  local function close()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+  for _, lhs in ipairs({ "q", "<Esc>" }) do
+    vim.keymap.set("n", lhs, close, { buffer = buf, nowait = true })
+  end
+  vim.keymap.set("n", "<CR>", function()
+    local target = card.jumps[vim.api.nvim_win_get_cursor(win)[1]]
+    if not target then
+      target = info.uri and info.uri ~= vim.NIL and { uri = info.uri, range = info.range } or nil
+    end
+    if not target then
+      return
+    end
+    close()
+    if require("cogitator.actions").open_uri(target.uri) and target.range and target.range ~= vim.NIL then
+      pcall(
+        vim.api.nvim_win_set_cursor,
+        0,
+        { target.range.start.line + 1, target.range.start.character or 0 }
+      )
+    end
+  end, { buffer = buf, nowait = true })
+  return buf, win
+end
+
+--- :DbtNode [kind:]name — a node's card (dbt.nodeInfo) in a float: a
+--- macro's signature, callers and calls; a test's refs; a generic test's
+--- places in YAML; a model's neighbours. Without a kind, the kinds are
+--- tried in order; without a name, the current buffer's node.
+---@param opts {args: string}
+function M.node(opts)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local kind, name = M.parse_node(opts and opts.args or "")
+  if name == "" then
+    name = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ":t:r")
+  end
+  if name == "" then
+    vim.notify("usage: :DbtNode [kind:]name   e.g. :DbtNode macro:cents_to_dollars", vim.log.levels.INFO)
+    return
+  end
+  local kinds = kind and { kind } or M.NODE_KINDS
+  local function try(i)
+    local k = kinds[i]
+    if not k then
+      vim.notify(("no node named %s (tried %s)"):format(name, table.concat(kinds, ", ")), vim.log.levels.WARN)
+      return
+    end
+    client:exec_cmd({
+      command = "dbt.nodeInfo",
+      arguments = { { node = { kind = k, name = name }, quiet = #kinds > 1 } },
+    }, { bufnr = bufnr }, function(err, result)
+      if err then
+        vim.notify("dbt.nodeInfo failed: " .. err.message, vim.log.levels.ERROR)
+      elseif type(result) == "table" then
+        node_float(result)
+      else
+        try(i + 1)
+      end
+    end)
+  end
+  try(1)
+end
+
 --- :DbtDeadModels — models nothing uses, as a quickfix list.
 function M.dead_models()
   local bufnr = vim.api.nvim_get_current_buf()
@@ -274,6 +424,57 @@ function M.dead_models()
       }
     end
     vim.fn.setqflist({}, " ", { title = "dbt dead models", items = items })
+    vim.cmd.copen()
+  end)
+end
+
+--- The quickfix items of a dbt.unresolved answer (exposed for the test
+--- suite and the picker): one per unresolved name, at its place.
+---@param result table
+---@return table[]
+function M.unresolved_items(result)
+  local items = {}
+  for _, u in ipairs(result.items or {}) do
+    local start = type(u.range) == "table" and u.range.start or {}
+    items[#items + 1] = {
+      filename = u.uri and vim.uri_to_fname(u.uri) or "",
+      lnum = (start.line or 0) + 1,
+      col = (start.character or 0) + 1,
+      text = ("[%s] %s — %s"):format(u.kind, u.name, u.message or ""),
+      type = "W",
+      user_data = { kind = u.kind, name = u.name },
+    }
+  end
+  return items
+end
+
+--- :DbtUnresolved [kind…] — every unresolved ref, source, doc, macro and
+--- var of the project, as a quickfix list.
+---@param opts {fargs?: string[], args?: string}?
+function M.unresolved(opts)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local words = (opts and opts.fargs) or vim.split((opts and opts.args) or "", "%s+", { trimempty = true })
+  local kinds = #words > 0 and words or nil
+  client:exec_cmd({
+    command = "dbt.unresolved",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr), kinds = kinds } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.unresolved failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    if result.count == 0 then
+      vim.notify("nothing unresolved — every ref, source, doc, macro and var resolves", vim.log.levels.INFO)
+      return
+    end
+    vim.fn.setqflist({}, " ", {
+      title = ("dbt unresolved (%d)"):format(result.count),
+      items = M.unresolved_items(result),
+    })
     vim.cmd.copen()
   end)
 end
@@ -466,7 +667,7 @@ function M.cancel()
     return
   end
   table.sort(tokens)
-  require("cogitator.picker").select(tokens, {
+  require("cogitator.pick").select(tokens, {
     prompt = "Cancel dbt job",
     format_item = function(token)
       return ("%d — %s"):format(token, M._jobs[token])
@@ -602,121 +803,17 @@ end
 
 --- Picker over every test defined for this model (and its versions).
 function M.tests()
-  local bufnr = vim.api.nvim_get_current_buf()
-  local client = client_for(bufnr)
-  if not client then
-    return
-  end
-  client:exec_cmd({
-    command = "dbt.modelTests",
-    arguments = { M.build_argument(bufnr, false) },
-  }, { bufnr = bufnr }, function(err, result)
-    if err or not result or result == vim.NIL or not result.tests or #result.tests == 0 then
-      vim.notify(
-        "No tests defined for this model. Add data_tests entries in its "
-          .. "schema YAML (:DbtExtract scaffolds the entry).",
-        vim.log.levels.INFO
-      )
-      return
-    end
-    require("cogitator.picker").select(result.tests, {
-      prompt = ("tests for %s"):format(result.model),
-      format_item = function(t)
-        local label = t.name
-        if t.column and t.column ~= vim.NIL then
-          label = label .. " on " .. t.column
-        end
-        if t.version and t.version ~= vim.NIL then
-          label = label .. (" (v%d)"):format(t.version)
-        end
-        return label
-      end,
-    }, function(choice)
-      if choice then
-        vim.lsp.util.show_document(
-          { uri = choice.uri, range = choice.range },
-          client.offset_encoding,
-          { focus = true }
-        )
-      end
-    end)
-  end)
+  require("cogitator.pick").find("tests")
 end
 
 --- :DbtTags — pick a tag, then a model carrying it, and open it.
 function M.tags()
-  local bufnr = vim.api.nvim_get_current_buf()
-  local client = client_for(bufnr)
-  if not client then
-    return
-  end
-  client:exec_cmd({
-    command = "dbt.projectGraph",
-    arguments = { M.build_argument(bufnr, false) },
-  }, { bufnr = bufnr }, function(err, graph)
-    if err or not graph or graph == vim.NIL then
-      vim.notify("dbt.projectGraph failed", vim.log.levels.ERROR)
-      return
-    end
-    local by_tag = {}
-    for _, node in ipairs(graph.nodes) do
-      for _, tag in ipairs(node.tags or {}) do
-        by_tag[tag] = by_tag[tag] or {}
-        table.insert(by_tag[tag], node)
-      end
-    end
-    local tags = vim.tbl_keys(by_tag)
-    table.sort(tags)
-    if #tags == 0 then
-      vim.notify("no tags in this project (tags: in YAML or {{ config(tags=…) }})", vim.log.levels.INFO)
-      return
-    end
-    require("cogitator.picker").select(tags, {
-      prompt = "dbt tag",
-      format_item = function(tag)
-        return ("#%s  (%d model%s)"):format(tag, #by_tag[tag], #by_tag[tag] == 1 and "" or "s")
-      end,
-    }, function(tag)
-      if not tag then
-        return
-      end
-      require("cogitator.picker").select(by_tag[tag], {
-        prompt = "#" .. tag,
-        format_item = function(node)
-          return node.name
-        end,
-      }, function(node)
-        if node and node.uri and node.uri ~= vim.NIL then
-          vim.cmd.edit(vim.uri_to_fname(node.uri))
-        end
-      end)
-    end)
-  end)
+  require("cogitator.pick").find("tags")
 end
 
 --- :DbtSelectors — pick a selectors.yml entry and jump to it.
 function M.selectors()
-  local bufnr = vim.api.nvim_get_current_buf()
-  local client = client_for(bufnr)
-  if not client then
-    return
-  end
-  client:request("workspace/symbol", { query = "selector:" }, function(err, symbols)
-    if err or not symbols or #symbols == 0 then
-      vim.notify("no selectors.yml entries in this project", vim.log.levels.INFO)
-      return
-    end
-    require("cogitator.picker").select(symbols, {
-      prompt = "dbt selector",
-      format_item = function(s)
-        return s.name
-      end,
-    }, function(symbol)
-      if symbol then
-        vim.lsp.util.show_document(symbol.location, client.offset_encoding, { focus = true })
-      end
-    end)
-  end, bufnr)
+  require("cogitator.pick").find("selectors")
 end
 
 --- :DbtStatus — what the server knows and has been doing.

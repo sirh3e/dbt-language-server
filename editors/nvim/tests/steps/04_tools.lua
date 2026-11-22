@@ -15,10 +15,20 @@ return function(ctx)
   local function size(sel)
     return (sel[3] - sel[1]) * 1000 + math.abs(sel[4] - sel[2])
   end
+  -- expand asks in the background: it returns at once, the selection
+  -- changes when the answer comes
+  local t = vim.uv.hrtime()
   select.expand()
+  H.check((vim.uv.hrtime() - t) / 1e6 < 50, "select: expand returns without waiting for the server")
+  H.wait("select: expand starts a visual selection", 10000, function()
+    return vim.fn.mode() == "v"
+  end)
   local first = selected()
   H.check(first[5] == "v", "select: expand starts a visual selection", vim.inspect(first))
   select.expand()
+  H.wait("select: expanding again grows it", 10000, function()
+    return size(selected()) > size(first)
+  end)
   local second = selected()
   H.check(size(second) > size(first), "select: expanding again grows it", vim.inspect({ first, second }))
   select.shrink()
@@ -110,4 +120,268 @@ return function(ctx)
     end
   )
   H.check(#missing == 0, "health: the server offers every command the plugin uses", vim.inspect(missing))
+
+  -- :checkhealth never waits: the doctor report was fetched at attach
+  local health = require("cogitator.health")
+  H.wait("health: the dbt.doctor report is fetched in the background", 10000, function()
+    local cached = health._cache.doctor[client.id]
+    return type(cached) == "table" and type(cached.report) == "table"
+  end, function()
+    return vim.inspect(health._cache.doctor[client.id])
+  end)
+  t = vim.uv.hrtime()
+  vim.cmd("checkhealth cogitator")
+  local took = (vim.uv.hrtime() - t) / 1e6
+  local report = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  H.check(
+    report:find("project 'jaffle_shop'", 1, true) ~= nil and report:find("report from", 1, true) ~= nil,
+    "health: :checkhealth shows the cached dbt.doctor report",
+    vim.inspect(vim.tbl_filter(function(l)
+      return l:find("doctor", 1, true) or l:find("server", 1, true) or l:find("project", 1, true)
+    end, vim.split(report, "\n")))
+  )
+  H.check(took < 1000, "health: :checkhealth does not wait on the server", took)
+  vim.cmd("bwipeout!")
+
+  -- ast-grep through the server: the command, :DbtAstGrep, the picker
+  vim.api.nvim_set_current_buf(bufnr)
+  local found = H.exec_cmd(client, bufnr, "dbt.astGrep", {
+    uri = vim.uri_from_bufnr(bufnr),
+    pattern = "{{ ref($M) }}",
+  }, "astgrep: dbt.astGrep")
+  H.check(
+    type(found) == "table" and #found.matches == 4 and found.matches[1].env.M == "'stg_customers'",
+    "astgrep: the open model's four refs, with $M bound",
+    vim.inspect(found and found.matches[1])
+  )
+  vim.fn.setqflist({}, "r")
+  vim.cmd("DbtAstGrep {{ ref('stg_orders') }}")
+  H.wait("astgrep: :DbtAstGrep fills the quickfix list from the project", 10000, function()
+    return #vim.fn.getqflist() >= 2
+  end, function()
+    return vim.inspect(vim.fn.getqflist())
+  end)
+  local qf = vim.fn.getqflist({ title = 1, items = 1 })
+  H.check(
+    qf.title:find("ast-grep", 1, true) ~= nil and qf.items[1].text:find("stg_orders", 1, true) ~= nil,
+    "astgrep: each quickfix line is a match",
+    vim.inspect(qf.items[1])
+  )
+  vim.cmd("cclose")
+  vim.api.nvim_set_current_buf(bufnr)
+
+  local source = require("cogitator.pick.sources").build("astgrep", {
+    client = client,
+    bufnr = bufnr,
+    query = require("cogitator.astgrep").parse("{{ ref('stg_payments') }}"),
+  })
+  local items
+  source.items(function(i)
+    items = i
+  end)
+  H.wait("astgrep: the picker source lists the matches", 10000, function()
+    return items ~= nil
+  end)
+  H.check(
+    items and #items >= 1 and items[1].lnum ~= nil and items[1].text:find("stg_payments", 1, true) ~= nil,
+    "astgrep: a picker item points at its line",
+    vim.inspect(items and items[1])
+  )
+  local shown
+  source.preview(items[1], function(p)
+    shown = p
+  end)
+  H.wait("astgrep: the preview of a match", 5000, function()
+    return shown ~= nil
+  end)
+  H.check(
+    shown and shown.code == "dbt",
+    "astgrep: the preview is coloured as dbt",
+    vim.inspect(shown and shown.code)
+  )
+
+  -- highlight on open (specs/highlighting §7.1): a YAML property file
+  local tshl = require("cogitator.tshl")
+  local schema = vim.fs.joinpath(ctx.fixture, "models", "schema.yml")
+  vim.cmd.edit(schema)
+  local ybuf = vim.api.nvim_get_current_buf()
+  local function groups(buf)
+    local out = {}
+    for _, m in ipairs(tshl.marks(buf)) do
+      out[m[4].hl_group] = (out[m[4].hl_group] or 0) + 1
+    end
+    return out
+  end
+  H.wait("highlight: a YAML file is coloured by the server on open", 15000, function()
+    local g = groups(ybuf)
+    return g["@type.dbt.model"] and g["@property.dbt.column"] and g["@function.dbt.test"]
+  end, function()
+    return vim.inspect(groups(ybuf))
+  end)
+  H.check(vim.b[ybuf].cogitator_tshl == "auto", "highlight: auto mode painted it", vim.b[ybuf].cogitator_tshl)
+
+  -- an older answer is dropped: of two requests, only the second paints
+  local painted = {}
+  tshl.paint(ybuf, { text = "models:\n  - name: old\n", language = "yaml" }, {
+    on_done = function()
+      painted[#painted + 1] = "old"
+    end,
+  })
+  tshl.paint(ybuf, { uri = vim.uri_from_bufnr(ybuf) }, {
+    on_done = function()
+      painted[#painted + 1] = "new"
+    end,
+  })
+  H.wait("highlight: the newer answer paints", 10000, function()
+    return #painted > 0
+  end)
+  vim.wait(300)
+  H.check(vim.deep_equal(painted, { "new" }), "highlight: an older answer is dropped", vim.inspect(painted))
+
+  -- an edit is painted again, after the debounce
+  -- a new source table at the end of the file
+  vim.api.nvim_buf_set_lines(ybuf, -1, -1, false, { "      - name: brand_new_table" })
+  vim.api.nvim_exec_autocmds("TextChanged", { buffer = ybuf })
+  H.wait("highlight: an edit is coloured again", 10000, function()
+    local last = vim.api.nvim_buf_line_count(ybuf) - 1
+    for _, m in ipairs(tshl.marks(ybuf)) do
+      if m[2] == last and m[4].hl_group == "@type.dbt.source_table" then
+        return true
+      end
+    end
+    return false
+  end)
+  vim.cmd("silent! undo")
+
+  vim.cmd("DbtHighlight! off")
+  H.check(
+    vim.b[ybuf].cogitator_tshl == nil and #tshl.marks(ybuf) == 0,
+    "highlight: ! off takes the colours off"
+  )
+  vim.cmd("DbtHighlight! auto")
+  H.wait("highlight: ! auto paints again", 10000, function()
+    return #tshl.marks(ybuf) > 0
+  end)
+  local mode, bufs = tshl.status()
+  H.check(mode == "auto" and vim.tbl_contains(bufs, ybuf), "highlight: status lists the painted buffer")
+
+  -- picker previews of macros and of tests in YAML (§8)
+  vim.api.nvim_set_current_buf(bufnr)
+  local sources = require("cogitator.pick.sources")
+  local function first_preview(name, pick_item)
+    local src = sources.build(name, { client = client, bufnr = bufnr })
+    local listed
+    src.items(function(i)
+      listed = i
+    end)
+    H.wait("preview: the " .. name .. " source lists items", 10000, function()
+      return listed ~= nil
+    end)
+    local item = listed and pick_item(listed)
+    if not item then
+      return nil
+    end
+    local previewed
+    src.preview(item, function(p)
+      previewed = p
+    end)
+    H.wait("preview: the " .. name .. " preview", 5000, function()
+      return previewed ~= nil
+    end)
+    return previewed
+  end
+  local macro_preview = first_preview("macros", function(list)
+    for _, i in ipairs(list) do
+      if i.name == "times_five" then
+        return i
+      end
+    end
+  end)
+  H.check(
+    macro_preview and macro_preview.code == "dbt" and macro_preview.lnum and macro_preview.end_lnum,
+    "preview: a macro lands on its definition and is coloured",
+    vim.inspect(macro_preview and { macro_preview.code, macro_preview.lnum, macro_preview.end_lnum })
+  )
+  local test_preview = first_preview("tests", function(list)
+    return list[1]
+  end)
+  H.check(
+    test_preview and test_preview.code == "yaml" and test_preview.lnum,
+    "preview: a YAML test is coloured as YAML and lands on its entry",
+    vim.inspect(test_preview and { test_preview.code, test_preview.lnum })
+  )
+  if macro_preview then
+    local pbuf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, macro_preview.lines)
+    tshl.preview(pbuf, macro_preview)
+    H.wait("preview: the macro preview is painted", 10000, function()
+      return #tshl.marks(pbuf) > 0
+    end)
+    H.check(
+      #vim.api.nvim_buf_get_extmarks(pbuf, tshl.def_ns, 0, -1, {}) > 0,
+      "preview: the definition's lines are marked"
+    )
+    vim.api.nvim_buf_delete(pbuf, { force = true })
+  end
+
+  -- :DbtNode: a card in a float
+  local wins = #vim.api.nvim_list_wins()
+  vim.cmd("DbtNode macro:times_five")
+  H.wait(":DbtNode opens the macro's card", 10000, function()
+    return #vim.api.nvim_list_wins() > wins
+  end)
+  local float_text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  H.check(
+    float_text:find("times_five(int_value)", 1, true) ~= nil,
+    ":DbtNode shows the signature",
+    float_text
+  )
+  H.feed("q")
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.cmd("DbtNode assert_positive_order_amount")
+  H.wait(":DbtNode finds a test by name alone", 10000, function()
+    return table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"):find("tests (1)", 1, true) ~= nil
+  end)
+  H.feed("q")
+  vim.api.nvim_set_current_buf(bufnr)
+
+  -- vars: the value after var() as an inlay hint; definition to its key
+  vim.api.nvim_set_current_buf(bufnr)
+  local var_row
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)) do
+    if l:find("var('jaffle_string')", 1, true) then
+      var_row = i
+    end
+  end
+  local var_hint
+  client:request("textDocument/inlayHint", {
+    textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+    range = { start = { line = 0, character = 0 }, ["end"] = { line = 500, character = 0 } },
+  }, function(_, result)
+    for _, h in ipairs(result or {}) do
+      if type(h.label) == "string" and h.label:sub(1, 1) == "=" then
+        var_hint = h
+      end
+    end
+  end, bufnr)
+  H.wait("vars: the var's value is an inlay hint", 10000, function()
+    return var_hint ~= nil
+  end)
+  H.check(
+    var_hint and var_hint.label == "= 'jaffle'" and var_hint.position.line == var_row - 1,
+    "vars: the hint says the value on the var's line",
+    vim.inspect(var_hint)
+  )
+  local line_text = vim.api.nvim_buf_get_lines(bufnr, var_row - 1, var_row, false)[1]
+  vim.api.nvim_win_set_cursor(0, { var_row, line_text:find("jaffle_string", 1, true) + 1 })
+  vim.lsp.buf.definition()
+  H.wait("vars: definition opens dbt_project.yml", 10000, function()
+    return vim.api.nvim_buf_get_name(0):find("dbt_project.yml", 1, true) ~= nil
+  end)
+  H.check(
+    vim.api.nvim_get_current_line():find("jaffle_string:", 1, true) ~= nil,
+    "vars: definition lands on the var's key",
+    vim.api.nvim_get_current_line()
+  )
+  vim.api.nvim_set_current_buf(bufnr)
 end

@@ -37,6 +37,21 @@ pub enum NodeKind {
 }
 
 impl NodeKind {
+    /// The kind of a wire name (`as_str`'s inverse).
+    pub fn parse(name: &str) -> Option<Self> {
+        Some(match name {
+            "model" => NodeKind::Model,
+            "source" => NodeKind::Source,
+            "macro" => NodeKind::Macro,
+            "exposure" => NodeKind::Exposure,
+            "metric" => NodeKind::Metric,
+            "semantic_model" => NodeKind::SemanticModel,
+            "test" => NodeKind::Test,
+            "analysis" => NodeKind::Analysis,
+            _ => return None,
+        })
+    }
+
     /// Wire/debug name, stable across the dag payloads.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -65,6 +80,9 @@ pub enum EdgeKind {
     Source,
     MacroCall,
 }
+
+/// An edge seen from one of its nodes: its kind and the node at the other end.
+pub type Edge<'a> = (EdgeKind, &'a NodeData);
 
 #[derive(Debug, Default)]
 pub struct ProjectGraph {
@@ -231,6 +249,41 @@ impl ProjectGraph {
         (upstream, downstream)
     }
 
+    /// The node of a kind and name.
+    pub fn node(&self, kind: NodeKind, name: &str) -> Option<&NodeData> {
+        self.by_name
+            .get(&(kind, name.to_string()))
+            .map(|&idx| &self.graph[idx])
+    }
+
+    /// A node's edges, both ways: what it points at (its refs, sources and
+    /// the macros it calls) and what points at it, with each edge's kind,
+    /// sorted by kind and name.
+    pub fn node_edges(&self, kind: NodeKind, name: &str) -> (Vec<Edge<'_>>, Vec<Edge<'_>>) {
+        use petgraph::visit::EdgeRef;
+        use petgraph::Direction::{Incoming, Outgoing};
+        let Some(&idx) = self.by_name.get(&(kind, name.to_string())) else {
+            return (Vec::new(), Vec::new());
+        };
+        let collect = |direction| {
+            let mut out: Vec<Edge<'_>> = self
+                .graph
+                .edges_directed(idx, direction)
+                .map(|e| {
+                    let other = if direction == Outgoing {
+                        e.target()
+                    } else {
+                        e.source()
+                    };
+                    (*e.weight(), &self.graph[other])
+                })
+                .collect();
+            out.sort_by(|a, b| (a.1.kind, &a.1.name).cmp(&(b.1.kind, &b.1.name)));
+            out
+        };
+        (collect(Outgoing), collect(Incoming))
+    }
+
     /// Models calling a macro (incoming `MacroCall` edges).
     pub fn macro_call_sites<'a>(&'a self, name: &str) -> impl Iterator<Item = &'a NodeData> + 'a {
         self.neighbors(NodeKind::Macro, name, petgraph::Direction::Incoming)
@@ -326,6 +379,11 @@ impl ProjectGraph {
         edges.sort();
         edges.dedup();
         (nodes, edges)
+    }
+
+    /// Every node, in no particular order.
+    pub fn nodes(&self) -> impl Iterator<Item = &NodeData> {
+        self.graph.node_weights()
     }
 
     pub fn node_count(&self) -> usize {

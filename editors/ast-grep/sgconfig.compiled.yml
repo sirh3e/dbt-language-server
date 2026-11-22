@@ -1,0 +1,17 @@
+# The same rules over dbt's compiled SQL (target/compiled): here `.sql` is
+# plain SQL, read by tree-sitter-sequel, so the rules of language sql run.
+#
+#   ast-grep scan -c sgconfig.compiled.yml target/compiled
+#   ast-grep run -c sgconfig.compiled.yml -l sql -p 'select * from $T' target/compiled
+ruleDirs:
+  - rules
+customLanguages:
+  sql:
+    libraryPath: target/ast-grep/sql.so
+    extensions: [sql]
+    expandoChar: _
+  dbt:
+    libraryPath: target/ast-grep/dbt.so
+    # the dbt rules load and match no compiled file
+    extensions: [dbtsql]
+    expandoChar: _

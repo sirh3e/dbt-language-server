@@ -263,6 +263,9 @@ pub struct QueryPlan {
     /// why (specs/ir-pipeline/10).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub incrementality: Option<super::incrementality::IncrementalityView>,
+    /// Row counts per CTE that catalog statistics prove; empty without.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub row_hints: Vec<super::row_hints::RowHintView>,
 }
 
 impl QueryPlan {
@@ -286,6 +289,7 @@ impl QueryPlan {
             trace: TraceView::unavailable(Level::Hir),
             needs: NeedsView::of(Needs::NONE),
             incrementality: None,
+            row_hints: Vec::new(),
         }
     }
 }

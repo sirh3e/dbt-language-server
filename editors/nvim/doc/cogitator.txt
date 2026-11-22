@@ -17,6 +17,17 @@ Requires Neovim 0.11+ and the `cogitator` binary (a release asset or
 
     require("cogitator").setup({})
 <
+With lazy.nvim the plugin is one line; the repository's own lazy.lua
+puts editors/nvim on the runtimepath and passes `opts` to setup(): >lua
+
+    { "sirh3e/dbt-language-server", opts = {} }
+<
+editors/nvim/examples/lazy.lua is a fuller spec: lazy-loading on
+BufReadPre of SQL/YAML files (not `ft`, which comes too late for the
+server to attach to the first buffer) and an opt-in `build` that installs
+the server from the latest release on install and :Lazy update.
+editors/nvim/examples/minimal_init.lua tries the plugin without touching
+your config: `nvim -u minimal_init.lua some_model.sql`.
 The server attaches to `sql` and `yaml` buffers inside a dbt project (a
 directory with `dbt_project.yml` upward from the file). Run
 `:checkhealth cogitator` to verify the binary, the project root and the
@@ -42,6 +53,12 @@ Defaults shown: >lua
       },
       keymaps = true,             -- the buffer-local <leader>d maps below
       semantic_tokens = true,
+      inlay_hints = false,        -- true: relations after ref(), the value
+                                  -- of each var() (= 'jaffle'), macro params
+      highlight = {               -- |cogitator-nvim-highlight|
+        server = "auto",          -- "always" | false: colours from the server
+        layers = { yaml = true, sql = true, jinja = true, dbt = true },
+      },
       lineage = {                 -- column-lineage graphs (|cogitator-nvim-lineage|)
         depth = 3,                -- hops followed each way
         max_requests = 60,        -- dbt.columnLineage calls per graph, at most
@@ -57,8 +74,8 @@ Defaults shown: >lua
         url = nil,                -- another tree-sitter-dbt repository
         rev = nil,                -- another revision than the server's
       },
-      ui = {                      -- |cogitator-nvim-picker|
-        picker = true,            -- false → vim.ui.select / vim.ui.input
+      ui = {                      -- |cogitator-nvim-dialogs|
+        picker = true,            -- false → the `picker` backend, vim.ui.input
       },
     })
 <
@@ -81,7 +98,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
-  :DbtBrowse     project-wide model browser          <leader>db
+  :DbtBrowse     the model explorer                  <leader>db
   :DbtProfiles   show/switch the profiles directory
   :DbtTarget     pick the active profile/target      <leader>dT
   :DbtExtract    model → schema YAML / add version   <leader>dy
@@ -90,21 +107,40 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtDag        project DAG, dbt-docs style         <leader>dD
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
+  :DbtFind [src] fuzzy-find: models, sources, all,       <leader>dF
+                 definitions, macros, columns, upstream,
+                 downstream, lineage, refs, tests, tags,
+                 selectors, astgrep (models <leader>df, definitions
+                 <leader>dd, columns <leader>dk, upstream
+                 <leader>du, downstream <leader>dU)
   :DbtPlan       IR levels, findings, incrementality
   :DbtSplit      split a table model at its incrementality frontier:
                  the plan as an S-expression and the new model's file;
                  `a` applies the split, `q` closes
+  :DbtIncrementalDiff
+                 this model rendered with is_incremental() false and
+                 true, as a unified diff in a split (`q` closes)
   :DbtIncrementality
                  table models that could be incremental (quickfix)
+  :DbtUnresolved [kind…]
+                 every unresolved ref, source, source_table, doc, macro
+                 and var of the project (quickfix; `:DbtFind unresolved`
+                 is the same list in the picker)
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtReloadConfig  re-read cogitator.yml now
   :DbtSyntaxTree the tree-sitter-dbt tree in a split (toggle)
+  :DbtHighlight[!] [auto|always|off]
+                 colour this buffer from the server (toggle); ! sets
+                 when buffers are coloured on open
+  :DbtNode [kind:]name  a node's card: macro, test, source… (dbt.nodeInfo)
+  :DbtAstGrep [sql:]pattern [=> rewrite]                <leader>da
+                 ast-grep: matches to quickfix; a rewrite after asking
   :DbtTreesitter [install|status|start]  the grammar in Neovim
   :DbtProjects!  manage a known project (profiles, rename, forget)
   (code lens)    run the code lens on this line      <leader>dL
   (selection)    expand along selectionRange         <leader>dv
-  :DbtActions    code actions, yazi-style menu       <leader>da, gra
+  :DbtActions    code actions, yazi-style menu       <leader>dA, gra
                  shrink back (visual mode)           <leader>dV
 
 Every command is also a subcommand of *:Dbt* with completion, e.g.
@@ -150,6 +186,47 @@ Counts repeat h, j, k, l, n, N, <C-o> and <C-i>. The colours are the
 `DbtDag*` highlight groups, which a colorscheme can override. Search
 also works through |vim.lsp.buf.workspace_symbol| with `tag:x` and
 `selector:x` queries.
+
+Nothing waits on the server: every request is asynchronous. `<leader>dv`
+selects when the server's answer arrives (and not if you moved on), column
+completion for :Dbt impact / :DbtColumnLineage answers from the columns
+fetched in the background, :checkhealth shows the dbt.doctor report
+fetched at attach and after each refresh, and a large :DbtDag is coloured
+in slices while you keep working.
+
+PICKERS                                                   *cogitator-pickers*
+
+:DbtFind shows its list in your picker: fzf-lua, snacks.picker or
+telescope when one is installed (setup `picker = "auto"`, in that order),
+or the one you name (`picker = "fzf-lua" | "snacks" | "telescope" |
+"builtin"`). Without one, the built-in picker: a prompt, the ranked list
+with the matched letters highlighted and a preview. The query is fzf's:
+`fzy` fuzzy, `'exact`, `^prefix`, `suffix$`, `!not`, `a | b`, words AND.
+
+  <CR>            open              <C-v> <C-x> <C-t>   vsplit split tab
+  <C-g>           the navigator     <C-y>               yank the names
+  <C-r>           dbt run them      <Tab>               mark
+  <C-j> <C-k>     move (built-in)   <C-d> <C-u>         scroll the preview
+
+Every other choice (:Dbt, :DbtTests, :DbtTags, :DbtCancel, targets,
+projects) uses the same picker.
+
+EXPLORER                                                 *cogitator-navigator*
+
+:DbtBrowse (<leader>db) shows one model, opening on the buffer's model:
+
+    upstream ⯇       |   the model's card   |   ⯈ downstream
+    dbt SQL                  |                 compiled SQL
+
+The card holds the description, tags, relation, versions, columns and
+tests (<CR> on a test or a version opens it). h/l enter the side panes
+and, pressed again there, walk the lineage; <CR> on an entry makes it
+the model. [ or - goes back, ] forward, and the card's title is the trail
+walked. f or / picks any model with the fuzzy picker; . lets it take
+every kind of node. p enters the dbt SQL, h/l move between the SQL
+panes, <Esc> returns, J/K scroll both. <Space> marks, y yanks and r
+dbt-runs the marked; o s v t open, c compiles, g :DbtDag, L column
+lineage; ? lists the keys.
 
 Context refreshes and dbt runs also report through $/progress, so they
 appear in |vim.lsp.status()| and plugins like fidget.nvim.
@@ -243,7 +320,7 @@ action is added, and inside a schema YAML the model entry under the
 cursor offers "Open model" and "Go to tests".
 
                                                 *cogitator-nvim-code-actions*
-`:DbtActions` (<leader>da, and `gra` in dbt buffers; also on a visual
+`:DbtActions` (<leader>dA, and `gra` in dbt buffers; also on a visual
 selection) opens every action at the cursor in one menu: the server's
 code actions grouped by kind — Quick fixes, Refactor, Source, dbt — and
 the plugin's own commands — Model, Views, Project, Session — which the
@@ -255,7 +332,7 @@ touches (and the files it creates or renames), a command with what it
 runs. A preferred fix is starred. With `ui.picker = false` the keymaps
 fall back to |vim.lsp.buf.code_action|.
 
-                                                      *cogitator-nvim-picker*
+                                                      *cogitator-nvim-dialogs*
 Every dialog of the plugin — the code actions, `:Dbt` without
 arguments, target and project pickers, tests, tags, selectors, jobs —
 is a yazi-style float: the parent level on the left, the current level
@@ -275,8 +352,11 @@ one-line float with a title.
   q  <Esc>      close
 
 In a prompt: <CR> accepts, <Esc> goes to normal mode and <Esc> or q
-cancels, <Tab> completes a directory. `ui.picker = false` brings back
-|vim.ui.select| and |vim.ui.input| (dressing.nvim, snacks, fzf-lua...).
+cancels, <Tab> completes a directory. `ui.picker = false` sends the
+choices to the `picker` backend instead (fzf-lua, snacks.picker,
+telescope or the built-in one) and the prompts to |vim.ui.input|. The
+fuzzy finders (|:DbtFind|, tests, tags, selectors) always use that
+backend.
 The colours are `DbtPicker*` groups linked to the colorscheme's.
 
 dbt run/test/compile are asynchronous; progress and results arrive as
@@ -289,6 +369,43 @@ range; ERROR and MISSING nodes are highlighted. The tree's cursor
 follows the source cursor to the innermost node, moving in the tree
 highlights that node's range in the source, <CR> jumps there, q closes.
 Edits refresh it after a short pause.
+
+                                                  *cogitator-nvim-highlight*
+The server colours dbt files with grammars that know dbt (`dbt.highlight`):
+models, macros and tests by tree-sitter-dbt (the Jinja) and the SQL grammar
+it injects; compiled SQL as SQL; YAML by tree-sitter-yaml, with the Jinja
+and the SQL inside its values and dbt's meaning — model, source, column,
+test, macro and doc names, config keys, `ref()`s (`.unresolved` when the
+project lacks them). Captures become Neovim's tree-sitter groups
+(`@keyword`, `@type.dbt.model` → `@type`, `@property.dbt.column`), so your
+colourscheme applies; nothing needs to be installed in Neovim.
+
+`highlight.server` (setup) says when: "auto" (default) colours SQL buffers
+Neovim's own tree-sitter does not, and every YAML file of the project (the
+yaml layer left to Neovim's yaml highlighter when it runs); "always" every
+buffer; false only on `:DbtHighlight`. `highlight.layers` turns a layer
+(yaml, sql, jinja, dbt) off. Colours follow edits after a short pause.
+`:DbtHighlight` toggles the current buffer; `:DbtHighlight! {mode}` sets
+the mode for the session. The explorer's SQL panes and picker previews are
+coloured the same way. See docs/highlighting.md.
+
+                                                       *cogitator-nvim-node*
+`:DbtNode [kind:]name` shows a node's card in a float (`dbt.nodeInfo`): a
+macro's signature, callers and calls; a test's refs; a generic test's
+places in YAML; a model's neighbours. Without a kind the kinds are tried
+in order. <CR> opens the line's target, q closes.
+
+                                                    *cogitator-nvim-astgrep*
+`:DbtAstGrep {{ ref($M) }}` searches the project's dbt files with ast-grep
+over tree-sitter-dbt (`dbt.astGrep`) and fills the quickfix list; `$M` is
+a metavariable, `$$$A` several. The SQL between the tags is text to the
+dbt grammar, so a dbt pattern matches Jinja; prefix `sql:` for a whole SQL
+statement over the compiled SQL (`sql:select $$$C from $T`). With
+`pattern => rewrite` the matches are listed and, after asking, rewritten
+(`{{ ref($M) }} => {{ ref('core', $M) }}`). `:DbtFind astgrep`
+(`<leader>da`) asks for a pattern and shows the matches in the picker.
+The project's `sgconfig.yml` rules show as diagnostics with their fixes as
+code actions — see docs/ast-grep.md.
 
                                                   *cogitator-nvim-treesitter*
 `:DbtTreesitter install` builds the tree-sitter-dbt grammar at the

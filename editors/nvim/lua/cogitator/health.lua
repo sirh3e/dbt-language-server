@@ -5,6 +5,59 @@ local M = {}
 
 local health = vim.health
 
+--- What :checkhealth shows, gathered in the background so the check
+--- itself never waits: each binary's `--version` (started at setup) and
+--- each client's dbt.doctor report (started at attach, again after a
+--- refresh). Neovim's health checks write their report synchronously, so
+--- they read this and say when something is still being fetched.
+---@type {versions: table<string, {code: integer, stdout: string}|"pending">, doctor: table<integer, {report: table?, at: integer}|"pending">}
+M._cache = { versions = {}, doctor = {} }
+
+--- Run `bin --version` in the background, once per binary.
+---@param bin string
+function M.prefetch_version(bin)
+  if M._cache.versions[bin] or vim.fn.executable(bin) == 0 then
+    return
+  end
+  M._cache.versions[bin] = "pending"
+  local ok = pcall(vim.system, { bin, "--version" }, { text = true }, function(out)
+    M._cache.versions[bin] = { code = out.code, stdout = out.stdout or "" }
+  end)
+  if not ok then
+    M._cache.versions[bin] = { code = -1, stdout = "" }
+  end
+end
+
+--- Start every background check setup() can: the server binary's and
+--- the Fusion binary's versions.
+---@param config table
+function M.prefetch_versions(config)
+  M.prefetch_version(config.cmd[1])
+  if config.fusion ~= false then
+    M.prefetch_version(type(config.fusion) == "string" and config.fusion or "dbt")
+  end
+end
+
+--- Fetch `client`'s dbt.doctor report in the background.
+---@param client vim.lsp.Client
+function M.prefetch(client)
+  if M._cache.doctor[client.id] == "pending" then
+    return
+  end
+  M._cache.doctor[client.id] = "pending"
+  -- an empty object, not `{}`: that encodes as a JSON array, which the
+  -- server refuses (every dbt.* command takes one argument object)
+  client:exec_cmd({ command = "dbt.doctor", arguments = { vim.empty_dict() } }, {}, function(err, result)
+    M._cache.doctor[client.id] = {
+      report = not err and result or nil,
+      err = err and err.message or nil,
+      at = os.time(),
+    }
+  end)
+end
+
+local STILL = "still being checked in the background — run :checkhealth cogitator again"
+
 local function binary_check(cmd)
   local bin = cmd[1]
   if vim.fn.executable(bin) == 0 then
@@ -14,8 +67,11 @@ local function binary_check(cmd)
     })
     return
   end
-  local out = vim.system({ bin, "--version" }, { text = true }):wait()
-  if out.code == 0 then
+  M.prefetch_version(bin)
+  local out = M._cache.versions[bin]
+  if out == "pending" then
+    health.info(("%s --version: %s"):format(bin, STILL))
+  elseif out.code == 0 then
     health.ok(("%s --version: %s"):format(bin, vim.trim(out.stdout)))
   else
     health.warn(("'%s --version' exited with %d"):format(bin, out.code))
@@ -69,8 +125,11 @@ function M.check()
   if config.fusion ~= false then
     local fusion_bin = type(config.fusion) == "string" and config.fusion or "dbt"
     if vim.fn.executable(fusion_bin) == 1 then
-      local out = vim.system({ fusion_bin, "--version" }, { text = true }):wait()
-      if out.code == 0 and out.stdout:find("dbt%-fusion") then
+      M.prefetch_version(fusion_bin)
+      local out = M._cache.versions[fusion_bin]
+      if out == "pending" then
+        health.info(("'%s --version': %s"):format(fusion_bin, STILL))
+      elseif out.code == 0 and out.stdout:find("dbt%-fusion") then
         health.ok("dbt Fusion binary: " .. fusion_bin)
       else
         health.warn(("'%s --version' does not report dbt-fusion"):format(fusion_bin), {
@@ -102,6 +161,14 @@ function M.check()
     health.ok("tree-sitter-dbt grammar installed at " .. grammar.wanted:sub(1, 12))
   end
 
+  local mode, painted = require("cogitator.tshl").status()
+  health.info(
+    ("server highlighting: %s — %d buffer(s) coloured by the server (:DbtHighlight! auto|always|off)"):format(
+      mode,
+      #painted
+    )
+  )
+
   -- the server's own view, when one is attached (dbt.doctor)
   local client = vim.lsp.get_clients({ name = "cogitator" })[1]
   if not client then
@@ -109,20 +176,26 @@ function M.check()
     return
   end
   M.check_capabilities(client)
-  local done, report = false, nil
-  client:exec_cmd({ command = "dbt.doctor", arguments = { {} } }, {}, function(err, result)
-    done = true
-    if not err then
-      report = result
-    end
-  end)
-  vim.wait(5000, function()
-    return done
-  end, 50)
-  if type(report) ~= "table" then
-    health.warn("dbt.doctor did not answer (older server?)")
+  local cached = M._cache.doctor[client.id]
+  if cached == nil or cached == "pending" then
+    M.prefetch(client)
+    health.info("dbt.doctor: " .. STILL)
     return
   end
+  local report = cached.report
+  if type(report) ~= "table" then
+    M.prefetch(client)
+    health.warn(
+      ("dbt.doctor did not answer %ds ago: %s"):format(
+        os.time() - cached.at,
+        cached.err or "no report (older server?)"
+      ),
+      { "asked again — run :checkhealth cogitator once more" }
+    )
+    return
+  end
+  health.info(("dbt.doctor report from %ds ago"):format(os.time() - cached.at))
+  M.prefetch(client) -- the next :checkhealth shows a newer one
   health.ok(
     ("server %s — project '%s' (%s), graph %d nodes / %d edges, %d dangling"):format(
       report.serverVersion,
@@ -191,6 +264,9 @@ M.COMMANDS = {
   ["dbt.queryPlan"] = ":DbtPlan",
   ["dbt.doctor"] = "this report's server half",
   ["dbt.syntaxTree"] = ":DbtSyntaxTree",
+  ["dbt.highlight"] = "the explorer's SQL panes, picker previews, :DbtHighlight",
+  ["dbt.astGrep"] = ":DbtAstGrep, :DbtFind astgrep",
+  ["dbt.nodeInfo"] = ":DbtNode, the explorer's macros and tests",
 }
 
 --- The LSP methods the plugin's own features need, beyond the stock ones.

@@ -1,0 +1,6 @@
+id: select-star-in-compiled-sql
+language: sql
+severity: hint
+message: "select * in compiled SQL: a new upstream column changes this model silently"
+rule:
+  pattern: select * from $T

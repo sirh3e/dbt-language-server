@@ -167,6 +167,34 @@ fn problems(
     out
 }
 
+/// docs/commands.md has a section (`` ### `dbt.x` ``) for every command the
+/// server registers, and none for a command it does not.
+fn reference_problems(server: &[&str], reference: &str) -> Vec<String> {
+    let documented: BTreeSet<String> = reference
+        .lines()
+        .filter_map(|line| line.strip_prefix("### `"))
+        .filter_map(|rest| rest.strip_suffix('`'))
+        .map(str::to_string)
+        .collect();
+    let mut out = Vec::new();
+    for command in server {
+        if !documented.contains(*command) {
+            out.push(format!(
+                "`{command}` has no section in docs/commands.md: add `### `{command}`` with its \
+                 argument, result, side effects and editors"
+            ));
+        }
+    }
+    for command in &documented {
+        if !server.contains(&command.as_str()) {
+            out.push(format!(
+                "docs/commands.md documents `{command}`, which the server does not register: remove it"
+            ));
+        }
+    }
+    out
+}
+
 /// What `extension.ts` registers and what `package.json` contributes, apart.
 fn vscode_palette_problems(extension: &str, package: &str) -> Vec<String> {
     let names = |text: &str| -> BTreeSet<String> {
@@ -275,6 +303,10 @@ fn every_editor_exposes_every_command_a_person_runs() {
         .collect();
     let spec = read(&root.join("specs/neovim-plugin/00-plugin.md"));
     let mut found = problems(&manifest, cogitator_lsp::COMMANDS, &sources, &spec);
+    found.extend(reference_problems(
+        cogitator_lsp::COMMANDS,
+        &read(&root.join("docs/commands.md")),
+    ));
     found.extend(vscode_palette_problems(
         &read(&root.join("editors/vscode/src/extension.ts")),
         &read(&root.join("editors/vscode/package.json")),
@@ -386,6 +418,15 @@ mod checker {
             "",
         );
         assert!(found.iter().any(|p| p.contains("no row")), "{found:?}");
+    }
+
+    #[test]
+    fn every_command_has_a_section_in_the_reference() {
+        let doc = "# x\n### `dbt.run`\n- Argument\n### `dbt.gone`\n";
+        let found = reference_problems(&["dbt.run", "dbt.new"], doc);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found[0].contains("`dbt.new` has no section"));
+        assert!(found[1].contains("documents `dbt.gone`"));
     }
 
     #[test]

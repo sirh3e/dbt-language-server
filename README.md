@@ -4,6 +4,11 @@
 projects: hover, completion, navigation, lineage, refactoring and dbt
 execution for your models, sources, macros and schema YAML.
 
+Guides live in [`docs/`](docs/README.md): [Neovim](docs/neovim.md),
+[incrementality](docs/incrementality.md), [ast-grep](docs/ast-grep.md), the
+[command reference](docs/commands.md) and, for contributors,
+[editor parity](docs/editor-parity.md).
+
 ## Origin
 
 This project is a **complete Rust rewrite** of
@@ -100,7 +105,14 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   and `:DbtIncrementality` (Neovim), `M-x cogitator-split-plan` and
   `cogitator-incrementality` (Emacs), the `dbt: Split model…` and `dbt:
   Table models that could be incremental` palette commands (VS Code); Zed
-  gets the code action
+  gets the code action. An incremental model gets a "Compare incremental /
+  full refresh" lens: `dbt.incrementalDiff` renders it with
+  `is_incremental()` false and true and opens the unified diff
+  (`:DbtIncrementalDiff`, `M-x cogitator-incremental-diff`, `dbt: Compare
+  incremental / full refresh`). With catalog.json statistics, each CTE shows
+  the row count they prove as an inlay hint (`1,200 rows`, `≤ 1,200 rows`;
+  `perf.row_hints`); `perf.inline_findings: true` shows the plan findings
+  inline too (`⚠ join.cartesian`, the whole finding as the tooltip)
 - **Refactors**: "Expand `c.*`" to the relation's known columns,
   "Extract CTE to a model" (the CTE becomes its own model and is
   `ref()`'d), and "Extract schema YAML" as an edit for editors that run
@@ -128,16 +140,23 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `L` column lineage, `<CR>` opens the model). The `dbt.projectGraph`
   data command is editor-neutral, but this UI ships only in the Neovim
   plugin.
-- **Project browser — Neovim only**: `:DbtBrowse` opens a yazi-style
-  float over the whole project — every model in a searchable center
-  list (`/` filters as you type), direct upstream/downstream in the
-  side panes, and a preview below with the raw SQL, the compiled SQL
-  (served by `dbt.compiledSql`), the model's versions + tests, and an
-  info tab (description, tags, relation name, documented columns,
-  tests with jumps).
-  Backed by the editor-neutral `dbt.modelInfo` command (neighbors,
-  versions, tests and the compiled-SQL location in one round trip);
-  the UI ships only in the Neovim plugin.
+- **Fuzzy pickers — Neovim only**: `:DbtFind` finds models, sources,
+  macros and selectors (jump to the definition), documented columns,
+  a model's upstream/downstream with depth, the refs of the current
+  file, tests and tags, with a preview — shown in fzf-lua, snacks.picker
+  or telescope when installed, else a built-in fzf-style picker (fzf's
+  query syntax). Every other choice the plugin offers uses it too.
+- **Model explorer — Neovim only**: `:DbtBrowse` shows one model at a
+  time: its upstream models on the left, the model's card in the
+  middle (description, tags, relation, versions, documented columns,
+  tests with jumps), its downstream models on the right, and below
+  them its dbt SQL beside the compiled SQL (served by
+  `dbt.compiledSql`). Walk the lineage from the side panes (with a
+  history and a breadcrumb), pick any model with the fuzzy picker, mark
+  models to yank or `dbt run` together. Backed by the editor-neutral
+  `dbt.modelInfo` command (neighbors, versions, tests and the
+  compiled-SQL location in one round trip); the UI ships only in the
+  Neovim plugin.
 
 **dbt workflow**
 
@@ -229,6 +248,7 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 | Query workflow (bounded SELECT on the relation) | ✓ `:DbtQuery` (dadbod/scratch) | ✓ `cogitator-query` (sql buffer) | — |
 | Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — |
 | Project explorer / DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — |
+| Fuzzy pickers | ✓ `:DbtFind` (fzf-lua / snacks / telescope / built-in) | — | — |
 | Profiles-dir live switch | ✓ persisted per project | ✓ command (dir-locals for persistence) | — |
 | Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | — |
 
@@ -328,9 +348,17 @@ startup:                 # honored only via --config at launch
 perf:
   profile: off             # off | recommended | strict: which plan rules
   catalog_stats: true      # report as diagnostics (dbt.queryPlan always works)
+  row_hints: true          # CTE row counts proven by catalog stats, as inlay hints
+  inline_findings: false   # the reported findings as inlay hints too
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off
+inlay:
+  vars: true               # the value after each var() (docs/variables.md)
+  env_vars: true           # the value after each env_var(), secrets masked
+  jinja: false             # what short {{ … }} expressions render to
+vars:                      # overrides, like dbt's --vars; passed to dbt runs
+  since: '2025-06-01'
 ```
 
 Hot semantics are **changed-keys-only, last writer wins**: a reload
@@ -434,16 +462,16 @@ First-party plugin at [`editors/nvim`](editors/nvim)
 ([install guide](editors/nvim/README.md), spec:
 `specs/neovim-plugin/00-plugin.md`): `:DbtRun/Test/Compile/Schema/
 Lineage/Graph/Profiles`, the yazi-style model-graph browser, code-lens
-wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim:
+wiring, `<leader>d` keymaps and `:checkhealth cogitator`. With lazy.nvim
+it is one line (the repository's [`lazy.lua`](lazy.lua) does the rest):
 
 ```lua
-{
-  dir = "/path/to/dbt-language-server/editors/nvim",
-  config = function()
-    require("cogitator").setup({})
-  end,
-}
+{ "sirh3e/dbt-language-server", opts = {} }
 ```
+
+A fuller spec — lazy-loading, and an opt-in `build` that installs the
+server from the latest release — is
+[editors/nvim/examples/lazy.lua](editors/nvim/examples/lazy.lua).
 
 Or configure any LSP client manually (binary on `$PATH`):
 

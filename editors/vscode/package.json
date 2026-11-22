@@ -36,6 +36,12 @@
           },
           "default": [],
           "description": "Extra CLI arguments (e.g. --profiles-dir, --target, --fusion)."
+        },
+        "cogitator.highlight.onOpen": {
+          "type": "string",
+          "enum": ["auto", "always", "off"],
+          "default": "auto",
+          "description": "Colour the project's SQL and YAML files from the server (tree-sitter-dbt, tree-sitter-yaml, dbt-aware captures) when they open and after edits. auto leaves YAML's own colours to VS Code and paints Jinja, SQL and dbt meaning over them; always paints every layer."
         }
       }
     },
@@ -69,12 +75,32 @@
         "title": "dbt: Split model at its incrementality frontier"
       },
       {
+        "command": "cogitator.incrementalDiff",
+        "title": "dbt: Compare incremental / full refresh"
+      },
+      {
         "command": "cogitator.incrementality",
         "title": "dbt: Table models that could be incremental"
       },
       {
         "command": "cogitator.syntaxTree",
         "title": "dbt: Show syntax tree"
+      },
+      {
+        "command": "cogitator.highlight",
+        "title": "dbt: Highlight with tree-sitter-dbt"
+      },
+      {
+        "command": "cogitator.astGrep",
+        "title": "dbt: Structural search (ast-grep)"
+      },
+      {
+        "command": "cogitator.nodeInfo",
+        "title": "dbt: Show node info"
+      },
+      {
+        "command": "cogitator.unresolved",
+        "title": "dbt: Unresolved references"
       },
       {
         "command": "cogitator.status",

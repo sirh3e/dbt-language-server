@@ -22,24 +22,52 @@ Not on PATH? Point the plugin at it with
 
 ## 2. Install the plugin
 
-The plugin lives in this repository under `editors/nvim`.
+### lazy.nvim
 
-With **lazy.nvim** (clone once, point `dir` at the subdirectory):
-
-```sh
-git clone https://github.com/sirh3e/dbt-language-server ~/src/dbt-language-server
-```
+One line is enough — the repository's own [`lazy.lua`](../../lazy.lua)
+puts `editors/nvim` on the runtimepath and calls `setup(opts)`:
 
 ```lua
-{
-  dir = "~/src/dbt-language-server/editors/nvim",
-  config = function()
-    require("cogitator").setup({})
-  end,
+{ "sirh3e/dbt-language-server", opts = {} }
+```
+
+A fuller spec, to copy into `~/.config/nvim/lua/plugins/cogitator.lua`
+([examples/lazy.lua](examples/lazy.lua)):
+
+```lua
+return {
+  "sirh3e/dbt-language-server",
+  -- start when a SQL/YAML file is read, early enough for the server to attach
+  event = { "BufReadPre *.sql", "BufReadPre *.yml", "BufReadPre *.yaml", "BufNewFile *.sql" },
+  -- opt-in: install the server from the latest release on install and :Lazy update
+  build = vim.fn.has("win32") == 1 and "powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1"
+    or "sh install.sh",
+  opts = {
+    -- cmd = { vim.fn.expand("~/.local/bin/cogitator") },
+    -- profiles_dir = "~/.dbt",
+    -- fusion = false,
+  },
 }
 ```
 
-With **vim-plug** (handles the subdirectory itself):
+- `build` runs this repository's checksum-verified [`install.sh`](../../install.sh)
+  (`install.ps1` on Windows) in the plugin's directory, so the server
+  follows the plugin on every `:Lazy update`; it installs to
+  `~/.local/bin` (set `COGITATOR_BIN_DIR` to change it). Leave it out if
+  you install the server yourself (§1).
+- Lazy-load on `BufReadPre`/`BufNewFile`, not `ft`: the server is enabled
+  on the `FileType` event, which `ft` loading would arrive after.
+- `:h cogitator` works: the plugin's help is tagged on first start.
+
+To **try it without touching your config**,
+[examples/minimal_init.lua](examples/minimal_init.lua) bootstraps
+lazy.nvim and the plugin into a throwaway directory:
+
+```sh
+nvim -u editors/nvim/examples/minimal_init.lua path/to/models/some_model.sql
+```
+
+### vim-plug
 
 ```vim
 Plug 'sirh3e/dbt-language-server', { 'rtp': 'editors/nvim' }
@@ -48,7 +76,7 @@ Plug 'sirh3e/dbt-language-server', { 'rtp': 'editors/nvim' }
 require("cogitator").setup({})
 ```
 
-Or plain `runtimepath`:
+### Plain `runtimepath`
 
 ```lua
 vim.opt.rtp:append("~/src/dbt-language-server/editors/nvim")
@@ -75,10 +103,14 @@ binary, the project root and the profiles.yml resolution.
 ## 4. Use it
 
 `:DbtRun` / `:DbtTest` / `:DbtCompile` / `:DbtPreview` on the current
-model, `:DbtGraph` and `:DbtDag` for the graph browsers, `:DbtSchema`,
-`:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more. `<leader>da` (or
-`gra`) opens every code action at the cursor — the server's fixes and
-refactors with a diff preview, and the plugin's own commands — in a
+model, `:DbtFind` for fuzzy pickers (models, definitions, columns,
+lineage… in fzf-lua, snacks.picker or telescope when installed, else a
+built-in one), `:DbtBrowse` for the model explorer (upstream | model | downstream over
+its dbt SQL | compiled SQL), `:DbtGraph`
+and `:DbtDag` for the graph browsers, `:DbtSchema`,
+`:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more. `gra` (or
+`<leader>dA`) opens every code action at the cursor — the server's fixes
+and refactors with a diff preview, and the plugin's own commands — in a
 yazi-style menu walked with `h j k l`, as every dialog of the plugin
 is. The full list,
 options and keymaps are in `:h cogitator`

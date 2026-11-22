@@ -106,7 +106,8 @@ writer wins).
   `dbt.sourceFreshness`, `dbt.cancel`, `dbt.runSelection`,
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
-  `dbt.splitPlan`, `dbt.syntaxTree`
+  `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
+  `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -143,6 +144,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.deps` | `{token}` (immediately) | async showMessage/$\/progress; project-wide `dbt deps`, success refreshes the server context (the packages.yml quickfix runs it) |
 | `dbt.incrementality` | `{models, incremental}` | none; every table model's incrementality verdict, slowest last run first (specs/ir-pipeline/10) |
 | `dbt.splitPlan` | `{model, sexp, part: {name, cte, text}}` or `null` | none; the split at the incrementality frontier as an S-expression (specs/ir-pipeline/10 §6) |
+| `dbt.incrementalDiff` | `{model, fullRefresh, incremental, diff, identical}` or InvalidParams Guidance | none, or with `show: true` (the "Compare incremental / full refresh" lens) the diff written to `target/.cogitator/incremental/<model>.diff` and opened via showDocument |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -156,7 +158,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the wire cap (2 MiB default; `limits.compiled_sql_mib`) |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
-| `dbt.cache` | `{profiles, lineage, results, artifacts, plans}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
+| `dbt.cache` | `{profiles, lineage, results, artifacts, plans, highlights}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 | `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
 | `dbt.sourceFreshness` | `{token}` (immediately) | async `dbt source freshness` (project-wide); the refreshed sources.json feeds the freshness lenses on source YAML entries |
 | `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`) |
@@ -168,6 +170,10 @@ Every command takes **one argument object**, not positional values:
 | `dbt.queryPlan` | `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}}` | none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan |
 | `dbt.syntaxTree` | `{nodes: [{depth, kind, field, error, missing, range}], truncated}` or InvalidParams | none (read-only): the open document's tree-sitter-dbt tree, named + ERROR + MISSING nodes in pre-order, ranges in UTF-16, at most 20 000 nodes — :DbtSyntaxTree |
 | `dbt.preview` | `{token}` (job started) | `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit] |
+| `dbt.highlight` | `{language, version?, spans: [{range, capture, layer}], truncated, layers}`, or `null` for compiled SQL that does not exist (an uncompiled model or test, a macro) | none (read-only): the grammars' highlights (specs/highlighting §2) of `{uri, language?}` (open text, else the file; the language from the path: `.yml` → yaml, `target/compiled\|run` → sql, else dbt), `{text, language?: dbt\|sql\|yaml}`, `{model?, compiled: true}` or `{node: {kind, name}, compiled?}`; `range: {start: {line}, end: {line}}` answers those lines' spans, `version` is echoed; YAML gets its base layer, Jinja and SQL inside values and dbt-aware captures (§3–§5); whole answers cached per document generation / file stamp; at most 50 000 spans, nothing past 2 MiB |
+| `dbt.astGrep` | `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` or InvalidParams Guidance | ast-grep (`cogitator-astgrep`) over tree-sitter-dbt (`dbt`: Jinja structure; the SQL is opaque text) or tree-sitter-sequel (`sql`, compiled SQL, whole statements): `{pattern, language?, rewrite?, uri?}` — `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`); at most 500 matches; `apply: true` with a `rewrite` sends workspace/applyEdit. The project's `sgconfig.yml` rules (`language: dbt\|sql`) are pull diagnostics (`source: ast-grep`) and their `fix` a quickfix |
+| `dbt.nodeInfo` | `{kind, name, …}` per kind (specs/highlighting §6.1), or `null` + a WARNING with the closest names | none (read-only): `{node: {kind, name}}` — `model` (modelInfo's answer + kind), `macro` (package, description, params, uri, range, callers, calls, usedByTests), `test` / `analysis` / `source` / `exposure` / `metric` / `semantic_model` (uri, refs, calls, upstream, downstream, compiledUri for tests and analyses), `generic_test` (a `{% test %}` definition: params, uri, range, appliedTo [{model, column, uri, range}]) |
+| `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -244,41 +250,62 @@ payload of column nodes (`model:<m>::<col>`, `source:<s>.<t>::<col>`,
 `unknown:<name>::<col>`) with layers from the longest path. The server command is editor-neutral; this UI is
 deliberately implemented only in the Neovim plugin.
 
-### 5.3c Project browser (`:DbtBrowse`) — **Neovim only**
+### 5.3c Model explorer (`:DbtBrowse`, `:DbtExplorer`) — **Neovim only**
 
-Actions on the selected entry (center or side pane): `s`/`v`/`t` open it
-in a split/vsplit/tab, `c` compile it, `g` show it in :DbtDag, `L` its
-column-lineage graph, `P` parse the project.
+One model at a time, in five floats:
 
-`lua/cogitator/browse.lua` is the yazi-style browser over the whole project: the
-center float lists every model from `dbt.projectGraph` (`/` filters
-live, smart-case substring), the side floats show the selection's
-direct upstream/downstream from `dbt.modelInfo` (debounced per cursor
-move, stale responses discarded), and the full-width preview below
-switches between `[1]` the raw SQL, `[2]` the compiled SQL from
-`target/compiled/<project>/…` (a hint when dbt has not compiled the
-model — the browser never runs dbt itself) and `[3]` versions + tests.
-Keys: `j`/`k` and the other native motions move (counts included, which
-is why the preview tabs are not on the digit keys); from the center
-`h`/`l` enter the upstream/downstream pane; in a side pane `h` upstream
-or `l` downstream re-centers on the entry and stays there, so repeating
-it walks the lineage (`[count]` walks that many; steps queue while
-`dbt.modelInfo` is in flight), and the opposite key returns to the
-center. `p` focuses the preview, `J`/`K` scroll it from any pane, `n`/`N`
-step the center list with wraparound, `y` yanks a name, `<CR>` on a side
-entry re-selects it in the center, `<CR>`/`o` on the center opens the
-file, `<Tab>`/`<S-Tab>` cycle the preview tab and `[count]<Tab>` picks
-one (1 raw / 2 compiled / 3 versions+tests / 4 info), `<Esc>` clears the
-filter first and closes second, `q` closes. Side-pane entries use the
-`DbtDag*Fg` resource colours. The info tab shows description, tags, the
-dbt.relation name, documented columns from the project graph, and the
-model's tests — `<CR>` on a test line jumps to its YAML entry. The
-implementation is the `cogitator.explorer` package (init/render/
-filter/keys/preview/info) with `cogitator.browse` as a facade and
-`:DbtExplorer` as a command alias; the DAG's canvas + barycenter
-layout engine is the pure `cogitator.layout` module. The server
-command is editor-neutral; this UI is deliberately implemented only in
-the Neovim plugin.
+```
+┌ upstream ⯇ (n) ┐┌ model · a › b › c ──┐┌ ⯈ downstream (n) ┐
+│ direct parents ││ the model's card    ││ direct children  │
+└────────────────┘└─────────────────────┘└──────────────────┘
+┌ dbt SQL · x.sql ───────────────┐┌ compiled SQL ───────────────────┐
+│ the file (Jinja and all)       ││ target/compiled/<project>/…     │
+└────────────────────────────────┘└─────────────────────────────────┘
+```
+
+- **Opens** on the current buffer's model; elsewhere it asks with the
+  models picker (§5.3e), and closes if nothing is chosen.
+  `open({ focus = name })` opens on a given model.
+- **The card** (centre, `explorer/card.lua`) shows the model's name and
+  kind with its file, the description (wrapped), tags, the `dbt.relation`
+  name, versions (`<CR>` opens a version's file), the documented columns
+  from the project graph and the tests (`<CR>` jumps to the test's YAML).
+  `<CR>` on any other line opens the model.
+- **The side panes** list the direct upstream and downstream from
+  `dbt.modelInfo`, in the `DbtDag*Fg` resource colours. `<CR>` on an
+  entry, or `h` (upstream) / `l` (downstream) pressed again in its pane,
+  makes it the model and stays in the pane, so repeating walks the
+  lineage (`[count]` walks that many; steps queue while `dbt.modelInfo`
+  is in flight). From the card, `h`/`l` enter the panes.
+- **History:** every re-centring (a walk, `f`/`/`, `<C-g>` from a picker)
+  records the model left behind. `[`/`-` go back and `]` forward, and the
+  card's title shows the trail (`a › b › c`).
+- **The two SQL panes** show the dbt SQL (the loaded buffer when there is
+  one, else the file read in the background) and the compiled SQL from
+  `dbt.compiledSql`. When the model has not been compiled they say so;
+  the explorer never runs dbt itself. Both are `sql` buffers; `J`/`K`
+  scroll them together from any pane, `p` enters the dbt SQL, `h`/`l`
+  move between the two, and `<Esc>` returns to the card.
+- **Fetching:** changing the model fetches `dbt.modelInfo`,
+  `dbt.compiledSql` and then `dbt.relation`, debounced; answers for an
+  older model are dropped (generation counter). The project graph is
+  cached per client (`cogitator.pick.graph`) and dropped on each
+  `$/progress` end.
+- **Keys** (on the card, or on a side entry):
+  - `f` or `/` pick any model (the fuzzy picker, fzf syntax);
+  - `.` lets the picker and the walks take every kind of node
+    (`navigator.show_all_kinds`);
+  - `<Space>` marks; `y` yanks and `r` dbt-runs the marked models, or the
+    entry (one `dbt.runSelection`);
+  - `o`/`s`/`v`/`t` open / split / vsplit / tab; `c` compile; `g` show in
+    :DbtDag; `L` column lineage; `P` dbt parse;
+  - `?` lists the keys; `q` closes, as does `<Esc>` on the card.
+
+The implementation is the `cogitator.explorer` package (init/render/card/
+preview/keys), with `cogitator.browse` as a facade; `explorer/filter.lua`
+keeps only the substring match :DbtDag's search uses. The server commands
+are editor-neutral; this UI is deliberately implemented only in the
+Neovim plugin.
 
 `dbt.modelInfo` takes `{uri?, model?}` (`model` wins) and answers
 everything the browser's preview needs in one round trip:
@@ -345,6 +372,19 @@ cogitator.nvim/
 └── doc/cogitator.txt
 ```
 
+**Installing with lazy.nvim.** The plugin is a subdirectory of the server's
+repository and lazy.nvim has no subdirectory option, so the repository root
+carries a `lazy.lua`, which lazy.nvim adds to the plugin's own spec: `init`
+appends `editors/nvim` to the runtimepath and tags its `doc/` (lazy.nvim tags
+and sources only the root's `doc/` and `plugin/`), `main = "cogitator"`, and
+`config` sources `plugin/cogitator.lua` and calls `setup(opts)`. A user's
+spec is then `{ "sirh3e/dbt-language-server", opts = {} }`;
+`editors/nvim/examples/lazy.lua` adds lazy-loading on `BufReadPre` of
+SQL/YAML (not `ft`, after the `FileType` the client is enabled on) and an
+opt-in `build` running `install.sh`/`install.ps1`. `just nvim-lazy-test`
+installs this checkout through lazy.nvim, both ways, in a sandbox (network:
+it clones lazy.nvim).
+
 Rules: `require("cogitator")` must be cheap (no I/O at require time); all
 `vim.fn`/`vim.loop` probing happens in `setup()` or lazily. Every module
 ≤ ~200 lines.
@@ -368,6 +408,8 @@ require("cogitator").setup({
   lineage = { depth = 3, max_requests = 60 },  -- column-lineage graphs (§5.3b)
   dag = { focus_depth = 2, follow = false, refresh_on_save = true },
   grammar = { highlight = true, auto_install = false, url = nil, rev = nil }, -- §5.3d
+  -- colours from the server (specs/highlighting §7.1)
+  highlight = { server = "auto", layers = { yaml = true, sql = true, jinja = true, dbt = true } },
 })
 ```
 
@@ -439,13 +481,19 @@ vim.lsp.enable("cogitator")
 | `:DbtTarget` | `dbt.profiles` + `dbt.setTarget` | picker over allowed profile×target; the choice persists per project in the manager store, `<leader>dT` |
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
+| `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
+| `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
 | `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
 | `:DbtColumnLineage [column]` | `dbt.projectGraph` + `dbt.columnLineage` | the column-lineage graph of this model (or one column) in :DbtDag (§5.3b) |
 | `:DbtDeps` | `dbt.deps` | project-wide; the job token is kept for `:DbtCancel` |
 | `:DbtReloadConfig` | `dbt.reloadConfig` | re-read cogitator.yml now |
 | `:DbtSyntaxTree` | `dbt.syntaxTree` | toggle the syntax-tree split (§5.3d) |
+| `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
+| `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
+| `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
+| `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
 | `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |
 | `:DbtProjects!` | — (manager store) | manage one project: open, profiles directory, clear selections, rename (`label`), forget |
 | `:Dbt <sub> [args]` | — | every command above as a subcommand, completed (subcommands, `cache clear`, profiles dirs, the buffer's column names) |
@@ -462,6 +510,14 @@ runs.
 | `:DbtLineage` | `dbt.showLineage` | result arrives as a showMessage |
 
 Implementation: `client:exec_cmd({ command = …, arguments = { { uri = vim.uri_from_bufnr(0), position = <cursor> } } }, { bufnr = 0 }, handler)`.
+Nothing blocks the editor: no `request_sync`, `vim.wait` or `:wait()` in
+the plugin (the headless suite scans for them). Other LSP methods go
+through `actions.request` (a timeout, a staleness guard, cancel), and what
+must answer synchronously — command-line completion of column names,
+`:checkhealth` — reads a cache filled in the background (`dbt.columnLineage`
+on attach/enter/save, `dbt.doctor` on attach and after each `$/progress`
+end). The DAG paints large graphs' highlights in slices, the visible lines
+first.
 Only `:DbtSchema` needs a result handler; the rest are fire-and-forget
 (`null` results). All five must error cleanly ("cogitator is not attached to
 this buffer") when no client is attached.
@@ -492,6 +548,33 @@ file (closing the browser), `q`/`<Esc>` close. Sources are tagged
 `uri` are tagged `(missing)`. One instance at a time; the fetch runs
 through the originating buffer's client.
 
+### 5.3e Fuzzy pickers (`:DbtFind [source]`) — **Neovim only**
+
+`lua/cogitator/pick/`: a source (`title`, `items(done)`, `preview(item,
+done)`, optional `choose`) shown by a backend — fzf-lua, snacks.picker or
+telescope when installed (`picker = "auto"`, in that order), or a
+named one (`picker = "fzf-lua" | "snacks" | "telescope" | "builtin"`);
+one that is missing or fails falls back to the built-in picker (prompt,
+ranked list with matches highlighted, preview; fzf's syntax via
+`cogitator.pick.query` and `vim.fn.matchfuzzypos`). The same keys
+everywhere: `<CR>` open, `<C-v>`/`<C-x>`/`<C-t>` vsplit/split/tab,
+`<C-g>` the navigator (for a column: its column-lineage graph), `<C-y>`
+yank, `<C-r>` dbt run, `<Tab>` mark. Items and previews arrive
+asynchronously; nothing waits.
+
+| source | items | default action |
+|---|---|---|
+| `models`, `sources`, `all` | `dbt.projectGraph` nodes | open the file |
+| `definitions`, `macros`, `selectors` | `workspace/symbol` | jump to the definition |
+| `columns` | documented columns as `model.column` | open the model on the column |
+| `upstream`, `downstream`, `lineage` | BFS over the graph from the buffer's model, depth shown | open |
+| `refs` | the buffer's `ref()`/`source()` calls, CTEs and macros | go to definition |
+| `tests`, `tags` | `dbt.modelTests`; the graph's tags, then their nodes | jump / open |
+
+`:DbtTests`, `:DbtTags` and `:DbtSelectors` open these sources, and every
+other choice the plugin offers (`:Dbt`, `:DbtCancel`, targets, projects)
+goes through `pick.select`, a `vim.ui.select` on the same backends.
+
 ### 5.3d Syntax tree and grammar — **Neovim only**
 
 `:DbtSyntaxTree` (`lua/cogitator/syntax.lua`) draws `dbt.syntaxTree` in a
@@ -512,8 +595,11 @@ LSP maps: `<leader>ds` → `:DbtSchema`, `<leader>dl` → `:DbtLineage`,
 `:DbtCompile`, `<leader>dg` → `:DbtGraph`, `<leader>dR` →
 `:DbtRelation`, `<leader>dL` → `vim.lsp.codelens.run`, `<leader>dv`
 (normal and visual) → expand along `textDocument/selectionRange`,
-`<leader>dV` (visual) → shrink back. All with `desc`
-set, all buffer-local on attach only.
+`<leader>dV` (visual) → shrink back, `<leader>df` → `:DbtFind models`,
+`<leader>dF` → `:DbtFind`, `<leader>dd` → definitions, `<leader>dk` →
+columns, `<leader>du`/`<leader>dU` → upstream/downstream, `<leader>dn` →
+the navigator at this model. All with `desc` set, all buffer-local on
+attach only.
 
 ---
 

@@ -73,6 +73,7 @@ pub struct CacheReport {
     pub results: CacheSurface,
     pub artifacts: CacheSurface,
     pub plans: CacheSurface,
+    pub highlights: CacheSurface,
 }
 
 /// (path, scope fingerprint) → (stamp, parsed inventory).
@@ -110,9 +111,82 @@ pub struct DerivedCache {
     plans_stats: Counters,
     /// The project-schema job's snapshot and state, per project root.
     schemas: schemas::SchemaSlot,
+    /// The project's ast-grep rules, with the stamps of the files they
+    /// were loaded from.
+    astgrep: Mutex<Option<AstGrepSlot>>,
+    /// Whole `dbt.highlight` answers, most recently used last.
+    highlights: Mutex<Vec<(HighlightKey, Arc<cogitator_treesitter::Highlights>)>>,
+    highlights_stats: Counters,
 }
 
+/// What a cached `dbt.highlight` answer is of: an open document at a
+/// generation, or a file at a stamp; with the language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HighlightKey {
+    Doc(String, u64, &'static str),
+    File(PathBuf, FileStamp, &'static str),
+}
+
+/// How many whole answers the highlight cache keeps.
+const HIGHLIGHTS_KEPT: usize = 64;
+
+type AstGrepSlot = (
+    PathBuf,
+    Vec<(PathBuf, Option<FileStamp>)>,
+    Arc<cogitator_astgrep::Rules>,
+);
+
 impl DerivedCache {
+    /// A `dbt.highlight` answer: the cached one for `key`, else `compute`'s
+    /// (kept, the least recently used dropped past `HIGHLIGHTS_KEPT`).
+    pub fn highlights(
+        &self,
+        key: HighlightKey,
+        compute: impl FnOnce() -> Option<cogitator_treesitter::Highlights>,
+    ) -> Option<Arc<cogitator_treesitter::Highlights>> {
+        {
+            let mut slot = self.highlights.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(i) = slot.iter().position(|(k, _)| *k == key) {
+                let entry = slot.remove(i);
+                let found = entry.1.clone();
+                slot.push(entry);
+                self.highlights_stats.hit("highlight");
+                return Some(found);
+            }
+        }
+        self.highlights_stats.miss("highlight");
+        let found = Arc::new(compute()?);
+        let mut slot = self.highlights.lock().unwrap_or_else(|e| e.into_inner());
+        slot.retain(|(k, _)| *k != key);
+        slot.push((key, found.clone()));
+        if slot.len() > HIGHLIGHTS_KEPT {
+            slot.remove(0);
+        }
+        Some(found)
+    }
+
+    /// The ast-grep rules of the project at `root`, loaded again when
+    /// sgconfig.yml or a rule file changed, appeared or went away.
+    pub fn astgrep_rules(&self, root: &Path) -> Arc<cogitator_astgrep::Rules> {
+        let (files, _) = cogitator_astgrep::rule_files(root);
+        let stamps: Vec<(PathBuf, Option<FileStamp>)> = files
+            .into_iter()
+            .map(|f| {
+                let s = stamp(&f);
+                (f, s)
+            })
+            .collect();
+        let mut slot = self.astgrep.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((cached_root, cached, rules)) = slot.as_ref() {
+            if cached_root == root && *cached == stamps {
+                return rules.clone();
+            }
+        }
+        let rules = Arc::new(cogitator_astgrep::Rules::load(root));
+        *slot = Some((root.to_path_buf(), stamps, rules.clone()));
+        rules
+    }
+
     /// The scoped inventory for `path`, re-parsed only when the file
     /// stamp or the (project, allowlist) scope changed.
     pub fn profiles_inventory(
@@ -223,6 +297,10 @@ impl DerivedCache {
         slot.1.clear();
         self.artifacts.lock().expect("artifacts cache lock").clear();
         self.plans.lock().expect("plans cache lock").clear();
+        self.highlights
+            .lock()
+            .expect("highlights cache lock")
+            .clear();
     }
 
     pub fn report(&self) -> CacheReport {
@@ -252,6 +330,10 @@ impl DerivedCache {
             plans: surface(
                 self.plans.lock().expect("plans cache lock").len(),
                 &self.plans_stats,
+            ),
+            highlights: surface(
+                self.highlights.lock().expect("highlights cache lock").len(),
+                &self.highlights_stats,
             ),
         }
     }

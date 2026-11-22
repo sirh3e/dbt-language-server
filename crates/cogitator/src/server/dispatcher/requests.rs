@@ -45,6 +45,12 @@ impl Dispatcher {
     }
 
     pub(super) fn hover(&mut self, content: &[u8]) {
+        if self.compiled_hover(content) {
+            return;
+        }
+        if self.hover_jinja(content) {
+            return;
+        }
         let derived = self.derived.clone();
         self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
@@ -69,6 +75,39 @@ impl Dispatcher {
             }
         });
         self.warm_lineage(content);
+    }
+
+    /// A hover inside a SQL file's `{{ … }}` with nothing else to say
+    /// (not on a ref, var, macro… name that has its own hover): what the
+    /// expression renders to, offloaded (the renderer reads the macro
+    /// files and runs on a fuel budget). `false`: not such a position.
+    fn hover_jinja(&mut self, content: &[u8]) -> bool {
+        let Some((id, uri, pos)) = Self::position_request(content) else {
+            return false;
+        };
+        if !uri.ends_with(".sql") {
+            return false;
+        }
+        let snap = self.snapshot_for(&uri);
+        let Some(doc) = snap.doc.clone() else {
+            return false;
+        };
+        if features::jinja_expression_at(&doc, pos).is_none() {
+            return false;
+        }
+        // a token with a hover of its own keeps exactly that hover
+        let ctx = self.ctx_for(&uri);
+        if !features::hover_with_lineage(&ctx, &doc, pos, None).is_empty() {
+            return false;
+        }
+        let derived = self.derived.clone();
+        self.offload_blocking(id, "textDocument/hover", move || {
+            let inputs = crate::server::handlers::commands::preview_inputs(&snap, &derived);
+            let renderer = features::InlineRenderer::new(&inputs);
+            let contents = features::jinja_hover(&doc, pos, &renderer).unwrap_or_default();
+            crate::server::reply::Reply::result(&HoverResult { contents })
+        });
+        true
     }
 
     /// Fills the lineage cache after a hover missed it, off the
@@ -107,6 +146,10 @@ impl Dispatcher {
             return;
         };
         let snap = self.snapshot_for(&uri);
+        if crate::server::compiled_source::source_of(&snap.ctx, &uri).is_some() {
+            self.compiled_definition(id, uri, pos, snap);
+            return;
+        }
         let function = snap
             .doc
             .as_deref()
@@ -138,6 +181,13 @@ impl Dispatcher {
     }
 
     pub(super) fn completion(&mut self, content: &[u8]) {
+        // properties YAML: schema-driven, offloaded (lineage + test files)
+        if let Some((id, uri, pos)) = Self::position_request(content) {
+            if cogitator_analysis::yaml_properties::is_properties_file(&uri) {
+                self.properties_completion(id, uri, pos);
+                return;
+            }
+        }
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
             match doc {
                 // the server's own config file: schema-table completion
@@ -175,10 +225,6 @@ impl Dispatcher {
             }
         }
         self.send(&ResultResponse::new(id, item));
-    }
-
-    pub(super) fn references(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/references", features::references);
     }
 
     pub(super) fn document_symbol(&mut self, content: &[u8]) {
@@ -223,57 +269,6 @@ impl Dispatcher {
         self.send(&ResultResponse::new(req.id, ranges));
     }
 
-    pub(super) fn semantic_tokens(&mut self, content: &[u8]) {
-        self.respond_position(
-            content,
-            "textDocument/semanticTokens/full",
-            |_, doc, _, _| {
-                doc.map(features::semantic_tokens)
-                    .unwrap_or(cogitator_lsp::SemanticTokens { data: Vec::new() })
-            },
-        );
-    }
-
-    pub(super) fn rename(&mut self, content: &[u8]) {
-        let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::RenameParams>>(content)
-        else {
-            self.invalid_params(content, "textDocument/rename");
-            return;
-        };
-        let Some(params) = req.params else {
-            self.invalid_params(content, "textDocument/rename");
-            return;
-        };
-        let uri = params.text_document.uri.into_owned();
-        let new_name = params.new_name.into_owned();
-        let position = params.position;
-        let snap = self.snapshot_for(&uri);
-        self.offload_blocking(req.id, "textDocument/rename", move || {
-            let edit =
-                features::rename_model(&snap.ctx, snap.doc.as_deref(), &uri, position, &new_name);
-            crate::server::reply::Reply::result(&edit)
-        });
-    }
-
-    pub(super) fn prepare_rename(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/prepareRename", |_, doc, _, pos| {
-            doc.and_then(|d| features::prepare_rename(d, pos))
-        });
-    }
-
-    /// prepare answers `[item]` for a macro call under the cursor, null
-    /// anywhere else (the LSP contract for "nothing here").
-    pub(super) fn prepare_call_hierarchy(&mut self, content: &[u8]) {
-        self.respond_position(
-            content,
-            "textDocument/prepareCallHierarchy",
-            |ctx, doc, _, pos| {
-                doc.and_then(|d| features::prepare_macro_hierarchy(ctx, d, pos))
-                    .map(|item| vec![item])
-            },
-        );
-    }
-
     pub(super) fn call_hierarchy_incoming(&mut self, content: &[u8]) {
         let Ok(req) =
             serde_json::from_slice::<Envelope<cogitator_lsp::CallHierarchyCallsParams>>(content)
@@ -293,17 +288,6 @@ impl Dispatcher {
         });
     }
 
-    pub(super) fn call_hierarchy_outgoing(&mut self, content: &[u8]) {
-        let Ok(req) =
-            serde_json::from_slice::<Envelope<cogitator_lsp::CallHierarchyCallsParams>>(content)
-        else {
-            self.invalid_params(content, "callHierarchy/outgoingCalls");
-            return;
-        };
-        let empty: Vec<cogitator_lsp::CallHierarchyIncomingCall> = Vec::new();
-        self.send(&ResultResponse::new(req.id, empty));
-    }
-
     pub(super) fn code_lens(&mut self, content: &[u8]) {
         // offloaded since the artifact batch: the run-status lens stats
         // target/ files (05 §6.1 keeps fs off this task)
@@ -316,10 +300,14 @@ impl Dispatcher {
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         self.offload_blocking(id, "textDocument/codeLens", move || {
             let mut lenses = features::code_lenses(&snap.ctx, &uri);
+            lenses.extend(quality_lenses(&snap, &derived, &uri, cap));
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, cap);
                 lenses.extend(features::run_lens(&snap.ctx, &uri, &set));
                 lenses.extend(features::freshness_lenses(&snap.ctx, &uri, &set));
+                lenses.extend(crate::server::handlers::incremental::lens(
+                    &snap, &set, &uri,
+                ));
             }
             crate::server::reply::Reply::result(&lenses)
         });
@@ -339,20 +327,60 @@ impl Dispatcher {
         let range = params.range;
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
+        let options = features::InlayOptions {
+            vars: !self
+                .toggles
+                .inlay_vars_off
+                .load(std::sync::atomic::Ordering::Relaxed),
+            env_vars: !self
+                .toggles
+                .inlay_env_vars_off
+                .load(std::sync::atomic::Ordering::Relaxed),
+        };
+        let jinja = self
+            .toggles
+            .inlay_jinja
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && uri.ends_with(".sql");
+        let perf = self.perf_settings();
+        let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
             let hints = match snap.doc.as_deref() {
-                Some(doc) => features::inlay_hints(&snap.ctx, doc, &uri, range, target.as_ref()),
+                Some(doc) => {
+                    let mut hints = features::inlay_hints_with(
+                        &snap.ctx,
+                        doc,
+                        &uri,
+                        range,
+                        target.as_ref(),
+                        options,
+                    );
+                    if jinja {
+                        let inputs =
+                            crate::server::handlers::commands::preview_inputs(&snap, &derived);
+                        let renderer = features::InlineRenderer::new(&inputs);
+                        hints.extend(features::jinja_inlay_hints(doc, range, &renderer));
+                    }
+                    hints
+                }
                 None => Vec::new(),
             };
+            let mut hints: Vec<cogitator_lsp::AnyInlayHint> = hints
+                .into_iter()
+                .map(cogitator_lsp::AnyInlayHint::Plain)
+                .collect();
+            hints.extend(crate::server::handlers::plan_hints::plan_hints(
+                &snap, &derived, &uri, range, &perf, cap,
+            ));
             crate::server::reply::Reply::result(&hints)
         });
     }
 
     pub(super) fn document_link(&mut self, content: &[u8]) {
-        self.respond_position(content, "textDocument/documentLink", |ctx, doc, _, _| {
-            doc.map(|d| features::document_links(ctx, d))
+        self.respond_position(content, "textDocument/documentLink", |ctx, doc, uri, _| {
+            doc.map(|d| features::document_links_at(ctx, d, uri))
                 .unwrap_or_default()
         });
     }
@@ -415,4 +443,35 @@ impl Dispatcher {
             features::workspace_symbols(&ctx, &query),
         ));
     }
+}
+
+/// The coverage and run-this-test lenses: YAML from the open buffer (or
+/// the file), lineage only for a model that has a YAML entry to count
+/// against.
+fn quality_lenses(
+    snap: &crate::server::snapshot::Snapshot,
+    derived: &crate::server::derived_cache::DerivedCache,
+    uri: &str,
+    cap: u64,
+) -> Vec<cogitator_lsp::CodeLens> {
+    let is_yaml = uri.ends_with(".yml") || uri.ends_with(".yaml");
+    let text = match snap.doc.as_deref() {
+        Some(doc) => Some(doc.text.clone()),
+        None if is_yaml => cogitator_lsp::uri_to_fs_path(uri)
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .map(std::sync::Arc::<str>::from),
+        None => None,
+    };
+    let counted = !is_yaml
+        && features::model_name_from_uri(uri)
+            .and_then(|m| snap.ctx.model_detail_map.get(&m))
+            .is_some_and(|d| d.schema_uri.is_some());
+    let lineage = counted
+        .then(|| crate::server::handlers::lineage::typed_lineage_for(snap, derived, uri, cap));
+    features::quality::quality_lenses(
+        &snap.ctx,
+        uri,
+        text.as_deref(),
+        lineage.as_ref().and_then(|l| (**l).as_ref()),
+    )
 }

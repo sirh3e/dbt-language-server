@@ -36,26 +36,65 @@ function M.reload_config()
   end)
 end
 
---- The column names dbt.columnLineage lists for the current buffer, for
---- completion (a short synchronous request; nothing when it is slow).
+--- bufnr → { tick = changedtick, names = string[] }: the columns
+--- dbt.columnLineage last listed for a buffer, which completion reads.
+---@type table<integer, {tick: integer, names: string[]}>
+M._columns = {}
+--- bufnr → the cancel function of a column fetch in flight
+---@type table<integer, fun()>
+M._fetching = {}
+
+--- Ask the server, in the background, for the columns of `bufnr`; the
+--- answer lands in `M._columns`. A fetch in flight for an older text is
+--- cancelled; nothing waits.
+---@param bufnr integer
+function M.fetch_columns(bufnr)
+  local client = actions.client_for(bufnr, true)
+  if not client then
+    return
+  end
+  local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local cached = M._columns[bufnr]
+  if cached and cached.tick == tick then
+    return
+  end
+  if M._fetching[bufnr] then
+    M._fetching[bufnr]()
+  end
+  M._fetching[bufnr] = actions.request(client, bufnr, "workspace/executeCommand", {
+    command = "dbt.columnLineage",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, {
+    timeout_ms = 10000,
+    stale = function()
+      return not vim.api.nvim_buf_is_valid(bufnr)
+    end,
+  }, function(err, result)
+    M._fetching[bufnr] = nil
+    if err or type(result) ~= "table" or type(result.columns) ~= "table" then
+      return
+    end
+    M._columns[bufnr] = {
+      tick = tick,
+      names = vim.tbl_map(function(c)
+        return c.name
+      end, result.columns),
+    }
+  end)
+end
+
+--- The column names of the current buffer, for completion. Completion
+--- has to answer at once, so this is what was fetched last (none before
+--- the first answer); a missing or older list starts a fetch, so the
+--- next <Tab> has it.
 ---@return string[]
 function M.column_names()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = actions.client_for(bufnr, true)
-  if not client then
-    return {}
+  local cached = M._columns[bufnr]
+  if not cached or cached.tick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
+    M.fetch_columns(bufnr)
   end
-  local response = client:request_sync("workspace/executeCommand", {
-    command = "dbt.columnLineage",
-    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
-  }, 800, bufnr)
-  local result = response and response.result
-  if type(result) ~= "table" or type(result.columns) ~= "table" then
-    return {}
-  end
-  return vim.tbl_map(function(c)
-    return c.name
-  end, result.columns)
+  return cached and cached.names or {}
 end
 
 --- The commands.lua functions the table routes to (checked by the suite).
@@ -102,6 +141,7 @@ M.SUBCOMMANDS = {
   plan = { run = plain("plan"), desc = "this model's query plan" },
   doctor = { run = plain("doctor"), desc = "the server's health report" },
   dead = { run = plain("dead_models"), desc = "models nothing uses" },
+  unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
   incrementality = { run = plain("incrementality"), desc = "table models that could be incremental" },
   impact = {
@@ -140,6 +180,17 @@ M.SUBCOMMANDS = {
   },
   reload = { run = M.reload_config, desc = "reload cogitator.yml" },
   syntax = { run = module_call("cogitator.syntax", "toggle"), desc = "the syntax tree of this buffer" },
+  highlight = {
+    run = module_call("cogitator.tshl", "toggle"),
+    desc = "colour this buffer with tree-sitter-dbt (server)",
+  },
+  node = { run = with_args("node"), desc = "a node's card: [kind:]name (dbt.nodeInfo)" },
+  astgrep = {
+    run = function(args)
+      require("cogitator.astgrep").command({ args = args })
+    end,
+    desc = "ast-grep: [sql:]pattern [=> rewrite]",
+  },
   treesitter = {
     run = module_call("cogitator.treesitter", "command"),
     complete = function()
@@ -148,6 +199,15 @@ M.SUBCOMMANDS = {
     desc = "the tree-sitter-dbt grammar: install, status, start",
   },
   manage = { run = module_call("cogitator.manager", "manage"), desc = "manage a known project" },
+  find = {
+    run = function(args)
+      require("cogitator.pick").find(args)
+    end,
+    complete = function()
+      return require("cogitator.pick.sources").ORDER
+    end,
+    desc = "fuzzy-find models, definitions, columns, lineage… [source]",
+  },
   dag = { run = module_call("cogitator.dag", "open"), desc = "the project DAG" },
   graph = { run = module_call("cogitator.graph", "open"), desc = "the three-pane model graph" },
   explorer = { run = module_call("cogitator.explorer", "open"), desc = "the project explorer" },
@@ -190,7 +250,11 @@ M.GROUPS = {
       "query",
     },
   },
-  { name = "Views", icon = "◈", subs = { "graph", "dag", "columns", "explorer", "syntax" } },
+  {
+    name = "Views",
+    icon = "◈",
+    subs = { "find", "graph", "dag", "columns", "explorer", "node", "syntax", "highlight" },
+  },
   {
     name = "Project",
     icon = "▣",
@@ -201,9 +265,11 @@ M.GROUPS = {
       "selection",
       "cancel",
       "dead",
+      "unresolved",
       "incrementality",
       "tags",
       "selectors",
+      "astgrep",
     },
   },
   {
@@ -273,10 +339,25 @@ end
 function M.run(line)
   local name, rest = vim.trim(line):match("^(%S*)%s*(.-)$")
   if name == "" then
-    local bufnr = vim.api.nvim_get_current_buf()
+    local config = package.loaded["cogitator"] and require("cogitator").config
+    if config and config.ui and config.ui.picker == false then
+      local names = vim.tbl_keys(M.SUBCOMMANDS)
+      table.sort(names)
+      require("cogitator.pick").select(names, {
+        prompt = "dbt",
+        format_item = function(n)
+          return ("%-10s %s"):format(n, M.SUBCOMMANDS[n].desc)
+        end,
+      }, function(choice)
+        if choice then
+          M.SUBCOMMANDS[choice].run("")
+        end
+      end)
+      return
+    end
     require("cogitator.picker").open({
       title = "dbt",
-      items = M.menu_items(bufnr),
+      items = M.menu_items(vim.api.nvim_get_current_buf()),
       on_choose = function(item)
         M.SUBCOMMANDS[item.value.subcommand].run("")
       end,

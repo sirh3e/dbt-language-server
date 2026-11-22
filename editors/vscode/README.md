@@ -72,8 +72,23 @@ included.
 `dbt: Run/Test/Compile/Preview current model`, `dbt: Parse project`,
 `dbt: Show column lineage`, `dbt: Split model at its incrementality
 frontier` (the plan as an S-expression beside the model, with an
-"Apply split" button), `dbt: Table models that could be incremental`
+"Apply split" button), `dbt: Compare incremental / full refresh` (the
+model rendered with `is_incremental()` false and true, as a unified diff
+beside it), `dbt: Table models that could be incremental`
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the
-model's tree-sitter-dbt tree beside it), `dbt: Language server status`,
+model's tree-sitter-dbt tree beside it), `dbt: Highlight with
+tree-sitter-dbt` (colours the editor as the server highlights it — the
+Jinja and the SQL between the tags, YAML with dbt-aware captures;
+compiled SQL as SQL; the setting `cogitator.highlight.onOpen` —
+`auto`, `always`, `off` — does it for every SQL and YAML file of the
+project as it opens), `dbt: Show node info` (a macro's, test's or
+source's card from `dbt.nodeInfo`), inlay hints with the value of each
+`var()` (`editor.inlayHints.enabled`, docs/variables.md), `dbt:
+Unresolved references` (every unresolved `ref`, `source`, `doc`, macro
+and `var` of the project from `dbt.unresolved`, a quick pick that jumps
+to each), `dbt:
+Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
+files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
+rewrite` rewrites every match after asking), `dbt: Language server status`,
 `dbt: Restart language server`. Everything else (code lenses, code
 actions, rename, call hierarchy) rides the standard LSP features.

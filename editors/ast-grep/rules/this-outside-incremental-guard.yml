@@ -1,0 +1,11 @@
+id: this-outside-incremental-guard
+language: dbt
+severity: warning
+message: "{{ this }} outside {% if is_incremental() %}: the first build has no table to read"
+note: read the model's own table only inside the incremental guard
+rule:
+  pattern: "{{ this }}"
+  not:
+    inside:
+      kind: if_statement
+      stopBy: end

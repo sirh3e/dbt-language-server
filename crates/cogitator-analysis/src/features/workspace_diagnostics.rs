@@ -34,6 +34,7 @@ pub fn project_diagnostics(
             continue;
         };
         let doc = Document {
+            uri: file_uri(path).into(),
             text: text.into(),
             parsed,
             generation: 0,

@@ -44,9 +44,11 @@ pub fn source_items(ctx: &DbtContext, suffix: &str, quote: &str) -> Vec<Completi
         .collect()
 }
 
-pub fn var_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
-    ctx.variable_detail_map
-        .keys()
+pub fn var_items(
+    vars: &std::collections::HashMap<String, crate::context::VariableDetails>,
+    suffix: &str,
+) -> Vec<CompletionItem> {
+    vars.keys()
         .map(|name| CompletionItem {
             label: name.clone(),
             detail: name.clone(),

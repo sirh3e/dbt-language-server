@@ -1,5 +1,5 @@
---- Explorer keymaps and the navigation they drive. One attach() per
---- pane buffer; everything routes back through the explorer module so
+--- Explorer keymaps and the navigation they drive. One attach() per pane
+--- buffer; everything routes back through the explorer module so the
 --- state stays in one place.
 
 local actions = require("cogitator.actions")
@@ -7,16 +7,21 @@ local motion = require("cogitator.motion")
 
 local M = {}
 
---- Close the explorer and open a file.
+--- Close the explorer and open a file, in place or in a split/vsplit/tab.
 ---@param explorer table
 ---@param uri string|vim.NIL|nil
-local function open_uri(explorer, uri)
+---@param how ("edit"|"split"|"vsplit"|"tabedit")?
+local function open_uri(explorer, uri, how)
   if not uri or uri == vim.NIL then
     vim.notify("no file on disk for this entry", vim.log.levels.WARN)
     return
   end
   explorer.close()
-  actions.open_uri(uri)
+  if how and how ~= "edit" then
+    vim.cmd[how](vim.fn.fnameescape(vim.uri_to_fname(uri)))
+  else
+    actions.open_uri(uri)
+  end
 end
 
 --- The side-pane entry under the cursor.
@@ -29,52 +34,20 @@ local function side_entry(explorer, pane)
   return entries and entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
 end
 
---- Make a side-pane entry the center selection (clearing the filter when
---- it is filtered out), like re-centering in :DbtGraph.
+--- Make a side-pane entry the selection (recording the history).
 ---@param explorer table
 ---@param pane "left"|"right"
 ---@param stay boolean? keep focus in the side pane
 ---@return boolean moved
 local function reselect(explorer, pane, stay)
-  local efilter = require("cogitator.explorer.filter")
-  local s = explorer._state
   local e = side_entry(explorer, pane)
   if not e then
     return false
   end
-  if e.kind ~= "model" then
-    vim.notify(
-      ("%s is a %s — only models are in the center list"):format(e.name, e.kind:gsub("_", " ")),
-      vim.log.levels.INFO
-    )
-    return false
-  end
-  local function row_of(name)
-    for i, n in ipairs(s.filtered) do
-      if n.name == name then
-        return i
-      end
-    end
-  end
-  local row = row_of(e.name)
-  if not row then
-    s.filter = ""
-    efilter.apply(explorer)
-    row = row_of(e.name)
-  end
-  if not row then
-    vim.notify(e.name .. " is not in the project graph", vim.log.levels.WARN)
-    return false
-  end
-  vim.api.nvim_win_set_cursor(s.wins.center, { row, 0 })
-  if not stay then
-    vim.api.nvim_set_current_win(s.wins.center)
-  end
-  explorer._select_current()
-  return true
+  return explorer.focus(e.name, { record = true, stay = stay, node = e })
 end
 
---- Re-center on the side-pane entry `count` times, staying in the pane so
+--- Re-centre on the side-pane entry `count` times, staying in the pane so
 --- repeated presses walk the lineage. Each step needs the previous
 --- selection's neighbours, so steps wait for dbt.modelInfo to land.
 ---@param explorer table
@@ -104,47 +77,21 @@ function M.resume_walk(explorer)
   end
 end
 
---- <Tab> cycles the preview; [count]<Tab> jumps to tab [count].
+--- Scroll both SQL panes together (they show the same model).
 ---@param explorer table
-local function next_tab(explorer)
-  local count = vim.v.count
-  if count == 0 then
-    explorer._set_tab(explorer._state.tab % 4 + 1)
-  elseif count <= 4 then
-    explorer._set_tab(count)
-  end
-end
-
---- Step the center selection, wrapping at both ends.
----@param explorer table
----@param delta integer
-local function step_center(explorer, delta)
+---@param lines integer
+local function scroll_sql(explorer, lines)
   local s = explorer._state
-  local total = #s.filtered
-  if total == 0 then
-    return
+  for _, pane in ipairs({ "raw", "compiled" }) do
+    if s.wins[pane] and vim.api.nvim_win_is_valid(s.wins[pane]) then
+      motion.scroll(s.wins[pane], lines)
+    end
   end
-  local row = vim.api.nvim_win_get_cursor(s.wins.center)[1]
-  vim.api.nvim_win_set_cursor(s.wins.center, { (row - 1 + delta) % total + 1, 0 })
-  explorer._select_current()
 end
 
---- Close the explorer and open a file in a split, a vsplit or a tab.
----@param explorer table
----@param uri string|vim.NIL|nil
----@param how "split"|"vsplit"|"tabedit"
-local function open_in(explorer, uri, how)
-  if not uri or uri == vim.NIL then
-    vim.notify("no file on disk for this entry", vim.log.levels.WARN)
-    return
-  end
-  explorer.close()
-  vim.cmd[how](vim.fn.fnameescape(vim.uri_to_fname(uri)))
-end
-
---- The explorer's actions on an entry (the center selection or a side
---- pane's line): open it elsewhere, compile it, show it in the DAG or
---- its column lineage; and parse the project.
+--- The actions on an entry (the selection, or a side pane's line): open
+--- it elsewhere, compile it, show it in the DAG or its column lineage;
+--- and parse the project.
 ---@param explorer table
 ---@param entry_of fun(): cogitator.GraphEntry?
 ---@param map fun(lhs: string, fn: fun())
@@ -157,11 +104,17 @@ local function entry_actions(explorer, entry_of, map)
       end
     end
   end
+  map(
+    "o",
+    with(function(e)
+      open_uri(explorer, e.uri)
+    end)
+  )
   for lhs, how in pairs({ s = "split", v = "vsplit", t = "tabedit" }) do
     map(
       lhs,
       with(function(e)
-        open_in(explorer, e.uri, how)
+        open_uri(explorer, e.uri, how)
       end)
     )
   end
@@ -201,16 +154,83 @@ local function entry_actions(explorer, entry_of, map)
       require("cogitator.dag").open({ columns = { model = e.name } })
     end)
   )
+  -- the marked models, or this entry: yank their names, dbt-run them
+  map(
+    "y",
+    with(function(e)
+      local names = explorer._chosen(e.name)
+      vim.fn.setreg(vim.v.register, table.concat(names, " "))
+      vim.notify("yanked " .. table.concat(names, " "), vim.log.levels.INFO)
+    end)
+  )
+  map(
+    "r",
+    with(function(e)
+      local s = explorer._state
+      require("cogitator.commands").run_selection({ args = table.concat(explorer._chosen(e.name), " ") })
+      s.marked = {}
+      require("cogitator.explorer.render").sides(s)
+      require("cogitator.explorer.render").center(s)
+    end)
+  )
+  map(
+    "<Space>",
+    with(function(e)
+      explorer._toggle_mark(e.name)
+    end)
+  )
 end
 
-local function yank(name)
-  vim.fn.setreg(vim.v.register, name)
-  vim.notify("yanked " .. name, vim.log.levels.INFO)
+M.HELP = {
+  "explorer — one model, its lineage and its SQL",
+  "",
+  "  upstream ⯇  |  the model  |  ⯈ downstream",
+  "  dbt SQL                |       compiled SQL",
+  "",
+  "  h / l          from the model: into upstream / downstream",
+  "  h h… / l l…    in a side pane: walk the lineage ([count] too)",
+  "  <CR>           side pane: make it the model; card: open the test,",
+  "                 version or the model's file",
+  "  [ - / ]        back / forward through the models walked",
+  "  .              macros, tests, sources… too (a macro's card: its",
+  "                 callers and calls; <CR> in its compiled pane re-centres)",
+  "  f  /           pick any model (fuzzy, fzf syntax)",
+  "  p              to the dbt SQL; h / l between the SQL panes",
+  "  J / K          scroll both SQL panes      <Esc>  back to the model",
+  "  <Space>        mark                       y / r  yank / dbt run the marked",
+  "  o s v t        open / split / vsplit / tab",
+  "  c              compile   g  :DbtDag   L  column lineage   P  dbt parse",
+  "  ?              these keys                 q      close",
+}
+
+--- `?`: the keys, in a float that any of q, <Esc>, ? or <CR> closes.
+function M.help()
+  local ui = require("cogitator.ui")
+  local width = 0
+  for _, line in ipairs(M.HELP) do
+    width = math.max(width, vim.fn.strdisplaywidth(line))
+  end
+  local buf, win = ui.float({
+    row = math.max(0, math.floor((vim.o.lines - #M.HELP) / 2) - 1),
+    col = math.max(0, math.floor((vim.o.columns - width) / 2)),
+    width = width,
+    height = #M.HELP,
+    title = "keys",
+  })
+  ui.set_lines(buf, M.HELP)
+  vim.api.nvim_set_current_win(win)
+  for _, lhs in ipairs({ "q", "<Esc>", "?", "<CR>" }) do
+    vim.keymap.set("n", lhs, function()
+      if vim.api.nvim_win_is_valid(win) then
+        vim.api.nvim_win_close(win, true)
+      end
+    end, { buffer = buf, nowait = true })
+  end
 end
 
---- Install the pane-local maps (tabs, pane focus, filter, open, close).
+--- Install the pane-local maps.
 ---@param explorer table the cogitator.explorer module
----@param pane "left"|"center"|"right"|"preview"
+---@param pane "left"|"center"|"right"|"raw"|"compiled"
 ---@param buf integer
 function M.attach(explorer, pane, buf)
   local s = explorer._state
@@ -228,93 +248,70 @@ function M.attach(explorer, pane, buf)
     end
   end
 
+  -- everywhere
   map("q", explorer.close)
-  map("<Tab>", function()
-    next_tab(explorer)
-  end)
-  map("<S-Tab>", function()
-    explorer._set_tab((explorer._state.tab - 2) % 4 + 1)
-  end)
+  map("?", M.help)
   map("J", function()
-    motion.scroll(s.wins.preview, 5 * vim.v.count1)
+    scroll_sql(explorer, 5 * vim.v.count1)
   end)
   map("K", function()
-    motion.scroll(s.wins.preview, -5 * vim.v.count1)
+    scroll_sql(explorer, -5 * vim.v.count1)
   end)
+  map("f", function()
+    explorer._find()
+  end)
+  map("[", function()
+    explorer._history(-1)
+  end)
+  map("-", function()
+    explorer._history(-1)
+  end)
+  map("]", function()
+    explorer._history(1)
+  end)
+  map(".", explorer._toggle_all)
 
-  if pane == "preview" then
-    map("<Esc>", explorer.close)
-    map("<CR>", explorer._info_jump)
-    map("h", focus("center"))
+  if pane == "raw" or pane == "compiled" then
+    map("<Esc>", focus("center"))
+    if pane == "compiled" then
+      -- a macro's caller: re-centre on it
+      map("<CR>", function()
+        local line = vim.api.nvim_win_get_cursor(s.wins.compiled)[1]
+        local caller = s.compiled_jumps and s.compiled_jumps[line]
+        if caller then
+          explorer.focus(caller.name, { record = true, node = caller })
+        end
+      end)
+    end
+    if pane == "raw" then
+      map("l", focus("compiled"))
+    else
+      map("h", focus("raw"))
+    end
     return
   end
 
-  map("p", focus("preview"))
-  if pane == "left" then
-    map("h", walker("left"))
-    map("l", focus("center"))
-  elseif pane == "right" then
-    map("h", focus("center"))
-    map("l", walker("right"))
-  else
+  map("p", focus("raw"))
+  if pane == "center" then
     map("h", focus("left"))
     map("l", focus("right"))
-  end
-
-  if pane == "center" then
-    map("<Esc>", function()
-      if explorer._state.filter ~= "" then
-        explorer._apply_filter("")
-      else
-        explorer.close()
-      end
-    end)
     map("/", function()
-      require("cogitator.explorer.filter").prompt(explorer)
+      explorer._find()
     end)
-    map(
-      "n",
-      motion.repeated(function()
-        step_center(explorer, 1)
-      end)
-    )
-    map(
-      "N",
-      motion.repeated(function()
-        step_center(explorer, -1)
-      end)
-    )
-    map("y", function()
-      local node = explorer._selected_node()
-      if node then
-        yank(node.name)
-      end
-    end)
-    local open_center = function()
-      local node = explorer._selected_node()
-      if node then
-        open_uri(explorer, node.uri)
-      end
-    end
-    map("<CR>", open_center)
-    map("o", open_center)
+    map("<Esc>", explorer.close)
+    map("<CR>", explorer._card_enter)
     entry_actions(explorer, explorer._selected_node, map)
   else
-    map("<Esc>", explorer.close)
+    map("<Esc>", focus("center"))
+    if pane == "left" then
+      map("h", walker("left"))
+      map("l", focus("center"))
+    else
+      map("h", focus("center"))
+      map("l", walker("right"))
+    end
     map("<CR>", function()
       reselect(explorer, pane)
-    end)
-    map("y", function()
-      local e = side_entry(explorer, pane)
-      if e then
-        yank(e.name)
-      end
-    end)
-    map("o", function()
-      local e = side_entry(explorer, pane)
-      if e then
-        open_uri(explorer, e.uri)
-      end
     end)
     entry_actions(explorer, function()
       return side_entry(explorer, pane)

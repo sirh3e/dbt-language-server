@@ -209,10 +209,13 @@ pub fn preview_inputs(
             .iter()
             .map(|(name, details)| (name.clone(), details.value.clone()))
             .collect(),
+        env: snap.ctx.env.process.clone(),
         target_name: if snap.profiles.target.is_empty() {
             "default".to_string()
         } else {
             snap.profiles.target.clone()
         },
+        is_incremental: false,
+        this: None,
     }
 }
