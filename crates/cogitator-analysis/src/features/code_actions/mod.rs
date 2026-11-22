@@ -15,6 +15,7 @@ pub(crate) mod split_model;
 pub(crate) mod yaml_columns;
 pub(crate) mod yaml_fixes;
 mod yaml_text;
+pub(crate) mod yaml_unproduced;
 
 use cogitator_lsp::{CodeAction, Command, Diagnostic, Range};
 use cogitator_parser::TokenKind;
