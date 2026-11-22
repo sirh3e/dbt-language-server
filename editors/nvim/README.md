@@ -75,7 +75,10 @@ binary, the project root and the profiles.yml resolution.
 ## 4. Use it
 
 `:DbtRun` / `:DbtTest` / `:DbtCompile` / `:DbtPreview` on the current
-model, `:DbtGraph` and `:DbtDag` for the graph browsers, `:DbtSchema`,
+model, `:DbtFind` for fuzzy pickers (models, definitions, columns,
+lineage… in fzf-lua, snacks.picker or telescope when installed, else a
+built-in one), `:DbtBrowse` for the yazi-style navigator, `:DbtGraph`
+and `:DbtDag` for the graph browsers, `:DbtSchema`,
 `:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more — the full list,
 options and keymaps are in `:h cogitator`
 ([doc/cogitator.txt](doc/cogitator.txt)); the binding behavior spec is

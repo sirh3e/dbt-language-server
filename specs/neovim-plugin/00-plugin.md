@@ -246,6 +246,20 @@ deliberately implemented only in the Neovim plugin.
 
 ### 5.3c Project browser (`:DbtBrowse`) — **Neovim only**
 
+The navigator (yazi-style): `/` filters with fzf's syntax (fuzzy,
+`'exact`, `^prefix`, `suffix$`, `!not`, `a | b`) and highlights what
+matched; re-centring (a side-pane walk, `f`, `<C-g>` from a picker)
+records a history, `[`/`-` back and `]` forward, shown as a breadcrumb
+(`a › b › c`) in the centre title; `<Space>` marks nodes, `y` yanks and
+`r` dbt-runs the marked (one `dbt.runSelection`); `f` opens the models
+picker; `.` lists every kind of node (sources, exposures…) beside the
+models (`navigator.show_all_kinds`); `?` lists the keys; preview tab
+`[5]` lists the documented columns, and the raw tab reads the file in
+the background. `:DbtBrowse` opens on every model, `<leader>dn` at the
+buffer's model (`open({ focus = name })` / `{ focus_buffer = true }`).
+The project graph is cached per client (`cogitator.pick.graph`) and
+dropped on each `$/progress` end.
+
 Actions on the selected entry (center or side pane): `s`/`v`/`t` open it
 in a split/vsplit/tab, `c` compile it, `g` show it in :DbtDag, `L` its
 column-lineage graph, `P` parse the project.
@@ -439,6 +453,7 @@ vim.lsp.enable("cogitator")
 | `:DbtTarget` | `dbt.profiles` + `dbt.setTarget` | picker over allowed profile×target; the choice persists per project in the manager store, `<leader>dT` |
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
+| `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
 | `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
@@ -500,6 +515,33 @@ file (closing the browser), `q`/`<Esc>` close. Sources are tagged
 `uri` are tagged `(missing)`. One instance at a time; the fetch runs
 through the originating buffer's client.
 
+### 5.3e Fuzzy pickers (`:DbtFind [source]`) — **Neovim only**
+
+`lua/cogitator/pick/`: a source (`title`, `items(done)`, `preview(item,
+done)`, optional `choose`) shown by a backend — fzf-lua, snacks.picker or
+telescope when installed (`picker = "auto"`, in that order), or a
+named one (`picker = "fzf-lua" | "snacks" | "telescope" | "builtin"`);
+one that is missing or fails falls back to the built-in picker (prompt,
+ranked list with matches highlighted, preview; fzf's syntax via
+`cogitator.pick.query` and `vim.fn.matchfuzzypos`). The same keys
+everywhere: `<CR>` open, `<C-v>`/`<C-x>`/`<C-t>` vsplit/split/tab,
+`<C-g>` the navigator (for a column: its column-lineage graph), `<C-y>`
+yank, `<C-r>` dbt run, `<Tab>` mark. Items and previews arrive
+asynchronously; nothing waits.
+
+| source | items | default action |
+|---|---|---|
+| `models`, `sources`, `all` | `dbt.projectGraph` nodes | open the file |
+| `definitions`, `macros`, `selectors` | `workspace/symbol` | jump to the definition |
+| `columns` | documented columns as `model.column` | open the model on the column |
+| `upstream`, `downstream`, `lineage` | BFS over the graph from the buffer's model, depth shown | open |
+| `refs` | the buffer's `ref()`/`source()` calls, CTEs and macros | go to definition |
+| `tests`, `tags` | `dbt.modelTests`; the graph's tags, then their nodes | jump / open |
+
+`:DbtTests`, `:DbtTags` and `:DbtSelectors` open these sources, and every
+other choice the plugin offers (`:Dbt`, `:DbtCancel`, targets, projects)
+goes through `pick.select`, a `vim.ui.select` on the same backends.
+
 ### 5.3d Syntax tree and grammar — **Neovim only**
 
 `:DbtSyntaxTree` (`lua/cogitator/syntax.lua`) draws `dbt.syntaxTree` in a
@@ -520,8 +562,11 @@ LSP maps: `<leader>ds` → `:DbtSchema`, `<leader>dl` → `:DbtLineage`,
 `:DbtCompile`, `<leader>dg` → `:DbtGraph`, `<leader>dR` →
 `:DbtRelation`, `<leader>dL` → `vim.lsp.codelens.run`, `<leader>dv`
 (normal and visual) → expand along `textDocument/selectionRange`,
-`<leader>dV` (visual) → shrink back. All with `desc`
-set, all buffer-local on attach only.
+`<leader>dV` (visual) → shrink back, `<leader>df` → `:DbtFind models`,
+`<leader>dF` → `:DbtFind`, `<leader>dd` → definitions, `<leader>dk` →
+columns, `<leader>du`/`<leader>dU` → upstream/downstream, `<leader>dn` →
+the navigator at this model. All with `desc` set, all buffer-local on
+attach only.
 
 ---
 

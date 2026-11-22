@@ -128,13 +128,21 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `L` column lineage, `<CR>` opens the model). The `dbt.projectGraph`
   data command is editor-neutral, but this UI ships only in the Neovim
   plugin.
+- **Fuzzy pickers — Neovim only**: `:DbtFind` finds models, sources,
+  macros and selectors (jump to the definition), documented columns,
+  a model's upstream/downstream with depth, the refs of the current
+  file, tests and tags, with a preview — shown in fzf-lua, snacks.picker
+  or telescope when installed, else a built-in fzf-style picker (fzf's
+  query syntax). Every other choice the plugin offers uses it too.
 - **Project browser — Neovim only**: `:DbtBrowse` opens a yazi-style
   float over the whole project — every model in a searchable center
   list (`/` filters as you type), direct upstream/downstream in the
   side panes, and a preview below with the raw SQL, the compiled SQL
   (served by `dbt.compiledSql`), the model's versions + tests, and an
   info tab (description, tags, relation name, documented columns,
-  tests with jumps).
+  tests with jumps). The `/` filter speaks fzf's syntax; walking the
+  lineage keeps a history (`[`/`]`) shown as a breadcrumb; `<Space>`
+  marks nodes to yank or `dbt run` together; `f` jumps with the picker.
   Backed by the editor-neutral `dbt.modelInfo` command (neighbors,
   versions, tests and the compiled-SQL location in one round trip);
   the UI ships only in the Neovim plugin.
@@ -229,6 +237,7 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 | Query workflow (bounded SELECT on the relation) | ✓ `:DbtQuery` (dadbod/scratch) | ✓ `cogitator-query` (sql buffer) | — |
 | Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — |
 | Project explorer / DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — |
+| Fuzzy pickers | ✓ `:DbtFind` (fzf-lua / snacks / telescope / built-in) | — | — |
 | Profiles-dir live switch | ✓ persisted per project | ✓ command (dir-locals for persistence) | — |
 | Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | — |
 

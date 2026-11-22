@@ -1,8 +1,9 @@
---- The explorer's bottom pane: renders one of four tabs for the
+--- The explorer's bottom pane: renders one of five tabs for the
 --- selected model — [1] the raw SQL, [2] the compiled SQL served by
 --- dbt.compiledSql (a hint when dbt has not written one), [3] versions
 --- and tests, [4] the info view (description/tags/relation/columns/
---- tests with jumps). Pure render over the explorer state.
+--- tests with jumps), [5] its documented columns. Pure render over the
+--- explorer state; the raw file is read in the background.
 
 local render_lib = require("cogitator.render")
 local ui = require("cogitator.ui")
@@ -10,7 +11,7 @@ local ui = require("cogitator.ui")
 local M = {}
 
 local function tab_title(tab)
-  local names = { "raw", "compiled", "versions/tests", "info" }
+  local names = { "raw", "compiled", "versions/tests", "info", "columns" }
   local parts = {}
   for i, name in ipairs(names) do
     local label = ("%d %s"):format(i, name)
@@ -19,23 +20,48 @@ local function tab_title(tab)
   return " " .. table.concat(parts, "  ") .. " "
 end
 
---- A file's lines: the loaded buffer when there is one (unsaved edits win),
---- else the file on disk.
-local function read_uri_lines(uri)
+--- A file's lines: the loaded buffer when there is one (unsaved edits
+--- win), else what was read of the file in the background; nil while it
+--- is being read (the pane re-renders when it arrives).
+local function read_uri_lines(s, uri)
   if not uri or uri == vim.NIL then
-    return nil
+    return { "· no file on disk ·" }
   end
   local fname = vim.uri_to_fname(uri)
   local bufnr = vim.fn.bufnr(fname)
   if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
     return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
   end
-  if vim.fn.filereadable(fname) == 1 then
-    return vim.fn.readfile(fname)
+  if s.raw and s.raw.uri == uri then
+    return s.raw.lines
   end
+  s.raw = { uri = uri }
+  require("cogitator.pick.preview").read(fname, function(lines)
+    if s.raw and s.raw.uri == uri then
+      s.raw.lines = lines or { "· cannot read " .. fname .. " ·" }
+      M.render(s)
+    end
+  end)
   return nil
 end
 
+--- The selection's documented columns, from the project graph.
+local function columns_of(s)
+  for _, n in ipairs(s.nodes) do
+    if n.name == s.selected then
+      if not n.columns or #n.columns == 0 then
+        return { "· no documented columns (columns: in its YAML) ·" }
+      end
+      local lines = {}
+      for _, c in ipairs(n.columns) do
+        local desc = c.description
+        lines[#lines + 1] = c.name .. ((desc and desc ~= vim.NIL and desc ~= "") and ("  — " .. desc) or "")
+      end
+      return lines
+    end
+  end
+  return { "· not in the project graph ·" }
+end
 
 local function versions_and_tests(info)
   local lines = {}
@@ -76,7 +102,7 @@ function M.render(s)
     lines = { "· no model selected ·" }
   elseif s.info then
     if s.tab == 1 then
-      lines = read_uri_lines(s.info.uri) or { "· no file on disk ·" }
+      lines = read_uri_lines(s, s.info.uri) or { "· loading ·" }
       filetype = "sql"
     elseif s.tab == 2 then
       filetype = "sql"
@@ -92,6 +118,8 @@ function M.render(s)
       end
     elseif s.tab == 3 then
       lines = versions_and_tests(s.info)
+    elseif s.tab == 5 then
+      lines = columns_of(s)
     else
       local view = require("cogitator.explorer.info").view(s)
       lines = view.lines

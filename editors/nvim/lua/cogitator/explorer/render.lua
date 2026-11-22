@@ -58,29 +58,74 @@ function M.sides(s)
   s.sides_for = s.selected
 end
 
---- The center title: match count, or the live filter text.
+--- The center title: match count or the live filter, then the trail of
+--- models walked to get here (the history), yazi's breadcrumb.
 ---@param s cogitator.explorer.State
 ---@return string
 function M.center_title(s)
-  local title = (" models %d/%d "):format(#s.filtered, #s.nodes)
+  local what = s.show_all and "nodes" or "models"
+  local title = ("%s %d/%d"):format(what, #s.filtered, #s.nodes)
   if s.filter ~= "" then
-    title = (" models /%s "):format(s.filter)
+    title = ("%s /%s"):format(what, s.filter)
   end
-  return title
+  local marked = vim.tbl_count(s.marked or {})
+  if marked > 0 then
+    title = title .. (" · %d marked"):format(marked)
+  end
+  local trail = {}
+  local back = s.history and s.history.back or {}
+  for i = math.max(1, #back - 2), #back do
+    trail[#trail + 1] = back[i]
+  end
+  if #trail > 0 and s.selected then
+    trail[#trail + 1] = s.selected
+    title = title .. " · " .. table.concat(trail, " › ")
+  end
+  return " " .. title .. " "
 end
 
---- Redraw the center list for the current filter state.
+local NS = vim.api.nvim_create_namespace("cogitator.explorer.center")
+vim.api.nvim_set_hl(0, "CogitatorExplorerMatch", { default = true, link = "Special" })
+vim.api.nvim_set_hl(0, "CogitatorExplorerMark", { default = true, link = "WarningMsg" })
+
+--- Redraw the center list for the current filter state: a mark column,
+--- the matched characters highlighted.
 ---@param s cogitator.explorer.State
-function M.center(s)
+---@param keep_cursor boolean? stay on the same row (a mark toggled)
+function M.center(s, keep_cursor)
   local lines = {}
+  local marked = s.marked or {}
   for _, n in ipairs(s.filtered) do
-    lines[#lines + 1] = n.name
+    local kind = (s.show_all and n.kind ~= "model") and ("  [" .. n.kind .. "]") or ""
+    lines[#lines + 1] = (marked[n.name] and "● " or "  ") .. n.name .. kind
   end
   if #lines == 0 then
     lines = { "· no match ·" }
   end
+  local row = keep_cursor and vim.api.nvim_win_get_cursor(s.wins.center)[1] or 1
   ui.set_lines(s.bufs.center, lines)
-  vim.api.nvim_win_set_cursor(s.wins.center, { 1, 0 })
+  vim.api.nvim_buf_clear_namespace(s.bufs.center, NS, 0, -1)
+  for i, n in ipairs(s.filtered) do
+    if marked[n.name] then
+      vim.api.nvim_buf_set_extmark(
+        s.bufs.center,
+        NS,
+        i - 1,
+        0,
+        { end_col = 2, hl_group = "CogitatorExplorerMark", strict = false }
+      )
+    end
+    for _, pos in ipairs((s.positions or {})[n.name] or {}) do
+      local start = vim.str_byteindex(n.name, "utf-32", pos, false) + 2
+      local stop = vim.str_byteindex(n.name, "utf-32", pos + 1, false) + 2
+      vim.api.nvim_buf_set_extmark(s.bufs.center, NS, i - 1, start, {
+        end_col = stop,
+        hl_group = "CogitatorExplorerMatch",
+        strict = false,
+      })
+    end
+  end
+  vim.api.nvim_win_set_cursor(s.wins.center, { math.min(row, #lines), 0 })
   ui.retitle(s.wins.center, M.center_title(s))
 end
 

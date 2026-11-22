@@ -26,10 +26,16 @@ M.defaults = {
   -- the tree-sitter-dbt grammar in Neovim (:DbtTreesitter install): start
   -- it on sql buffers in a project; url/rev override the pinned grammar
   grammar = { highlight = true, auto_install = false, url = nil, rev = nil },
+  -- the fuzzy pickers (:DbtFind): "auto" takes fzf-lua, snacks.picker or
+  -- telescope when installed, else the built-in one
+  picker = "auto",
+  -- the yazi-style navigator (:DbtBrowse, :DbtGraph): list sources,
+  -- exposures… beside the models
+  navigator = { show_all_kinds = false },
 }
 
 -- the nested tables whose keys are checked like the top level's
-local NESTED = { "lens", "lineage", "dag", "grammar" }
+local NESTED = { "lens", "lineage", "dag", "grammar", "navigator" }
 -- nested keys whose default is nil (invisible to the defaults lookup)
 local NESTED_NIL = { grammar = { url = true, rev = true } }
 
@@ -74,6 +80,11 @@ local function validate(opts)
   vim.validate("dag.focus_depth", dag.focus_depth, "number", true)
   vim.validate("dag.follow", dag.follow, "boolean", true)
   vim.validate("dag.refresh_on_save", dag.refresh_on_save, "boolean", true)
+  vim.validate("picker", opts.picker, function(v)
+    return v == nil or v == "auto" or vim.tbl_contains(require("cogitator.pick.backends").NAMES, v)
+  end, "auto, builtin, fzf-lua, snacks or telescope")
+  vim.validate("navigator", opts.navigator, "table", true)
+  vim.validate("navigator.show_all_kinds", (opts.navigator or {}).show_all_kinds, "boolean", true)
   vim.validate("grammar", opts.grammar, "table", true)
   local grammar = opts.grammar or {}
   vim.validate("grammar.highlight", grammar.highlight, "boolean", true)
