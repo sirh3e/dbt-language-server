@@ -66,6 +66,23 @@ fn extract_yaml_action(
     Some(features::extract_yaml_action(&model, &extract))
 }
 
+/// "Add missing columns" from the model's YAML entry: the same action
+/// the model's SQL offers, on the model's typed lineage and the YAML
+/// document's live text.
+fn entry_column_action(
+    snap: &crate::server::snapshot::Snapshot,
+    derived: &crate::server::derived_cache::DerivedCache,
+    models: &[super::yaml_props::EntryModel],
+    model: &str,
+    yaml_text: &str,
+    artifact_cap: u64,
+) -> Option<cogitator_lsp::CodeAction> {
+    let entry = models.iter().find(|m| m.name == model)?;
+    let details = snap.ctx.model_detail_map.get(model)?;
+    let lineage = super::yaml_props::lineage_of(entry, derived, artifact_cap);
+    features::add_missing_columns_action(&snap.ctx, model, details, (*lineage).as_ref()?, yaml_text)
+}
+
 impl Dispatcher {
     pub(super) fn code_action(&mut self, content: &[u8]) {
         let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::CodeActionParams>>(content)
@@ -87,6 +104,11 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let entry_models = if crate::server::diagnostics::is_yaml(&uri) {
+            self.yaml_entry_models(&uri)
+        } else {
+            Vec::new()
+        };
         // offloaded since the editing-actions batch: target choices,
         // the relation catalog and lineage all touch the filesystem
         self.offload_blocking(req.id, "textDocument/codeAction", move || {
@@ -125,6 +147,14 @@ impl Dispatcher {
                                 &snap.ctx, &doc.text, &uri, details, lineage,
                             ));
                         }
+                        extra.extend(entry_column_action(
+                            &snap,
+                            &derived,
+                            &entry_models,
+                            model,
+                            &doc.text,
+                            artifact_cap,
+                        ));
                     }
                 } else {
                     let target =
@@ -180,6 +210,11 @@ impl Dispatcher {
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         let perf = self.perf_settings();
+        let entry_models = if crate::server::diagnostics::is_yaml(&uri) {
+            self.yaml_entry_models(&uri)
+        } else {
+            Vec::new()
+        };
         self.offload_blocking(id, "textDocument/diagnostic", move || {
             // the pull path affords lineage (cached per generation), so
             // the undocumented-columns and contract checks run here, not
@@ -199,6 +234,17 @@ impl Dispatcher {
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
             );
+            if let Some(doc) = snap.doc.as_deref().filter(|_| !entry_models.is_empty()) {
+                // tests on columns the model never produces (pull only:
+                // it takes each entry's lineage)
+                items.extend(super::yaml_props::unproduced_diagnostics(
+                    &snap.ctx,
+                    &doc.text,
+                    &entry_models,
+                    &derived,
+                    artifact_cap,
+                ));
+            }
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, artifact_cap);
                 items.extend(features::artifact_diagnostics(&snap.ctx, &uri, &set));

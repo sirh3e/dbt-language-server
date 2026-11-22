@@ -68,6 +68,7 @@ mod navigation;
 mod plan;
 mod requests;
 mod sync;
+mod yaml_props;
 
 impl Dispatcher {
     // constructed exactly once, in server::run — the shared handles are

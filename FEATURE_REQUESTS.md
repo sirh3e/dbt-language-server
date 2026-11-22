@@ -151,6 +151,14 @@ names what already exists in the codebase.
             and properties files
       - [x] property-name completion in dbt `.yml` files (heuristic section
             detection; enum-value completion still open)
+      - [x] schema-driven properties completion (docs/properties-yaml.md):
+            keys and enum/boolean values at any path from the vendored
+            schema, generic test names (built-ins, `{% test %}` blocks,
+            `test_*` macros, packages') with their arguments, and the
+            model's output columns under `columns:`
+      - [x] `yaml-unproduced-column`: tests on a column the model does not
+            produce (lineage-certain only), rename/remove quickfixes
+      - [x] "Add missing columns" offered from the model's YAML entry too
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
 - [ ] **AST-driven features for duckdb projects** (spec 07 §4,

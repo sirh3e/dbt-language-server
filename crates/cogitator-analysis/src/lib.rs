@@ -11,6 +11,7 @@ pub mod profiles;
 pub mod util;
 pub mod yaml_cogitator;
 pub mod yaml_features;
+pub mod yaml_properties;
 
 use std::collections::HashMap;
 use std::sync::Arc;
