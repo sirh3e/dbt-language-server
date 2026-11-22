@@ -13,7 +13,11 @@ import {
   astGrepLabel,
   captureColor,
   incrementalityLabel,
+  languageOf,
+  nodeMarkdown,
   parseAstGrep,
+  parseNode,
+  skippedLayers,
   spansByColor,
   splitText,
   syntaxLine,
@@ -220,6 +224,55 @@ export async function run(): Promise<void> {
     "vscode: spans are grouped by colour, colourless ones dropped"
   );
 
+  // highlighting v2 and node info (specs/highlighting)
+  check(
+    captureColor("type.dbt.model") === "symbolIcon.classForeground" &&
+      captureColor("type.dbt.reference.unresolved") === "editorWarning.foreground" &&
+      captureColor("property.dbt.column") === "symbolIcon.fieldForeground",
+    "vscode: dbt captures and unresolved references have colours"
+  );
+  check(
+    languageOf("/p/models/schema.yml") === "yaml" &&
+      languageOf("/p/target/compiled/p/a.sql") === "sql" &&
+      languageOf("/p/models/a.sql") === "dbt",
+    "vscode: the language of a file"
+  );
+  check(
+    JSON.stringify(skippedLayers("yaml", "auto")) === JSON.stringify(["yaml"]) &&
+      skippedLayers("yaml", "always").length === 0 &&
+      skippedLayers("dbt", "auto").length === 0,
+    "vscode: auto leaves YAML's own colours, always paints everything"
+  );
+  const layered = spansByColor(
+    [
+      { capture: "property", layer: "yaml", range: { start: { line: 0, character: 0 }, end: { line: 0, character: 4 } } },
+      { capture: "type.dbt.model", layer: "dbt", range: { start: { line: 0, character: 6 }, end: { line: 0, character: 9 } } },
+    ],
+    ["yaml"]
+  );
+  check(layered.size === 1 && layered.has("symbolIcon.classForeground"), "vscode: a skipped layer is not drawn");
+  check(
+    JSON.stringify(parseNode("macro:times_five")) === JSON.stringify({ kind: "macro", name: "times_five" }) &&
+      parseNode(" orders ").kind === undefined,
+    "vscode: a node is [kind:]name"
+  );
+  const markdown = nodeMarkdown({
+    kind: "macro",
+    name: "cents",
+    params: [{ name: "col" }],
+    callers: [{ name: "orders", kind: "model" }],
+    calls: [],
+  });
+  check(
+    markdown.includes("`cents(col)`") && markdown.includes("## called by (1)") && markdown.includes("- orders _model_"),
+    "vscode: a macro's card as markdown",
+    markdown
+  );
+  const macroInfo = (await exec("dbt.nodeInfo", {
+    node: { kind: "macro", name: "times_five" },
+  })) as { kind?: string } | null;
+  check(macroInfo?.kind === "macro", "vscode: dbt.nodeInfo answers for a macro", macroInfo);
+
   // ast-grep: the query, a match's label, and the command over the wire
   check(
     JSON.stringify(parseAstGrep("{{ ref($M) }} => {{ ref('x', $M) }}")) ===
@@ -260,6 +313,7 @@ export async function run(): Promise<void> {
       "cogitator.syntaxTree",
       "cogitator.highlight",
       "cogitator.astGrep",
+      "cogitator.nodeInfo",
     ].every((c) =>
       commands.includes(c)
     ),

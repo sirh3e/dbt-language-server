@@ -40,6 +40,8 @@ local M = {}
 ---@field marked table<string, boolean> marked models, by name (yazi's selection)
 ---@field history {back: string[], forward: string[]} models re-centred from, for [ and ]
 ---@field show_all boolean the picker and walks take every kind of node, not only models
+---@field macros table[]? the project's macros, as nodes (workspace/symbol)
+---@field compiled_jumps table<integer, string>? compiled pane lines → a caller to re-centre on
 ---@type cogitator.explorer.State?
 M._state = nil
 
@@ -78,9 +80,74 @@ local function fetch_relation(s, gen)
   end)
 end
 
+--- dbt.nodeInfo's answer as the panes read it: a macro's neighbours are
+--- the macros it calls (left) and its callers (right); a test's what it
+--- refs; the rest the graph's up- and downstream.
+---@param info table
+---@return table
+function M._normalize(info)
+  if info.kind == "macro" then
+    info.upstream, info.downstream = info.calls or {}, info.callers or {}
+  elseif info.kind == "test" or info.kind == "analysis" then
+    info.upstream = vim.list_extend(vim.list_extend({}, info.refs or {}), info.calls or {})
+    info.downstream = {}
+  elseif info.kind == "generic_test" then
+    info.upstream, info.downstream = {}, {}
+  else
+    info.upstream, info.downstream = info.upstream or {}, info.downstream or {}
+  end
+  return info
+end
+
+--- A node that is not a model: dbt.nodeInfo, and for its compiled pane a
+--- test's compiled SQL or a macro's callers.
+---@param s cogitator.explorer.State
+---@param node table
+---@param gen integer
+local function fetch_node(s, node, gen)
+  local name = node.name
+  actions.exec_with(
+    s.client,
+    s.src_buf,
+    "dbt.nodeInfo",
+    { node = { kind = node.kind, name = name } },
+    function(err, result)
+      if M._state ~= s or gen ~= s.info_gen then
+        return
+      end
+      if err or result == nil or result == vim.NIL then
+        s.pending_walk = nil
+        s.info = { kind = node.kind, name = name, uri = node.uri, upstream = {}, downstream = {} }
+        s.compiled = false
+        render_all(s)
+        return
+      end
+      s.info = M._normalize(result)
+      s.relation = false
+      if result.kind == "macro" then
+        s.compiled = { callers = result.callers or {} }
+      elseif result.compiledUri and result.compiledUri ~= vim.NIL then
+        s.compiled = nil
+        local uri = result.compiledUri
+        require("cogitator.pick.preview").read(vim.uri_to_fname(uri), function(lines)
+          if M._state == s and gen == s.info_gen then
+            s.compiled = lines and { content = table.concat(lines, "\n"), uri = uri } or false
+            preview.render_compiled(s)
+          end
+        end)
+      else
+        s.compiled = false
+      end
+      render_all(s)
+      ekeys.resume_walk(M)
+    end
+  )
+end
+
 --- Everything the panes show of `name`: dbt.modelInfo (then the relation)
---- and dbt.compiledSql, side by side; answers for an older selection are
---- dropped by the generation counter.
+--- and dbt.compiledSql side by side for a model, dbt.nodeInfo for any
+--- other node; answers for an older selection are dropped by the
+--- generation counter.
 ---@param name string
 local function fetch(name)
   local s = M._state
@@ -89,6 +156,10 @@ local function fetch(name)
   end
   s.info_gen = s.info_gen + 1
   local gen = s.info_gen
+  local node = s.node_of[name]
+  if node and node.kind ~= "model" then
+    return fetch_node(s, node, gen)
+  end
   actions.exec_with(s.client, s.src_buf, "dbt.modelInfo", { uri = "", model = name }, function(err, result)
     if M._state ~= s or gen ~= s.info_gen then
       return
@@ -138,6 +209,11 @@ function M.focus(name, opts)
     return false
   end
   opts = opts or {}
+  -- a neighbour the graph payload does not list (a macro), learnt from
+  -- the side pane that names it
+  if not s.node_of[name] and opts.node then
+    s.node_of[name] = opts.node
+  end
   local node = s.node_of[name]
   if not node then
     vim.notify(name .. " is not in the project graph", vim.log.levels.WARN)
@@ -217,11 +293,42 @@ function M._toggle_mark(name)
   erender.center(s)
 end
 
---- The nodes the picker offers.
+--- The nodes the picker offers: the graph's, and the macros
+--- (workspace/symbol) when every kind is shown.
 local function listed(s)
-  return vim.tbl_filter(function(n)
+  local out = vim.tbl_filter(function(n)
     return s.show_all or n.kind == "model"
   end, s.graph.nodes)
+  if s.show_all then
+    vim.list_extend(out, s.macros or {})
+  end
+  return out
+end
+
+--- The project's macros, as nodes (they are no node of dbt.projectGraph).
+---@param s cogitator.explorer.State
+local function load_macros(s)
+  actions.request(
+    s.client,
+    s.src_buf,
+    "workspace/symbol",
+    { query = "" },
+    { timeout_ms = 15000 },
+    function(err, result)
+      if M._state ~= s or err or type(result) ~= "table" then
+        return
+      end
+      s.macros = {}
+      for _, sym in ipairs(result) do
+        if sym.kind == 12 and sym.location then
+          local node = { kind = "macro", name = sym.name, uri = sym.location.uri }
+          s.macros[#s.macros + 1] = node
+          s.node_of[sym.name] = s.node_of[sym.name] or node
+        end
+      end
+      s.nodes = listed(s)
+    end
+  )
 end
 
 --- `.`: let the picker and the walks take every kind of node, or only
@@ -239,6 +346,18 @@ function M._find(on_cancel)
   local s = M._state
   local sources = require("cogitator.pick.sources")
   local source = sources.build(s.show_all and "all" or "models", { client = s.client, bufnr = s.src_buf })
+  if s.show_all and s.macros and #s.macros > 0 then
+    -- the graph's nodes, and the macros beside them
+    local graph_items = source.items
+    source.items = function(done)
+      graph_items(function(items)
+        for _, m in ipairs(s.macros) do
+          items[#items + 1] = { text = m.name .. "  [macro]", name = m.name, uri = m.uri, value = m }
+        end
+        done(items)
+      end)
+    end
+  end
   source.choose = function(items)
     if M._state == s and items[1] then
       M.focus(items[1].name, { record = true })
@@ -314,6 +433,7 @@ function M.open(opts)
       s.node_of[node.name] = s.node_of[node.name] or node
     end
     s.nodes = listed(s)
+    load_macros(s)
 
     local g = erender.geometry()
     local titles = {

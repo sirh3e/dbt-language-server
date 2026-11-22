@@ -180,6 +180,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.syntaxTree",
     "dbt.highlight",
     "dbt.astGrep",
+    "dbt.nodeInfo",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

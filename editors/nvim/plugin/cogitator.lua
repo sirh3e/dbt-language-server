@@ -132,9 +132,23 @@ end, {
   desc = "every :Dbt* command as :Dbt <subcommand> [args]",
 })
 
-vim.api.nvim_create_user_command("DbtHighlight", function()
-  require("cogitator.tshl").toggle()
-end, { desc = "colour this buffer with tree-sitter-dbt from the server, or stop (toggle)" })
+vim.api.nvim_create_user_command("DbtHighlight", function(opts)
+  require("cogitator.tshl").command(opts)
+end, {
+  bang = true,
+  nargs = "?",
+  complete = function()
+    return { "auto", "always", "off" }
+  end,
+  desc = "colour this buffer from the server, or stop (toggle); ! auto|always|off sets the mode",
+})
+
+vim.api.nvim_create_user_command("DbtNode", function(opts)
+  require("cogitator.commands").node(opts)
+end, {
+  nargs = "?",
+  desc = "a node's card (dbt.nodeInfo): [kind:]name, e.g. macro:cents_to_dollars",
+})
 
 vim.api.nvim_create_user_command("DbtAstGrep", function(opts)
   require("cogitator.astgrep").command(opts)

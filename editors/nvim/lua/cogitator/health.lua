@@ -161,6 +161,14 @@ function M.check()
     health.ok("tree-sitter-dbt grammar installed at " .. grammar.wanted:sub(1, 12))
   end
 
+  local mode, painted = require("cogitator.tshl").status()
+  health.info(
+    ("server highlighting: %s — %d buffer(s) coloured by the server (:DbtHighlight! auto|always|off)"):format(
+      mode,
+      #painted
+    )
+  )
+
   -- the server's own view, when one is attached (dbt.doctor)
   local client = vim.lsp.get_clients({ name = "cogitator" })[1]
   if not client then
@@ -258,6 +266,7 @@ M.COMMANDS = {
   ["dbt.syntaxTree"] = ":DbtSyntaxTree",
   ["dbt.highlight"] = "the explorer's SQL panes, picker previews, :DbtHighlight",
   ["dbt.astGrep"] = ":DbtAstGrep, :DbtFind astgrep",
+  ["dbt.nodeInfo"] = ":DbtNode, the explorer's macros and tests",
 }
 
 --- The LSP methods the plugin's own features need, beyond the stock ones.

@@ -32,10 +32,15 @@ M.defaults = {
   -- the yazi-style navigator (:DbtBrowse, :DbtGraph): list sources,
   -- exposures… beside the models
   navigator = { show_all_kinds = false },
+  -- colours from the server (dbt.highlight): "auto" paints SQL buffers
+  -- Neovim's tree-sitter-dbt does not, and every YAML file of the
+  -- project; "always" every buffer; false only :DbtHighlight. A layer set
+  -- to false is never painted.
+  highlight = { server = "auto", layers = { yaml = true, sql = true, jinja = true, dbt = true } },
 }
 
 -- the nested tables whose keys are checked like the top level's
-local NESTED = { "lens", "lineage", "dag", "grammar", "navigator" }
+local NESTED = { "lens", "lineage", "dag", "grammar", "navigator", "highlight" }
 -- nested keys whose default is nil (invisible to the defaults lookup)
 local NESTED_NIL = { grammar = { url = true, rev = true } }
 
@@ -91,6 +96,18 @@ local function validate(opts)
   vim.validate("grammar.auto_install", grammar.auto_install, "boolean", true)
   vim.validate("grammar.url", grammar.url, "string", true)
   vim.validate("grammar.rev", grammar.rev, "string", true)
+  vim.validate("highlight", opts.highlight, "table", true)
+  local highlight = opts.highlight or {}
+  vim.validate("highlight.server", highlight.server, function(v)
+    return v == nil or v == "auto" or v == "always" or v == false
+  end, '"auto", "always" or false')
+  vim.validate("highlight.layers", highlight.layers, "table", true)
+  for layer, on in pairs(highlight.layers or {}) do
+    if not vim.tbl_contains({ "yaml", "sql", "jinja", "dbt" }, layer) then
+      error(("cogitator.nvim: unknown setup key highlight.layers.%q"):format(layer), 0)
+    end
+    vim.validate("highlight.layers." .. layer, on, "boolean")
+  end
 end
 
 --- The server command with the flags derived from the options (spec §1.2).

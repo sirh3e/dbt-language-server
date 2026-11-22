@@ -50,6 +50,7 @@
 "dbt.syntaxTree" = { kind = "user" }
 "dbt.highlight" = { kind = "user" }
 "dbt.astGrep" = { kind = "user" }
+"dbt.nodeInfo" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

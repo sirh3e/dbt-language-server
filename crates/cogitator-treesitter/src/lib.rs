@@ -15,7 +15,10 @@ mod regions;
 mod sql_structure;
 mod syntax_tree;
 
-pub use highlight::{capture_names, highlight, HighlightLanguage, HighlightSpan, Highlights};
+pub use highlight::{
+    capture_names, highlight, highlight_with, HighlightLanguage, HighlightSpan, Highlights, Layer,
+    Reference, YamlContext, YamlFile,
+};
 pub use syntax_tree::{syntax_tree, Point, SyntaxNode, SyntaxTree};
 
 use std::collections::HashMap;

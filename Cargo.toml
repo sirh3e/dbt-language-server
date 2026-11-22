@@ -50,6 +50,7 @@ toml = "1"
 tree-sitter = "0.27"           # C runtime bindings (06 §3.2)
 tree-sitter-highlight = "0.27"  # highlights.scm with injections, for dbt.highlight
 tree-sitter-sequel = "0.3"
+tree-sitter-yaml = "0.7"   # YAML property files, for dbt.highlight
 ast-grep-core = "0.51"   # structural search over tree-sitter-dbt (dbt.astGrep)
 ast-grep-config = "0.51"
 # Jinja over SQL; its own repository so others can use it without this server

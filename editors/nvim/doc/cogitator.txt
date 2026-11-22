@@ -114,7 +114,10 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtReloadConfig  re-read cogitator.yml now
   :DbtSyntaxTree the tree-sitter-dbt tree in a split (toggle)
-  :DbtHighlight  colour this buffer with tree-sitter-dbt (server)
+  :DbtHighlight[!] [auto|always|off]
+                 colour this buffer from the server (toggle); ! sets
+                 when buffers are coloured on open
+  :DbtNode [kind:]name  a node's card: macro, test, source… (dbt.nodeInfo)
   :DbtAstGrep [sql:]pattern [=> rewrite]                <leader>da
                  ast-grep: matches to quickfix; a rewrite after asking
   :DbtTreesitter [install|status|start]  the grammar in Neovim
@@ -311,14 +314,29 @@ highlights that node's range in the source, <CR> jumps there, q closes.
 Edits refresh it after a short pause.
 
                                                   *cogitator-nvim-highlight*
-The explorer's dbt SQL and compiled SQL panes, and every picker preview of
-a .sql file, are coloured by tree-sitter-dbt through the server
-(`dbt.highlight`): the Jinja by the grammar's own highlights, the SQL
-between the tags by the SQL grammar it injects; compiled SQL as SQL. The
-captures become Neovim's tree-sitter groups (`@keyword`, `@tag.delimiter`,
-`@function.builtin`…), so your colourscheme applies, and nothing needs to
-be installed in Neovim. `:DbtHighlight` colours any buffer the same way
-(and keeps up with edits), or takes the colours off again.
+The server colours dbt files with grammars that know dbt (`dbt.highlight`):
+models, macros and tests by tree-sitter-dbt (the Jinja) and the SQL grammar
+it injects; compiled SQL as SQL; YAML by tree-sitter-yaml, with the Jinja
+and the SQL inside its values and dbt's meaning — model, source, column,
+test, macro and doc names, config keys, `ref()`s (`.unresolved` when the
+project lacks them). Captures become Neovim's tree-sitter groups
+(`@keyword`, `@type.dbt.model` → `@type`, `@property.dbt.column`), so your
+colourscheme applies; nothing needs to be installed in Neovim.
+
+`highlight.server` (setup) says when: "auto" (default) colours SQL buffers
+Neovim's own tree-sitter does not, and every YAML file of the project (the
+yaml layer left to Neovim's yaml highlighter when it runs); "always" every
+buffer; false only on `:DbtHighlight`. `highlight.layers` turns a layer
+(yaml, sql, jinja, dbt) off. Colours follow edits after a short pause.
+`:DbtHighlight` toggles the current buffer; `:DbtHighlight! {mode}` sets
+the mode for the session. The explorer's SQL panes and picker previews are
+coloured the same way. See docs/highlighting.md.
+
+                                                       *cogitator-nvim-node*
+`:DbtNode [kind:]name` shows a node's card in a float (`dbt.nodeInfo`): a
+macro's signature, callers and calls; a test's refs; a generic test's
+places in YAML; a model's neighbours. Without a kind the kinds are tried
+in order. <CR> opens the line's target, q closes.
 
                                                     *cogitator-nvim-astgrep*
 `:DbtAstGrep {{ ref($M) }}` searches the project's dbt files with ast-grep

@@ -49,6 +49,21 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
   await client.start();
 }
 
+/// workspace/executeCommand for a document that need not be the active one.
+async function execDbtFor(
+  document: vscode.TextDocument,
+  command: string,
+  extra?: Record<string, unknown>
+) {
+  if (!client) {
+    return;
+  }
+  return client.sendRequest("workspace/executeCommand", {
+    command,
+    arguments: [{ uri: document.uri.toString(), ...extra }],
+  });
+}
+
 /// workspace/executeCommand with the one-argument-object contract.
 async function execDbt(command: string, extra?: Record<string, unknown>) {
   const editor = vscode.window.activeTextEditor;
@@ -231,12 +246,24 @@ export interface HighlightSpan {
     end: { line: number; character: number };
   };
   capture: string;
+  /** yaml, sql, jinja or dbt (dbt.highlight v2) */
+  layer?: string;
 }
 
 /** The theme colour of a tree-sitter capture, by its longest known
  *  prefix (`keyword.conditional` → keyword's); undefined for none. */
 export function captureColor(capture: string): string | undefined {
+  // a reference the project lacks (type.dbt.reference.unresolved)
+  if (capture.endsWith(".unresolved")) {
+    return "editorWarning.foreground";
+  }
   const colors: Record<string, string> = {
+    module: "symbolIcon.moduleForeground",
+    label: "symbolIcon.constantForeground",
+    attribute: "symbolIcon.keywordForeground",
+    "property.dbt.column": "symbolIcon.fieldForeground",
+    "function.dbt.test": "symbolIcon.methodForeground",
+    "string.special": "symbolIcon.stringForeground",
     comment: "editorLineNumber.foreground",
     string: "debugTokenExpression.string",
     number: "debugTokenExpression.number",
@@ -262,10 +289,17 @@ export function captureColor(capture: string): string | undefined {
   return best;
 }
 
-/** dbt.highlight's spans grouped by the colour they take. */
-export function spansByColor(spans: HighlightSpan[]): Map<string, HighlightSpan["range"][]> {
+/** dbt.highlight's spans grouped by the colour they take, the layers in
+ *  `skip` left out. */
+export function spansByColor(
+  spans: HighlightSpan[],
+  skip: string[] = []
+): Map<string, HighlightSpan["range"][]> {
   const out = new Map<string, HighlightSpan["range"][]>();
   for (const span of spans) {
+    if (skip.includes(span.layer ?? "jinja")) {
+      continue;
+    }
     const color = captureColor(span.capture);
     if (!color) {
       continue;
@@ -279,25 +313,38 @@ export function spansByColor(spans: HighlightSpan[]): Map<string, HighlightSpan[
 
 const decorations = new Map<string, vscode.TextEditorDecorationType>();
 
-/** Colour the active editor with tree-sitter-dbt as the server highlights
- *  it: the Jinja, and the SQL between the tags; compiled SQL as SQL. */
-async function highlight(): Promise<void> {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    return;
+/** The grammar a file is coloured with: yaml, sql (compiled) or dbt. */
+export function languageOf(path: string): "dbt" | "sql" | "yaml" {
+  if (/\.ya?ml$/.test(path)) {
+    return "yaml";
   }
-  const compiled = /[/\\]target[/\\](compiled|run)[/\\]/.test(editor.document.uri.fsPath);
-  const result = (await execDbt("dbt.highlight", {
-    text: editor.document.getText(),
-    language: compiled ? "sql" : "dbt",
+  return /[/\\]target[/\\](compiled|run)[/\\]/.test(path) ? "sql" : "dbt";
+}
+
+/** The layers left to VS Code under a mode: in `auto` its own YAML
+ *  grammar keeps YAML's colours; `always` paints every layer. */
+export function skippedLayers(language: string, mode: string): string[] {
+  return mode === "auto" && language === "yaml" ? ["yaml"] : [];
+}
+
+/** Paint `editor` with the server's answer for its text; an answer for an
+ *  older version of the document is dropped. */
+async function paint(editor: vscode.TextEditor, mode: string): Promise<void> {
+  const document = editor.document;
+  const language = languageOf(document.uri.fsPath);
+  const version = document.version;
+  const result = (await execDbtFor(document, "dbt.highlight", {
+    text: document.getText(),
+    language,
+    version,
   })) as { spans: HighlightSpan[] } | undefined;
-  if (!result) {
+  if (!result || document.version !== version) {
     return;
   }
   for (const type of decorations.values()) {
     editor.setDecorations(type, []);
   }
-  for (const [color, ranges] of spansByColor(result.spans)) {
+  for (const [color, ranges] of spansByColor(result.spans, skippedLayers(language, mode))) {
     let type = decorations.get(color);
     if (!type) {
       type = vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor(color) });
@@ -310,6 +357,148 @@ async function highlight(): Promise<void> {
       )
     );
   }
+}
+
+/** Colour the active editor as the server highlights it: the Jinja, the
+ *  SQL between the tags, YAML with dbt's captures; compiled SQL as SQL. */
+async function highlight(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (editor) {
+    await paint(editor, "always");
+  }
+}
+
+/** `cogitator.highlight.onOpen`: off, auto or always. */
+function onOpenMode(): string {
+  return vscode.workspace.getConfiguration("cogitator").get<string>("highlight.onOpen", "auto");
+}
+
+/** Is the document one of the project's SQL or YAML files? */
+function isDbtDocument(document: vscode.TextDocument): boolean {
+  return (
+    document.uri.scheme === "file" &&
+    ["sql", "jinja-sql", "yaml"].includes(document.languageId) &&
+    vscode.workspace.getWorkspaceFolder(document.uri) !== undefined
+  );
+}
+
+/** Paint visible dbt editors on open and after edits (debounced). */
+function watchHighlights(context: vscode.ExtensionContext): void {
+  const timers = new Map<string, NodeJS.Timeout>();
+  const paintVisible = (document?: vscode.TextDocument) => {
+    const mode = onOpenMode();
+    if (mode === "off") {
+      return;
+    }
+    for (const editor of vscode.window.visibleTextEditors) {
+      if ((!document || editor.document === document) && isDbtDocument(editor.document)) {
+        void paint(editor, mode);
+      }
+    }
+  };
+  context.subscriptions.push(
+    vscode.window.onDidChangeVisibleTextEditors(() => paintVisible()),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const key = event.document.uri.toString();
+      clearTimeout(timers.get(key));
+      timers.set(
+        key,
+        setTimeout(() => paintVisible(event.document), 300)
+      );
+    })
+  );
+  paintVisible();
+}
+
+/** `[kind:]name` → its parts, kind undefined when not given. */
+export function parseNode(text: string): { kind?: string; name: string } {
+  const trimmed = text.trim();
+  const match = /^([a-z_]+):(.+)$/.exec(trimmed);
+  return match ? { kind: match[1], name: match[2].trim() } : { name: trimmed };
+}
+
+/** The kinds "dbt: Show node info" tries, in order, when none is given. */
+export const NODE_KINDS = [
+  "model",
+  "macro",
+  "test",
+  "generic_test",
+  "source",
+  "exposure",
+  "metric",
+  "semantic_model",
+  "analysis",
+];
+
+interface NodeEntry {
+  name: string;
+  kind?: string;
+}
+
+/** A dbt.nodeInfo card as markdown. */
+export function nodeMarkdown(info: Record<string, unknown>): string {
+  const kind = (info.kind as string) ?? "model";
+  const name = (info.name as string) ?? (info.model as string) ?? "?";
+  const lines = [`# ${name}`, "", `*${kind}*`];
+  if (typeof info.description === "string" && info.description !== "") {
+    lines.push("", info.description);
+  }
+  const signature = (params: unknown) =>
+    `${name}(${((params as Array<string | { name: string; default?: string | null }>) ?? [])
+      .map((p) => (typeof p === "string" ? p : p.default ? `${p.name}=${p.default}` : p.name))
+      .join(", ")})`;
+  const list = (title: string, entries: unknown) => {
+    const items = (entries as NodeEntry[]) ?? [];
+    lines.push("", `## ${title} (${items.length})`);
+    for (const e of items) {
+      lines.push(`- ${e.name}${e.kind ? ` _${e.kind}_` : ""}`);
+    }
+  };
+  if (kind === "macro") {
+    lines.push("", "`" + signature(info.params) + "`");
+    list("called by", info.callers);
+    list("calls", info.calls);
+  } else if (kind === "generic_test") {
+    lines.push("", "`{% test " + signature(info.params) + " %}`");
+    const applied = (info.appliedTo as Array<{ model: string; column?: string | null }>) ?? [];
+    lines.push("", `## applied to (${applied.length})`);
+    for (const a of applied) {
+      lines.push(`- ${a.model}${a.column ? "." + a.column : ""}`);
+    }
+  } else {
+    list(kind === "test" ? "tests" : "upstream", info.refs ?? info.upstream);
+    if (kind !== "test" && kind !== "analysis") {
+      list("downstream", info.downstream);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+/** "dbt: Show node info": a node's card (dbt.nodeInfo) as markdown. */
+async function nodeInfo(): Promise<void> {
+  const input = await vscode.window.showInputBox({
+    prompt: "node: [kind:]name, e.g. macro:cents_to_dollars",
+  });
+  if (!input) {
+    return;
+  }
+  const { kind, name } = parseNode(input);
+  const kinds = kind ? [kind] : NODE_KINDS;
+  for (const k of kinds) {
+    const info = (await execDbt("dbt.nodeInfo", {
+      node: { kind: k, name },
+      quiet: kinds.length > 1,
+    })) as Record<string, unknown> | null | undefined;
+    if (info) {
+      const doc = await vscode.workspace.openTextDocument({
+        language: "markdown",
+        content: nodeMarkdown(info),
+      });
+      await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+      return;
+    }
+  }
+  void vscode.window.showInformationMessage(`cogitator: no node named ${name}`);
 }
 
 /** `[sql:]pattern [=> rewrite]` → its parts. */
@@ -418,6 +607,7 @@ export async function activate(
     ["cogitator.syntaxTree", syntaxTree],
     ["cogitator.highlight", highlight],
     ["cogitator.astGrep", astGrep],
+    ["cogitator.nodeInfo", nodeInfo],
     [
       "cogitator.status",
       async () => {
@@ -446,6 +636,7 @@ export async function activate(
     );
   }
   await startClient(context);
+  watchHighlights(context);
   return { client: () => client };
 }
 

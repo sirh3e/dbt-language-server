@@ -27,20 +27,23 @@ function M.read(path, done)
   end)
 end
 
---- The grammar a .sql file is coloured with: plain SQL under
---- target/compiled or target/run, dbt (Jinja over SQL) anywhere else.
+--- The grammar a file is coloured with by the server: YAML for .yml and
+--- .yaml, plain SQL under target/compiled or target/run, dbt (Jinja over
+--- SQL) for any other .sql; nil for anything else.
 ---@param path string
----@return "dbt"|"sql"
+---@return "dbt"|"sql"|"yaml"|nil
 function M.code_of(path)
-  local compiled = path:match("[/\\]target[/\\]compiled[/\\]") or path:match("[/\\]target[/\\]run[/\\]")
-  return compiled and "sql" or "dbt"
+  if not (path:match("%.sql$") or path:match("%.ya?ml$")) then
+    return nil
+  end
+  return require("cogitator.tshl").language_of(path)
 end
 
 --- The preview of an item that is a file: a header, then the file, the
 --- item's line marked.
 ---@param item table
 ---@param header string[]?
----@param done fun(preview: {lines: string[], filetype: string?, lnum: integer?, code: string?, first: integer?})
+---@param done fun(preview: {lines: string[], filetype: string?, lnum: integer?, end_lnum: integer?, code: string?, first: integer?})
 function M.file(item, header, done)
   local path = item.path
   if not path and item.uri and item.uri ~= vim.NIL and item.uri ~= "" then
@@ -63,8 +66,11 @@ function M.file(item, header, done)
       lines = out,
       filetype = filetypes[ext or ""],
       lnum = item.lnum and body + item.lnum or nil,
+      -- the definition's last line, when the item knows it (a macro, a test)
+      end_lnum = item.end_lnum and body + item.end_lnum or nil,
       -- the server colours .sql with tree-sitter-dbt (compiled SQL as SQL)
-      code = ext == "sql" and lines and M.code_of(path) or nil,
+      -- and .yml with tree-sitter-yaml, Jinja, SQL and dbt captures
+      code = lines and M.code_of(path) or nil,
       first = body,
     })
   end)
