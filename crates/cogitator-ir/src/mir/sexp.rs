@@ -71,7 +71,7 @@ fn rel(mir: &Mir, id: RelId, annotate: &dyn Fn(RelId) -> Vec<Sexp>, depth: usize
                             parts.push(atom("distinct"));
                         }
                         parts.extend(call.args.iter().map(|a| s(*a)));
-                        parts.push(atom(col_name(mir, *c)));
+                        parts.extend(name_of(mir, *c).map(atom));
                         Sexp::List(parts)
                     }),
                 ),
@@ -91,8 +91,9 @@ fn rel(mir: &Mir, id: RelId, annotate: &dyn Fn(RelId) -> Vec<Sexp>, depth: usize
                         atom(mir.syms.text(call.func)),
                         list("partition", call.partition_by.iter().map(|p| s(*p))),
                         list("order", call.order_by.iter().map(|k| sort_key(k, &s))),
-                        atom(col_name(mir, *c)),
-                    ],
+                    ]
+                    .into_iter()
+                    .chain(name_of(mir, *c).map(atom)),
                 ));
             }
             items.push(sub(*input));
@@ -162,12 +163,25 @@ fn conjunction(mut items: Vec<Sexp>) -> Sexp {
 
 /// A passed-through column as its name; anything else as `(name expr)`.
 fn named(mir: &Mir, col: ColId, expr: ScalarId, s: &dyn Fn(ScalarId) -> Sexp) -> Sexp {
-    let name = col_name(mir, col);
     let value = s(expr);
+    let Some(name) = name_of(mir, col) else {
+        return value;
+    };
     match &value {
-        Sexp::Atom(a) if *a == name => value,
+        // the column itself, or an internal one the name now gives a name
+        Sexp::Atom(a) if *a == name || a == UNNAMED => atom(name),
         _ => Sexp::List(vec![atom(name), value]),
     }
+}
+
+/// How an internal column without a name prints, where it has to.
+const UNNAMED: &str = "_";
+
+fn name_of(mir: &Mir, id: ColId) -> Option<String> {
+    mir.cols
+        .get(id)
+        .and_then(|d| d.name)
+        .map(|n| mir.syms.text(n).to_string())
 }
 
 fn sort_key(key: &SortKey, s: &dyn Fn(ScalarId) -> Sexp) -> Sexp {
@@ -180,10 +194,7 @@ fn sort_key(key: &SortKey, s: &dyn Fn(ScalarId) -> Sexp) -> Sexp {
 }
 
 fn col_name(mir: &Mir, id: ColId) -> String {
-    mir.cols
-        .get(id)
-        .and_then(|d| d.name)
-        .map_or_else(|| "?".to_string(), |n| mir.syms.text(n).to_string())
+    name_of(mir, id).unwrap_or_else(|| UNNAMED.to_string())
 }
 
 fn table_name(mir: &Mir, id: crate::mir::TableId) -> String {

@@ -7,7 +7,9 @@ use cogitator_ir::common::SetOpKind;
 use cogitator_ir::mir::{ColId, Mir, ProvId, RelId, RelOp};
 
 use super::scalar::facts;
-use super::{Analysis, Blocked, Blocker, DeltaInput, IncrementalInputs, Note, Strategy, Verdict};
+use super::{
+    Analysis, Blocked, Blocker, Class, DeltaInput, IncrementalInputs, Note, Strategy, Verdict,
+};
 
 /// How a relation's rows change from one run to the next.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,9 +59,20 @@ pub(super) struct Walk<'a> {
     pub(super) blockers: Vec<Blocked>,
     pub(super) notes: BTreeSet<Note>,
     pub(super) unknown: bool,
+    /// The relations being computed, innermost last: a blocker belongs to
+    /// the one on top.
+    stack: Vec<RelId>,
+    blocked_at: BTreeMap<RelId, Blocker>,
+    classes: BTreeMap<RelId, Class>,
 }
 
 pub fn classify(mir: &Mir, inputs: Option<&IncrementalInputs>) -> Analysis {
+    classify_at(mir, mir.root, inputs)
+}
+
+/// The analysis of the plan below `root`, as if it were the model: what
+/// a CTE would be on its own (the frontier asks this of each CTE body).
+pub fn classify_at(mir: &Mir, root: RelId, inputs: Option<&IncrementalInputs>) -> Analysis {
     let mut walk = Walk {
         mir,
         inputs,
@@ -68,12 +81,16 @@ pub fn classify(mir: &Mir, inputs: Option<&IncrementalInputs>) -> Analysis {
         blockers: Vec::new(),
         notes: BTreeSet::new(),
         unknown: false,
+        stack: Vec::new(),
+        blocked_at: BTreeMap::new(),
+        classes: BTreeMap::new(),
     };
-    let root = walk.node(mir.root);
-    let verdict = walk.verdict(&root);
+    let node = walk.node(root);
+    let verdict = walk.verdict(root, &node);
     Analysis {
         verdict,
         notes: walk.notes.into_iter().collect(),
+        classes: walk.classes,
     }
 }
 
@@ -82,12 +99,68 @@ impl Walk<'_> {
         if let Some(node) = self.memo.get(&id) {
             return node.clone();
         }
+        self.stack.push(id);
         let node = self.compute(id);
+        self.stack.pop();
+        let class = self.class_of(id, &node);
+        self.classes.insert(id, class);
         self.memo.insert(id, node.clone());
         node
     }
 
+    /// The DBSP class of `id`, from its operator and what it computed to.
+    fn class_of(&self, id: RelId, node: &Node) -> Class {
+        if let Some(blocker) = self.blocked_at.get(&id) {
+            return Class::Blocked(blocker.clone());
+        }
+        let Some(rel) = self.mir.rels.get(id) else {
+            return Class::Unknown;
+        };
+        let below_blocked = rel
+            .op
+            .inputs()
+            .iter()
+            .any(|i| matches!(self.classes.get(i), Some(Class::Blocked(_) | Class::Kept)));
+        if below_blocked {
+            return Class::Kept;
+        }
+        let input_growth = |r: &RelId| self.memo.get(r).map(|n| n.growth);
+        match (&rel.op, node.growth) {
+            (RelOp::Opaque { .. }, _) => Class::Unknown,
+            (RelOp::CteRef { cte, .. }, _) => self
+                .mir
+                .ctes
+                .get(*cte)
+                .and_then(|d| self.classes.get(&d.body))
+                .cloned()
+                .unwrap_or(Class::Unknown),
+            (RelOp::Scan { .. }, Growth::Append) => Class::Grows,
+            (RelOp::Scan { .. }, _) => Class::Static,
+            (_, Growth::Static) => Class::Static,
+            (RelOp::Join { l, r, .. }, _)
+                if input_growth(l) == Some(Growth::Append)
+                    && input_growth(r) == Some(Growth::Append) =>
+            {
+                Class::Bilinear
+            }
+            (RelOp::Aggregate { .. }, _) => match node.group.as_ref().and_then(|g| g.bucket) {
+                Some(_) => Class::PerBucket,
+                None => Class::PerGroup,
+            },
+            (RelOp::Window { .. }, _) => Class::PerPartition,
+            (RelOp::Distinct(_), _) => Class::Dedupe,
+            (RelOp::SetOp { all: false, .. }, _) => Class::Dedupe,
+            (_, Growth::Changing) => Class::PerGroup,
+            _ => Class::Linear,
+        }
+    }
+
     pub(super) fn block(&mut self, blocker: Blocker, prov: ProvId) -> Node {
+        if let Some(top) = self.stack.last() {
+            self.blocked_at
+                .entry(*top)
+                .or_insert_with(|| blocker.clone());
+        }
         let blocked = Blocked { blocker, prov };
         if !self.blockers.contains(&blocked) {
             self.blockers.push(blocked);
@@ -194,7 +267,7 @@ impl Walk<'_> {
         }
     }
 
-    fn verdict(&mut self, root: &Node) -> Verdict {
+    fn verdict(&mut self, root_id: RelId, root: &Node) -> Verdict {
         if !self.blockers.is_empty() {
             return Verdict::Keep(std::mem::take(&mut self.blockers));
         }
@@ -202,14 +275,14 @@ impl Walk<'_> {
             return Verdict::Unknown;
         }
         let mir = self.mir;
-        let out = mir.root_columns();
+        let out: &[ColId] = mir.rels.get(root_id).map_or(&[], |r| r.out.as_slice());
         let name = |c: ColId| -> Option<String> {
             out.contains(&c)
                 .then(|| mir.cols.get(c).and_then(|d| d.name))
                 .flatten()
                 .map(|s| mir.syms.text(s).to_string())
         };
-        let root_prov = mir.rels.get(mir.root).map(|r| r.prov);
+        let root_prov = mir.rels.get(root_id).map(|r| r.prov);
         let keep = |blocker| {
             Verdict::Keep(
                 root_prov

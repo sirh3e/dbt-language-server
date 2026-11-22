@@ -34,7 +34,9 @@
 //! which the verdict marks as inferred. Unknown parts of the plan give no
 //! verdict at all: the analysis never guesses.
 
+pub mod annotate;
 mod combine;
+pub mod frontier;
 mod grouped;
 mod inputs;
 mod scalar;
@@ -48,7 +50,7 @@ use std::sync::Arc;
 
 use cogitator_ir::mir::{Mir, ProvId};
 
-pub use walk::classify;
+pub use walk::{classify, classify_at};
 
 /// How an input relation's rows change between dbt runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +130,27 @@ pub enum Blocker {
 }
 
 impl Blocker {
+    /// The blocker as a symbol, for S-expressions.
+    pub fn key(&self) -> &'static str {
+        match self {
+            Blocker::NonDeterministic(_) => "non-deterministic",
+            Blocker::TemporalFilter(_) => "temporal-filter",
+            Blocker::Limit => "limit",
+            Blocker::WindowOverWholeTable => "window-over-whole-table",
+            Blocker::AggregateOverWholeTable => "aggregate-over-whole-table",
+            Blocker::GroupingSets => "grouping-sets",
+            Blocker::SetDifference => "set-difference",
+            Blocker::FullJoin => "full-join",
+            Blocker::OuterJoinOnGrowingSide => "outer-join-on-growing-side",
+            Blocker::SubqueryOverGrowingInput => "subquery-over-growing-input",
+            Blocker::ChangingInput(_) => "changing-input",
+            Blocker::OverChangingRows(_) => "over-changing-rows",
+            Blocker::StaticUnionBranch => "static-union-branch",
+            Blocker::NoMonotoneColumn => "no-monotone-column",
+            Blocker::KeysNotInOutput => "keys-not-in-output",
+        }
+    }
+
     /// Why this keeps the model a table, in a sentence.
     pub fn describe(&self) -> String {
         match self {
@@ -228,11 +251,57 @@ pub enum Verdict {
     Unknown,
 }
 
+/// The DBSP class of one plan node (specs/ir-pipeline/10 §1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Class {
+    /// A scan of an input that only grows.
+    Grows,
+    /// Reads nothing that grows.
+    Static,
+    /// Filter, projection, UNION ALL, a join to a static input: Q^Δ = Q.
+    Linear,
+    /// A join of two growing inputs.
+    Bilinear,
+    /// An aggregate replaced per group.
+    PerGroup,
+    /// An aggregate grouped by a bucket of the event time.
+    PerBucket,
+    /// DISTINCT or a set UNION.
+    Dedupe,
+    /// A window partitioned by a key.
+    PerPartition,
+    /// Keeps the model a table, and why.
+    Blocked(Blocker),
+    /// Rebuilt in full because a node below it is blocked.
+    Kept,
+    Unknown,
+}
+
+impl Class {
+    pub fn key(&self) -> &'static str {
+        match self {
+            Class::Grows => "grows",
+            Class::Static => "static",
+            Class::Linear => "linear",
+            Class::Bilinear => "bilinear",
+            Class::PerGroup => "per-group",
+            Class::PerBucket => "per-bucket",
+            Class::Dedupe => "dedupe",
+            Class::PerPartition => "per-partition",
+            Class::Blocked(_) => "blocked",
+            Class::Kept => "kept",
+            Class::Unknown => "unknown",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Analysis {
     pub verdict: Verdict,
     /// Sorted and deduplicated.
     pub notes: Vec<Note>,
+    /// Each node the walk reached, with its class.
+    pub classes: BTreeMap<cogitator_ir::mir::RelId, Class>,
 }
 
 impl Analysis {

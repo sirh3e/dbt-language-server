@@ -1,0 +1,24 @@
+---
+source: crates/cogitator-rules/src/canon/incrementality/tests.rs
+expression: "analysis_sexp(&mir, mir.root, \"orders_ranked\", &a).pretty(100)"
+---
+(incrementality orders_ranked
+  (verdict keep (blocker over-changing-rows (span 147 174)))
+  (note min-max)
+  (plan
+    (project
+      (items user_id total rnk)
+      (window
+        (fn rank (partition) (order (desc total)))
+        (cte-ref by_user
+          (project
+            (items user_id total last_ts)
+            (aggregate
+              (keys user_id)
+              (aggs (sum amount) (max ts))
+              (filter (= status "ok") (scan events (class grows)) (class linear))
+              (class per-group))
+            (class per-group))
+          (class per-group))
+        (class blocked over-changing-rows))
+      (class kept))))

@@ -1,0 +1,13 @@
+---
+source: crates/cogitator-rules/src/canon/incrementality/tests.rs
+expression: "frontier_sexp(&mir, \"orders_ranked\", &f).pretty(100)"
+---
+(frontier orders_ranked
+  (cut by_user
+    (boundary cte (span 20 64))
+    (verdict by-key
+      (strategy delete+insert)
+      (unique-key user_id)
+      (high-water last_ts)
+      (delta (input events ts inferred)))
+    (reduces aggregate)))

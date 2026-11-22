@@ -339,3 +339,74 @@ fn opaque_sql_gets_no_verdict() {
     let a = analysis("select id, ts from {{ ref('events') }} where {{ my_filter() }}");
     assert_eq!(a.verdict, Verdict::Unknown, "{:?}", a.verdict);
 }
+
+mod sexps {
+    use super::*;
+    use crate::canon::incrementality::annotate::analysis_sexp;
+    use crate::canon::incrementality::frontier::{frontier, frontier_sexp};
+
+    fn mir_of(sql: &str) -> cogitator_ir::mir::Mir {
+        let dialect = Dialect::new("duckdb");
+        let input = HirInput {
+            text: sql,
+            dialect: &dialect,
+            origin: SourceOrigin::Template {
+                variant: TemplateVariant::Plain,
+            },
+            config: ModelConfig::default(),
+        };
+        let hir = build_hir(&input, &env()).value.expect("a HIR");
+        lower_to_mir(&hir).value.expect("a MIR")
+    }
+
+    const RANKED: &str = "with by_user as (\n  select user_id, sum(amount) as total, max(ts) as last_ts\n  from {{ ref('events') }}\n  where status = 'ok'\n  group by user_id\n)\nselect user_id, total, rank() over (order by total desc) as rnk\nfrom by_user";
+
+    #[test]
+    fn the_analysis_annotates_every_node_with_its_class() {
+        let mir = mir_of(RANKED);
+        let a = analyse(&mir, None);
+        insta::assert_snapshot!(analysis_sexp(&mir, mir.root, "orders_ranked", &a).pretty(100));
+    }
+
+    #[test]
+    fn a_reducing_cte_under_a_blocker_is_a_cut() {
+        let mir = mir_of(RANKED);
+        let f = frontier(&mir, None);
+        assert_eq!(f.cuts.len(), 1, "{f:?}");
+        assert_eq!(f.cuts[0].cte, "by_user");
+        assert_eq!(f.cuts[0].reduces, "aggregate");
+        assert!(matches!(f.cuts[0].analysis.verdict, Verdict::ByKey { .. }));
+        insta::assert_snapshot!(frontier_sexp(&mir, "orders_ranked", &f).pretty(100));
+    }
+
+    #[test]
+    fn parts_that_save_nothing_or_cannot_stand_alone_are_refused() {
+        use crate::canon::incrementality::frontier::Refusal;
+        // a global window straight over the raw scan: nothing to cut
+        let raw = mir_of("select id, ts, rank() over (order by ts) as r from {{ ref('events') }}");
+        assert_eq!(
+            frontier(&raw, None).refusals,
+            vec![Refusal::NoReduction { cte: None }]
+        );
+        // the aggregate and the blocker in one SELECT
+        let one = mir_of(
+            "select user_id, sum(amount) as total, rank() over (order by sum(amount)) as r \
+             from {{ ref('events') }} group by user_id",
+        );
+        assert_eq!(frontier(&one, None).refusals, vec![Refusal::NoBoundary]);
+        // a CTE that only projects
+        let thin = mir_of(
+            "with e as (select id, ts from {{ ref('events') }}) \
+             select id, ts, rank() over (order by ts) as r from e",
+        );
+        assert_eq!(
+            frontier(&thin, None).refusals,
+            vec![Refusal::NoReduction {
+                cte: Some("e".into())
+            }]
+        );
+        // an incremental model has no frontier
+        let fine = mir_of("select id, ts from {{ ref('events') }}");
+        assert_eq!(frontier(&fine, None), Default::default());
+    }
+}
