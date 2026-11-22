@@ -136,6 +136,15 @@ M.SUBCOMMANDS = {
     desc = "derived-cache counters [clear]",
   },
   reload = { run = M.reload_config, desc = "reload cogitator.yml" },
+  syntax = { run = module_call("cogitator.syntax", "toggle"), desc = "the syntax tree of this buffer" },
+  treesitter = {
+    run = module_call("cogitator.treesitter", "command"),
+    complete = function()
+      return { "install", "status", "start" }
+    end,
+    desc = "the tree-sitter-dbt grammar: install, status, start",
+  },
+  manage = { run = module_call("cogitator.manager", "manage"), desc = "manage a known project" },
   dag = { run = module_call("cogitator.dag", "open"), desc = "the project DAG" },
   graph = { run = module_call("cogitator.graph", "open"), desc = "the three-pane model graph" },
   explorer = { run = module_call("cogitator.explorer", "open"), desc = "the project explorer" },
