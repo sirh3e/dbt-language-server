@@ -177,6 +177,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.deps",
     "dbt.incrementality",
     "dbt.splitPlan",
+    "dbt.incrementalDiff",
     "dbt.syntaxTree",
     "dbt.highlight",
     "dbt.astGrep",

@@ -29,6 +29,7 @@ pub struct StatusReport {
 pub struct PerfStatus {
     pub profile: &'static str,
     pub catalog_stats: bool,
+    pub row_hints: bool,
     pub enabled_rules: usize,
 }
 
@@ -37,6 +38,7 @@ impl PerfStatus {
         PerfStatus {
             profile: settings.profile.as_str(),
             catalog_stats: settings.catalog_stats,
+            row_hints: settings.row_hints,
             enabled_rules: settings.enabled_rule_count(),
         }
     }

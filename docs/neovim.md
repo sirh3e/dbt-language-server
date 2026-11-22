@@ -214,6 +214,9 @@ Every other list the plugin shows (`:Dbt`, `:DbtTests`, `:DbtTags`,
 - `:DbtIncrementality`, `:DbtSplit` — which table models could be
   incremental; split one at its frontier. See
   [incrementality.md](incrementality.md).
+- `:DbtIncrementalDiff` — an incremental model rendered with
+  `is_incremental()` false and true, as a diff in a split (also the
+  "Compare incremental / full refresh" code lens).
 - `:DbtAstGrep {{ ref($M) }}` — structural search with ast-grep over the
   project into quickfix; `pattern => rewrite` rewrites after asking;
   `sql:` searches the compiled SQL. Your `sgconfig.yml` rules are

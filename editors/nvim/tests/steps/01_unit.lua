@@ -98,6 +98,29 @@ return function(ctx)
     require("cogitator.commands").split_lines({ model = "m", sexp = "(split m (refused no-boundary))" })
   H.check(#refused == 1, "commands: a refused split is the S-expression alone", vim.inspect(refused))
 
+  -- :DbtIncrementalDiff rendering: the diff, or a note when nothing differs
+  local diff_lines = require("cogitator.commands").incremental_diff_lines({
+    model = "events",
+    identical = false,
+    diff = "--- events (full refresh)\n+++ events (incremental)\n@@ -1 +1,2 @@\n select 1\n+where x > 1\n",
+  })
+  H.check(
+    diff_lines[1] == "--- events (full refresh)" and diff_lines[#diff_lines] == "+where x > 1",
+    "commands: incremental_diff_lines shows the unified diff",
+    vim.inspect(diff_lines)
+  )
+  local same = require("cogitator.commands").incremental_diff_lines({
+    model = "m",
+    identical = true,
+    fullRefresh = "select 1\n",
+    diff = "",
+  })
+  H.check(
+    same[1]:find("changes nothing", 1, true) ~= nil and same[#same] == "select 1",
+    "commands: an unchanged model says so and shows its SQL",
+    vim.inspect(same)
+  )
+
   -- :DbtIncrementality quickfix items
   local items = require("cogitator.commands").incrementality_items({
     incremental = 1,

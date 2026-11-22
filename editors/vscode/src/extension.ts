@@ -99,6 +99,38 @@ export function splitText(plan: SplitPlan): string {
   return text;
 }
 
+/** A dbt.incrementalDiff answer: the model rendered with `is_incremental()` false and true. */
+export interface IncrementalDiff {
+  model: string;
+  fullRefresh: string;
+  incremental: string;
+  diff: string;
+  identical: boolean;
+}
+
+/** The text shown for an incremental diff: the unified diff, or a note and the SQL. */
+export function incrementalDiffText(result: IncrementalDiff): string {
+  if (result.identical) {
+    return `-- ${result.model}: is_incremental() changes nothing in the rendered SQL\n\n${result.fullRefresh}`;
+  }
+  return result.diff;
+}
+
+async function incrementalDiff(): Promise<void> {
+  const result = (await execDbt("dbt.incrementalDiff")) as IncrementalDiff | null | undefined;
+  if (!result) {
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: result.identical ? "sql" : "diff",
+    content: incrementalDiffText(result),
+  });
+  await vscode.window.showTextDocument(doc, {
+    preview: true,
+    viewColumn: vscode.ViewColumn.Beside,
+  });
+}
+
 /** One row of a dbt.incrementality report. */
 export interface IncrementalityRow {
   model: string;
@@ -603,6 +635,7 @@ export async function activate(
     ["cogitator.parse", () => execDbt("dbt.parse")],
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
+    ["cogitator.incrementalDiff", incrementalDiff],
     ["cogitator.incrementality", incrementality],
     ["cogitator.syntaxTree", syntaxTree],
     ["cogitator.highlight", highlight],
