@@ -148,6 +148,11 @@ buffer, or one you pick:
   to compile.
 - **Several models at once**: `<Space>` marks the model or a side entry; `y`
   yanks the marked names, `r` runs them in one `dbt run`.
+- **Macros and tests**: `.` lets the explorer take every kind of node. A
+  macro shows its signature and callers, starts its dbt SQL pane at its
+  definition, and lists its callers in the compiled pane (`<CR>` opens
+  one); a singular test shows what it refs and its compiled SQL. See
+  [highlighting.md](highlighting.md#macros-and-tests).
 
 | Key | Does |
 |---|---|
@@ -187,8 +192,9 @@ The query is fzf's: `stg cust` (both, fuzzy), `'exact`, `^prefix`,
 | `<C-y>` / `<C-r>` | yank the names / dbt run them |
 | `<Tab>` | mark several |
 
-Previews of `.sql` files are coloured by tree-sitter-dbt like the
-explorer's panes (in the built-in picker, fzf-lua and telescope).
+Previews of `.sql` and YAML files are coloured by the server like the
+explorer's panes (in the built-in picker, fzf-lua and telescope), and a
+macro's or test's preview marks its definition.
 
 Every other list the plugin shows (`:Dbt`, `:DbtTests`, `:DbtTags`,
 `:DbtCancel`, targets, projects) uses the same picker.
@@ -210,7 +216,11 @@ Every other list the plugin shows (`:Dbt`, `:DbtTests`, `:DbtTags`,
   project into quickfix; `pattern => rewrite` rewrites after asking;
   `sql:` searches the compiled SQL. Your `sgconfig.yml` rules are
   diagnostics with quickfixes. See [ast-grep.md](ast-grep.md).
-- `:DbtHighlight` — colour any buffer with tree-sitter-dbt from the server.
+- `:DbtHighlight` — colour any buffer from the server; `:DbtHighlight!
+  auto|always|off` sets when buffers are coloured on open. dbt files and
+  YAML property files are coloured on open by default
+  ([highlighting.md](highlighting.md)).
+- `:DbtNode [kind:]name` — any node's card: a macro, a test, a source…
 - `:DbtDeadModels`, `:DbtExpandJinja`, `:DbtSyntaxTree`, `:DbtDoctor`.
 
 ## Nothing waits
@@ -250,6 +260,8 @@ defaults:
   grammar = { highlight = true, auto_install = false },
   picker = "auto",                -- "fzf-lua" | "snacks" | "telescope" | "builtin"
   navigator = { show_all_kinds = false },
+  -- colours from the server: "auto" | "always" | false, per layer
+  highlight = { server = "auto", layers = { yaml = true, sql = true, jinja = true, dbt = true } },
 }
 ```
 

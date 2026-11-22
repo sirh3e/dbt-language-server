@@ -267,9 +267,10 @@ impl Dispatcher {
                         .to_string()
                 };
                 let (kind, name) = (field("kind"), field("name"));
+                let quiet = arg.get("quiet").and_then(|q| q.as_bool()) == Some(true);
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.nodeInfo", move || {
-                    crate::server::node_info::reply(&ctx, &kind, &name)
+                    crate::server::node_info::reply(&ctx, &kind, &name, quiet)
                 });
                 return;
             }
