@@ -1,0 +1,169 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: main
+    tables:
+      - name: raw_rows
+        data_tests:
+          - tiny_utils.expression_is_true:
+              arguments:
+                expression: "amount > 0"
+        columns:
+          - name: id
+            data_tests:
+              - not_null
+              - unique:
+                  config:
+                    severity: warn
+          - name: status
+            tests:
+              - accepted_values:
+                  arguments:
+                    values: ['placed', 'shipped']
+
+models:
+  - name: m_customers
+    tests:
+      - tiny_utils.expression_is_true:
+          expression: "id >= 1"
+    columns:
+      - name: id
+        data_tests: [unique, not_null]
+
+  - name: m_orders
+    description: "nasty"
+    data_tests:
+      - tiny_utils.expression_is_true:
+          arguments:
+            expression: "amount >= 0"
+      - tiny_utils.expression_is_true:
+          arguments:
+            expression: "amount <> -1"
+          config:
+            severity: warn
+            where: "id > 0"
+      - tiny_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [customer_id, a]
+      - tiny_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - status
+              - id
+          name: combo_named
+    columns:
+      - name: id
+        data_tests:
+          - not_null:
+              config:
+                where: "status = 'placed'"
+          - unique:
+              name: my_custom_unique
+          - is_even
+          - relationships:
+              arguments:
+                to: ref('m_customers')
+                field: id
+          - relationships:
+              arguments:
+                to: source('raw', 'raw_rows')
+                field: id
+          - tiny_utils.at_least:
+              arguments:
+                min_value: 0
+                inclusive: false
+          - name: renamed_not_null
+            test_name: not_null
+          - test_name: unique
+            config:
+              severity: warn
+              where: "id < 100"
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['placed', 'shipped', 'completed', 'return_pending', 'returned', 'lost-in-transit']
+          - accepted_values:
+              arguments:
+                values: ['placed', 'shipped']
+                quote: true
+              description: "two statuses"
+      - name: amount
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [10, 20.0, 30]
+                quote: false
+          - matches:
+              arguments:
+                mapping: {a: 1, b: x}
+                flag: null
+          - matches:
+              arguments:
+                mapping: {k: [1, 'two', true]}
+                flag: yes
+      - name: customer_id
+        data_tests:
+          - accepted_values:
+              values: [1, 2]
+              quote: false
+          - relationships:
+              to: ref('m_customers')
+              field: id
+              severity: warn
+          - matches:
+              arguments:
+                mapping: {a: yes, b: 'yes', c: ~, d: on, e: 0x1F, f: 010, g: 1_000, h: 1e3, i: 1.5e+3, j: .5, k: "{{ var('v', 'z') }}", l: -7, m: 1.0e+20, n: 0.0001, o: 1e-5}
+              config:
+                tags: [nasty]
+          - matches:
+              arguments:
+                mapping:
+                  nested: [[1, 2], {x: "it's"}, Off, null, 3.25]
+
+  - name: vm
+    latest_version: 2
+    data_tests:
+      - tiny_utils.expression_is_true:
+          arguments:
+            expression: "id > 0"
+    columns:
+      - name: id
+        data_tests: [not_null]
+      - name: extra
+        data_tests: [unique]
+      - name: label
+        data_tests: [not_null]
+    versions:
+      - v: 1
+      - v: 2
+        columns:
+          - include: all
+            exclude: [extra]
+          - name: label
+            data_tests: [unique]
+      - v: 3
+        data_tests:
+          - unique:
+              arguments:
+                column_name: id
+        columns:
+          - include: [id]
+
+seeds:
+  - name: raw_rows
+    columns:
+      - name: id
+        data_tests: [unique, not_null]
+      - name: status
+        tests:
+          - accepted_values:
+              arguments:
+                values: [placed, shipped]
+
+snapshots:
+  - name: snap
+    columns:
+      - name: id
+        data_tests: [not_null]

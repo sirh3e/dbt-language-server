@@ -134,7 +134,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 - **Argument**: `{uri, selector, kind?}` — any dbt selector; `kind` is `run` (default), `test`, `build` or `compile`
 - **Result**: `{token}` or InvalidParams
-- **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name
+- **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name (a test on a versioned model's base entry is one test per version, so its lens sends their names as a space-separated union)
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
 ### `dbt.cancel`

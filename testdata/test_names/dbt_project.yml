@@ -1,0 +1,9 @@
+name: 'nasty'
+config-version: 2
+version: '0.1'
+profile: 'nasty'
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
