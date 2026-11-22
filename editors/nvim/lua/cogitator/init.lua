@@ -52,6 +52,20 @@ local function keymaps(bufnr)
   map("<leader>dP", function()
     require("cogitator.manager").pick_project()
   end, "dbt: pick a known dbt project")
+  local function find(source)
+    return function()
+      require("cogitator.pick").find(source)
+    end
+  end
+  map("<leader>df", find("models"), "dbt: find a model")
+  map("<leader>dF", find(nil), "dbt: find… (pick what to search)")
+  map("<leader>dd", find("definitions"), "dbt: find a definition (model, source, macro, selector)")
+  map("<leader>dk", find("columns"), "dbt: find a column")
+  map("<leader>du", find("upstream"), "dbt: find upstream of this model")
+  map("<leader>dU", find("downstream"), "dbt: find downstream of this model")
+  map("<leader>dn", function()
+    require("cogitator.explorer").open({ focus_buffer = true })
+  end, "dbt: the yazi-style navigator, at this model")
   vim.keymap.set({ "n", "x" }, "<leader>dv", function()
     require("cogitator.select").expand()
   end, { buffer = bufnr, desc = "dbt: expand the selection (selectionRange)" })
@@ -203,6 +217,7 @@ function M.setup(opts)
       local client = vim.lsp.get_client_by_id(args.data.client_id)
       if client and client.name == "cogitator" then
         require("cogitator.health").prefetch(client)
+        require("cogitator.pick.graph").invalidate(client.id)
       end
     end,
   })

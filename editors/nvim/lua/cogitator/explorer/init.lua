@@ -33,6 +33,12 @@ local M = {}
 ---@field timer uv.uv_timer_t selection debounce
 ---@field sides_for string? the model the side panes were last filled for
 ---@field pending_walk {pane: "left"|"right", count: integer}? walk steps waiting on dbt.modelInfo
+---@field graph table the dbt.projectGraph payload
+---@field positions table<string, integer[]> the filter's matched characters, by name
+---@field marked table<string, boolean> marked nodes, by name (yazi's selection)
+---@field history {back: string[], forward: string[]} models re-centred on, for [ and ]
+---@field show_all boolean list every kind of node, not only models
+---@field raw {uri: string, lines: string[]?}? the raw tab's file, read in the background
 ---@type cogitator.explorer.State?
 M._state = nil
 
@@ -173,6 +179,7 @@ function M._select_current()
     return
   end
   s.selected = node.name
+  ui.retitle(s.wins.center, erender.center_title(s))
   s.info = nil
   s.compiled = nil
   s.relation = nil
@@ -206,14 +213,142 @@ function M._set_tab(tab)
   preview.render(s)
 end
 
---- Open the explorer over the whole project graph.
-function M.open()
+--- The nodes the center lists: the models, or every kind with `.`.
+---@param s cogitator.explorer.State
+local function listed(s)
+  return vim.tbl_filter(function(n)
+    return s.show_all or n.kind == "model"
+  end, s.graph.nodes)
+end
+
+--- Put `name` under the center cursor (clearing a filter that hides it)
+--- and select it. With `record`, the model left behind goes on the back
+--- history, as walking the lineage does.
+---@param name string
+---@param opts {record?: boolean, stay?: boolean}?
+---@return boolean found
+function M.focus(name, opts)
+  local s = M._state
+  if not s then
+    return false
+  end
+  opts = opts or {}
+  local function row_of()
+    for i, n in ipairs(s.filtered) do
+      if n.name == name then
+        return i
+      end
+    end
+  end
+  local row = row_of()
+  if not row and s.filter ~= "" then
+    s.filter = ""
+    efilter.apply(M)
+    row = row_of()
+  end
+  if not row then
+    vim.notify(name .. " is not in the navigator's list (. lists every kind of node)", vim.log.levels.WARN)
+    return false
+  end
+  if opts.record and s.selected and s.selected ~= name then
+    table.insert(s.history.back, s.selected)
+    s.history.forward = {}
+  end
+  vim.api.nvim_win_set_cursor(s.wins.center, { row, 0 })
+  if not opts.stay then
+    vim.api.nvim_set_current_win(s.wins.center)
+  end
+  M._select_current()
+  return true
+end
+
+--- Step through the history: -1 back (`[`, `-`), +1 forward (`]`).
+---@param delta integer
+function M._history(delta)
+  local s = M._state
+  local from, to = s.history.back, s.history.forward
+  if delta > 0 then
+    from, to = to, from
+  end
+  local name = table.remove(from)
+  if not name then
+    return
+  end
+  if s.selected then
+    table.insert(to, s.selected)
+  end
+  M.focus(name)
+end
+
+--- The marked nodes, or the one under the cursor.
+---@return cogitator.GraphEntry[]
+function M._chosen()
+  local s = M._state
+  local out = {}
+  for _, n in ipairs(s.nodes) do
+    if s.marked[n.name] then
+      out[#out + 1] = n
+    end
+  end
+  if #out == 0 then
+    out[1] = M._selected_node()
+  end
+  return out
+end
+
+--- Mark or unmark the node under the cursor, then move down (yazi's <Space>).
+function M._toggle_mark()
+  local s = M._state
+  local node = M._selected_node()
+  if not node then
+    return
+  end
+  s.marked[node.name] = not s.marked[node.name] or nil
+  erender.center(s, true)
+  local row = vim.api.nvim_win_get_cursor(s.wins.center)[1]
+  if row < #s.filtered then
+    vim.api.nvim_win_set_cursor(s.wins.center, { row + 1, 0 })
+  end
+  M._select_current()
+end
+
+--- `.`: list every kind of node, or only the models again.
+function M._toggle_all()
+  local s = M._state
+  s.show_all = not s.show_all
+  local keep = s.selected
+  s.nodes = listed(s)
+  efilter.apply(M)
+  if keep then
+    M.focus(keep)
+  end
+end
+
+--- `f`: the models picker; the choice becomes the selection.
+function M._find()
+  local s = M._state
+  local sources = require("cogitator.pick.sources")
+  local source = sources.build(s.show_all and "all" or "models", { client = s.client, bufnr = s.src_buf })
+  source.choose = function(items)
+    if M._state and items[1] then
+      M.focus(items[1].name, { record = true })
+    end
+  end
+  require("cogitator.pick").open(source)
+end
+
+--- Open the navigator over the whole project graph; `opts.focus` (a
+--- name) or `opts.focus_buffer` puts that model under the cursor.
+---@param opts {focus?: string, focus_buffer?: boolean}?
+function M.open(opts)
+  opts = opts or {}
   local src_buf = vim.api.nvim_get_current_buf()
   local client = actions.client_for(src_buf)
   if not client then
     return
   end
   M.close()
+  local config = require("cogitator").config or {}
   M._state = {
     client = client,
     src_buf = src_buf,
@@ -222,6 +357,10 @@ function M.open()
     nodes = {},
     filtered = {},
     filter = "",
+    positions = {},
+    marked = {},
+    history = { back = {}, forward = {} },
+    show_all = (config.navigator or {}).show_all_kinds == true,
     selected = nil,
     info = nil,
     compiled = nil,
@@ -230,19 +369,21 @@ function M.open()
     timer = vim.uv.new_timer(),
   }
 
-  actions.exec_with(client, src_buf, "dbt.projectGraph", { uri = vim.uri_from_bufnr(src_buf) }, function(err, result)
+  require("cogitator.pick.graph").get(client, src_buf, function(result)
     local s = M._state
     if not s then
       return
     end
-    if err or not result or result == vim.NIL or not result.nodes or #result.nodes == 0 then
+    if not result or #result.nodes == 0 then
       M.close()
-      vim.notify("dbt.projectGraph returned nothing — is the project context loaded yet?", vim.log.levels.WARN)
+      vim.notify(
+        "dbt.projectGraph returned nothing — is the project context loaded yet?",
+        vim.log.levels.WARN
+      )
       return
     end
-    s.nodes = vim.tbl_filter(function(n)
-      return n.kind == "model"
-    end, result.nodes)
+    s.graph = result
+    s.nodes = listed(s)
     s.filtered = s.nodes
 
     local l = erender.geometry()
@@ -268,6 +409,14 @@ function M.open()
     })
     efilter.apply(M)
     vim.api.nvim_set_current_win(s.wins.center)
+    local focus = opts.focus
+    if not focus and opts.focus_buffer then
+      local here = require("cogitator.pick.graph").node_of_buffer(result, src_buf)
+      focus = here and here.name
+    end
+    if focus then
+      M.focus(focus)
+    end
   end)
 end
 

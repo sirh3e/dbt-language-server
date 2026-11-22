@@ -88,6 +88,10 @@ return function(ctx)
   end)
   local left = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.left, 0, -1, false), "\n")
   H.check(left:find("orders") ~= nil, "integration: browser upstream pane follows the selection", left)
+  -- the raw tab reads the file in the background
+  H.wait("integration: browser raw tab reads the model file", 10000, function()
+    return table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n"):find("ref%(") ~= nil
+  end)
   local prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
   H.check(prev:find("ref%(") ~= nil, "integration: browser raw tab shows the model SQL", prev)
 
@@ -124,7 +128,11 @@ return function(ctx)
       return p:find("compiled_marker") ~= nil
     end)
     prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
-    H.check(prev:find("compiled_marker") ~= nil, "integration: browser compiled tab serves dbt.compiledSql", prev)
+    H.check(
+      prev:find("compiled_marker") ~= nil,
+      "integration: browser compiled tab serves dbt.compiledSql",
+      prev
+    )
   end
 
   -- search narrows, the live `/` loop works, <Esc> clears
