@@ -92,6 +92,13 @@ return function(ctx)
     "treesitter: builds parser.c and scanner.c as a shared object",
     vim.inspect(cmd)
   )
+  local cargo = table.concat(vim.fn.readfile(vim.fs.joinpath(ctx.repo_root, "Cargo.toml")), "\n")
+  local pinned = cargo:match('tree%-sitter%-dbt%s*=%s*{[^}]-rev%s*=%s*"(%x+)"')
+  H.check(
+    pinned == ts.REV,
+    "treesitter: the grammar revision is the one Cargo.toml pins for the server",
+    vim.inspect({ cargo = pinned, plugin = ts.REV })
+  )
   local config = require("cogitator.config")
   H.check(
     config.build({ grammar = { rev = "abc", url = "/x" } }).grammar.rev == "abc",
