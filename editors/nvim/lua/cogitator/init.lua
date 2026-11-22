@@ -21,7 +21,7 @@ local function capabilities()
   })
 end
 
-local function keymaps(bufnr)
+local function keymaps(bufnr, config)
   local function map(lhs, rhs, desc)
     vim.keymap.set("n", lhs, rhs, { buffer = bufnr, desc = desc })
   end
@@ -52,6 +52,19 @@ local function keymaps(bufnr)
   map("<leader>dP", function()
     require("cogitator.manager").pick_project()
   end, "dbt: pick a known dbt project")
+  -- the code-action menu: the server's actions and the plugin's own in
+  -- the yazi-style picker; it takes over Neovim's default `gra` here
+  local function code_actions()
+    if config.ui.picker then
+      require("cogitator.code_actions").open()
+    else
+      vim.lsp.buf.code_action()
+    end
+  end
+  vim.keymap.set({ "n", "x" }, "<leader>da", code_actions, { buffer = bufnr, desc = "dbt: code actions" })
+  if config.ui.picker then
+    vim.keymap.set({ "n", "x" }, "gra", code_actions, { buffer = bufnr, desc = "dbt: code actions" })
+  end
   vim.keymap.set({ "n", "x" }, "<leader>dv", function()
     require("cogitator.select").expand()
   end, { buffer = bufnr, desc = "dbt: expand the selection (selectionRange)" })
@@ -75,7 +88,7 @@ local function on_attach(client, bufnr, config)
     pcall(vim.lsp.inlay_hint.enable, true, { bufnr = bufnr })
   end
   if config.keymaps then
-    keymaps(bufnr)
+    keymaps(bufnr, config)
   end
   require("cogitator.lens").attach(bufnr, config)
   require("cogitator.treesitter").attach(bufnr)

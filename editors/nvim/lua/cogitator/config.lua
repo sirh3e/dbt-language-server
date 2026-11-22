@@ -26,10 +26,14 @@ M.defaults = {
   -- the tree-sitter-dbt grammar in Neovim (:DbtTreesitter install): start
   -- it on sql buffers in a project; url/rev override the pinned grammar
   grammar = { highlight = true, auto_install = false, url = nil, rev = nil },
+  -- the dialogs and the code-action menu: the yazi-style picker
+  -- (h/j/k/l); false → vim.ui.select / vim.ui.input and the stock
+  -- code-action menu
+  ui = { picker = true },
 }
 
 -- the nested tables whose keys are checked like the top level's
-local NESTED = { "lens", "lineage", "dag", "grammar" }
+local NESTED = { "lens", "lineage", "dag", "grammar", "ui" }
 -- nested keys whose default is nil (invisible to the defaults lookup)
 local NESTED_NIL = { grammar = { url = true, rev = true } }
 
@@ -80,6 +84,8 @@ local function validate(opts)
   vim.validate("grammar.auto_install", grammar.auto_install, "boolean", true)
   vim.validate("grammar.url", grammar.url, "string", true)
   vim.validate("grammar.rev", grammar.rev, "string", true)
+  vim.validate("ui", opts.ui, "table", true)
+  vim.validate("ui.picker", (opts.ui or {}).picker, "boolean", true)
 end
 
 --- The server command with the flags derived from the options (spec §1.2).

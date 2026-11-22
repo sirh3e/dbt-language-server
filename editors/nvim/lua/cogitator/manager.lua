@@ -103,7 +103,7 @@ function M.pick_project()
     )
     return
   end
-  vim.ui.select(roots, {
+  require("cogitator.picker").select(roots, {
     prompt = "dbt project",
     format_item = function(root)
       return M.describe(root, current)
@@ -183,19 +183,22 @@ function M.project_actions(root)
     {
       label = "set profiles directory",
       run = function()
-        vim.ui.input({ prompt = "profiles.yml directory: ", completion = "dir" }, function(dir)
-          if not dir or dir == "" then
-            return
+        require("cogitator.picker").input(
+          { prompt = "profiles.yml directory: ", completion = "dir" },
+          function(dir)
+            if not dir or dir == "" then
+              return
+            end
+            local expanded = vim.fn.expand(dir)
+            M.remember(root, { profiles_dir = expanded, profile = vim.NIL, target = vim.NIL })
+            local client = client_of(root)
+            if client then
+              client:exec_cmd({ command = "dbt.setProfilesDir", arguments = { { dir = expanded } } })
+            else
+              vim.notify("stored; applied when " .. root .. " next attaches")
+            end
           end
-          local expanded = vim.fn.expand(dir)
-          M.remember(root, { profiles_dir = expanded, profile = vim.NIL, target = vim.NIL })
-          local client = client_of(root)
-          if client then
-            client:exec_cmd({ command = "dbt.setProfilesDir", arguments = { { dir = expanded } } })
-          else
-            vim.notify("stored; applied when " .. root .. " next attaches")
-          end
-        end)
+        )
       end,
     },
     {
@@ -208,22 +211,29 @@ function M.project_actions(root)
     {
       label = "rename",
       run = function()
-        vim.ui.input({ prompt = "name: ", default = M.for_root(root).label or "" }, function(label)
-          if label then
-            M.rename(root, label)
+        require("cogitator.picker").input(
+          { prompt = "name: ", default = M.for_root(root).label or "" },
+          function(label)
+            if label then
+              M.rename(root, label)
+            end
           end
-        end)
+        )
       end,
     },
     {
       label = "forget",
       run = function()
-        vim.ui.select({ "no", "yes" }, { prompt = "forget " .. root .. "?" }, function(answer)
-          if answer == "yes" then
-            M.forget(root)
-            vim.notify("forgot " .. root)
+        require("cogitator.picker").select(
+          { "no", "yes" },
+          { prompt = "forget " .. root .. "?" },
+          function(answer)
+            if answer == "yes" then
+              M.forget(root)
+              vim.notify("forgot " .. root)
+            end
           end
-        end)
+        )
       end,
     },
   }
@@ -237,7 +247,7 @@ function M.manage()
     vim.notify("No dbt projects remembered yet.", vim.log.levels.INFO)
     return
   end
-  vim.ui.select(roots, {
+  require("cogitator.picker").select(roots, {
     prompt = "dbt project",
     format_item = function(root)
       return M.describe(root, current)
@@ -247,7 +257,7 @@ function M.manage()
       return
     end
     local choices = M.project_actions(root)
-    vim.ui.select(choices, {
+    require("cogitator.picker").select(choices, {
       prompt = root,
       format_item = function(choice)
         return choice.label

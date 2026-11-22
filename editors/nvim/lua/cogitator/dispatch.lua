@@ -97,6 +97,7 @@ M.SUBCOMMANDS = {
   selection = { run = with_args("run_selection"), desc = "dbt run --select <selector>" },
   preview = { run = with_args("preview"), desc = "dbt show this model [limit]" },
   cancel = { run = plain("cancel"), desc = "cancel a dbt job" },
+  actions = { run = module_call("cogitator.code_actions", "open"), desc = "code actions at the cursor" },
   expand = { run = plain("expand_jinja"), desc = "render this model's Jinja" },
   plan = { run = plain("plan"), desc = "this model's query plan" },
   doctor = { run = plain("doctor"), desc = "the server's health report" },
@@ -163,23 +164,123 @@ M.SUBCOMMANDS = {
   },
 }
 
+--- The subcommands as groups, in menu order: the `:Dbt` menu and the
+--- code-action menu (cogitator.code_actions) are both built from this.
+--- `model` groups need a model's .sql buffer. Every subcommand is in
+--- exactly one group (checked by the suite).
+M.GROUPS = {
+  {
+    name = "Model",
+    icon = "◇",
+    model = true,
+    subs = {
+      "run",
+      "test",
+      "compile",
+      "preview",
+      "expand",
+      "plan",
+      "split",
+      "impact",
+      "lineage",
+      "schema",
+      "tests",
+      "extract",
+      "relation",
+      "query",
+    },
+  },
+  { name = "Views", icon = "◈", subs = { "graph", "dag", "columns", "explorer", "syntax" } },
+  {
+    name = "Project",
+    icon = "▣",
+    subs = {
+      "parse",
+      "deps",
+      "freshness",
+      "selection",
+      "cancel",
+      "dead",
+      "incrementality",
+      "tags",
+      "selectors",
+    },
+  },
+  {
+    name = "Session",
+    icon = "⚙",
+    subs = { "status", "doctor", "target", "profiles", "projects", "manage", "reload", "cache", "treesitter" },
+  },
+}
+
+--- Subcommands that are no menu entry themselves.
+M.UNGROUPED = { actions = true }
+
+--- Is `bufnr` a model's SQL buffer (what the Model group needs)?
+---@param bufnr integer
+---@return boolean
+function M.is_model_buffer(bufnr)
+  return vim.bo[bufnr].filetype == "sql" and vim.api.nvim_buf_get_name(bufnr) ~= ""
+end
+
+--- Picker groups of the subcommands. `skip` names subcommands to leave
+--- out (the code-action menu drops those the server already offers).
+---@param bufnr integer
+---@param skip table<string, boolean>?
+---@return cogitator.picker.Item[]
+function M.menu_items(bufnr, skip)
+  skip = skip or {}
+  local model = M.is_model_buffer(bufnr)
+  local groups = {}
+  for _, group in ipairs(M.GROUPS) do
+    local children = {}
+    for _, name in ipairs(group.subs) do
+      local sub = M.SUBCOMMANDS[name]
+      if sub and not skip[name] then
+        children[#children + 1] = {
+          label = sub.desc,
+          detail = ":Dbt " .. name,
+          icon = "›",
+          icon_hl = "DbtPickerCommand",
+          disabled = (group.model and not model) and "needs a model's .sql buffer" or nil,
+          value = { subcommand = name },
+          preview = function()
+            return {
+              "  " .. sub.desc,
+              "",
+              "  :Dbt " .. name .. (sub.complete and " [argument]" or ""),
+              "",
+              "  run by the plugin; its answer opens in its own view",
+            }
+          end,
+        }
+      end
+    end
+    if #children > 0 then
+      groups[#groups + 1] = {
+        label = group.name,
+        icon = group.icon,
+        detail = tostring(#children),
+        children = children,
+      }
+    end
+  end
+  return groups
+end
+
 --- Run `:Dbt <line>`.
 ---@param line string the command's arguments
 function M.run(line)
   local name, rest = vim.trim(line):match("^(%S*)%s*(.-)$")
   if name == "" then
-    local names = vim.tbl_keys(M.SUBCOMMANDS)
-    table.sort(names)
-    vim.ui.select(names, {
-      prompt = "dbt",
-      format_item = function(n)
-        return ("%-10s %s"):format(n, M.SUBCOMMANDS[n].desc)
+    local bufnr = vim.api.nvim_get_current_buf()
+    require("cogitator.picker").open({
+      title = "dbt",
+      items = M.menu_items(bufnr),
+      on_choose = function(item)
+        M.SUBCOMMANDS[item.value.subcommand].run("")
       end,
-    }, function(choice)
-      if choice then
-        M.SUBCOMMANDS[choice].run("")
-      end
-    end)
+    })
     return
   end
   local sub = M.SUBCOMMANDS[name]

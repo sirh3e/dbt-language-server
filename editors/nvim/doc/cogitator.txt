@@ -57,6 +57,9 @@ Defaults shown: >lua
         url = nil,                -- another tree-sitter-dbt repository
         rev = nil,                -- another revision than the server's
       },
+      ui = {                      -- |cogitator-nvim-picker|
+        picker = true,            -- false → vim.ui.select / vim.ui.input
+      },
     })
 <
 `profiles_dir` is sent as `initializationOptions.profilesDir`; the server
@@ -101,6 +104,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtProjects!  manage a known project (profiles, rename, forget)
   (code lens)    run the code lens on this line      <leader>dL
   (selection)    expand along selectionRange         <leader>dv
+  :DbtActions    code actions, yazi-style menu       <leader>da, gra
                  shrink back (visual mode)           <leader>dV
 
 Every command is also a subcommand of *:Dbt* with completion, e.g.
@@ -237,6 +241,43 @@ The same command set is served as code actions
 (|vim.lsp.buf.code_action|): on a `ref('x')` an "Open schema of 'x'"
 action is added, and inside a schema YAML the model entry under the
 cursor offers "Open model" and "Go to tests".
+
+                                                *cogitator-nvim-code-actions*
+`:DbtActions` (<leader>da, and `gra` in dbt buffers; also on a visual
+selection) opens every action at the cursor in one menu: the server's
+code actions grouped by kind — Quick fixes, Refactor, Source, dbt — and
+the plugin's own commands — Model, Views, Project, Session — which the
+server cannot offer itself, since a stock client drops what they answer
+(the plan, the split, the graphs, the explorer...). A server command
+the plugin also has (dbt run, Go to schema) is listed once. The preview
+column shows what an action does: an edit as a diff of every file it
+touches (and the files it creates or renames), a command with what it
+runs. A preferred fix is starred. With `ui.picker = false` the keymaps
+fall back to |vim.lsp.buf.code_action|.
+
+                                                      *cogitator-nvim-picker*
+Every dialog of the plugin — the code actions, `:Dbt` without
+arguments, target and project pickers, tests, tags, selectors, jobs —
+is a yazi-style float: the parent level on the left, the current level
+in the middle, a preview of what is under the cursor on the right, the
+path above and the keys below. Prompts (a selector, a directory) are a
+one-line float with a title.
+
+  j  k          move (counts work: 3j); wraps at the ends
+  l  <CR>       enter a group, or choose the item
+  h  <BS>       back to the parent level
+  gg  G         first / last item
+  <C-d>  <C-u>  half a page down / up
+  J  K          scroll the preview
+  /             filter as you type; a group stays while a child matches,
+                and the filter follows you into it (<Esc> clears it)
+  ?             the keys, in the preview column
+  q  <Esc>      close
+
+In a prompt: <CR> accepts, <Esc> goes to normal mode and <Esc> or q
+cancels, <Tab> completes a directory. `ui.picker = false` brings back
+|vim.ui.select| and |vim.ui.input| (dressing.nvim, snacks, fzf-lua...).
+The colours are `DbtPicker*` groups linked to the colorscheme's.
 
 dbt run/test/compile are asynchronous; progress and results arrive as
 notifications (`:messages` keeps them).

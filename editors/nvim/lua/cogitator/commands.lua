@@ -449,7 +449,7 @@ function M.run_selection(opts)
   if opts and opts.args and opts.args ~= "" then
     start(opts.args)
   else
-    vim.ui.input({ prompt = "dbt selector: " }, start)
+    require("cogitator.picker").input({ prompt = "dbt selector: " }, start)
   end
 end
 
@@ -466,7 +466,7 @@ function M.cancel()
     return
   end
   table.sort(tokens)
-  vim.ui.select(tokens, {
+  require("cogitator.picker").select(tokens, {
     prompt = "Cancel dbt job",
     format_item = function(token)
       return ("%d — %s"):format(token, M._jobs[token])
@@ -619,7 +619,7 @@ function M.tests()
       )
       return
     end
-    vim.ui.select(result.tests, {
+    require("cogitator.picker").select(result.tests, {
       prompt = ("tests for %s"):format(result.model),
       format_item = function(t)
         local label = t.name
@@ -671,7 +671,7 @@ function M.tags()
       vim.notify("no tags in this project (tags: in YAML or {{ config(tags=…) }})", vim.log.levels.INFO)
       return
     end
-    vim.ui.select(tags, {
+    require("cogitator.picker").select(tags, {
       prompt = "dbt tag",
       format_item = function(tag)
         return ("#%s  (%d model%s)"):format(tag, #by_tag[tag], #by_tag[tag] == 1 and "" or "s")
@@ -680,7 +680,7 @@ function M.tags()
       if not tag then
         return
       end
-      vim.ui.select(by_tag[tag], {
+      require("cogitator.picker").select(by_tag[tag], {
         prompt = "#" .. tag,
         format_item = function(node)
           return node.name
@@ -706,7 +706,7 @@ function M.selectors()
       vim.notify("no selectors.yml entries in this project", vim.log.levels.INFO)
       return
     end
-    vim.ui.select(symbols, {
+    require("cogitator.picker").select(symbols, {
       prompt = "dbt selector",
       format_item = function(s)
         return s.name
