@@ -111,7 +111,7 @@ return function(ctx)
     vim.api.nvim_set_current_buf(bufnr)
     explorer.open()
     local ok = H.wait(label, 10000, function()
-      return explorer._state ~= nil and #explorer._state.nodes > 0 and explorer._selected_node() ~= nil
+      return explorer._state ~= nil and explorer._selected_node() ~= nil and explorer._state.info ~= nil
     end)
     if ok then
       vim.api.nvim_set_current_win(explorer._state.wins.center)
@@ -129,14 +129,7 @@ return function(ctx)
     dag.close()
   end
   if open_explorer("graphs: explorer opens for L") then
-    -- customers has column lineage (the first model in the list may not)
-    explorer._apply_filter("customers")
-    for i, n in ipairs(explorer._state.filtered) do
-      if n.name == "customers" then
-        vim.api.nvim_win_set_cursor(explorer._state.wins.center, { i, 0 })
-        explorer._select_current()
-      end
-    end
+    -- the explorer opens on the buffer's model, customers, which has column lineage
     local picked = explorer._selected_node()
     H.feed("L")
     H.wait("graphs: explorer L opens the selection's column graph", 20000, function()
@@ -151,7 +144,8 @@ return function(ctx)
     H.check(
       explorer._state == nil
         and vim.uri_from_bufnr(0) == picked.uri
-        and #vim.api.nvim_tabpage_list_wins(0) == wins - 3,
+        -- five floats closed, one vsplit opened
+        and #vim.api.nvim_tabpage_list_wins(0) == wins - 4,
       "graphs: explorer v closes the explorer and opens the model in a vsplit",
       vim.api.nvim_buf_get_name(0)
     )

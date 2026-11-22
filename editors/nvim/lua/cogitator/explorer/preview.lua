@@ -1,32 +1,36 @@
---- The explorer's bottom pane: renders one of five tabs for the
---- selected model — [1] the raw SQL, [2] the compiled SQL served by
---- dbt.compiledSql (a hint when dbt has not written one), [3] versions
---- and tests, [4] the info view (description/tags/relation/columns/
---- tests with jumps), [5] its documented columns. Pure render over the
---- explorer state; the raw file is read in the background.
+--- The explorer's two bottom panes, side by side: the model's dbt SQL
+--- (its file, Jinja and all; the loaded buffer when there is one, so
+--- unsaved edits show) and the SQL dbt compiled it to (dbt.compiledSql).
+--- Pure render over the explorer state; the file is read in the
+--- background and the pane redrawn when it arrives.
 
-local render_lib = require("cogitator.render")
 local ui = require("cogitator.ui")
 
 local M = {}
 
-local function tab_title(tab)
-  local names = { "raw", "compiled", "versions/tests", "info", "columns" }
-  local parts = {}
-  for i, name in ipairs(names) do
-    local label = ("%d %s"):format(i, name)
-    parts[i] = (i == tab) and ("[" .. label .. "]") or label
+local function show(s, pane, lines, filetype, title)
+  local buf, win = s.bufs[pane], s.wins[pane]
+  if not (buf and vim.api.nvim_buf_is_valid(buf) and win and vim.api.nvim_win_is_valid(win)) then
+    return
   end
-  return " " .. table.concat(parts, "  ") .. " "
+  local same = s.shown and s.shown[pane] == s.selected
+  local top = same and vim.fn.getwininfo(win)[1].topline or 1
+  ui.set_lines(buf, lines)
+  if vim.bo[buf].filetype ~= filetype then
+    vim.bo[buf].filetype = filetype
+  end
+  ui.retitle(win, " " .. title .. " ")
+  -- a refresh of the same model keeps where it was scrolled to
+  vim.api.nvim_win_call(win, function()
+    vim.fn.winrestview({ topline = math.min(top, #lines), lnum = math.min(top, #lines) })
+  end)
+  s.shown = s.shown or {}
+  s.shown[pane] = s.selected
 end
 
---- A file's lines: the loaded buffer when there is one (unsaved edits
---- win), else what was read of the file in the background; nil while it
---- is being read (the pane re-renders when it arrives).
-local function read_uri_lines(s, uri)
-  if not uri or uri == vim.NIL then
-    return { "· no file on disk ·" }
-  end
+--- The file behind `uri`: the loaded buffer, else what the background read
+--- brought; nil while it is being read.
+local function file_lines(s, uri)
   local fname = vim.uri_to_fname(uri)
   local bufnr = vim.fn.bufnr(fname)
   if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
@@ -39,99 +43,63 @@ local function read_uri_lines(s, uri)
   require("cogitator.pick.preview").read(fname, function(lines)
     if s.raw and s.raw.uri == uri then
       s.raw.lines = lines or { "· cannot read " .. fname .. " ·" }
-      M.render(s)
+      M.render_raw(s)
     end
   end)
   return nil
 end
 
---- The selection's documented columns, from the project graph.
-local function columns_of(s)
-  for _, n in ipairs(s.nodes) do
-    if n.name == s.selected then
-      if not n.columns or #n.columns == 0 then
-        return { "· no documented columns (columns: in its YAML) ·" }
-      end
-      local lines = {}
-      for _, c in ipairs(n.columns) do
-        local desc = c.description
-        lines[#lines + 1] = c.name .. ((desc and desc ~= vim.NIL and desc ~= "") and ("  — " .. desc) or "")
-      end
-      return lines
-    end
-  end
-  return { "· not in the project graph ·" }
-end
-
-local function versions_and_tests(info)
-  local lines = {}
-  local v = info.versions
-  if v and v ~= vim.NIL then
-    local latest = (v.latestVersion ~= vim.NIL) and tostring(v.latestVersion) or "?"
-    lines[#lines + 1] = "latest_version: " .. latest
-    for _, item in ipairs(v.versions) do
-      local file = "(no file)"
-      if item.uri and item.uri ~= vim.NIL then
-        file = vim.fn.fnamemodify(vim.uri_to_fname(item.uri), ":t")
-      end
-      lines[#lines + 1] = ("  v%d → %s"):format(item.v, file)
-    end
-  else
-    lines[#lines + 1] = "versions: · none ·"
-  end
-  lines[#lines + 1] = ""
-  lines[#lines + 1] = "tests:"
-  if not info.tests or #info.tests == 0 then
-    lines[#lines + 1] = "  · none ·"
-  else
-    for _, t in ipairs(info.tests) do
-      lines[#lines + 1] = "  " .. render_lib.test_label(t)
-    end
-  end
-  return lines
-end
-
---- Render the preview pane from the browser state (selection, info, tab).
-function M.render(s)
-  local buf, win = s.bufs.preview, s.wins.preview
-  if not (buf and vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_win_is_valid(win)) then
-    return
-  end
-  local lines, filetype = { "· loading ·" }, ""
+--- The dbt SQL pane.
+---@param s cogitator.explorer.State
+function M.render_raw(s)
   if not s.selected then
-    lines = { "· no model selected ·" }
-  elseif s.info then
-    if s.tab == 1 then
-      lines = read_uri_lines(s, s.info.uri) or { "· loading ·" }
-      filetype = "sql"
-    elseif s.tab == 2 then
-      filetype = "sql"
-      local c = s.compiled
-      if c == nil then
-        lines = { "· loading compiled SQL ·" }
-      elseif type(c) == "table" and c.content and c.content ~= vim.NIL then
-        lines = vim.split(c.content, "\n")
-      elseif type(c) == "table" and c.uri and c.uri ~= vim.NIL then
-        lines = { "compiled file too large for the preview — open it directly:", vim.uri_to_fname(c.uri) }
-      else
-        lines = { "not compiled — run :DbtCompile (dbt writes target/compiled/…)" }
-      end
-    elseif s.tab == 3 then
-      lines = versions_and_tests(s.info)
-    elseif s.tab == 5 then
-      lines = columns_of(s)
-    else
-      local view = require("cogitator.explorer.info").view(s)
-      lines = view.lines
-      s.info_jumps = view.jumps
-    end
+    return show(s, "raw", {}, "", "dbt SQL")
   end
-  ui.set_lines(buf, lines)
-  if vim.bo[buf].filetype ~= filetype then
-    vim.bo[buf].filetype = filetype
+  local node = s.node_of[s.selected]
+  local uri = s.info and s.info.uri ~= vim.NIL and s.info.uri or (node and node.uri ~= vim.NIL and node.uri)
+  if not uri or uri == "" then
+    return show(s, "raw", { s.info and "· no file on disk ·" or "· loading ·" }, "", "dbt SQL")
   end
-  vim.api.nvim_win_set_config(win, { title = tab_title(s.tab), title_pos = "center" })
-  vim.api.nvim_win_set_cursor(win, { 1, 0 })
+  local lines = file_lines(s, uri)
+  show(
+    s,
+    "raw",
+    lines or { "· loading ·" },
+    "sql",
+    "dbt SQL · " .. vim.fn.fnamemodify(vim.uri_to_fname(uri), ":t")
+  )
+end
+
+--- The compiled SQL pane.
+---@param s cogitator.explorer.State
+function M.render_compiled(s)
+  if not s.selected then
+    return show(s, "compiled", {}, "", "compiled SQL")
+  end
+  local c = s.compiled
+  if c == nil then
+    return show(s, "compiled", { "· loading compiled SQL ·" }, "", "compiled SQL")
+  end
+  if type(c) == "table" and c.content and c.content ~= vim.NIL then
+    return show(s, "compiled", vim.split(c.content, "\n"), "sql", "compiled SQL")
+  end
+  if type(c) == "table" and c.uri and c.uri ~= vim.NIL then
+    return show(s, "compiled", {
+      "the compiled file is too large to show here — open it directly:",
+      vim.uri_to_fname(c.uri),
+    }, "", "compiled SQL")
+  end
+  show(s, "compiled", {
+    "not compiled yet — c in the explorer or :DbtCompile",
+    "(dbt writes target/compiled/…; the explorer never runs dbt itself)",
+  }, "", "compiled SQL · not compiled")
+end
+
+--- Both bottom panes.
+---@param s cogitator.explorer.State
+function M.render(s)
+  M.render_raw(s)
+  M.render_compiled(s)
 end
 
 return M

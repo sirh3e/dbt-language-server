@@ -134,18 +134,17 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   file, tests and tags, with a preview — shown in fzf-lua, snacks.picker
   or telescope when installed, else a built-in fzf-style picker (fzf's
   query syntax). Every other choice the plugin offers uses it too.
-- **Project browser — Neovim only**: `:DbtBrowse` opens a yazi-style
-  float over the whole project — every model in a searchable center
-  list (`/` filters as you type), direct upstream/downstream in the
-  side panes, and a preview below with the raw SQL, the compiled SQL
-  (served by `dbt.compiledSql`), the model's versions + tests, and an
-  info tab (description, tags, relation name, documented columns,
-  tests with jumps). The `/` filter speaks fzf's syntax; walking the
-  lineage keeps a history (`[`/`]`) shown as a breadcrumb; `<Space>`
-  marks nodes to yank or `dbt run` together; `f` jumps with the picker.
-  Backed by the editor-neutral `dbt.modelInfo` command (neighbors,
-  versions, tests and the compiled-SQL location in one round trip);
-  the UI ships only in the Neovim plugin.
+- **Model explorer — Neovim only**: `:DbtBrowse` shows one model at a
+  time: its upstream models on the left, the model's card in the
+  middle (description, tags, relation, versions, documented columns,
+  tests with jumps), its downstream models on the right, and below
+  them its dbt SQL beside the compiled SQL (served by
+  `dbt.compiledSql`). Walk the lineage from the side panes (with a
+  history and a breadcrumb), pick any model with the fuzzy picker, mark
+  models to yank or `dbt run` together. Backed by the editor-neutral
+  `dbt.modelInfo` command (neighbors, versions, tests and the
+  compiled-SQL location in one round trip); the UI ships only in the
+  Neovim plugin.
 
 **dbt workflow**
 

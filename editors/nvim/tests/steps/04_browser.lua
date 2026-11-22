@@ -1,5 +1,5 @@
--- The UI layers: graph browser (3 panes), :DbtBrowse (4 panes, filter,
--- tabs, test jump). Runs on the fixture COPY, so faking target/compiled
+-- The UI layers: graph browser (3 panes), the explorer :DbtBrowse (five
+-- panes: upstream | model | downstream over dbt SQL | compiled SQL). Runs on the fixture COPY, so faking target/compiled
 -- needs no cleanup and deletes nothing shared.
 
 return function(ctx)
@@ -43,161 +43,184 @@ return function(ctx)
   vim.fn.mkdir(compiled_dir, "p")
   vim.fn.writefile({ "select 42 as compiled_marker" }, vim.fs.joinpath(compiled_dir, "customers.sql"))
 
+  -- the explorer opens on the buffer's model (customers)
+  vim.api.nvim_set_current_buf(bufnr)
   local browse = require("cogitator.browse")
   browse.open()
-  H.wait("integration: browser loads the project", 10000, function()
-    return browse._state ~= nil and #browse._state.nodes > 0
+  H.wait("integration: the explorer opens on the buffer's model", 10000, function()
+    return browse._state ~= nil and browse._state.selected == "customers" and browse._state.info ~= nil
   end)
   local bst = browse._state
+  local panes = { "left", "center", "right", "raw", "compiled" }
   local browse_ok = bst ~= nil
-    and #bst.nodes > 0
-    and vim.api.nvim_win_is_valid(bst.wins.left)
-    and vim.api.nvim_win_is_valid(bst.wins.center)
-    and vim.api.nvim_win_is_valid(bst.wins.right)
-    and vim.api.nvim_win_is_valid(bst.wins.preview)
-  H.check(browse_ok, "integration: browser opens four panes")
+  for _, pane in ipairs(panes) do
+    browse_ok = browse_ok and bst.wins[pane] ~= nil and vim.api.nvim_win_is_valid(bst.wins[pane])
+  end
+  H.check(browse_ok, "integration: the explorer opens five panes")
   if not browse_ok then
     pcall(browse.close)
     return
   end
 
-  local center = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+  -- the layout: upstream | model | downstream above, dbt SQL | compiled below
+  local pos = {}
+  for _, pane in ipairs(panes) do
+    local c = vim.api.nvim_win_get_config(bst.wins[pane])
+    pos[pane] = { row = c.row, col = c.col, width = c.width }
+  end
   H.check(
-    center:find("customers") ~= nil and center:find("customer_orders") ~= nil,
-    "integration: browser lists the whole project",
-    center
+    pos.left.row == pos.center.row
+      and pos.center.row == pos.right.row
+      and pos.left.col < pos.center.col
+      and pos.center.col < pos.right.col
+      and pos.raw.row == pos.compiled.row
+      and pos.raw.row > pos.center.row
+      and pos.raw.col == pos.left.col
+      and pos.raw.col < pos.compiled.col
+      and pos.compiled.col + pos.compiled.width == pos.right.col + pos.right.width,
+    "integration: upstream | model | downstream over dbt SQL | compiled SQL",
+    vim.inspect(pos)
   )
 
-  -- filter + selection: the CursorMoved autocmd (not the filter itself)
-  -- drives the modelInfo fetch, so fire it like a user would
-  browse._apply_filter("customer_orders")
-  local co_row
-  for i, n in ipairs(browse._state.filtered) do
-    if n.name == "customer_orders" then
-      co_row = i
-    end
-  end
-  H.check(co_row ~= nil, "integration: browser filter keeps customer_orders reachable")
-  if co_row then
-    vim.api.nvim_win_set_cursor(bst.wins.center, { co_row, 0 })
-    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = bst.bufs.center })
-  end
-  H.wait("integration: browser selection settles on customer_orders", 10000, function()
-    local st = browse._state
-    return st and st.info and st.info.model == "customer_orders"
+  -- the card: description, tags, relation, columns, tests
+  H.wait("integration: the card shows the relation", 10000, function()
+    local text = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+    return text:find("relation: jaffle_shop%.main%.customers") ~= nil
   end)
+  local card = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+  H.check(
+    card:find("^customers") ~= nil
+      and card:find("basic information", 1, true) ~= nil
+      and card:find("#nightly", 1, true) ~= nil
+      and card:find("• customer_id", 1, true) ~= nil
+      and card:find("unique on customer_id", 1, true) ~= nil,
+    "integration: the card shows description, tags, columns and tests",
+    card
+  )
   local left = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.left, 0, -1, false), "\n")
-  H.check(left:find("orders") ~= nil, "integration: browser upstream pane follows the selection", left)
-  -- the raw tab reads the file in the background
-  H.wait("integration: browser raw tab reads the model file", 10000, function()
-    return table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n"):find("ref%(") ~= nil
-  end)
-  local prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
-  H.check(prev:find("ref%(") ~= nil, "integration: browser raw tab shows the model SQL", prev)
+  H.check(left:find("stg_customers") ~= nil, "integration: upstream lists the model's parents", left)
 
-  -- versions & tests tab
-  vim.api.nvim_set_current_win(bst.wins.center)
-  H.feed("3<Tab>")
-  prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
+  -- the two SQL panes
+  H.wait("integration: the dbt SQL pane shows the model's file", 10000, function()
+    return table.concat(vim.api.nvim_buf_get_lines(bst.bufs.raw, 0, -1, false), "\n"):find("ref%(") ~= nil
+  end)
+  H.wait("integration: the compiled pane serves dbt.compiledSql", 10000, function()
+    return table
+      .concat(vim.api.nvim_buf_get_lines(bst.bufs.compiled, 0, -1, false), "\n")
+      :find("compiled_marker") ~= nil
+  end)
   H.check(
-    prev:find("latest_version: 2") ~= nil and prev:find("not_null") ~= nil and prev:find("v1") ~= nil,
-    "integration: browser versions/tests tab reads the schema",
-    prev
+    vim.bo[bst.bufs.raw].filetype == "sql" and vim.bo[bst.bufs.compiled].filetype == "sql",
+    "integration: both SQL panes are highlighted as SQL"
   )
 
-  -- compiled tab on customers (cursor move drives the CursorMoved autocmd)
-  browse._apply_filter("customers")
-  local row
-  for i, n in ipairs(browse._state.filtered) do
-    if n.name == "customers" then
-      row = i
-    end
-  end
-  H.check(row ~= nil, "integration: browser filter keeps customers reachable")
-  if row then
-    vim.api.nvim_win_set_cursor(bst.wins.center, { row, 0 })
-    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = bst.bufs.center })
-    H.wait("integration: browser selection settles on customers", 10000, function()
-      local st = browse._state
-      return st and st.info and st.info.model == "customers"
-    end)
-    H.feed("2<Tab>")
-    -- the compiled tab is a dbt.compiledSql round trip: wait for it
-    H.wait("integration: compiled tab round trip", 10000, function()
-      local p = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
-      return p:find("compiled_marker") ~= nil
-    end)
-    prev = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
-    H.check(
-      prev:find("compiled_marker") ~= nil,
-      "integration: browser compiled tab serves dbt.compiledSql",
-      prev
-    )
-  end
+  -- a model without compiled SQL says so
+  browse.focus("orders")
+  H.wait("integration: an uncompiled model says so", 10000, function()
+    return table
+      .concat(vim.api.nvim_buf_get_lines(bst.bufs.compiled, 0, -1, false), "\n")
+      :find("not compiled", 1, true) ~= nil
+  end)
 
-  -- search narrows, the live `/` loop works, <Esc> clears
-  browse._apply_filter("stg")
-  local stg_names = vim.tbl_map(function(n)
-    return n.name
-  end, browse._state.filtered)
-  local only_stg = #stg_names > 0 and vim.tbl_contains(stg_names, "stg_payments")
-  for _, name in ipairs(stg_names) do
-    only_stg = only_stg and name:find("stg") ~= nil
-  end
-  H.check(only_stg, "integration: browser filter narrows to stg models", vim.inspect(stg_names))
-  browse._apply_filter("")
+  -- versions on the card (customer_orders is versioned)
+  browse.focus("customer_orders")
+  H.wait("integration: the card lists the versions", 10000, function()
+    local text = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+    return text:find("versions (latest 2)", 1, true) ~= nil and text:find("v1", 1, true) ~= nil
+  end)
+
+  -- <CR> on a side entry makes it the model
+  vim.api.nvim_set_current_win(bst.wins.right)
+  browse.focus("stg_customers")
+  H.wait("integration: stg_customers selected", 10000, function()
+    return bst.info and bst.info.model == "stg_customers"
+  end)
+  vim.api.nvim_set_current_win(bst.wins.right)
+  vim.api.nvim_win_set_cursor(bst.wins.right, { 1, 0 })
+  local child = bst.info.downstream[1].name
+  H.feed("<CR>")
+  H.wait("integration: <CR> on downstream makes it the model", 10000, function()
+    return bst.selected == child
+  end)
+
+  -- f / /: pick a model with the fuzzy picker
+  local config = require("cogitator").config
+  local before = config.picker
+  config.picker = "builtin"
   vim.api.nvim_set_current_win(bst.wins.center)
-  vim.api.nvim_feedkeys("/stg\r", "x", false)
-  H.check(browse._state.filter == "stg", "integration: live / filter loop", browse._state.filter)
-  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "x", false)
-  H.check(browse._state ~= nil and browse._state.filter == "", "integration: <Esc> clears the filter first")
+  H.feed("/")
+  local builtin = require("cogitator.pick.backends.builtin")
+  H.wait("integration: / opens the models picker", 10000, function()
+    return builtin._state ~= nil and builtin._state.items ~= nil
+  end)
+  builtin._set_query("^stg_pay")
+  builtin._accept("default")
+  H.wait("integration: the picked model becomes the selection", 10000, function()
+    return bst.selected == "stg_payments"
+  end)
+  config.picker = before
 
-  -- info tab: description/tags/relation + test jump
-  browse._apply_filter("customers")
-  local info_row
-  for i, n in ipairs(browse._state.filtered) do
-    if n.name == "customers" then
-      info_row = i
+  -- marks + r: one dbt.runSelection with every marked model
+  browse.focus("customers")
+  H.wait("integration: back on customers", 10000, function()
+    return bst.info and bst.info.model == "customers"
+  end)
+  vim.api.nvim_set_current_win(bst.wins.center)
+  H.feed("<Space>")
+  vim.api.nvim_set_current_win(bst.wins.left)
+  vim.api.nvim_win_set_cursor(bst.wins.left, { 1, 0 })
+  H.feed("<Space>")
+  local chosen = browse._chosen()
+  H.check(
+    #chosen == 2 and vim.tbl_contains(chosen, "customers"),
+    "integration: <Space> marks the model and an entry",
+    vim.inspect(chosen)
+  )
+  H.check(
+    table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, 1, false), ""):find("● marked", 1, true)
+      ~= nil,
+    "integration: the card says it is marked"
+  )
+  -- the suite has no dbt: catch the selector the run is started with
+  local commands = require("cogitator.commands")
+  local run_selection = commands.run_selection
+  local selector
+  commands.run_selection = function(opts)
+    selector = opts.args
+  end
+  vim.api.nvim_set_current_win(bst.wins.center)
+  H.feed("r")
+  commands.run_selection = run_selection
+  H.check(
+    selector ~= nil and selector:find(chosen[1], 1, true) ~= nil and selector:find(chosen[2], 1, true) ~= nil,
+    "integration: r runs both marked models in one dbt run",
+    selector
+  )
+  H.check(next(bst.marked) == nil, "integration: running clears the marks")
+
+  -- <CR> on a test line of the card jumps to its YAML
+  local jump_line
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false)) do
+    if l:find("unique on customer_id") then
+      jump_line = i
     end
   end
-  if info_row then
-    vim.api.nvim_win_set_cursor(bst.wins.center, { info_row, 0 })
-    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = bst.bufs.center })
-    H.wait("integration: info selection settles", 10000, function()
-      local st = browse._state
-      return st and st.info and st.info.model == "customers"
-    end)
+  H.check(jump_line ~= nil, "integration: the card lists the model's tests")
+  if jump_line then
     vim.api.nvim_set_current_win(bst.wins.center)
-    H.feed("4<Tab>")
-    H.wait("integration: info tab renders", 10000, function()
-      local p = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
-      return p:find("relation: jaffle_shop%.main%.customers") ~= nil
-    end)
-    local prev_info = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false), "\n")
+    vim.api.nvim_win_set_cursor(bst.wins.center, { jump_line, 0 })
+    H.feed("<CR>")
     H.check(
-      prev_info:find("#nightly") ~= nil and prev_info:find("relation: jaffle_shop%.main%.customers") ~= nil,
-      "integration: browser info tab shows tags and relation",
-      prev_info:sub(1, 200)
+      vim.api.nvim_buf_get_name(0):find("schema%.yml$") ~= nil and browse._state == nil,
+      "integration: <CR> on a test opens its schema entry",
+      vim.api.nvim_buf_get_name(0)
     )
-    local jump_line
-    for i, l in ipairs(vim.api.nvim_buf_get_lines(bst.bufs.preview, 0, -1, false)) do
-      if l:find("unique on customer_id") then
-        jump_line = i
-      end
-    end
-    H.check(jump_line ~= nil, "integration: info tab lists the model's tests", prev_info:sub(1, 200))
-    if jump_line then
-      vim.api.nvim_set_current_win(bst.wins.preview)
-      vim.api.nvim_win_set_cursor(bst.wins.preview, { jump_line, 0 })
-      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "x", false)
-      H.check(
-        vim.api.nvim_buf_get_name(0):find("schema%.yml$") ~= nil,
-        "integration: info tab test jump opens the schema entry",
-        vim.api.nvim_buf_get_name(0)
-      )
-    end
-    vim.api.nvim_set_current_buf(bufnr)
   end
+  vim.api.nvim_set_current_buf(bufnr)
+  browse.open()
+  H.wait("integration: the explorer reopens", 10000, function()
+    return browse._state ~= nil and browse._state.selected == "customers"
+  end)
 
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/browser_motions.lua"))(ctx, browse)
 
