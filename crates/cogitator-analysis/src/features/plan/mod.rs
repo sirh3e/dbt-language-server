@@ -34,6 +34,7 @@ mod passes;
 mod phys;
 mod report;
 pub mod schemas;
+mod split;
 pub mod suppress;
 #[cfg(test)]
 mod tests;
@@ -49,6 +50,7 @@ pub use report::{
     EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, Placement,
     PlanLevels, PlanStatus, QueryPlan,
 };
+pub use split::{split_plan, SplitPart, SplitPlan};
 pub use trace::{NeedsView, TraceRow, TraceView};
 
 /// What the shell found at the model's `target/compiled` path. The file

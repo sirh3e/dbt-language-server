@@ -11,6 +11,7 @@ pub(crate) mod extract_cte;
 pub(crate) mod governance_fixes;
 mod quickfix;
 pub(crate) mod refactors;
+pub(crate) mod split_model;
 pub(crate) mod yaml_columns;
 pub(crate) mod yaml_fixes;
 mod yaml_text;

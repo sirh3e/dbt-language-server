@@ -132,7 +132,7 @@ fn hir_input<'a>(input: &PlanInput<'a>) -> HirInput<'a> {
     }
 }
 
-fn built_hir(input: &PlanInput<'_>) -> BuiltHir {
+pub(super) fn built_hir(input: &PlanInput<'_>) -> BuiltHir {
     let front = hir_input(input);
     two_pass(input, |env| build_hir(&front, env))
 }
@@ -160,7 +160,7 @@ pub(super) fn two_pass(
     }
 }
 
-fn merge_manifest_config(hir: &mut Hir, input: &PlanInput<'_>) {
+pub(super) fn merge_manifest_config(hir: &mut Hir, input: &PlanInput<'_>) {
     let manifest = input
         .model
         .and_then(|m| input.manifest?.models.get(m))

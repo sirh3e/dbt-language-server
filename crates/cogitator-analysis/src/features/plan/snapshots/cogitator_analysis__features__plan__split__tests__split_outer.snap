@@ -1,0 +1,7 @@
+---
+source: crates/cogitator-analysis/src/features/plan/split.rs
+expression: "applied(RANKED, &plan.edits)"
+---
+{{ config(materialized='table') }}
+select user_id, total, rank() over (order by total desc) as rnk
+from {{ ref('orders_ranked__by_user') }} as by_user

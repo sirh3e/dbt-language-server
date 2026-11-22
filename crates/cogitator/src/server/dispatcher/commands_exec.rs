@@ -56,6 +56,10 @@ impl Dispatcher {
                 self.run_dbt(req.id, "source freshness", &uri);
                 return;
             }
+            "dbt.splitPlan" => {
+                self.split_plan(req.id, uri);
+                return;
+            }
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;

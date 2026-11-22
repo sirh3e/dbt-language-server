@@ -104,7 +104,11 @@ impl Passes<'_, '_> {
             trace,
             incrementality: (hir.config.materialized == Some(Materialization::Table)).then(|| {
                 let inputs = cogitator_rules::canon::incrementality::inputs_for(hir, Some(&inputs));
-                super::incrementality::IncrementalityView::of(&output.mir, Some(&inputs))
+                super::incrementality::IncrementalityView::of(
+                    &output.mir,
+                    Some(&inputs),
+                    input.model.unwrap_or("model"),
+                )
             }),
             mir: output.mir,
             lir: output.lir,

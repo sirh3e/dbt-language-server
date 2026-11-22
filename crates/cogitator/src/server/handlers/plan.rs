@@ -175,6 +175,44 @@ pub fn incrementality(snap: &Snapshot, derived: &DerivedCache, artifact_cap: u64
     Reply::result(&report)
 }
 
+/// The split of `uri`'s model at its incrementality frontier
+/// (specs/ir-pipeline/10 §6), from the open text or the file on disk.
+pub fn split_plan_of(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+    uri: &str,
+    artifact_cap: u64,
+) -> Option<cogitator_analysis::features::plan::SplitPlan> {
+    let model = model_name_from_uri(uri)?;
+    let ctx = &snap.ctx;
+    let artifacts = match ctx.project_root.as_deref() {
+        Some(root) => derived.artifacts(root, artifact_cap),
+        None => ArtifactSet::default(),
+    };
+    let project = project_of(ctx, derived);
+    let revision = project.as_ref().map_or(0, |p| p.revision);
+    let text = match snap.doc.as_deref() {
+        Some(doc) => doc.text.to_string(),
+        None => {
+            let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+            std::fs::read_to_string(path).ok()?
+        }
+    };
+    let input = PlanInput::from_context(ctx, &text, Some(&model), &artifacts, revision)
+        .with_project(project.as_deref());
+    cogitator_analysis::features::plan::split_plan(&input)
+}
+
+/// `dbt.splitPlan {uri}`: the split as S-expressions and files, or null
+/// for a model that is no table.
+#[tracing::instrument(skip_all, fields(uri = %short_uri(uri)))]
+pub fn split_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_cap: u64) -> Reply {
+    match split_plan_of(snap, derived, uri, artifact_cap) {
+        Some(plan) => Reply::result(&plan),
+        None => Reply::null(),
+    }
+}
+
 fn project_of(ctx: &DbtContext, derived: &DerivedCache) -> Option<Arc<SchemaSnapshot>> {
     ctx.project_root
         .as_deref()

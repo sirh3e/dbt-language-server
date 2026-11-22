@@ -4,6 +4,8 @@
 //! each at its place in the model, as a warehouse's refresh-mode reason.
 
 use cogitator_ir::mir::Mir;
+use cogitator_rules::canon::incrementality::annotate::analysis_sexp;
+use cogitator_rules::canon::incrementality::frontier::{frontier, frontier_sexp};
 use cogitator_rules::canon::incrementality::{analyse, IncrementalInputs, Strategy, Verdict};
 use cogitator_rules::rules::incr::could_be_incremental::describe;
 use serde::Serialize;
@@ -23,6 +25,13 @@ pub struct IncrementalityView {
     pub reasons: Vec<ReasonView>,
     /// The finding's text, when there is an increment to offer.
     pub summary: Option<String>,
+    /// The analysis as an S-expression: the verdict and every plan node's
+    /// DBSP class (specs/ir-pipeline/10 §6, format 1).
+    pub sexp: String,
+    /// For a model that stays a table: the parts that would not, and the
+    /// ones refused (format 2).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frontier: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -40,9 +49,12 @@ pub struct ReasonView {
 }
 
 impl IncrementalityView {
-    pub(super) fn of(mir: &Mir, inputs: Option<&IncrementalInputs>) -> Self {
+    pub(super) fn of(mir: &Mir, inputs: Option<&IncrementalInputs>, model: &str) -> Self {
         let analysis = analyse(mir, inputs);
         let summary = describe(&analysis);
+        let sexp = analysis_sexp(mir, mir.root, model, &analysis).pretty(100);
+        let frontier = matches!(analysis.verdict, Verdict::Keep(_))
+            .then(|| frontier_sexp(mir, model, &frontier(mir, inputs)).pretty(100));
         let delta = |i: &cogitator_rules::canon::incrementality::DeltaInput| DeltaView {
             relation: i.relation.clone(),
             column: i.column.clone(),
@@ -55,6 +67,8 @@ impl IncrementalityView {
             inputs: Vec::new(),
             reasons: Vec::new(),
             summary: None,
+            sexp: sexp.clone(),
+            frontier: frontier.clone(),
         };
         match analysis.verdict {
             Verdict::Append { inputs, .. } => IncrementalityView {
