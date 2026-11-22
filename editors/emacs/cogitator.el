@@ -880,6 +880,45 @@ it is applied to every match after asking."
               "dbt.astGrep" (append argument (list :apply t))
               (lambda (_) (message "cogitator: rewrote %d matches" (length matches)))))))))))
 
+;; unresolved names (dbt.unresolved)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--unresolved-line (item)
+  "One grep-style line for a dbt.unresolved ITEM: file:line:column: [kind] name — message."
+  (let ((start (plist-get (plist-get item :range) :start)))
+    (format "%s:%d:%d: [%s] %s — %s"
+            (cogitator--uri-to-file (plist-get item :uri))
+            (1+ (plist-get start :line))
+            (1+ (plist-get start :character))
+            (plist-get item :kind)
+            (plist-get item :name)
+            (or (plist-get item :message) ""))))
+
+;;;###autoload
+(defun cogitator-unresolved (&optional kinds)
+  "Every unresolved ref, source, doc, macro and var (dbt.unresolved).
+With a prefix argument, read KINDS (space separated: ref source
+source_table doc macro var) to list only those.  The names land in a
+grep buffer, one per line, at their place."
+  (interactive
+   (list (when current-prefix-arg
+           (split-string (read-string "kinds (ref source source_table doc macro var): ")))))
+  (let ((argument (append (list :uri "")
+                          (when kinds (list :kinds (vconcat kinds))))))
+    (cogitator--execute
+     "dbt.unresolved" argument
+     (lambda (result)
+       (let ((items (append (plist-get result :items) nil))
+             (buf (get-buffer-create "*cogitator-unresolved*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (format "-*- dbt unresolved: %d -*-\n\n" (plist-get result :count)))
+             (insert (mapconcat #'cogitator--unresolved-line items "\n") "\n"))
+           (require 'grep)
+           (grep-mode))
+         (display-buffer buf))))))
+
 ;;;###autoload
 (defun cogitator-doctor ()
   "Health report: binary, project root, profiles candidates, client state.

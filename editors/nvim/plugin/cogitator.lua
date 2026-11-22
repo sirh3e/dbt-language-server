@@ -32,6 +32,15 @@ cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, a
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
+vim.api.nvim_create_user_command("DbtUnresolved", function(opts)
+  require("cogitator.commands").unresolved(opts)
+end, {
+  nargs = "*",
+  complete = function()
+    return { "ref", "source", "source_table", "doc", "macro", "var" }
+  end,
+  desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
+})
 vim.api.nvim_create_user_command("DbtFind", function(opts)
   require("cogitator.pick").find(opts.args)
 end, {

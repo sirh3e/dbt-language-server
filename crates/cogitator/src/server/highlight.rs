@@ -311,6 +311,24 @@ fn compute(ctx: &DbtContext, r: &Resolved) -> Option<Highlights> {
     cogitator_treesitter::highlight_with(&r.text, r.language, MAX_SPANS, &yaml)
 }
 
+/// The cached highlights of a document as `dbt.highlight` answers them
+/// (no range, no version), for the semantic-tokens stream of YAML files
+/// (`server/semantic_yaml.rs`): one source of truth for both channels.
+pub fn document_highlights(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+    uri: &str,
+) -> Option<Arc<Highlights>> {
+    let resolved = resolve(snap, Source::Uri(uri.to_string(), None)).ok()??;
+    if resolved.text.len() > MAX_BYTES {
+        return None;
+    }
+    match &resolved.key {
+        Some(key) => derived.highlights(key.clone(), || compute(&snap.ctx, &resolved)),
+        None => compute(&snap.ctx, &resolved).map(Arc::new),
+    }
+}
+
 /// `dbt.highlight`.
 pub fn reply(snap: &Snapshot, derived: &DerivedCache, request: Request) -> Reply {
     let resolved = match resolve(snap, request.source) {

@@ -147,6 +147,29 @@ return function(ctx)
     vim.inspect(items)
   )
 
+  -- :DbtUnresolved quickfix items
+  local unresolved = require("cogitator.commands").unresolved_items({
+    count = 1,
+    items = {
+      {
+        kind = "ref",
+        name = "ghost",
+        uri = "file:///p/models/a.sql",
+        range = { start = { line = 2, character = 14 }, ["end"] = { line = 2, character = 19 } },
+        message = "model 'ghost' not found in the project",
+      },
+    },
+  })
+  H.check(
+    #unresolved == 1
+      and unresolved[1].filename == "/p/models/a.sql"
+      and unresolved[1].lnum == 3
+      and unresolved[1].col == 15
+      and unresolved[1].text == "[ref] ghost — model 'ghost' not found in the project",
+    "commands: unresolved_items place each name at its line and column",
+    vim.inspect(unresolved)
+  )
+
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")

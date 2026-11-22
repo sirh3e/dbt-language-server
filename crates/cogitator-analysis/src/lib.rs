@@ -73,6 +73,15 @@ impl Documents {
         self.docs.get(uri).cloned()
     }
 
+    /// Every open document's uri and text (Arc clones), for offloaded
+    /// project-wide work that must see unsaved edits (`dbt.unresolved`).
+    pub fn texts(&self) -> Vec<(String, Arc<str>)> {
+        self.docs
+            .iter()
+            .map(|(uri, doc)| (uri.clone(), doc.text.clone()))
+            .collect()
+    }
+
     /// textDocument/didClose (P1): forget the document (and whatever
     /// per-document state the parser backend keeps).
     pub fn close(&mut self, uri: &str) {

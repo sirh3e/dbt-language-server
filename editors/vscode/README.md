@@ -84,6 +84,9 @@ compiled SQL as SQL; the setting `cogitator.highlight.onOpen` —
 project as it opens), `dbt: Show node info` (a macro's, test's or
 source's card from `dbt.nodeInfo`), inlay hints with the value of each
 `var()` (`editor.inlayHints.enabled`, docs/variables.md), `dbt:
+Unresolved references` (every unresolved `ref`, `source`, `doc`, macro
+and `var` of the project from `dbt.unresolved`, a quick pick that jumps
+to each), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,

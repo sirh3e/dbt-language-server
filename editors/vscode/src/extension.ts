@@ -624,6 +624,55 @@ async function astGrep(): Promise<void> {
   }
 }
 
+/** One dbt.unresolved item. */
+export interface UnresolvedItem {
+  kind: string;
+  name: string;
+  uri: string;
+  range: HighlightSpan["range"];
+  message?: string;
+}
+
+/** An unresolved name as a quick-pick entry: what, and where. */
+export function unresolvedLabel(item: UnresolvedItem, relative: (uri: string) => string): {
+  label: string;
+  description: string;
+  detail?: string;
+} {
+  return {
+    label: `[${item.kind}] ${item.name}`,
+    description: `${relative(item.uri)}:${item.range.start.line + 1}`,
+    detail: item.message,
+  };
+}
+
+/** Every unresolved ref, source, doc, macro and var (dbt.unresolved). */
+async function unresolved(): Promise<void> {
+  const result = (await execDbt("dbt.unresolved", { uri: "" })) as
+    | { items: UnresolvedItem[]; count: number; truncated: boolean }
+    | undefined;
+  if (!result) {
+    return;
+  }
+  if (result.count === 0) {
+    void vscode.window.showInformationMessage(
+      "dbt: nothing unresolved — every ref, source, doc, macro and var resolves"
+    );
+    return;
+  }
+  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
+  const pick = await vscode.window.showQuickPick(
+    result.items.map((u) => ({ ...unresolvedLabel(u, relative), item: u })),
+    { matchOnDescription: true, placeHolder: `${result.count} unresolved names` }
+  );
+  if (pick) {
+    const r = pick.item.range;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.item.uri), {
+      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
+    });
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -641,6 +690,7 @@ export async function activate(
     ["cogitator.highlight", highlight],
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
+    ["cogitator.unresolved", unresolved],
     [
       "cogitator.status",
       async () => {

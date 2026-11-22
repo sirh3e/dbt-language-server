@@ -45,6 +45,9 @@ impl Dispatcher {
     }
 
     pub(super) fn hover(&mut self, content: &[u8]) {
+        if self.compiled_hover(content) {
+            return;
+        }
         let derived = self.derived.clone();
         self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
@@ -107,6 +110,10 @@ impl Dispatcher {
             return;
         };
         let snap = self.snapshot_for(&uri);
+        if crate::server::compiled_source::source_of(&snap.ctx, &uri).is_some() {
+            self.compiled_definition(id, uri, pos, snap);
+            return;
+        }
         let function = snap
             .doc
             .as_deref()
@@ -224,17 +231,6 @@ impl Dispatcher {
             .map(|doc| features::selection_ranges(doc, &params.positions))
             .unwrap_or_default();
         self.send(&ResultResponse::new(req.id, ranges));
-    }
-
-    pub(super) fn semantic_tokens(&mut self, content: &[u8]) {
-        self.respond_position(
-            content,
-            "textDocument/semanticTokens/full",
-            |_, doc, _, _| {
-                doc.map(features::semantic_tokens)
-                    .unwrap_or(cogitator_lsp::SemanticTokens { data: Vec::new() })
-            },
-        );
     }
 
     pub(super) fn call_hierarchy_incoming(&mut self, content: &[u8]) {

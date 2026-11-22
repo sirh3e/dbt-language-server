@@ -134,6 +134,21 @@ names what already exists in the codebase.
       suggestions, function docs/completion (743 entries), and lineage
       parsing Snowflake syntax (QUALIFY) — all tested.
 
+- [x] **Unresolved references, project-wide** (`dbt.unresolved`): every
+      unresolved `ref`, `source`, source table, `doc`, macro and `var` of the
+      root project in one list (kind, name, uri, range, message,
+      suggestions), from the dangling-ref diagnostics' per-document checks
+      plus `{{ macro() }}` calls no package defines and dbt does not
+      provide; unsaved buffers count. Neovim `:DbtUnresolved` (quickfix) and
+      `:DbtFind unresolved` (picker), Emacs `cogitator-unresolved`, VS Code
+      "dbt: Unresolved references".
+- [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
+      `target/run/…`, hover shows the Jinja source lines a compiled line came
+      from (a link to them) above the SQL hover, and definition jumps there
+      (a CTE of the compiled file still wins). The line map is a patience
+      diff of the normalized texts: copied lines are exact anchors, the
+      lines between anchors come from the source lines between them.
+
 ## P2 — quality of life
 
 - [x] **`completionItem/resolve`** — send lean completion items, resolve
@@ -163,7 +178,13 @@ names what already exists in the codebase.
       `rev` in the workspace Cargo.toml.
 - [x] **Tree-sitter batch — token-based v1 shipped** (06 §3.6, the tree can
       later upgrade fidelity: richer folding/symbols from real nodes):
-      - [x] `textDocument/semanticTokens` (full)
+      - [x] `textDocument/semanticTokens` (full and range); YAML property
+            files get the dbt-aware captures of `dbt.highlight` (models,
+            sources, columns, tests, macros, refs, `doc()`, config keys,
+            `.unresolved`) and the Jinja/SQL inside values through the same
+            stream — legend types `type`/`property`/`parameter` and
+            modifiers `declaration`, `dbt`, `unresolved` (specs/highlighting
+            §12), so stock clients (Zed) colour YAML too
       - [x] `textDocument/foldingRange` (multi-line paren pairs)
       - [x] `textDocument/documentSymbol` (CTEs + macros, flat)
       - [x] `textDocument/selectionRange` (token → line → document)

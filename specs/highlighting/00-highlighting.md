@@ -36,8 +36,8 @@ counterparts. Extends what #46 introduced; tracked by the GitHub epic
 - A Neovim parser that is installed and running keeps priority for the
   languages it covers (§7): the server's colours fill what Neovim cannot.
 - No change to editing: highlighting is decoration, never text.
-- Not a replacement for `textDocument/semanticTokens`, which stays the
-  SQL token stream it is today (§12 discusses YAML semantic tokens).
+- Not a replacement for `textDocument/semanticTokens`: it stays the SQL
+  token stream for SQL, and for YAML carries this channel's captures (§12).
 
 **Glossary**
 
@@ -432,10 +432,16 @@ Order (each a sub-issue of the epic; later ones depend on earlier ones):
 
 Open questions:
 
-- **Semantic tokens for YAML**: Zed (and any stock client) could get the §5
-  captures through `textDocument/semanticTokens` if the legend grew
-  (`type`, `property`, `function`, `modifier: dbt`). Deferred: it changes a
-  capability every client sees.
+- **Semantic tokens for YAML** — done: `textDocument/semanticTokens/full`
+  and `/range` on a `.yml`/`.yaml` document answer the spans of
+  `dbt.highlight` (the same cached computation, `server/semantic_yaml.rs`)
+  without the `yaml` base layer, mapped by capture prefix
+  (`cogitator-analysis` `features::capture_token`): the legend grew
+  `type`, `property`, `parameter` (appended, the SQL indices stay) and the
+  modifiers `declaration` (a name an entry defines), `dbt` (every
+  dbt-aware capture) and `unresolved`. `function.dbt.macro` is `macro`,
+  `module.dbt.source` `namespace`; punctuation, comments and tags are left
+  to the client.
 - **Neovim's own injections**: a `queries/yaml/injections.scm` shipped by
   the plugin could hand YAML scalars with Jinja to the installed
   tree-sitter-dbt parser — no server round-trip, but no §4/§5 layers.

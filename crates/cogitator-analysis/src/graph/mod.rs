@@ -381,6 +381,11 @@ impl ProjectGraph {
         (nodes, edges)
     }
 
+    /// Every node, in no particular order.
+    pub fn nodes(&self) -> impl Iterator<Item = &NodeData> {
+        self.graph.node_weights()
+    }
+
     pub fn node_count(&self) -> usize {
         self.graph.node_count()
     }

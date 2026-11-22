@@ -107,7 +107,7 @@ writer wins).
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
-  `dbt.astGrep`, `dbt.nodeInfo`
+  `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -173,6 +173,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.highlight` | `{language, version?, spans: [{range, capture, layer}], truncated, layers}`, or `null` for compiled SQL that does not exist (an uncompiled model or test, a macro) | none (read-only): the grammars' highlights (specs/highlighting §2) of `{uri, language?}` (open text, else the file; the language from the path: `.yml` → yaml, `target/compiled\|run` → sql, else dbt), `{text, language?: dbt\|sql\|yaml}`, `{model?, compiled: true}` or `{node: {kind, name}, compiled?}`; `range: {start: {line}, end: {line}}` answers those lines' spans, `version` is echoed; YAML gets its base layer, Jinja and SQL inside values and dbt-aware captures (§3–§5); whole answers cached per document generation / file stamp; at most 50 000 spans, nothing past 2 MiB |
 | `dbt.astGrep` | `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` or InvalidParams Guidance | ast-grep (`cogitator-astgrep`) over tree-sitter-dbt (`dbt`: Jinja structure; the SQL is opaque text) or tree-sitter-sequel (`sql`, compiled SQL, whole statements): `{pattern, language?, rewrite?, uri?}` — `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`); at most 500 matches; `apply: true` with a `rewrite` sends workspace/applyEdit. The project's `sgconfig.yml` rules (`language: dbt\|sql`) are pull diagnostics (`source: ast-grep`) and their `fix` a quickfix |
 | `dbt.nodeInfo` | `{kind, name, …}` per kind (specs/highlighting §6.1), or `null` + a WARNING with the closest names | none (read-only): `{node: {kind, name}}` — `model` (modelInfo's answer + kind), `macro` (package, description, params, uri, range, callers, calls, usedByTests), `test` / `analysis` / `source` / `exposure` / `metric` / `semantic_model` (uri, refs, calls, upstream, downstream, compiledUri for tests and analyses), `generic_test` (a `{% test %}` definition: params, uri, range, appliedTo [{model, column, uri, range}]) |
+| `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -491,6 +492,7 @@ vim.lsp.enable("cogitator")
 | `:DbtSyntaxTree` | `dbt.syntaxTree` | toggle the syntax-tree split (§5.3d) |
 | `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
+| `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
 | `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |
 | `:DbtProjects!` | — (manager store) | manage one project: open, profiles directory, clear selections, rename (`label`), forget |

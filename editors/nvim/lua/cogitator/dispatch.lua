@@ -140,6 +140,7 @@ M.SUBCOMMANDS = {
   plan = { run = plain("plan"), desc = "this model's query plan" },
   doctor = { run = plain("doctor"), desc = "the server's health report" },
   dead = { run = plain("dead_models"), desc = "models nothing uses" },
+  unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
   incrementality = { run = plain("incrementality"), desc = "table models that could be incremental" },
   impact = {

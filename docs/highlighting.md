@@ -118,6 +118,31 @@ Emacs maps captures to `font-lock-*` faces (`.unresolved` to
 `font-lock-warning-face`); VS Code to theme colours (`.unresolved` to
 `editorWarning.foreground`).
 
+## In any editor: semantic tokens for YAML
+
+Editors that colour only through the standard
+`textDocument/semanticTokens` (Zed, Helix, any stock LSP client) get the
+dbt-aware YAML colours too: on a `.yml`/`.yaml` file the server answers
+the same captures as `dbt.highlight` (without its YAML base layer, which
+the editor paints itself), mapped to standard token types:
+
+| Capture | Token type | Modifiers |
+|---|---|---|
+| a model's, seed's, snapshot's, exposure's… `name`, `type.dbt.source_table` | `type` | `dbt`, `declaration` |
+| `type.dbt.reference` (`ref()`/`source()` in YAML), `type.dbt.profile` | `type` | `dbt` |
+| `module.dbt.source` | `namespace` | `dbt`, `declaration` |
+| `property.dbt.column` | `property` | `dbt`, `declaration` |
+| `function.dbt.macro` | `macro` | `dbt`, `declaration` |
+| `function.dbt.test` | `function` | `dbt` |
+| `variable.parameter.dbt` | `parameter` | `dbt` |
+| `keyword.dbt.config` | `keyword` | `dbt` |
+| `string.special.dbt.doc` | `string` | `dbt` |
+| `….unresolved` | as above | + `unresolved` |
+
+The Jinja and SQL inside values come along as `keyword`, `function`,
+`variable`, `string`, `number` and `operator`. `/range` requests are
+answered too, for SQL as well.
+
 ## Macros and tests
 
 - **Neovim's explorer** (`:DbtBrowse`, then `.` for every kind) selects

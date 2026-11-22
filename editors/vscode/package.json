@@ -99,6 +99,10 @@
         "title": "dbt: Show node info"
       },
       {
+        "command": "cogitator.unresolved",
+        "title": "dbt: Unresolved references"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },
