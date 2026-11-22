@@ -33,6 +33,11 @@ changelog is generated from the history (`just changelog`).
    - The specs are **binding**: a change to wire behavior updates
      `specs/rust-port/` (server) or `specs/neovim-plugin/` (editor
      surface) in the same PR.
+   - **A new `dbt.*` command reaches every editor in the same PR**: classify
+     it in `editors/parity.toml` and wrap it in Neovim, Emacs and VS Code
+     (the `editor-parity` skill, `.claude/skills/editor-parity/SKILL.md`,
+     lists every file). `cargo test -p cogitator-lsp --test
+     consumer_parity` fails until it is; CI's editors job runs it too.
    - New user-visible failures carry a Reason and a Solution.
 5. **Open a PR against `main`** on
    [sirh3e/dbt-language-server](https://github.com/sirh3e/dbt-language-server).

@@ -1,0 +1,91 @@
+# Consumer parity (crates/cogitator-lsp/tests/consumer_parity.rs, the editor-parity skill).
+#
+# Every dbt.* command the server registers (cogitator_lsp::COMMANDS) is classified here:
+#   kind = "user"      a person runs it, so every editor that can wrap a command wraps it:
+#                      nvim, emacs and vscode (Zed has no command surface; it gets code
+#                      actions and lenses alone).
+#   kind = "internal"  the server sends it inside a code lens or code action, which every
+#                      LSP client runs by itself; `via` says where.
+#
+# [gaps.<editor>] lists the user commands an editor did not wrap when the rule was adopted
+# (2026-11-22). It only shrinks: a new command never gets a line here, and the test fails
+# once an editor wraps a listed command until its line is removed.
+
+[commands]
+"dbt.goToSchema" = { kind = "user" }
+"dbt.columnLineage" = { kind = "user" }
+"dbt.openSchema" = { kind = "internal", via = "code lens and code action 'Go to schema' (features/lenses.rs, code_actions/mod.rs)" }
+"dbt.showLineage" = { kind = "user" }
+"dbt.run" = { kind = "user" }
+"dbt.test" = { kind = "user" }
+"dbt.compile" = { kind = "user" }
+"dbt.modelGraph" = { kind = "user" }
+"dbt.profiles" = { kind = "user" }
+"dbt.setTarget" = { kind = "user" }
+"dbt.extractModelYaml" = { kind = "user" }
+"dbt.modelTests" = { kind = "user" }
+"dbt.goToTests" = { kind = "internal", via = "code lens 'N tests' and its code action (features/lenses.rs, code_actions/mod.rs)" }
+"dbt.status" = { kind = "user" }
+"dbt.projectGraph" = { kind = "user" }
+"dbt.modelInfo" = { kind = "user" }
+"dbt.relation" = { kind = "user" }
+"dbt.compiledSql" = { kind = "user" }
+"dbt.parse" = { kind = "user" }
+"dbt.openModel" = { kind = "internal", via = "code action 'Open model' (cogitator-analysis features/code_actions/mod.rs)" }
+"dbt.setProfilesDir" = { kind = "user" }
+"dbt.cache" = { kind = "user" }
+"dbt.reloadConfig" = { kind = "user" }
+"dbt.sourceFreshness" = { kind = "user" }
+"dbt.cancel" = { kind = "user" }
+"dbt.runSelection" = { kind = "user" }
+"dbt.deadModels" = { kind = "user" }
+"dbt.impact" = { kind = "user" }
+"dbt.expandJinja" = { kind = "user" }
+"dbt.doctor" = { kind = "user" }
+"dbt.preview" = { kind = "user" }
+"dbt.queryPlan" = { kind = "user" }
+"dbt.deps" = { kind = "internal", via = "code action 'Run dbt deps' for a missing package (code_actions/mod.rs)" }
+"dbt.incrementality" = { kind = "user" }
+"dbt.splitPlan" = { kind = "user" }
+
+[gaps.nvim]
+"dbt.columnLineage" = "predates the parity rule"
+"dbt.reloadConfig" = "predates the parity rule"
+
+[gaps.emacs]
+"dbt.columnLineage" = "predates the parity rule"
+"dbt.modelInfo" = "predates the parity rule"
+"dbt.compiledSql" = "predates the parity rule"
+"dbt.reloadConfig" = "predates the parity rule"
+"dbt.sourceFreshness" = "predates the parity rule"
+"dbt.cancel" = "predates the parity rule"
+"dbt.runSelection" = "predates the parity rule"
+"dbt.deadModels" = "predates the parity rule"
+"dbt.impact" = "predates the parity rule"
+"dbt.expandJinja" = "predates the parity rule"
+"dbt.preview" = "predates the parity rule"
+"dbt.queryPlan" = "predates the parity rule"
+
+[gaps.vscode]
+"dbt.goToSchema" = "predates the parity rule"
+"dbt.columnLineage" = "predates the parity rule"
+"dbt.modelGraph" = "predates the parity rule"
+"dbt.profiles" = "predates the parity rule"
+"dbt.setTarget" = "predates the parity rule"
+"dbt.extractModelYaml" = "predates the parity rule"
+"dbt.modelTests" = "predates the parity rule"
+"dbt.projectGraph" = "predates the parity rule"
+"dbt.modelInfo" = "predates the parity rule"
+"dbt.relation" = "predates the parity rule"
+"dbt.compiledSql" = "predates the parity rule"
+"dbt.setProfilesDir" = "predates the parity rule"
+"dbt.cache" = "predates the parity rule"
+"dbt.reloadConfig" = "predates the parity rule"
+"dbt.sourceFreshness" = "predates the parity rule"
+"dbt.cancel" = "predates the parity rule"
+"dbt.runSelection" = "predates the parity rule"
+"dbt.deadModels" = "predates the parity rule"
+"dbt.impact" = "predates the parity rule"
+"dbt.expandJinja" = "predates the parity rule"
+"dbt.doctor" = "predates the parity rule"
+"dbt.queryPlan" = "predates the parity rule"
