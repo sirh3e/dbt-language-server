@@ -199,4 +199,149 @@ return function(ctx)
     "astgrep: the preview is coloured as dbt",
     vim.inspect(shown and shown.code)
   )
+
+  -- highlight on open (specs/highlighting §7.1): a YAML property file
+  local tshl = require("cogitator.tshl")
+  local schema = vim.fs.joinpath(ctx.fixture, "models", "schema.yml")
+  vim.cmd.edit(schema)
+  local ybuf = vim.api.nvim_get_current_buf()
+  local function groups(buf)
+    local out = {}
+    for _, m in ipairs(tshl.marks(buf)) do
+      out[m[4].hl_group] = (out[m[4].hl_group] or 0) + 1
+    end
+    return out
+  end
+  H.wait("highlight: a YAML file is coloured by the server on open", 15000, function()
+    local g = groups(ybuf)
+    return g["@type.dbt.model"] and g["@property.dbt.column"] and g["@function.dbt.test"]
+  end, function()
+    return vim.inspect(groups(ybuf))
+  end)
+  H.check(vim.b[ybuf].cogitator_tshl == "auto", "highlight: auto mode painted it", vim.b[ybuf].cogitator_tshl)
+
+  -- an older answer is dropped: of two requests, only the second paints
+  local painted = {}
+  tshl.paint(ybuf, { text = "models:\n  - name: old\n", language = "yaml" }, {
+    on_done = function()
+      painted[#painted + 1] = "old"
+    end,
+  })
+  tshl.paint(ybuf, { uri = vim.uri_from_bufnr(ybuf) }, {
+    on_done = function()
+      painted[#painted + 1] = "new"
+    end,
+  })
+  H.wait("highlight: the newer answer paints", 10000, function()
+    return #painted > 0
+  end)
+  vim.wait(300)
+  H.check(vim.deep_equal(painted, { "new" }), "highlight: an older answer is dropped", vim.inspect(painted))
+
+  -- an edit is painted again, after the debounce
+  -- a new source table at the end of the file
+  vim.api.nvim_buf_set_lines(ybuf, -1, -1, false, { "      - name: brand_new_table" })
+  vim.api.nvim_exec_autocmds("TextChanged", { buffer = ybuf })
+  H.wait("highlight: an edit is coloured again", 10000, function()
+    local last = vim.api.nvim_buf_line_count(ybuf) - 1
+    for _, m in ipairs(tshl.marks(ybuf)) do
+      if m[2] == last and m[4].hl_group == "@type.dbt.source_table" then
+        return true
+      end
+    end
+    return false
+  end)
+  vim.cmd("silent! undo")
+
+  vim.cmd("DbtHighlight! off")
+  H.check(
+    vim.b[ybuf].cogitator_tshl == nil and #tshl.marks(ybuf) == 0,
+    "highlight: ! off takes the colours off"
+  )
+  vim.cmd("DbtHighlight! auto")
+  H.wait("highlight: ! auto paints again", 10000, function()
+    return #tshl.marks(ybuf) > 0
+  end)
+  local mode, bufs = tshl.status()
+  H.check(mode == "auto" and vim.tbl_contains(bufs, ybuf), "highlight: status lists the painted buffer")
+
+  -- picker previews of macros and of tests in YAML (§8)
+  vim.api.nvim_set_current_buf(bufnr)
+  local sources = require("cogitator.pick.sources")
+  local function first_preview(name, pick_item)
+    local src = sources.build(name, { client = client, bufnr = bufnr })
+    local listed
+    src.items(function(i)
+      listed = i
+    end)
+    H.wait("preview: the " .. name .. " source lists items", 10000, function()
+      return listed ~= nil
+    end)
+    local item = listed and pick_item(listed)
+    if not item then
+      return nil
+    end
+    local previewed
+    src.preview(item, function(p)
+      previewed = p
+    end)
+    H.wait("preview: the " .. name .. " preview", 5000, function()
+      return previewed ~= nil
+    end)
+    return previewed
+  end
+  local macro_preview = first_preview("macros", function(list)
+    for _, i in ipairs(list) do
+      if i.name == "times_five" then
+        return i
+      end
+    end
+  end)
+  H.check(
+    macro_preview and macro_preview.code == "dbt" and macro_preview.lnum and macro_preview.end_lnum,
+    "preview: a macro lands on its definition and is coloured",
+    vim.inspect(macro_preview and { macro_preview.code, macro_preview.lnum, macro_preview.end_lnum })
+  )
+  local test_preview = first_preview("tests", function(list)
+    return list[1]
+  end)
+  H.check(
+    test_preview and test_preview.code == "yaml" and test_preview.lnum,
+    "preview: a YAML test is coloured as YAML and lands on its entry",
+    vim.inspect(test_preview and { test_preview.code, test_preview.lnum })
+  )
+  if macro_preview then
+    local pbuf = vim.api.nvim_create_buf(false, true)
+    vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, macro_preview.lines)
+    tshl.preview(pbuf, macro_preview)
+    H.wait("preview: the macro preview is painted", 10000, function()
+      return #tshl.marks(pbuf) > 0
+    end)
+    H.check(
+      #vim.api.nvim_buf_get_extmarks(pbuf, tshl.def_ns, 0, -1, {}) > 0,
+      "preview: the definition's lines are marked"
+    )
+    vim.api.nvim_buf_delete(pbuf, { force = true })
+  end
+
+  -- :DbtNode: a card in a float
+  local wins = #vim.api.nvim_list_wins()
+  vim.cmd("DbtNode macro:times_five")
+  H.wait(":DbtNode opens the macro's card", 10000, function()
+    return #vim.api.nvim_list_wins() > wins
+  end)
+  local float_text = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  H.check(
+    float_text:find("times_five(int_value)", 1, true) ~= nil,
+    ":DbtNode shows the signature",
+    float_text
+  )
+  H.feed("q")
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.cmd("DbtNode assert_positive_order_amount")
+  H.wait(":DbtNode finds a test by name alone", 10000, function()
+    return table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"):find("tests (1)", 1, true) ~= nil
+  end)
+  H.feed("q")
+  vim.api.nvim_set_current_buf(bufnr)
 end

@@ -44,7 +44,7 @@ local function reselect(explorer, pane, stay)
   if not e then
     return false
   end
-  return explorer.focus(e.name, { record = true, stay = stay })
+  return explorer.focus(e.name, { record = true, stay = stay, node = e })
 end
 
 --- Re-centre on the side-pane entry `count` times, staying in the pane so
@@ -192,8 +192,9 @@ M.HELP = {
   "  <CR>           side pane: make it the model; card: open the test,",
   "                 version or the model's file",
   "  [ - / ]        back / forward through the models walked",
+  "  .              macros, tests, sources… too (a macro's card: its",
+  "                 callers and calls; <CR> in its compiled pane re-centres)",
   "  f  /           pick any model (fuzzy, fzf syntax)",
-  "  .              every kind of node (sources, exposures…)",
   "  p              to the dbt SQL; h / l between the SQL panes",
   "  J / K          scroll both SQL panes      <Esc>  back to the model",
   "  <Space>        mark                       y / r  yank / dbt run the marked",
@@ -272,6 +273,16 @@ function M.attach(explorer, pane, buf)
 
   if pane == "raw" or pane == "compiled" then
     map("<Esc>", focus("center"))
+    if pane == "compiled" then
+      -- a macro's caller: re-centre on it
+      map("<CR>", function()
+        local line = vim.api.nvim_win_get_cursor(s.wins.compiled)[1]
+        local caller = s.compiled_jumps and s.compiled_jumps[line]
+        if caller then
+          explorer.focus(caller.name, { record = true, node = caller })
+        end
+      end)
+    end
     if pane == "raw" then
       map("l", focus("compiled"))
     else

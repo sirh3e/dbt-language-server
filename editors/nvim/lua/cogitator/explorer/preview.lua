@@ -73,14 +73,33 @@ function M.render_raw(s)
     return show(s, "raw", { s.info and "· no file on disk ·" or "· loading ·" }, "", "dbt SQL")
   end
   local lines = file_lines(s, uri)
+  local fname = vim.uri_to_fname(uri)
+  local language = tshl.language_of(fname)
   show(
     s,
     "raw",
     lines or { "· loading ·" },
-    "sql",
-    "dbt SQL · " .. vim.fn.fnamemodify(vim.uri_to_fname(uri), ":t"),
-    lines and "dbt" or nil
+    language == "yaml" and "yaml" or "sql",
+    (language == "yaml" and "YAML · " or "dbt SQL · ") .. vim.fn.fnamemodify(fname, ":t"),
+    lines and language or nil
   )
+  -- a macro or a generic test in a file of many: start at its definition
+  local range = s.info and s.info.kind ~= "model" and s.info.range
+  local buf, win = s.bufs.raw, s.wins.raw
+  if lines and range and range ~= vim.NIL and buf and vim.api.nvim_buf_is_valid(buf) then
+    local from, to = range.start.line + 1, range["end"].line + 1
+    tshl.mark_definition(buf, from, to)
+    -- once per selection: later redraws keep where the reader scrolled
+    if s.def_shown ~= s.selected and win and vim.api.nvim_win_is_valid(win) then
+      s.def_shown = s.selected
+      pcall(vim.api.nvim_win_set_cursor, win, { math.min(from, #lines), 0 })
+      vim.api.nvim_win_call(win, function()
+        vim.cmd("normal! zt")
+      end)
+    end
+  elseif buf and vim.api.nvim_buf_is_valid(buf) then
+    tshl.mark_definition(buf, nil)
+  end
 end
 
 --- The compiled SQL pane.
@@ -90,6 +109,20 @@ function M.render_compiled(s)
     return show(s, "compiled", {}, "", "compiled SQL")
   end
   local c = s.compiled
+  s.compiled_jumps = nil
+  if type(c) == "table" and c.callers then
+    -- a macro compiles into the models that call it
+    local lines, jumps = { "a macro compiles into the models that call it (<CR> opens one):", "" }, {}
+    for _, caller in ipairs(c.callers) do
+      lines[#lines + 1] = ("  %s  [%s]"):format(caller.name, caller.kind or "?")
+      jumps[#lines] = caller
+    end
+    if #c.callers == 0 then
+      lines[#lines + 1] = "  · nothing calls it ·"
+    end
+    s.compiled_jumps = jumps
+    return show(s, "compiled", lines, "", "compiled SQL · " .. #c.callers .. " caller(s)")
+  end
   if c == nil then
     return show(s, "compiled", { "· loading compiled SQL ·" }, "", "compiled SQL")
   end
@@ -101,6 +134,22 @@ function M.render_compiled(s)
       "the compiled file is too large to show here — open it directly:",
       vim.uri_to_fname(c.uri),
     }, "", "compiled SQL")
+  end
+  local node_kind = s.info and s.info.kind
+  if node_kind == "test" or node_kind == "analysis" then
+    return show(s, "compiled", {
+      "not compiled yet — dbt compile writes target/compiled/…/"
+        .. (node_kind == "test" and "tests" or "analyses"),
+    }, "", "compiled SQL · not compiled")
+  end
+  if node_kind and node_kind ~= "model" then
+    return show(
+      s,
+      "compiled",
+      { "· a " .. node_kind:gsub("_", " ") .. " has no compiled SQL ·" },
+      "",
+      "compiled SQL"
+    )
   end
   show(s, "compiled", {
     "not compiled yet — c in the explorer or :DbtCompile",

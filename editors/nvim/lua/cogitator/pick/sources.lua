@@ -112,11 +112,14 @@ local function symbols(ctx, title, keep, query)
             if keep(sym) then
               local loc = sym.location or {}
               local start = loc.range and loc.range.start
+              local stop = loc.range and loc.range["end"]
               items[#items + 1] = {
                 text = sym.name .. "  [" .. (SYMBOL_KINDS[sym.kind] or "symbol") .. "]",
                 name = sym.name,
                 uri = loc.uri,
                 lnum = start and (start.line + 1) or nil,
+                -- a macro's whole block, marked in the preview
+                end_lnum = stop and (stop.line + 1) or nil,
                 col = start and start.character or nil,
                 value = sym,
               }
@@ -370,6 +373,7 @@ function M.tests(ctx)
               name = t.name,
               uri = t.uri,
               lnum = start and (start.line + 1) or nil,
+              end_lnum = start and (start.line + 1) or nil,
               col = start and start.character or nil,
             }
           end

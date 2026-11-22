@@ -117,7 +117,7 @@ return function(ctx)
   local tshl = require("cogitator.tshl")
   local function groups(buf)
     local out = {}
-    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, tshl.ns, 0, -1, { details = true })) do
+    for _, m in ipairs(tshl.marks(buf)) do
       out[m[4].hl_group] = true
     end
     return out
@@ -248,6 +248,70 @@ return function(ctx)
   browse.open()
   H.wait("integration: the explorer reopens", 10000, function()
     return browse._state ~= nil and browse._state.selected == "customers"
+  end)
+
+  -- macros and tests (specs/highlighting §6.2): with every kind shown
+  bst = browse._state
+  bst.show_all = true
+  H.wait("explorer: the project's macros are known", 10000, function()
+    return bst.node_of["times_five"] ~= nil and bst.node_of["times_five"].kind == "macro"
+  end)
+  H.check(browse.focus("times_five", { record = true }), "explorer: a macro can be selected")
+  H.wait("explorer: a macro's card", 10000, function()
+    local card_text = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+    return card_text:find("times_five(int_value)", 1, true) ~= nil
+      and card_text:find("called by", 1, true) ~= nil
+  end, function()
+    return table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+  end)
+  local right = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.right, 0, -1, false), "\n")
+  H.check(right:find("customers") ~= nil, "explorer: a macro's callers are downstream", right)
+  H.wait("explorer: the raw pane starts at the macro and marks it", 10000, function()
+    local marks = vim.api.nvim_buf_get_extmarks(bst.bufs.raw, tshl.def_ns, 0, -1, {})
+    local top = vim.fn.getwininfo(bst.wins.raw)[1].topline
+    local line = vim.api.nvim_buf_get_lines(bst.bufs.raw, top - 1, top, false)[1] or ""
+    return #marks > 0 and line:find("times_five", 1, true) ~= nil
+  end)
+  H.wait("explorer: a macro's compiled pane lists its callers", 10000, function()
+    local lines = vim.api.nvim_buf_get_lines(bst.bufs.compiled, 0, -1, false)
+    return lines[1] and lines[1]:find("a macro compiles into", 1, true) ~= nil
+  end)
+  local caller_line
+  for i, l in ipairs(vim.api.nvim_buf_get_lines(bst.bufs.compiled, 0, -1, false)) do
+    if l:find("customers", 1, true) then
+      caller_line = i
+    end
+  end
+  if caller_line then
+    vim.api.nvim_set_current_win(bst.wins.compiled)
+    vim.api.nvim_win_set_cursor(bst.wins.compiled, { caller_line, 0 })
+    H.feed("<CR>")
+    H.wait("explorer: <CR> on a caller re-centres on it", 10000, function()
+      return bst.selected == "customers"
+    end)
+  else
+    H.check(false, "explorer: the compiled pane names the caller")
+  end
+
+  H.check(
+    browse.focus("assert_positive_order_amount", { record = true }),
+    "explorer: a singular test can be selected"
+  )
+  H.wait("explorer: a test's card and refs", 10000, function()
+    local card_text = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+    local left_text = table.concat(vim.api.nvim_buf_get_lines(bst.bufs.left, 0, -1, false), "\n")
+    return card_text:find("tests (1)", 1, true) ~= nil and left_text:find("orders") ~= nil
+  end, function()
+    return table.concat(vim.api.nvim_buf_get_lines(bst.bufs.center, 0, -1, false), "\n")
+  end)
+  H.wait("explorer: an uncompiled test says how it compiles", 10000, function()
+    local lines = vim.api.nvim_buf_get_lines(bst.bufs.compiled, 0, -1, false)
+    return lines[1] and lines[1]:find("target/compiled", 1, true) ~= nil
+  end)
+  bst.show_all = false
+  browse.focus("customers", { record = true })
+  H.wait("explorer: back on the model", 10000, function()
+    return bst.selected == "customers" and bst.info and bst.info.model == "customers"
   end)
 
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/browser_motions.lua"))(ctx, browse)

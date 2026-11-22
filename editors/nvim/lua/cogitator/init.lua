@@ -94,6 +94,8 @@ local function on_attach(client, bufnr, config)
   end
   require("cogitator.lens").attach(bufnr, config)
   require("cogitator.treesitter").attach(bufnr)
+  -- after the grammar: the server paints what Neovim's parsers do not
+  require("cogitator.tshl").attach(bufnr)
   -- what completion and :checkhealth read, fetched in the background so
   -- neither ever waits on the server
   M.prefetch_columns(bufnr)
