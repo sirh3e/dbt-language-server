@@ -15,6 +15,9 @@ M._stack = {}
 --- client id → true once a request timed out (no more waiting on it)
 ---@type table<integer, boolean>
 M._unanswered = {}
+--- cancels the selectionRange request in flight, if any
+---@type fun()?
+M._pending = nil
 
 --- An LSP position as a 0-based (row, byte column) of the buffer.
 ---@param bufnr integer
@@ -113,6 +116,8 @@ local function current_range(bufnr, encoding)
 end
 
 --- Expand the selection (from normal mode: select the innermost range).
+--- Asks the server in the background: the selection changes when the
+--- answer comes, and only if nothing moved meanwhile.
 function M.expand()
   local bufnr = vim.api.nvim_get_current_buf()
   local client = actions.client_for(bufnr)
@@ -132,30 +137,53 @@ function M.expand()
   local cursor = vim.api.nvim_win_get_cursor(0)
   local line = vim.api.nvim_buf_get_lines(bufnr, cursor[1] - 1, cursor[1], false)[1] or ""
   local ok, character = pcall(vim.str_utfindex, line, encoding, cursor[2], false)
-  local response = client:request_sync("textDocument/selectionRange", {
+  local win = vim.api.nvim_get_current_win()
+  local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local mode = vim.fn.mode()
+  -- the answer applies only to the text, window and selection it was
+  -- asked about; anything else moved on, and it is dropped
+  local function stale()
+    if not vim.api.nvim_buf_is_valid(bufnr) or vim.api.nvim_get_current_win() ~= win then
+      return true
+    end
+    if vim.api.nvim_win_get_buf(win) ~= bufnr or vim.api.nvim_buf_get_changedtick(bufnr) ~= tick then
+      return true
+    end
+    local now = vim.api.nvim_win_get_cursor(win)
+    return now[1] ~= cursor[1] or now[2] ~= cursor[2] or vim.fn.mode() ~= mode
+  end
+  if M._pending then
+    M._pending()
+  end
+  M._pending = actions.request(client, bufnr, "textDocument/selectionRange", {
     textDocument = { uri = vim.uri_from_bufnr(bufnr) },
     positions = { { line = cursor[1] - 1, character = ok and character or cursor[2] } },
-  }, TIMEOUT_MS, bufnr)
-  if not response then
-    M._unanswered[client.id] = true
-    vim.notify("textDocument/selectionRange timed out", vim.log.levels.WARN)
-    return
-  end
-  if response.err or type(response.result) ~= "table" then
-    vim.notify("no selection range here", vim.log.levels.INFO)
-    return
-  end
-  local range = M.next_larger(M.flatten(response.result[1]), current)
-  if not range then
-    return
-  end
-  local stack = current and M._stack[bufnr] or {}
-  if current and #stack == 0 then
-    stack[1] = current
-  end
-  stack[#stack + 1] = range
-  M._stack[bufnr] = stack
-  select_range(bufnr, range, encoding)
+  }, { timeout_ms = TIMEOUT_MS, stale = stale }, function(err, result, reason)
+    M._pending = nil
+    if reason == "timeout" then
+      M._unanswered[client.id] = true
+      vim.notify("textDocument/selectionRange timed out", vim.log.levels.WARN)
+      return
+    end
+    if stale() then
+      return
+    end
+    if err or type(result) ~= "table" then
+      vim.notify("no selection range here", vim.log.levels.INFO)
+      return
+    end
+    local range = M.next_larger(M.flatten(result[1]), current)
+    if not range then
+      return
+    end
+    local stack = current and M._stack[bufnr] or {}
+    if current and #stack == 0 then
+      stack[1] = current
+    end
+    stack[#stack + 1] = range
+    M._stack[bufnr] = stack
+    select_range(bufnr, range, encoding)
+  end)
 end
 
 --- Shrink back to the range selected before the last expand.

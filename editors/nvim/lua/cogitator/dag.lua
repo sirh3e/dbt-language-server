@@ -131,7 +131,7 @@ local function render()
   local lines, decor = layout_lib.draw(boxes, s.data.edges, width + 2, height + 1)
   s.decor = decor
   require("cogitator.ui").set_lines(s.buf, lines)
-  paint.static(s.buf, boxes, decor)
+  paint.static_async(s.buf, s.win, boxes, decor)
   winbar()
   M.select(s.selected, { record = false })
 end
@@ -255,6 +255,7 @@ function M.close()
     return
   end
   M._state = nil
+  paint.cancel(s.buf)
   pcall(vim.api.nvim_del_augroup_by_name, GROUP)
   if vim.api.nvim_win_is_valid(s.win) then
     vim.api.nvim_set_current_win(s.win)
