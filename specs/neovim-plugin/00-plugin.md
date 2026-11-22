@@ -106,7 +106,7 @@ writer wins).
   `dbt.sourceFreshness`, `dbt.cancel`, `dbt.runSelection`,
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
-  `dbt.splitPlan`, `dbt.syntaxTree`
+  `dbt.splitPlan`, `dbt.syntaxTree`, `dbt.highlight`, `dbt.astGrep`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -168,6 +168,8 @@ Every command takes **one argument object**, not positional values:
 | `dbt.queryPlan` | `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}}` | none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan |
 | `dbt.syntaxTree` | `{nodes: [{depth, kind, field, error, missing, range}], truncated}` or InvalidParams | none (read-only): the open document's tree-sitter-dbt tree, named + ERROR + MISSING nodes in pre-order, ranges in UTF-16, at most 20 000 nodes — :DbtSyntaxTree |
 | `dbt.preview` | `{token}` (job started) | `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit] |
+| `dbt.highlight` | `{language, spans: [{range, capture}], truncated}`, or `null` for `{compiled: true}` of a model dbt has not compiled | none (read-only): tree-sitter-dbt's highlights query over `{uri}` (open text, else the file), `{text, language?: dbt\|sql}` or `{model?, compiled: true}`; the SQL between the tags through tree-sitter-sequel's query (the grammar's injection); captures are the queries' names (`keyword`, `tag.delimiter`, `function.builtin`…), ranges in UTF-16; at most 50 000 spans, nothing past 2 MiB |
+| `dbt.astGrep` | `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` or InvalidParams Guidance | ast-grep (`cogitator-astgrep`) over tree-sitter-dbt (`dbt`: Jinja structure; the SQL is opaque text) or tree-sitter-sequel (`sql`, compiled SQL, whole statements): `{pattern, language?, rewrite?, uri?}` — `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`); at most 500 matches; `apply: true` with a `rewrite` sends workspace/applyEdit. The project's `sgconfig.yml` rules (`language: dbt\|sql`) are pull diagnostics (`source: ast-grep`) and their `fix` a quickfix |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -481,6 +483,8 @@ vim.lsp.enable("cogitator")
 | `:DbtDeps` | `dbt.deps` | project-wide; the job token is kept for `:DbtCancel` |
 | `:DbtReloadConfig` | `dbt.reloadConfig` | re-read cogitator.yml now |
 | `:DbtSyntaxTree` | `dbt.syntaxTree` | toggle the syntax-tree split (§5.3d) |
+| `:DbtHighlight` | `dbt.highlight` | colour the buffer with tree-sitter-dbt as extmarks (`cogitator.tshl`, captures → `@<capture>` groups, regex syntax off once painted), repainted after edits; again takes the colours off. The explorer's SQL panes and `.sql` picker previews are painted the same way |
+| `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
 | `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |
 | `:DbtProjects!` | — (manager store) | manage one project: open, profiles directory, clear selections, rename (`label`), forget |
 | `:Dbt <sub> [args]` | — | every command above as a subcommand, completed (subcommands, `cache clear`, profiles dirs, the buffer's column names) |

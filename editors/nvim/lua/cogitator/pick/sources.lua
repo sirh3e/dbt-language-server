@@ -312,7 +312,13 @@ function M.refs(ctx)
     end,
     preview = function(item, done)
       local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      done({ lines = lines, filetype = vim.bo[bufnr].filetype, lnum = item.lnum })
+      local sql = vim.bo[bufnr].filetype == "sql"
+      done({
+        lines = lines,
+        filetype = vim.bo[bufnr].filetype,
+        lnum = item.lnum,
+        code = sql and require("cogitator.pick.preview").code_of(vim.api.nvim_buf_get_name(bufnr)) or nil,
+      })
     end,
     choose = function(items, action)
       local item = items[1]
@@ -448,6 +454,7 @@ M.ORDER = {
   "tests",
   "tags",
   "selectors",
+  "astgrep",
 }
 
 M.DESCRIPTIONS = {
@@ -464,7 +471,13 @@ M.DESCRIPTIONS = {
   tests = "the tests of this model",
   tags = "tags, then the nodes carrying one",
   selectors = "selectors.yml entries",
+  astgrep = "ast-grep: a structural pattern ({{ ref($M) }}, sql:select $$$C from $T), its matches",
 }
+
+--- The matches of an ast-grep pattern (ctx.query, asked for first).
+function M.astgrep(ctx)
+  return require("cogitator.astgrep").source(ctx)
+end
 
 --- Build the named source for the current buffer.
 ---@param name string

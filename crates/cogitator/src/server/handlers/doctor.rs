@@ -31,6 +31,18 @@ pub struct DoctorReport {
     pub running_jobs: Vec<DoctorJob>,
     pub config: super::super::config_watcher::ConfigStatus,
     pub perf: super::super::status::PerfStatus,
+    /// The project's ast-grep rules (sgconfig.yml): how many, and what
+    /// could not be read.
+    pub ast_grep: DoctorAstGrep,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DoctorAstGrep {
+    pub rules: Vec<String>,
+    pub errors: Vec<String>,
+    /// Rules of a language the server does not read (the CLI's).
+    pub skipped: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -135,6 +147,21 @@ pub fn doctor(
             nodes: ctx.graph.node_count(),
             edges: ctx.graph.edge_count(),
             dangling: ctx.graph.dangling_refs().count(),
+        },
+        ast_grep: match ctx.project_root.as_deref() {
+            Some(root) => {
+                let rules = derived.astgrep_rules(root);
+                DoctorAstGrep {
+                    rules: rules.ids().to_vec(),
+                    errors: rules.errors.clone(),
+                    skipped: rules.skipped,
+                }
+            }
+            None => DoctorAstGrep {
+                rules: Vec::new(),
+                errors: Vec::new(),
+                skipped: 0,
+            },
         },
         lint_enabled: enabled_lints(lints),
         running_jobs: jobs

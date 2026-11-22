@@ -5,7 +5,7 @@ projects: hover, completion, navigation, lineage, refactoring and dbt
 execution for your models, sources, macros and schema YAML.
 
 Guides live in [`docs/`](docs/README.md): [Neovim](docs/neovim.md),
-[incrementality](docs/incrementality.md), the
+[incrementality](docs/incrementality.md), [ast-grep](docs/ast-grep.md), the
 [command reference](docs/commands.md) and, for contributors,
 [editor parity](docs/editor-parity.md).
 

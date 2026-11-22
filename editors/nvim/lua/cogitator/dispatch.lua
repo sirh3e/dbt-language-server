@@ -178,6 +178,16 @@ M.SUBCOMMANDS = {
   },
   reload = { run = M.reload_config, desc = "reload cogitator.yml" },
   syntax = { run = module_call("cogitator.syntax", "toggle"), desc = "the syntax tree of this buffer" },
+  highlight = {
+    run = module_call("cogitator.tshl", "toggle"),
+    desc = "colour this buffer with tree-sitter-dbt (server)",
+  },
+  astgrep = {
+    run = function(args)
+      require("cogitator.astgrep").command({ args = args })
+    end,
+    desc = "ast-grep: [sql:]pattern [=> rewrite]",
+  },
   treesitter = {
     run = module_call("cogitator.treesitter", "command"),
     complete = function()

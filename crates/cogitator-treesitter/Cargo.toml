@@ -10,10 +10,12 @@ cogitator-dialects = { workspace = true }
 cogitator-parser = { workspace = true }
 tree-sitter = { workspace = true }
 tracing = { workspace = true }
-tree-sitter-sequel = "0.3"
+tree-sitter-sequel = { workspace = true }
+tree-sitter-highlight = { workspace = true }
 tree-sitter-dbt = { workspace = true }
 
 [dev-dependencies]
 cogitator-lsp = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
+insta = { workspace = true }

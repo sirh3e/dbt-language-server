@@ -58,6 +58,7 @@ local function keymaps(bufnr)
     end
   end
   map("<leader>df", find("models"), "dbt: find a model")
+  map("<leader>da", find("astgrep"), "dbt: ast-grep — find by a structural pattern")
   map("<leader>dF", find(nil), "dbt: find… (pick what to search)")
   map("<leader>dd", find("definitions"), "dbt: find a definition (model, source, macro, selector)")
   map("<leader>dk", find("columns"), "dbt: find a column")

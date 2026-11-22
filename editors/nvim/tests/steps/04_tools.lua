@@ -142,4 +142,61 @@ return function(ctx)
   )
   H.check(took < 1000, "health: :checkhealth does not wait on the server", took)
   vim.cmd("bwipeout!")
+
+  -- ast-grep through the server: the command, :DbtAstGrep, the picker
+  vim.api.nvim_set_current_buf(bufnr)
+  local found = H.exec_cmd(client, bufnr, "dbt.astGrep", {
+    uri = vim.uri_from_bufnr(bufnr),
+    pattern = "{{ ref($M) }}",
+  }, "astgrep: dbt.astGrep")
+  H.check(
+    type(found) == "table" and #found.matches == 4 and found.matches[1].env.M == "'stg_customers'",
+    "astgrep: the open model's four refs, with $M bound",
+    vim.inspect(found and found.matches[1])
+  )
+  vim.fn.setqflist({}, "r")
+  vim.cmd("DbtAstGrep {{ ref('stg_orders') }}")
+  H.wait("astgrep: :DbtAstGrep fills the quickfix list from the project", 10000, function()
+    return #vim.fn.getqflist() >= 2
+  end, function()
+    return vim.inspect(vim.fn.getqflist())
+  end)
+  local qf = vim.fn.getqflist({ title = 1, items = 1 })
+  H.check(
+    qf.title:find("ast-grep", 1, true) ~= nil and qf.items[1].text:find("stg_orders", 1, true) ~= nil,
+    "astgrep: each quickfix line is a match",
+    vim.inspect(qf.items[1])
+  )
+  vim.cmd("cclose")
+  vim.api.nvim_set_current_buf(bufnr)
+
+  local source = require("cogitator.pick.sources").build("astgrep", {
+    client = client,
+    bufnr = bufnr,
+    query = require("cogitator.astgrep").parse("{{ ref('stg_payments') }}"),
+  })
+  local items
+  source.items(function(i)
+    items = i
+  end)
+  H.wait("astgrep: the picker source lists the matches", 10000, function()
+    return items ~= nil
+  end)
+  H.check(
+    items and #items >= 1 and items[1].lnum ~= nil and items[1].text:find("stg_payments", 1, true) ~= nil,
+    "astgrep: a picker item points at its line",
+    vim.inspect(items and items[1])
+  )
+  local shown
+  source.preview(items[1], function(p)
+    shown = p
+  end)
+  H.wait("astgrep: the preview of a match", 5000, function()
+    return shown ~= nil
+  end)
+  H.check(
+    shown and shown.code == "dbt",
+    "astgrep: the preview is coloured as dbt",
+    vim.inspect(shown and shown.code)
+  )
 end

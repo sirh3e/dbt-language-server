@@ -10,10 +10,12 @@
 //! refinement, CTE tracking and the token model stay byte-for-byte identical
 //! to the phase-1 pipeline. SQL stays on sqlparser per 06 §3.3.
 
+mod highlight;
 mod regions;
 mod sql_structure;
 mod syntax_tree;
 
+pub use highlight::{capture_names, highlight, HighlightLanguage, HighlightSpan, Highlights};
 pub use syntax_tree::{syntax_tree, Point, SyntaxNode, SyntaxTree};
 
 use std::collections::HashMap;

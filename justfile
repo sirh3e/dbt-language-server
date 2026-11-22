@@ -175,6 +175,12 @@ vscode-test:
     cargo build -p cogitator
     cd editors/vscode && npm install --no-audit --no-fund && npm test
 
+# The server's two grammars as shared libraries for the ast-grep CLI
+# (editors/ast-grep/sgconfig.yml), into target/ast-grep
+[group('editors')]
+ast-grep-libs:
+    sh editors/ast-grep/build-libs.sh
+
 # Headless Neovim plugin tests (needs nvim >= 0.11 and a debug server build)
 [group('editors')]
 nvim-test:

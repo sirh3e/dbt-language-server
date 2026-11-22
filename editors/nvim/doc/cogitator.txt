@@ -101,7 +101,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtFind [src] fuzzy-find: models, sources, all,       <leader>dF
                  definitions, macros, columns, upstream,
                  downstream, lineage, refs, tests, tags,
-                 selectors (models <leader>df, definitions
+                 selectors, astgrep (models <leader>df, definitions
                  <leader>dd, columns <leader>dk, upstream
                  <leader>du, downstream <leader>dU)
   :DbtPlan       IR levels, findings, incrementality
@@ -114,6 +114,9 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtReloadConfig  re-read cogitator.yml now
   :DbtSyntaxTree the tree-sitter-dbt tree in a split (toggle)
+  :DbtHighlight  colour this buffer with tree-sitter-dbt (server)
+  :DbtAstGrep [sql:]pattern [=> rewrite]                <leader>da
+                 ast-grep: matches to quickfix; a rewrite after asking
   :DbtTreesitter [install|status|start]  the grammar in Neovim
   :DbtProjects!  manage a known project (profiles, rename, forget)
   (code lens)    run the code lens on this line      <leader>dL
@@ -306,6 +309,28 @@ range; ERROR and MISSING nodes are highlighted. The tree's cursor
 follows the source cursor to the innermost node, moving in the tree
 highlights that node's range in the source, <CR> jumps there, q closes.
 Edits refresh it after a short pause.
+
+                                                  *cogitator-nvim-highlight*
+The explorer's dbt SQL and compiled SQL panes, and every picker preview of
+a .sql file, are coloured by tree-sitter-dbt through the server
+(`dbt.highlight`): the Jinja by the grammar's own highlights, the SQL
+between the tags by the SQL grammar it injects; compiled SQL as SQL. The
+captures become Neovim's tree-sitter groups (`@keyword`, `@tag.delimiter`,
+`@function.builtin`…), so your colourscheme applies, and nothing needs to
+be installed in Neovim. `:DbtHighlight` colours any buffer the same way
+(and keeps up with edits), or takes the colours off again.
+
+                                                    *cogitator-nvim-astgrep*
+`:DbtAstGrep {{ ref($M) }}` searches the project's dbt files with ast-grep
+over tree-sitter-dbt (`dbt.astGrep`) and fills the quickfix list; `$M` is
+a metavariable, `$$$A` several. The SQL between the tags is text to the
+dbt grammar, so a dbt pattern matches Jinja; prefix `sql:` for a whole SQL
+statement over the compiled SQL (`sql:select $$$C from $T`). With
+`pattern => rewrite` the matches are listed and, after asking, rewritten
+(`{{ ref($M) }} => {{ ref('core', $M) }}`). `:DbtFind astgrep`
+(`<leader>da`) asks for a pattern and shows the matches in the picker.
+The project's `sgconfig.yml` rules show as diagnostics with their fixes as
+code actions — see docs/ast-grep.md.
 
                                                   *cogitator-nvim-treesitter*
 `:DbtTreesitter install` builds the tree-sitter-dbt grammar at the

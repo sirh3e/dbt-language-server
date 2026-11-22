@@ -111,8 +111,36 @@ return function(ctx)
   end)
   H.check(
     vim.bo[bst.bufs.raw].filetype == "sql" and vim.bo[bst.bufs.compiled].filetype == "sql",
-    "integration: both SQL panes are highlighted as SQL"
+    "integration: both SQL panes are SQL buffers"
   )
+  -- both coloured by tree-sitter-dbt through the server (dbt.highlight)
+  local tshl = require("cogitator.tshl")
+  local function groups(buf)
+    local out = {}
+    for _, m in ipairs(vim.api.nvim_buf_get_extmarks(buf, tshl.ns, 0, -1, { details = true })) do
+      out[m[4].hl_group] = true
+    end
+    return out
+  end
+  H.wait("integration: the dbt SQL pane is coloured by tree-sitter-dbt", 10000, function()
+    return groups(bst.bufs.raw)["@tag.delimiter"] ~= nil
+  end, function()
+    return vim.inspect(groups(bst.bufs.raw))
+  end)
+  H.check(
+    next(vim.tbl_filter(function(g)
+      return g:find("^@keyword") ~= nil
+    end, vim.tbl_keys(groups(bst.bufs.raw)))) ~= nil,
+    "integration: the SQL between the tags is coloured too",
+    vim.inspect(groups(bst.bufs.raw))
+  )
+  H.check(vim.bo[bst.bufs.raw].syntax == "OFF", "integration: regex syntax gives way to the server's colours")
+  H.wait("integration: the compiled SQL pane is coloured as SQL", 10000, function()
+    local g = groups(bst.bufs.compiled)
+    return next(g) ~= nil and g["@tag.delimiter"] == nil
+  end, function()
+    return vim.inspect(groups(bst.bufs.compiled))
+  end)
 
   -- a model without compiled SQL says so
   browse.focus("orders")
