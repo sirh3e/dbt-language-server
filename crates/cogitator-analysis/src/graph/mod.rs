@@ -81,6 +81,9 @@ pub enum EdgeKind {
     MacroCall,
 }
 
+/// An edge seen from one of its nodes: its kind and the node at the other end.
+pub type Edge<'a> = (EdgeKind, &'a NodeData);
+
 #[derive(Debug, Default)]
 pub struct ProjectGraph {
     graph: StableDiGraph<NodeData, EdgeKind>,
@@ -256,18 +259,14 @@ impl ProjectGraph {
     /// A node's edges, both ways: what it points at (its refs, sources and
     /// the macros it calls) and what points at it, with each edge's kind,
     /// sorted by kind and name.
-    pub fn node_edges(
-        &self,
-        kind: NodeKind,
-        name: &str,
-    ) -> (Vec<(EdgeKind, &NodeData)>, Vec<(EdgeKind, &NodeData)>) {
+    pub fn node_edges(&self, kind: NodeKind, name: &str) -> (Vec<Edge<'_>>, Vec<Edge<'_>>) {
         use petgraph::visit::EdgeRef;
         use petgraph::Direction::{Incoming, Outgoing};
         let Some(&idx) = self.by_name.get(&(kind, name.to_string())) else {
             return (Vec::new(), Vec::new());
         };
         let collect = |direction| {
-            let mut out: Vec<(EdgeKind, &NodeData)> = self
+            let mut out: Vec<Edge<'_>> = self
                 .graph
                 .edges_directed(idx, direction)
                 .map(|e| {

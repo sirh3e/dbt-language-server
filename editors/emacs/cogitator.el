@@ -500,37 +500,67 @@ RET jumps to a node's place in the model, q closes."
          (pop-to-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
-;; tree-sitter-dbt highlighting from the server (dbt.highlight)
+;; highlighting from the server (dbt.highlight, specs/highlighting)
 ;; ---------------------------------------------------------------------------
+
+(defcustom cogitator-highlight-on-open t
+  "Colour the project's SQL and YAML buffers from the server when opened.
+The server highlights with tree-sitter-dbt (the Jinja), tree-sitter-sequel
+(the SQL between the tags) and tree-sitter-yaml, plus dbt-aware captures
+in YAML (models, columns, tests, docs).  Turns on
+`cogitator-highlight-mode' in buffers cogitator manages."
+  :type 'boolean)
 
 (defconst cogitator--highlight-faces
   '(("comment" . font-lock-comment-face)
     ("string" . font-lock-string-face)
+    ("string.special" . font-lock-doc-face)
     ("number" . font-lock-constant-face)
     ("boolean" . font-lock-constant-face)
     ("constant" . font-lock-constant-face)
     ("keyword" . font-lock-keyword-face)
     ("operator" . font-lock-keyword-face)
     ("function" . font-lock-function-name-face)
+    ("function.call" . font-lock-function-call-face)
+    ("function.dbt.test" . font-lock-function-call-face)
     ("type" . font-lock-type-face)
+    ("module" . font-lock-constant-face)
     ("variable.parameter" . font-lock-variable-name-face)
     ("variable" . font-lock-variable-name-face)
     ("field" . font-lock-property-name-face)
     ("property" . font-lock-property-name-face)
+    ("property.dbt.column" . font-lock-property-name-face)
+    ("label" . font-lock-constant-face)
+    ("attribute" . font-lock-preprocessor-face)
     ("tag" . font-lock-preprocessor-face)
     ("punctuation" . font-lock-punctuation-face))
-  "Capture → face, by the longest matching prefix of the capture's name.")
+  "Capture → face, by the longest matching prefix of the capture's name.
+A capture ending in `.unresolved' (a reference the project lacks) takes
+`font-lock-warning-face'.")
 
 (defun cogitator--highlight-face (capture)
   "The face of a tree-sitter CAPTURE name (\"keyword.conditional\"), or nil."
-  (let ((best nil) (best-len -1))
-    (dolist (entry cogitator--highlight-faces)
-      (let ((prefix (car entry)))
-        (when (and (> (length prefix) best-len)
-                   (or (string= capture prefix)
-                       (string-prefix-p (concat prefix ".") capture)))
-          (setq best (cdr entry) best-len (length prefix)))))
-    (and best (facep best) best)))
+  (if (string-suffix-p ".unresolved" capture)
+      'font-lock-warning-face
+    (let ((best nil) (best-len -1))
+      (dolist (entry cogitator--highlight-faces)
+        (let ((prefix (car entry)))
+          (when (and (> (length prefix) best-len)
+                     (or (string= capture prefix)
+                         (string-prefix-p (concat prefix ".") capture)))
+            (setq best (cdr entry) best-len (length prefix)))))
+      (and best (facep best) best))))
+
+(defconst cogitator--highlight-priorities
+  '(("yaml" . 10) ("sql" . 11) ("jinja" . 12) ("dbt" . 13))
+  "Overlay priority by layer: a later layer wins where two meet.")
+
+(defun cogitator--highlight-language (file)
+  "The grammar FILE is coloured with: yaml, sql (compiled) or dbt."
+  (cond ((null file) "dbt")
+        ((string-match-p "\\.ya?ml\\'" file) "yaml")
+        ((string-match-p "/target/\\(compiled\\|run\\)/" file) "sql")
+        (t "dbt")))
 
 (defun cogitator--utf16-point (line character)
   "The buffer position of LSP LINE (0-based) and UTF-16 CHARACTER."
@@ -543,8 +573,9 @@ RET jumps to a node's place in the model, q closes."
         (forward-char 1))
       (point))))
 
-(defun cogitator--highlight-apply (result)
+(defun cogitator--highlight-apply (result &optional skip)
   "Paint dbt.highlight's RESULT into the current buffer as overlays.
+Spans of a layer in SKIP (a list of layer names) are left out.
 Returns how many spans were painted."
   (remove-overlays (point-min) (point-max) 'cogitator-highlight t)
   (let ((count 0))
@@ -552,37 +583,194 @@ Returns how many spans were painted."
       (let* ((range (plist-get span :range))
              (start (plist-get range :start))
              (end (plist-get range :end))
+             (layer (or (plist-get span :layer) "jinja"))
              (face (cogitator--highlight-face (plist-get span :capture))))
-        (when face
+        (when (and face (not (member layer skip)))
           (let ((ov (make-overlay
                      (cogitator--utf16-point (plist-get start :line) (plist-get start :character))
                      (cogitator--utf16-point (plist-get end :line) (plist-get end :character)))))
             (overlay-put ov 'cogitator-highlight t)
             (overlay-put ov 'face face)
-            (overlay-put ov 'priority 10)
+            (overlay-put ov 'priority (or (cdr (assoc layer cogitator--highlight-priorities)) 10))
             (setq count (1+ count))))))
     count))
 
+(defvar cogitator-highlight-mode) ; defined below by `define-minor-mode'
+
+(defvar-local cogitator--highlight-tick nil
+  "The `buffer-chars-modified-tick' the last highlight request was for.")
+(defvar-local cogitator--highlight-timer nil
+  "The idle timer of the next repaint.")
+
+(defun cogitator--highlight-request (&optional quiet)
+  "Ask the server to colour this buffer; answers for an older text are dropped.
+With QUIET, say nothing when it is painted."
+  (let* ((buffer (current-buffer))
+         (tick (buffer-chars-modified-tick))
+         (language (cogitator--highlight-language (buffer-file-name)))
+         ;; YAML keeps the major mode's own colours when it has them
+         (skip (and (equal language "yaml") font-lock-mode '("yaml"))))
+    (setq cogitator--highlight-tick tick)
+    (cogitator--execute
+     "dbt.highlight"
+     (list :text (buffer-substring-no-properties (point-min) (point-max))
+           :language language :version tick)
+     (lambda (result)
+       (when (buffer-live-p buffer)
+         (with-current-buffer buffer
+           (when (equal cogitator--highlight-tick tick)
+             (let ((count (cogitator--highlight-apply result skip)))
+               (unless quiet
+                 (message "cogitator: %d spans coloured by the server" count))))))))))
+
+(defun cogitator--highlight-changed (&rest _)
+  "Repaint this buffer after an idle moment."
+  (when (timerp cogitator--highlight-timer)
+    (cancel-timer cogitator--highlight-timer))
+  (let ((buffer (current-buffer)))
+    (setq cogitator--highlight-timer
+          (run-with-idle-timer
+           0.3 nil
+           (lambda ()
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (when cogitator-highlight-mode
+                   (cogitator--highlight-request t)))))))))
+
+;;;###autoload
+(define-minor-mode cogitator-highlight-mode
+  "Colour this buffer from the server (dbt.highlight), and keep up with edits."
+  :lighter " dbt-hl"
+  (if cogitator-highlight-mode
+      (progn
+        (add-hook 'after-change-functions #'cogitator--highlight-changed nil t)
+        (cogitator--highlight-request t))
+    (remove-hook 'after-change-functions #'cogitator--highlight-changed t)
+    (when (timerp cogitator--highlight-timer)
+      (cancel-timer cogitator--highlight-timer))
+    (setq cogitator--highlight-tick nil)
+    (remove-overlays (point-min) (point-max) 'cogitator-highlight t)))
+
+(defun cogitator--highlight-on-open ()
+  "Turn on `cogitator-highlight-mode' in a project's SQL or YAML buffer
+cogitator manages; off again when it stops managing it."
+  (let ((managed (or (and (fboundp 'eglot-managed-p) (eglot-managed-p))
+                     (bound-and-true-p lsp-mode))))
+    (cond
+     ((not managed)
+      (when cogitator-highlight-mode (cogitator-highlight-mode -1)))
+     ((and cogitator-highlight-on-open
+           (buffer-file-name)
+           (string-match-p "\\.\\(sql\\|ya?ml\\)\\'" (buffer-file-name))
+           (locate-dominating-file (buffer-file-name) "dbt_project.yml"))
+      (cogitator-highlight-mode 1)))))
+
 ;;;###autoload
 (defun cogitator-highlight-buffer (&optional clear)
-  "Colour this buffer with tree-sitter-dbt, as the server highlights it.
-The Jinja by the grammar's highlights, the SQL between the tags by the SQL
-grammar it injects; compiled SQL (target/compiled) as plain SQL. With a
-prefix argument CLEAR, take the colours off."
+  "Colour this buffer once, as the server highlights it.
+The Jinja by tree-sitter-dbt, the SQL between the tags by the SQL grammar
+it injects, YAML by tree-sitter-yaml with dbt's own captures; compiled SQL
+\(target/compiled) as plain SQL.  With a prefix argument CLEAR, take the
+colours off.  `cogitator-highlight-mode' keeps them up to date."
   (interactive "P")
   (if clear
-      (remove-overlays (point-min) (point-max) 'cogitator-highlight t)
-    (let ((buffer (current-buffer))
-          (language (if (string-match-p "/target/\\(compiled\\|run\\)/" (or (buffer-file-name) ""))
-                        "sql" "dbt")))
-      (cogitator--execute
-       "dbt.highlight"
-       (list :text (buffer-substring-no-properties (point-min) (point-max)) :language language)
-       (lambda (result)
-         (when (buffer-live-p buffer)
-           (with-current-buffer buffer
-             (message "cogitator: %d spans coloured by tree-sitter-dbt"
-                      (cogitator--highlight-apply result)))))))))
+      (progn (setq cogitator--highlight-tick nil)
+             (remove-overlays (point-min) (point-max) 'cogitator-highlight t))
+    (cogitator--highlight-request)))
+
+;; ---------------------------------------------------------------------------
+;; node info (dbt.nodeInfo): macros, tests, sources…
+;; ---------------------------------------------------------------------------
+
+(defconst cogitator--node-kinds
+  '("model" "macro" "test" "generic_test" "source" "exposure" "metric" "semantic_model" "analysis")
+  "The kinds `cogitator-node-info' tries, in order, when none is given.")
+
+(defun cogitator--node-parse (text)
+  "TEXT as `[kind:]name' → (KIND . NAME), KIND nil when not given."
+  (let ((text (string-trim (or text ""))))
+    (if (string-match "\\`\\([a-z_]+\\):\\(.+\\)\\'" text)
+        (cons (match-string 1 text) (string-trim (match-string 2 text)))
+      (cons nil text))))
+
+(defun cogitator--node-signature (name params)
+  "A macro's or generic test's signature: NAME(PARAMS)."
+  (format "%s(%s)" name
+          (mapconcat (lambda (p)
+                       (if (stringp p) p
+                         (concat (plist-get p :name)
+                                 (let ((d (plist-get p :default)))
+                                   (if (stringp d) (concat "=" d) "")))))
+                     (append params nil) ", ")))
+
+(defun cogitator--node-render (info)
+  "The text of a dbt.nodeInfo INFO card."
+  (let* ((kind (or (plist-get info :kind) "model"))
+         (name (or (plist-get info :name) (plist-get info :model)))
+         (lines (list (format "%s  [%s]" name kind)))
+         (entries (lambda (title list)
+                    (push "" lines)
+                    (push (format "%s (%d)" title (length list)) lines)
+                    (seq-doseq (e list)
+                      (push (format "  %s  [%s]" (plist-get e :name) (plist-get e :kind)) lines)))))
+    (let ((uri (plist-get info :uri)))
+      (when (stringp uri) (push (cogitator--uri-to-file uri) lines)))
+    (let ((desc (plist-get info :description)))
+      (when (and (stringp desc) (not (string-empty-p desc)))
+        (push "" lines) (push desc lines)))
+    (pcase kind
+      ("macro"
+       (push "" lines)
+       (push (cogitator--node-signature name (plist-get info :params)) lines)
+       (funcall entries "called by" (plist-get info :callers))
+       (funcall entries "calls" (plist-get info :calls)))
+      ("generic_test"
+       (push "" lines)
+       (push (format "{%% test %s %%}" (cogitator--node-signature name (plist-get info :params))) lines)
+       (push "" lines)
+       (push (format "applied to (%d)" (length (plist-get info :appliedTo))) lines)
+       (seq-doseq (a (plist-get info :appliedTo))
+         (push (format "  %s%s" (plist-get a :model)
+                       (let ((c (plist-get a :column))) (if (stringp c) (concat "." c) "")))
+               lines)))
+      (_
+       (funcall entries (if (equal kind "test") "tests" "upstream")
+                (or (plist-get info :refs) (plist-get info :upstream)))
+       (unless (member kind '("test" "analysis"))
+         (funcall entries "downstream" (plist-get info :downstream)))))
+    (concat (string-join (nreverse lines) "\n") "\n")))
+
+;;;###autoload
+(defun cogitator-node-info (query)
+  "Show a node's card (dbt.nodeInfo): QUERY is `[kind:]name'.
+A macro: its signature, callers and calls; a test: what it tests; a
+generic test: where YAML applies it.  Without a kind the kinds are tried
+in order."
+  (interactive (list (read-string "node ([kind:]name): ")))
+  (let* ((parsed (cogitator--node-parse query))
+         (kinds (if (car parsed) (list (car parsed)) cogitator--node-kinds))
+         (name (cdr parsed)))
+    (when (string-empty-p name)
+      (user-error "cogitator: give a node, e.g. macro:cents_to_dollars"))
+    (cl-labels
+        ((try (rest)
+           (if (null rest)
+               (message "cogitator: no node named %s" name)
+             (cogitator--execute
+              "dbt.nodeInfo"
+              (list :node (list :kind (car rest) :name name) :quiet (if (cdr kinds) t :json-false))
+              (lambda (info)
+                (if (or (null info) (eq info :null))
+                    (try (cdr rest))
+                  (let ((buf (get-buffer-create "*cogitator-node*")))
+                    (with-current-buffer buf
+                      (let ((inhibit-read-only t))
+                        (erase-buffer)
+                        (insert (cogitator--node-render info))
+                        (goto-char (point-min)))
+                      (special-mode))
+                    (pop-to-buffer buf))))))))
+      (try kinds))))
 
 ;; ---------------------------------------------------------------------------
 ;; ast-grep through the server (dbt.astGrep)
@@ -887,6 +1075,7 @@ The server re-resolves the SQL dialect and passes --target to dbt runs."
 Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
   (require 'eglot)
   (add-hook 'project-find-functions #'cogitator--project-find)
+  (add-hook 'eglot-managed-mode-hook #'cogitator--highlight-on-open)
   (add-to-list 'eglot-server-programs
                `(,cogitator-major-modes
                  . ,(lambda (&optional _interactive _project)
@@ -911,7 +1100,8 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
                             (cogitator--project-root file-name)))
       :initialization-options #'cogitator--initialization-options
       :priority 1
-      :server-id 'cogitator))))
+      :server-id 'cogitator)))
+  (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
 
 (provide 'cogitator)
 ;;; cogitator.el ends here

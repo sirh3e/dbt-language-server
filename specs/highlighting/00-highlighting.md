@@ -441,3 +441,29 @@ Open questions:
   Possibly complementary in `auto` mode later.
 - **Quoted-scalar escapes** inside Jinja (§3.2) are not unescaped; revisit
   if a real project shows mis-colouring.
+
+## 13. Implementation notes
+
+Where the implementation (epic #58) settles what the text above leaves
+open:
+
+- **Layers from one highlighter.** Each grammar's configuration is set up
+  with the capture names behind a run of placeholders that match nothing,
+  so a tree-sitter-highlight event's index says which grammar produced it,
+  also inside tree-sitter-dbt's SQL injection (`highlight/mod.rs`).
+- **Spans** are split at line breaks and trimmed of the blanks around
+  them, so every span sits on one line.
+- **The cache** keys open documents by their generation (the server's own
+  edit counter) rather than the client's `version`, which is echoed only;
+  files by their stamp (mtime, size).
+- **Neovim repaints** send the buffer's text (`{text, language, version}`),
+  so an answer always matches what is on screen, whatever the timing of
+  `didChange`.
+- **Macros** are no node of `dbt.projectGraph`: the explorer learns them
+  from `workspace/symbol` and adds them when every kind is shown; side
+  panes re-centre on any neighbour they name.
+- **Generic tests** have no graph node either: `dbt.nodeInfo` finds their
+  `{% test %}` blocks in the project's macro and test paths and every macro
+  file the context knows; `:DbtNode generic_test:name` shows their card.
+- **`quiet`** on `dbt.nodeInfo` answers an unknown node with `null` alone,
+  for a client that tries kinds in turn.

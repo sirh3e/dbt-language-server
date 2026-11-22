@@ -76,7 +76,11 @@ frontier` (the plan as an S-expression beside the model, with an
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the
 model's tree-sitter-dbt tree beside it), `dbt: Highlight with
 tree-sitter-dbt` (colours the editor as the server highlights it — the
-Jinja and the SQL between the tags; compiled SQL as SQL), `dbt:
+Jinja and the SQL between the tags, YAML with dbt-aware captures;
+compiled SQL as SQL; the setting `cogitator.highlight.onOpen` —
+`auto`, `always`, `off` — does it for every SQL and YAML file of the
+project as it opens), `dbt: Show node info` (a macro's, test's or
+source's card from `dbt.nodeInfo`), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,

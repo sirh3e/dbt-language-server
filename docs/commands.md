@@ -268,7 +268,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.nodeInfo`
 
-- **Argument**: `{node: {kind, name}}` — `kind` one of `model`, `macro`, `test`, `generic_test`, `source`, `exposure`, `metric`, `semantic_model`, `analysis`
+- **Argument**: `{node: {kind, name}, quiet?}` — `quiet: true` answers an unknown node with `null` alone (a client trying kinds in turn); `kind` one of `model`, `macro`, `test`, `generic_test`, `source`, `exposure`, `metric`, `semantic_model`, `analysis`
 - **Result**: the card data of the node, by kind:
   - `model`: `dbt.modelInfo`'s answer with `kind`;
   - `macro`: `{package, description, params, uri, range, callers, calls, usedByTests}`;

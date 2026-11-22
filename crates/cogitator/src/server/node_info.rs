@@ -166,7 +166,10 @@ fn macro_calls(ctx: &DbtContext, own: &str, body: &str) -> Vec<Value> {
         .collect()
 }
 
-fn unknown(kind: &str, name: &str, ctx: &DbtContext) -> Reply {
+fn unknown(kind: &str, name: &str, ctx: &DbtContext, quiet: bool) -> Reply {
+    if quiet {
+        return Reply::null();
+    }
     let names: Vec<String> = match kind {
         "macro" => ctx
             .macro_detail_map
@@ -186,8 +189,9 @@ fn unknown(kind: &str, name: &str, ctx: &DbtContext) -> Reply {
     })
 }
 
-/// `dbt.nodeInfo`.
-pub fn reply(ctx: &DbtContext, kind: &str, name: &str) -> Reply {
+/// `dbt.nodeInfo`. `quiet` leaves out the WARNING for an unknown node (a
+/// client trying kinds in turn).
+pub fn reply(ctx: &DbtContext, kind: &str, name: &str, quiet: bool) -> Reply {
     if name.is_empty() {
         return Reply::error(
             error_codes::INVALID_PARAMS,
@@ -204,7 +208,7 @@ pub fn reply(ctx: &DbtContext, kind: &str, name: &str) -> Reply {
                 value["kind"] = json!("model");
                 Reply::result(&value)
             }
-            None => unknown(kind, name, ctx),
+            None => unknown(kind, name, ctx, quiet),
         },
         "macro" => {
             let Some((package, details)) = ctx
@@ -212,7 +216,7 @@ pub fn reply(ctx: &DbtContext, kind: &str, name: &str) -> Reply {
                 .values()
                 .find_map(|m| m.get(name).map(|d| (d.project_name.clone(), d)))
             else {
-                return unknown(kind, name, ctx);
+                return unknown(kind, name, ctx, quiet);
             };
             let text = std::fs::read_to_string(&details.uri).unwrap_or_default();
             let lines: Vec<&str> = text.lines().collect();
@@ -251,7 +255,7 @@ pub fn reply(ctx: &DbtContext, kind: &str, name: &str) -> Reply {
         "generic_test" => {
             let tests = generic_tests(ctx);
             let Some(test) = tests.iter().find(|t| t.name == name) else {
-                return unknown(kind, name, ctx);
+                return unknown(kind, name, ctx, quiet);
             };
             let package = ctx
                 .macro_detail_map
@@ -298,7 +302,7 @@ pub fn reply(ctx: &DbtContext, kind: &str, name: &str) -> Reply {
                 );
             };
             let Some(node) = ctx.graph.node(node_kind, name) else {
-                return unknown(kind, name, ctx);
+                return unknown(kind, name, ctx, quiet);
             };
             let (outgoing, incoming) = ctx.graph.node_edges(node_kind, name);
             let refs: Vec<Value> = outgoing

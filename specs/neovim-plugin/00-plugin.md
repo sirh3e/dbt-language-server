@@ -405,6 +405,8 @@ require("cogitator").setup({
   lineage = { depth = 3, max_requests = 60 },  -- column-lineage graphs (§5.3b)
   dag = { focus_depth = 2, follow = false, refresh_on_save = true },
   grammar = { highlight = true, auto_install = false, url = nil, rev = nil }, -- §5.3d
+  -- colours from the server (specs/highlighting §7.1)
+  highlight = { server = "auto", layers = { yaml = true, sql = true, jinja = true, dbt = true } },
 })
 ```
 
@@ -484,7 +486,8 @@ vim.lsp.enable("cogitator")
 | `:DbtDeps` | `dbt.deps` | project-wide; the job token is kept for `:DbtCancel` |
 | `:DbtReloadConfig` | `dbt.reloadConfig` | re-read cogitator.yml now |
 | `:DbtSyntaxTree` | `dbt.syntaxTree` | toggle the syntax-tree split (§5.3d) |
-| `:DbtHighlight` | `dbt.highlight` | colour the buffer with tree-sitter-dbt as extmarks (`cogitator.tshl`, captures → `@<capture>` groups, regex syntax off once painted), repainted after edits; again takes the colours off. The explorer's SQL panes and `.sql` picker previews are painted the same way |
+| `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
+| `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
 | `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |
 | `:DbtProjects!` | — (manager store) | manage one project: open, profiles directory, clear selections, rename (`label`), forget |

@@ -170,6 +170,7 @@ editor integrations live under `editors/`.
 - `crates/cogitator-schemas` — typify-generated dbt schema types (`schemas/dbt/`) + saphyr position side-tables
 - `crates/cogitator-parser` — minijinja+sqlparser pipeline, refinement, TokenIndex, jinja_scan
 - `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
+- `crates/cogitator-treesitter/src/highlight/` — `dbt.highlight`'s grammars, layers and merge (`mod.rs`) and the YAML composition (`yaml.rs`: Jinja and SQL inside values, dbt-aware captures); the server side is `server/highlight.rs` (v2 arguments, YAML context, cache) and `server/node_info.rs` (`dbt.nodeInfo`); binding spec `specs/highlighting/00-highlighting.md`
 - `crates/cogitator-astgrep` — ast-grep over tree-sitter-dbt (`dbt`) and tree-sitter-sequel (`sql`): `Search` (patterns, rewrites), `Rules` (sgconfig.yml rule dirs → findings with fixes); the server's `dbt.astGrep` and rule diagnostics (`server/astgrep.rs`). `editors/ast-grep/` is the CLI config and the example rules, tested in `tests/example_rules.rs`
 - `crates/cogitator-duckdb` — Jinja masking + feature-gated DuckDB 2.0 parse diagnostics
 - `crates/cogitator-treesitter` — tree-sitter document backend (grammar: the `tree-sitter-dbt` git dependency, its own repository sirh3e/tree-sitter-dbt; change the grammar there and bump the pinned `rev`)

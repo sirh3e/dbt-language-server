@@ -248,6 +248,47 @@
                    (plist-get result :spans))
          "integration: dbt.highlight colours the Jinja" (plist-get result :language)))
 
+;; unit + integration: highlight v2, dbt captures, node info (specs/highlighting)
+(check (eq (cogitator--highlight-face "type.dbt.model") 'font-lock-type-face)
+       "highlight: a dbt capture falls back to its parent's face")
+(check (eq (cogitator--highlight-face "type.dbt.reference.unresolved") 'font-lock-warning-face)
+       "highlight: an unresolved reference is a warning")
+(check (equal (mapcar #'cogitator--highlight-language
+                      '("/p/models/schema.yml" "/p/target/compiled/p/a.sql" "/p/models/a.sql" nil))
+              '("yaml" "sql" "dbt" "dbt"))
+       "highlight: the language of a file")
+(with-temp-buffer
+  (insert "name: customers")
+  (cogitator--highlight-apply
+   '(:spans [(:range (:start (:line 0 :character 0) :end (:line 0 :character 4))
+              :capture "property" :layer "yaml")
+             (:range (:start (:line 0 :character 6) :end (:line 0 :character 15))
+              :capture "type.dbt.model" :layer "dbt")])
+   '("yaml"))
+  (let ((ovs (seq-filter (lambda (o) (overlay-get o 'cogitator-highlight))
+                         (overlays-in (point-min) (point-max)))))
+    (check (and (= (length ovs) 1) (= (overlay-get (car ovs) 'priority) 13))
+           "highlight: a skipped layer is left out, the dbt layer on top" (length ovs))))
+(check (equal (cogitator--node-parse "macro:times_five") '("macro" . "times_five"))
+       "node: kind and name")
+(check (equal (cogitator--node-parse " orders ") '(nil . "orders"))
+       "node: a name alone")
+(let ((text (cogitator--node-render
+             '(:kind "macro" :name "cents" :params [(:name "col" :default :null)]
+               :callers [(:kind "model" :name "orders")] :calls []))))
+  (check (and (string-match-p "cents(col)" text) (string-match-p "called by (1)" text)
+              (string-match-p "orders  \\[model\\]" text))
+         "node: a macro's card" text))
+(let ((info (run--exec "dbt.nodeInfo" (list :node (list :kind "macro" :name "times_five")))))
+  (check (equal (plist-get info :kind) "macro")
+         "integration: dbt.nodeInfo answers for a macro" info))
+(let* ((schema (expand-file-name "models/schema.yml" run--fixture))
+       (result (run--exec "dbt.highlight" (list :uri (concat "file://" schema)))))
+  (check (and (equal (plist-get result :language) "yaml")
+              (seq-some (lambda (s) (equal (plist-get s :capture) "type.dbt.model"))
+                        (plist-get result :spans)))
+         "integration: a YAML file is highlighted with dbt captures" (plist-get result :language)))
+
 ;; unit + integration: ast-grep
 (check (equal (cogitator--ast-grep-parse "{{ ref($M) }} => {{ ref('x', $M) }}")
               '(:pattern "{{ ref($M) }}" :rewrite "{{ ref('x', $M) }}" :language "dbt"))
