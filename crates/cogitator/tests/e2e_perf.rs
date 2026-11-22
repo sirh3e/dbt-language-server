@@ -185,13 +185,19 @@ fn push_reuses_a_cached_plan_and_never_computes() {
     assert_eq!(perf_codes(&pulled), vec!["join.cartesian".to_string()]);
     let before = cache_stats(&mut lsp, &uri);
 
-    // the next push serves it with no further computation
+    // the next push serves it with no further computation. Earlier
+    // publishes (didOpen's, a refresh's) may still be buffered or in
+    // flight and carry no finding: drop what is buffered, then wait for
+    // the publish that has one — a push that never serves the cached
+    // plan runs into the deadline instead.
+    let _ = lsp.take_notifications("textDocument/publishDiagnostics");
     lsp.notify(
         "textDocument/didSave",
         json!({"textDocument": {"uri": uri}}),
     );
     let saved = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
         n["params"]["uri"] == uri
+            && !perf_codes(n["params"]["diagnostics"].as_array().unwrap_or(&Vec::new())).is_empty()
     });
     assert_eq!(
         perf_codes(saved["params"]["diagnostics"].as_array().unwrap()),
