@@ -102,7 +102,11 @@ writer wins).
   `dbt.setTarget`, `dbt.extractModelYaml`, `dbt.modelTests`,
   `dbt.goToTests`, `dbt.status`, `dbt.projectGraph`, `dbt.modelInfo`,
   `dbt.relation`, `dbt.compiledSql`, `dbt.parse`, `dbt.openModel`,
-  `dbt.setProfilesDir`
+  `dbt.setProfilesDir`, `dbt.cache`, `dbt.reloadConfig`,
+  `dbt.sourceFreshness`, `dbt.cancel`, `dbt.runSelection`,
+  `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
+  `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
+  `dbt.splitPlan`, `dbt.syntaxTree`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -162,6 +166,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.expandJinja` | `{sql}` or InvalidParams Guidance | renders the open buffer with minijinja — project macros, ref/source → relations, var(), config()/is_incremental()/target stubs; adapter calls need a real compile |
 | `dbt.doctor` | `{serverVersion, projectRoot/Name, dialect, dbtBinary(+Found), profiles, artifacts (ages incl. catalogAgeS + driftCount), caches, scanCachePersisted, graph, lintEnabled, runningJobs, config}` | none — the one health report :checkhealth/doctor render |
 | `dbt.queryPlan` | `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}}` | none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan |
+| `dbt.syntaxTree` | `{nodes: [{depth, kind, field, error, missing, range}], truncated}` or InvalidParams | none (read-only): the open document's tree-sitter-dbt tree, named + ERROR + MISSING nodes in pre-order, ranges in UTF-16, at most 20 000 nodes — :DbtSyntaxTree |
 | `dbt.preview` | `{token}` (job started) | `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit] |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
@@ -223,11 +228,27 @@ first/last node (or node `[count]`), `{`/`}` first/last layer (or layer
 `<C-o>`/`<C-i>` selection history; counts repeat `hjkl`, `n`/`N` and the
 history keys. Native motions and the mouse move the selection through a
 `CursorMoved` hit test. Other keys: `<CR>` open, `c` toggle this node's
-columns, `C` toggle all, `L` column lineage via `dbt.showLineage`, `R`
-refresh, `q` close. The server command is editor-neutral; this UI is
+columns, `C` toggle all, `L` the column-lineage graph (of the model; on
+an expanded column line, of that column; in a column graph, re-centred
+on the column under the cursor), `m` back to the model graph, `f` focus
+on the selection's neighbourhood (`cogitator.dag_data.focus`, relayered)
+and `+`/`-` its depth, `F` follow the model of the buffer entered
+elsewhere, `R` refresh (also after every save when
+`dag.refresh_on_save`), `q` close; the winbar names the mode.
+The column graph (`cogitator.column_lineage`) is walked from
+`dbt.columnLineage`, one model per request: upstream through the
+`model`/`source` refs of each column, downstream through the project
+graph's children whose columns read it, bounded by `lineage.depth` hops
+and `lineage.max_requests` requests; it reuses the DAG's layout, as a
+payload of column nodes (`model:<m>::<col>`, `source:<s>.<t>::<col>`,
+`unknown:<name>::<col>`) with layers from the longest path. The server command is editor-neutral; this UI is
 deliberately implemented only in the Neovim plugin.
 
 ### 5.3c Project browser (`:DbtBrowse`) — **Neovim only**
+
+Actions on the selected entry (center or side pane): `s`/`v`/`t` open it
+in a split/vsplit/tab, `c` compile it, `g` show it in :DbtDag, `L` its
+column-lineage graph, `P` parse the project.
 
 `lua/cogitator/browse.lua` is the yazi-style browser over the whole project: the
 center float lists every model from `dbt.projectGraph` (`/` filters
@@ -344,6 +365,9 @@ require("cogitator").setup({
   attach_outside_project = false, -- see §4.2
   lens = { enabled = true, events = { "BufEnter", "CursorHold", "InsertLeave" } },
   keymaps = true,               -- buffer-local defaults of §5.3
+  lineage = { depth = 3, max_requests = 60 },  -- column-lineage graphs (§5.3b)
+  dag = { focus_depth = 2, follow = false, refresh_on_save = true },
+  grammar = { highlight = true, auto_install = false, url = nil, rev = nil }, -- §5.3d
 })
 ```
 
@@ -418,6 +442,13 @@ vim.lsp.enable("cogitator")
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
 | `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
+| `:DbtColumnLineage [column]` | `dbt.projectGraph` + `dbt.columnLineage` | the column-lineage graph of this model (or one column) in :DbtDag (§5.3b) |
+| `:DbtDeps` | `dbt.deps` | project-wide; the job token is kept for `:DbtCancel` |
+| `:DbtReloadConfig` | `dbt.reloadConfig` | re-read cogitator.yml now |
+| `:DbtSyntaxTree` | `dbt.syntaxTree` | toggle the syntax-tree split (§5.3d) |
+| `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |
+| `:DbtProjects!` | — (manager store) | manage one project: open, profiles directory, clear selections, rename (`label`), forget |
+| `:Dbt <sub> [args]` | — | every command above as a subcommand, completed (subcommands, `cache clear`, profiles dirs, the buffer's column names) |
 | `:DbtQuery` | `dbt.relation` | `select * from <relation> limit <query_limit>` through vim-dadbod when configured, else a scratch sql buffer, `<leader>dx` |
 
 The manager store is a JSON file (default
@@ -461,13 +492,27 @@ file (closing the browser), `q`/`<Esc>` close. Sources are tagged
 `uri` are tagged `(missing)`. One instance at a time; the fetch runs
 through the originating buffer's client.
 
+### 5.3d Syntax tree and grammar — **Neovim only**
+
+`:DbtSyntaxTree` (`lua/cogitator/syntax.lua`) draws `dbt.syntaxTree` in a
+split, one node per line; the tree and the source cursor follow each
+other, `<CR>` jumps, edits refetch after 250 ms. `:DbtTreesitter install`
+(`lua/cogitator/treesitter.lua`) fetches the tree-sitter-dbt revision the
+server pins (`M.REV`, held equal to Cargo.toml by the suite), compiles
+`src/parser.c` + `src/scanner.c` with `$CC`/`cc`/`zig cc` into
+`stdpath("data")/site/parser/dbt.so` and copies `queries/*.scm`; with
+`grammar.highlight` the plugin starts it on attached `sql` buffers via
+`vim.treesitter.start` (the filetype stays `sql`).
+
 ### 5.4 Default buffer-local keymaps (when `keymaps = true`)
 
 A `<leader>d` prefix, deliberately clear of Neovim 0.11's built-in `gr*`
 LSP maps: `<leader>ds` → `:DbtSchema`, `<leader>dl` → `:DbtLineage`,
 `<leader>dr` → `:DbtRun`, `<leader>dt` → `:DbtTest`, `<leader>dc` →
 `:DbtCompile`, `<leader>dg` → `:DbtGraph`, `<leader>dR` →
-`:DbtRelation`, `<leader>dL` → `vim.lsp.codelens.run`. All with `desc`
+`:DbtRelation`, `<leader>dL` → `vim.lsp.codelens.run`, `<leader>dv`
+(normal and visual) → expand along `textDocument/selectionRange`,
+`<leader>dV` (visual) → shrink back. All with `desc`
 set, all buffer-local on attach only.
 
 ---
@@ -537,6 +582,11 @@ Report, in order:
    `util::profiles_candidates`.)
 5. If `fusion` is configured: the fusion binary exists and `--version`
    mentions `dbt-fusion` (mirror of the server's own validation).
+6. The tree-sitter-dbt grammar in Neovim: installed, loadable, at the
+   server's revision.
+7. With a live client: every `dbt.*` command and LSP method the plugin
+   uses that the server does not advertise, with the feature it breaks
+   (`health.COMMANDS`, `health.METHODS`), then the `dbt.doctor` report.
 
 ---
 

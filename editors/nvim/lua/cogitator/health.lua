@@ -82,12 +82,33 @@ function M.check()
     end
   end
 
+  local grammar = require("cogitator.treesitter").status()
+  if not grammar.installed then
+    health.info("tree-sitter-dbt grammar not installed in Neovim — :DbtTreesitter install (optional)")
+  elseif not grammar.loadable then
+    health.warn(
+      "tree-sitter-dbt is installed but Neovim cannot load it",
+      { ":DbtTreesitter install rebuilds it" }
+    )
+  elseif grammar.stale then
+    health.warn(
+      ("tree-sitter-dbt is at %s, the server's is %s"):format(
+        tostring(grammar.revision):sub(1, 12),
+        grammar.wanted:sub(1, 12)
+      ),
+      { ":DbtTreesitter install" }
+    )
+  else
+    health.ok("tree-sitter-dbt grammar installed at " .. grammar.wanted:sub(1, 12))
+  end
+
   -- the server's own view, when one is attached (dbt.doctor)
   local client = vim.lsp.get_clients({ name = "cogitator" })[1]
   if not client then
     health.info("no live cogitator client — start one for the server-side report (dbt.doctor)")
     return
   end
+  M.check_capabilities(client)
   local done, report = false, nil
   client:exec_cmd({ command = "dbt.doctor", arguments = { {} } }, {}, function(err, result)
     done = true
@@ -102,32 +123,127 @@ function M.check()
     health.warn("dbt.doctor did not answer (older server?)")
     return
   end
-  health.ok(("server %s — project '%s' (%s), graph %d nodes / %d edges, %d dangling"):format(
-    report.serverVersion,
-    report.projectName,
-    report.dialect,
-    report.graph.nodes,
-    report.graph.edges,
-    report.graph.dangling
-  ))
+  health.ok(
+    ("server %s — project '%s' (%s), graph %d nodes / %d edges, %d dangling"):format(
+      report.serverVersion,
+      report.projectName,
+      report.dialect,
+      report.graph.nodes,
+      report.graph.edges,
+      report.graph.dangling
+    )
+  )
   if report.dbtBinaryFound then
     health.ok("dbt binary on PATH: " .. report.dbtBinary)
   else
     health.warn("dbt binary not found: " .. report.dbtBinary)
   end
   if report.artifacts.runResultsAgeS ~= vim.NIL and report.artifacts.runResultsAgeS then
-    health.ok(("run_results.json is %ds old (drift: %d)"):format(
-      report.artifacts.runResultsAgeS,
-      report.artifacts.driftCount
-    ))
+    health.ok(
+      ("run_results.json is %ds old (drift: %d)"):format(
+        report.artifacts.runResultsAgeS,
+        report.artifacts.driftCount
+      )
+    )
   else
     health.info("no target/run_results.json — run dbt once for run-status surfaces")
   end
-  health.info(("scan cache persisted: %s · lint: %s · running jobs: %d"):format(
-    tostring(report.scanCachePersisted),
-    #report.lintEnabled > 0 and table.concat(report.lintEnabled, ",") or "off",
-    #report.runningJobs
-  ))
+  health.info(
+    ("scan cache persisted: %s · lint: %s · running jobs: %d"):format(
+      tostring(report.scanCachePersisted),
+      #report.lintEnabled > 0 and table.concat(report.lintEnabled, ",") or "off",
+      #report.runningJobs
+    )
+  )
+end
+
+--- The dbt.* commands the plugin calls, and what stops working without
+--- each (the server advertises its own in executeCommandProvider).
+M.COMMANDS = {
+  ["dbt.run"] = ":DbtRun",
+  ["dbt.test"] = ":DbtTest",
+  ["dbt.compile"] = ":DbtCompile, the explorer's c",
+  ["dbt.parse"] = ":DbtParse",
+  ["dbt.deps"] = ":DbtDeps",
+  ["dbt.sourceFreshness"] = ":DbtSourceFreshness",
+  ["dbt.runSelection"] = ":DbtRunSelection",
+  ["dbt.cancel"] = ":DbtCancel",
+  ["dbt.preview"] = ":DbtPreview",
+  ["dbt.columnLineage"] = "the column-lineage graph (:DbtColumnLineage, L)",
+  ["dbt.showLineage"] = ":DbtLineage",
+  ["dbt.goToSchema"] = ":DbtSchema",
+  ["dbt.modelGraph"] = ":DbtGraph",
+  ["dbt.projectGraph"] = ":DbtDag, :DbtTags",
+  ["dbt.modelInfo"] = ":DbtExplorer",
+  ["dbt.compiledSql"] = "the explorer's compiled tab",
+  ["dbt.relation"] = ":DbtRelation, :DbtQuery",
+  ["dbt.modelTests"] = ":DbtTests",
+  ["dbt.extractModelYaml"] = ":DbtExtract",
+  ["dbt.status"] = ":DbtStatus",
+  ["dbt.profiles"] = ":DbtTarget",
+  ["dbt.setTarget"] = ":DbtTarget",
+  ["dbt.setProfilesDir"] = ":DbtProfiles <dir> without a restart",
+  ["dbt.cache"] = ":DbtCache",
+  ["dbt.reloadConfig"] = ":DbtReloadConfig",
+  ["dbt.impact"] = ":DbtImpact",
+  ["dbt.deadModels"] = ":DbtDeadModels",
+  ["dbt.expandJinja"] = ":DbtExpandJinja",
+  ["dbt.queryPlan"] = ":DbtPlan",
+  ["dbt.doctor"] = "this report's server half",
+  ["dbt.syntaxTree"] = ":DbtSyntaxTree",
+}
+
+--- The LSP methods the plugin's own features need, beyond the stock ones.
+M.METHODS = {
+  ["textDocument/selectionRange"] = "<leader>dv / <leader>dV (expand and shrink the selection)",
+  ["textDocument/codeLens"] = "code lenses",
+  ["textDocument/codeAction"] = "code actions",
+}
+
+--- Which of the plugin's commands and methods the server does not offer.
+---@param advertised string[] executeCommandProvider.commands
+---@param supports fun(method: string): boolean
+---@return {name: string, feature: string}[]
+function M.missing(advertised, supports)
+  local have = {}
+  for _, name in ipairs(advertised or {}) do
+    have[name] = true
+  end
+  local out = {}
+  for name, feature in pairs(M.COMMANDS) do
+    if not have[name] then
+      out[#out + 1] = { name = name, feature = feature }
+    end
+  end
+  for method, feature in pairs(M.METHODS) do
+    if not supports(method) then
+      out[#out + 1] = { name = method, feature = feature }
+    end
+  end
+  table.sort(out, function(a, b)
+    return a.name < b.name
+  end)
+  return out
+end
+
+--- Report the commands and methods a live server lacks.
+---@param client vim.lsp.Client
+function M.check_capabilities(client)
+  local advertised = vim.tbl_get(client.server_capabilities, "executeCommandProvider", "commands") or {}
+  local missing = M.missing(advertised, function(method)
+    return client:supports_method(method)
+  end)
+  if #missing == 0 then
+    health.ok(
+      ("the server offers every command and method the plugin uses (%d commands)"):format(#advertised)
+    )
+    return
+  end
+  for _, m in ipairs(missing) do
+    health.warn(("server does not offer %s — %s will not work"):format(m.name, m.feature), {
+      "update the cogitator binary (cogitator --version) to one built with this plugin",
+    })
+  end
 end
 
 return M

@@ -59,9 +59,14 @@ end, {
   desc = "derived-cache counters (argument 'clear' empties them)",
 })
 
-vim.api.nvim_create_user_command("DbtProjects", function()
-  require("cogitator.manager").pick_project()
-end, { desc = "pick a known dbt project (manager store)" })
+vim.api.nvim_create_user_command("DbtProjects", function(opts)
+  local manager = require("cogitator.manager")
+  if opts.bang then
+    manager.manage()
+  else
+    manager.pick_project()
+  end
+end, { bang = true, desc = "pick a known dbt project; with ! manage it (profiles, rename, forget)" })
 
 vim.api.nvim_create_user_command("DbtExplorer", function()
   require("cogitator.explorer").open()
@@ -70,6 +75,10 @@ end, { desc = "project-wide model explorer (alias of :DbtBrowse)" })
 vim.api.nvim_create_user_command("DbtDag", function()
   require("cogitator.dag").open()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
+
+vim.api.nvim_create_user_command("DbtColumnLineage", function(opts)
+  require("cogitator.dag").open({ columns = true, column = opts.args ~= "" and opts.args or nil })
+end, { nargs = "?", desc = "column-lineage graph of this model (optionally of one column)" })
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()
@@ -94,4 +103,36 @@ end, {
   nargs = "?",
   complete = "dir",
   desc = "show the dbt profiles resolution, or switch the profiles directory",
+})
+
+vim.api.nvim_create_user_command("DbtDeps", function()
+  require("cogitator.dispatch").deps()
+end, { desc = "dbt deps for the project (cancellable with :DbtCancel)" })
+
+vim.api.nvim_create_user_command("DbtReloadConfig", function()
+  require("cogitator.dispatch").reload_config()
+end, { desc = "re-read cogitator.yml now" })
+
+vim.api.nvim_create_user_command("Dbt", function(opts)
+  require("cogitator.dispatch").run(opts.args)
+end, {
+  nargs = "*",
+  complete = function(lead, cmdline)
+    return require("cogitator.dispatch").complete(lead, cmdline)
+  end,
+  desc = "every :Dbt* command as :Dbt <subcommand> [args]",
+})
+
+vim.api.nvim_create_user_command("DbtSyntaxTree", function()
+  require("cogitator.syntax").toggle()
+end, { desc = "the tree-sitter-dbt syntax tree of this buffer, in a split (toggle)" })
+
+vim.api.nvim_create_user_command("DbtTreesitter", function(opts)
+  require("cogitator.treesitter").command(opts.args)
+end, {
+  nargs = "?",
+  complete = function()
+    return { "install", "status", "start" }
+  end,
+  desc = "the tree-sitter-dbt grammar in Neovim: install, status (default), start",
 })

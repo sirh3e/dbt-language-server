@@ -52,6 +52,12 @@ local function keymaps(bufnr)
   map("<leader>dP", function()
     require("cogitator.manager").pick_project()
   end, "dbt: pick a known dbt project")
+  vim.keymap.set({ "n", "x" }, "<leader>dv", function()
+    require("cogitator.select").expand()
+  end, { buffer = bufnr, desc = "dbt: expand the selection (selectionRange)" })
+  vim.keymap.set("x", "<leader>dV", function()
+    require("cogitator.select").shrink()
+  end, { buffer = bufnr, desc = "dbt: shrink the selection back" })
 end
 
 local function on_attach(client, bufnr, config)
@@ -72,6 +78,7 @@ local function on_attach(client, bufnr, config)
     keymaps(bufnr)
   end
   require("cogitator.lens").attach(bufnr, config)
+  require("cogitator.treesitter").attach(bufnr)
 end
 
 --- (Re-)register the server definition; assignment form replaces any

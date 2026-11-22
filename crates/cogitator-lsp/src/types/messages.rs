@@ -47,6 +47,8 @@ pub struct ResponseError {
 pub mod error_codes {
     pub const METHOD_NOT_FOUND: i32 = -32601;
     pub const INVALID_PARAMS: i32 = -32602;
+    /// JSON-RPC: the server failed on its own (a grammar that will not load).
+    pub const INTERNAL_ERROR: i32 = -32603;
     /// LSP: the client cancelled the request ($/cancelRequest).
     pub const REQUEST_CANCELLED: i32 = -32800;
 }

@@ -250,6 +250,13 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.syntaxTree" => {
+                let snap = self.snapshot_for(&uri);
+                self.offload_blocking(req.id, "dbt.syntaxTree", move || {
+                    syntax_tree_reply(snap.doc.as_deref().map(|d| &*d.text))
+                });
+                return;
+            }
             "dbt.doctor" => {
                 let snap = self.snapshot_for("");
                 let derived = self.derived.clone();
@@ -406,4 +413,46 @@ impl Dispatcher {
         let result = features::go_to_schema(&ctx, self.documents.get(&uri), &uri, pos);
         self.send(&ResultResponse::new(req.id, result));
     }
+}
+
+/// Cap on the nodes one `dbt.syntaxTree` answer carries; a 2 MiB model
+/// stays a few hundred KiB of JSON.
+const SYNTAX_TREE_MAX_NODES: usize = 20_000;
+
+/// `dbt.syntaxTree {uri}`: the tree-sitter-dbt tree of an open document,
+/// its named nodes in pre-order with depth and UTF-16 ranges.
+fn syntax_tree_reply(text: Option<&str>) -> crate::server::reply::Reply {
+    let Some(text) = text else {
+        return crate::server::reply::Reply::error(
+            error_codes::INVALID_PARAMS,
+            cogitator_error::guidance::Guidance::new("dbt.syntaxTree needs an open document.")
+                .fix("pass the uri of a document the editor has opened.")
+                .to_message(),
+        );
+    };
+    let Some(tree) = cogitator_treesitter::syntax_tree(text, SYNTAX_TREE_MAX_NODES) else {
+        return crate::server::reply::Reply::error(
+            error_codes::INTERNAL_ERROR,
+            "the tree-sitter-dbt grammar could not be loaded".to_string(),
+        );
+    };
+    let position = |p: cogitator_treesitter::Point| serde_json::json!({"line": p.line, "character": p.character});
+    let nodes: Vec<serde_json::Value> = tree
+        .nodes
+        .into_iter()
+        .map(|n| {
+            serde_json::json!({
+                "depth": n.depth,
+                "kind": n.kind,
+                "field": n.field,
+                "error": n.error,
+                "missing": n.missing,
+                "range": {"start": position(n.start), "end": position(n.end)},
+            })
+        })
+        .collect();
+    crate::server::reply::Reply::result(&serde_json::json!({
+        "nodes": nodes,
+        "truncated": tree.truncated,
+    }))
 }

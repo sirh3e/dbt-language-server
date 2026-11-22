@@ -42,6 +42,21 @@ Defaults shown: >lua
       },
       keymaps = true,             -- the buffer-local <leader>d maps below
       semantic_tokens = true,
+      lineage = {                 -- column-lineage graphs (|cogitator-nvim-lineage|)
+        depth = 3,                -- hops followed each way
+        max_requests = 60,        -- dbt.columnLineage calls per graph, at most
+      },
+      dag = {                     -- |:DbtDag|
+        focus_depth = 2,          -- hops shown around the selection (f, +/-)
+        follow = false,           -- start with follow mode on (F)
+        refresh_on_save = true,   -- redraw an open DAG after a save
+      },
+      grammar = {                 -- |cogitator-nvim-treesitter|
+        highlight = true,         -- start tree-sitter-dbt on sql buffers
+        auto_install = false,     -- build it on first attach when missing
+        url = nil,                -- another tree-sitter-dbt repository
+        rev = nil,                -- another revision than the server's
+      },
     })
 <
 `profiles_dir` is sent as `initializationOptions.profilesDir`; the server
@@ -78,8 +93,21 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  `a` applies the split, `q` closes
   :DbtIncrementality
                  table models that could be incremental (quickfix)
+  :DbtColumnLineage [column]  column-lineage graph of this model
+  :DbtDeps       dbt deps for the project (cancellable)
+  :DbtReloadConfig  re-read cogitator.yml now
+  :DbtSyntaxTree the tree-sitter-dbt tree in a split (toggle)
+  :DbtTreesitter [install|status|start]  the grammar in Neovim
+  :DbtProjects!  manage a known project (profiles, rename, forget)
+  (code lens)    run the code lens on this line      <leader>dL
+  (selection)    expand along selectionRange         <leader>dv
+                 shrink back (visual mode)           <leader>dV
 
-`:DbtDag` (a *Neovim-only* feature) draws the whole project as a layered
+Every command is also a subcommand of *:Dbt* with completion, e.g.
+`:Dbt columns customer_id`, `:Dbt cache clear`, `:Dbt treesitter install`;
+`:Dbt` alone lists them.
+
+`:DbtDag` (a Neovim-only feature) draws the whole project as a layered
 DAG in the dbt-docs colours. One node is selected, and movement goes
 from node to node:
 
@@ -92,9 +120,27 @@ from node to node:
   <C-o> / <C-i>  older / newer selection
   <CR>           open the selected model
   c / C          expand columns in this / every node (docglow-style)
-  L              show column lineage
-  R              refresh
+  L              column-lineage graph of this model; on an expanded
+                 column line, of that column; in a column graph,
+                 re-centre on the column under the cursor
+  m              back from a column graph to the model graph
+  f              focus: only the selection's neighbourhood, or all again
+  + / -          widen / narrow the focus (in a column graph: the walk)
+  F              follow: select the model of the buffer entered elsewhere
+  R              refresh (a save does it too, see `dag.refresh_on_save`)
   q              close
+
+The winbar says what is shown: the models, a focus and its depth, or
+the column graph and its origin.
+
+                                                     *cogitator-nvim-lineage*
+A column-lineage graph is walked from `dbt.columnLineage`, which answers
+one model at a time: upstream through the model and source columns each
+column reads, downstream through the models that read it, up to
+`lineage.depth` hops and `lineage.max_requests` requests (the winbar
+says when the walk stopped early). A column of a model whose template the
+server declines (Jinja control flow) has no lineage; compiling it
+(|:DbtCompile|) lets the server read the compiled SQL instead.
 
 Counts repeat h, j, k, l, n, N, <C-o> and <C-i>. The colours are the
 `DbtDag*` highlight groups, which a colorscheme can override. Search
@@ -112,7 +158,6 @@ The server logs what it is doing to |vim.lsp.log| (`:LspLog`): context
 refreshes and warnings at the default info level; set
 `log.client_level: debug` in cogitator.yml (hot) or send `$/setTrace`
 for per-request timing lines.
-                 run the code lens on this line      <leader>dL
 
 `:DbtProfiles` without an argument prints the server's profiles.yml
 resolution order with the winning candidate marked. With a directory
@@ -120,7 +165,9 @@ argument it switches the directory LIVE through `dbt.setProfilesDir`
 (no restart) and remembers the choice for this project in the manager
 store; against older servers without that command it falls back to the
 restart flow. `:DbtTarget` choices persist per project the same way,
-and `:DbtProjects` picks among every project the store knows. The
+and `:DbtProjects` picks among every project the store knows;
+`:DbtProjects!` manages one: open it, set or clear its profiles
+directory and profile/target selections, give it a name, or forget it. The
 store is a JSON file at `stdpath("data")/cogitator/manager.json`
 (override with setup's `manager_path`); stored selections are injected
 as initializationOptions on the next attach.
@@ -142,7 +189,7 @@ downstream models on the right. Keys inside it:
 Sources appear in the upstream pane tagged `[source]`; they have no
 further lineage behind them.
 
-`:DbtBrowse` (a *Neovim-only* feature) is the project-wide browser:
+`:DbtBrowse` (a Neovim-only feature) is the project-wide browser:
 the center pane lists every model, the side panes follow the selection
 with its direct upstream and downstream, and the preview below shows
 the selected model in four tabs. Keys inside it:
@@ -165,6 +212,11 @@ the selected model in four tabs. Keys inside it:
                  center: open the model file and close
   o              open the selected entry's file
   y              yank the selected model's or entry's name
+  s / v / t      open the selected entry in a split / vsplit / tab
+  c              compile the selected model (the compiled SQL opens)
+  g              show the selection in |:DbtDag|
+  L              the selection's column-lineage graph
+  P              dbt parse for the project
   <Esc>          clear the filter first, close second
   q              close the browser
 
@@ -188,6 +240,45 @@ cursor offers "Open model" and "Go to tests".
 
 dbt run/test/compile are asynchronous; progress and results arrive as
 notifications (`:messages` keeps them).
+
+                                                      *cogitator-nvim-syntax*
+`:DbtSyntaxTree` opens the server's tree-sitter-dbt tree of the buffer
+(`dbt.syntaxTree`) in a split, one node per line with its field and
+range; ERROR and MISSING nodes are highlighted. The tree's cursor
+follows the source cursor to the innermost node, moving in the tree
+highlights that node's range in the source, <CR> jumps there, q closes.
+Edits refresh it after a short pause.
+
+                                                  *cogitator-nvim-treesitter*
+`:DbtTreesitter install` builds the tree-sitter-dbt grammar at the
+revision the server is built with (git, and $CC, cc or `zig cc`) and
+installs it with its queries into `stdpath("data")/site`. With
+`grammar.highlight` on, the plugin then starts it on every `sql` buffer
+it attaches to: the filetype stays `sql`, so other SQL tools keep
+working, while highlighting sees the Jinja; the SQL between the tags is
+injected as `sql`, highlighted when a SQL parser is installed.
+`:DbtTreesitter` (or `status`) says what is installed, and
+|:checkhealth| warns when it is behind the server's revision.
+
+                                                   *cogitator-nvim-select*
+<leader>dv selects the innermost `textDocument/selectionRange` around
+the cursor and, pressed again in visual mode, the next larger one
+(expression, Jinja block, CTE, statement, document); <leader>dV shrinks
+back the way it came. Or call `require("cogitator.select").expand()` /
+`.shrink()` from your own maps.
+
+                                                      *cogitator-nvim-cmp*
+For nvim-cmp, `cogitator.completion` orders cogitator's items by the
+server's sortText and shows an item's detail in the menu: >lua
+
+    local dbt = require("cogitator.completion")
+    cmp.setup({
+      sorting = { comparators = dbt.sorted(cmp.config.compare) },
+      formatting = { format = dbt.format() }, -- or dbt.format(lspkind_fn)
+    })
+<
+|:checkhealth| cogitator also lists every command and method the plugin
+uses that the attached server does not offer, and what stops working.
 
 ==============================================================================
 4. Caveats                                           *cogitator-nvim-caveats*

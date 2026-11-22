@@ -177,6 +177,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.deps",
     "dbt.incrementality",
     "dbt.splitPlan",
+    "dbt.syntaxTree",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

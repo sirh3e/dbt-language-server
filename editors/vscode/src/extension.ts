@@ -185,6 +185,45 @@ async function incrementality(): Promise<void> {
   }
 }
 
+/** One node of a dbt.syntaxTree answer. */
+export interface SyntaxNode {
+  depth: number;
+  kind: string;
+  field?: string | null;
+  missing?: boolean;
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+}
+
+/** One tree line, as :DbtSyntaxTree draws it: depth, field, kind, range. */
+export function syntaxLine(node: SyntaxNode): string {
+  const r = node.range;
+  const kind = node.missing ? `MISSING ${node.kind}` : node.kind;
+  return `${"  ".repeat(node.depth)}${node.field ? `${node.field}: ` : ""}${kind} [${
+    r.start.line + 1
+  }:${r.start.character} - ${r.end.line + 1}:${r.end.character}]`;
+}
+
+async function syntaxTree(): Promise<void> {
+  const tree = (await execDbt("dbt.syntaxTree")) as
+    | { nodes: SyntaxNode[]; truncated: boolean }
+    | undefined;
+  if (!tree) {
+    return;
+  }
+  let content = tree.nodes.map(syntaxLine).join("\n") + "\n";
+  if (tree.truncated) {
+    content += "… more nodes than the server sends; the rest are left out\n";
+  }
+  const doc = await vscode.workspace.openTextDocument({ language: "plaintext", content });
+  await vscode.window.showTextDocument(doc, {
+    preview: true,
+    viewColumn: vscode.ViewColumn.Beside,
+  });
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -197,6 +236,7 @@ export async function activate(
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
     ["cogitator.incrementality", incrementality],
+    ["cogitator.syntaxTree", syntaxTree],
     [
       "cogitator.status",
       async () => {

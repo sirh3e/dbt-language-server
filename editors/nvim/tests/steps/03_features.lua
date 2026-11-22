@@ -149,9 +149,12 @@ return function(ctx)
       range = fix_diag.range,
       context = { diagnostics = { fix_diag }, only = { "quickfix" } },
     }, "quickfix: codeAction answers") or {}
-    -- the did-you-mean fix; "Create model 'customer'" is a quickfix too
+    -- the did-you-mean fix: since #37 the dangling ref also offers
+    -- quickfixes that create a file (documentChanges[1] is a CreateFile),
+    -- so pick the first one whose first change is a text edit
     for _, a in ipairs(fixes) do
-      if a.kind == "quickfix" and not a.title:find("^Create model") then
+      local first = a.kind == "quickfix" and a.edit and a.edit.documentChanges and a.edit.documentChanges[1]
+      if not fix_action and first and first.edits then
         fix_action = a
       end
     end
