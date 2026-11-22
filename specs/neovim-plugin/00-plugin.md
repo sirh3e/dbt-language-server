@@ -345,6 +345,19 @@ cogitator.nvim/
 └── doc/cogitator.txt
 ```
 
+**Installing with lazy.nvim.** The plugin is a subdirectory of the server's
+repository and lazy.nvim has no subdirectory option, so the repository root
+carries a `lazy.lua`, which lazy.nvim adds to the plugin's own spec: `init`
+appends `editors/nvim` to the runtimepath and tags its `doc/` (lazy.nvim tags
+and sources only the root's `doc/` and `plugin/`), `main = "cogitator"`, and
+`config` sources `plugin/cogitator.lua` and calls `setup(opts)`. A user's
+spec is then `{ "sirh3e/dbt-language-server", opts = {} }`;
+`editors/nvim/examples/lazy.lua` adds lazy-loading on `BufReadPre` of
+SQL/YAML (not `ft`, after the `FileType` the client is enabled on) and an
+opt-in `build` running `install.sh`/`install.ps1`. `just nvim-lazy-test`
+installs this checkout through lazy.nvim, both ways, in a sandbox (network:
+it clones lazy.nvim).
+
 Rules: `require("cogitator")` must be cheap (no I/O at require time); all
 `vim.fn`/`vim.loop` probing happens in `setup()` or lazily. Every module
 ≤ ~200 lines.

@@ -17,6 +17,17 @@ Requires Neovim 0.11+ and the `cogitator` binary (a release asset or
 
     require("cogitator").setup({})
 <
+With lazy.nvim the plugin is one line; the repository's own lazy.lua
+puts editors/nvim on the runtimepath and passes `opts` to setup(): >lua
+
+    { "sirh3e/dbt-language-server", opts = {} }
+<
+editors/nvim/examples/lazy.lua is a fuller spec: lazy-loading on
+BufReadPre of SQL/YAML files (not `ft`, which comes too late for the
+server to attach to the first buffer) and an opt-in `build` that installs
+the server from the latest release on install and :Lazy update.
+editors/nvim/examples/minimal_init.lua tries the plugin without touching
+your config: `nvim -u minimal_init.lua some_model.sql`.
 The server attaches to `sql` and `yaml` buffers inside a dbt project (a
 directory with `dbt_project.yml` upward from the file). Run
 `:checkhealth cogitator` to verify the binary, the project root and the

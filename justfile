@@ -181,6 +181,14 @@ nvim-test:
     cargo build -p cogitator
     nvim --headless -l editors/nvim/tests/run.lua
 
+# lazy.nvim installs the plugin from this checkout by name alone (the
+# root lazy.lua), then with editors/nvim/examples/lazy.lua; sandboxed, but
+# needs the network to clone lazy.nvim, so it is not part of nvim-test
+[group('editors')]
+nvim-lazy-test:
+    nvim --headless -l editors/nvim/tests/lazy/run.lua
+    COGITATOR_LAZY_SPEC=example nvim --headless -l editors/nvim/tests/lazy/run.lua
+
 # Batch Emacs integration tests (needs emacs >= 29 and a debug server build)
 [group('editors')]
 emacs-test:
