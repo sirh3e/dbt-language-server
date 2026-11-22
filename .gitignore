@@ -30,3 +30,5 @@ editors/vscode/package-lock.json
 # the test runner's downloaded VS Code builds
 editors/vscode/.vscode-test/
 editors/vscode/LICENSE
+# helptags lazy.nvim (the root lazy.lua) generates for :h cogitator
+editors/nvim/doc/tags
