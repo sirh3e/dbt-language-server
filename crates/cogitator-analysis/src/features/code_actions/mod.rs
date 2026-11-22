@@ -7,6 +7,7 @@
 pub(crate) mod convert_relation;
 pub(crate) mod declare_missing;
 pub(crate) mod define_missing;
+pub(crate) mod extract_cte;
 pub(crate) mod governance_fixes;
 mod quickfix;
 pub(crate) mod refactors;

@@ -37,6 +37,7 @@ pub use call_hierarchy::{macro_incoming_calls, prepare_macro_hierarchy};
 pub use code_actions::convert_relation::{convert_literal_relations, RelationCatalog};
 pub use code_actions::declare_missing::declare_missing_actions;
 pub use code_actions::define_missing::define_missing_actions;
+pub use code_actions::extract_cte::extract_cte_action;
 pub use code_actions::governance_fixes::private_ref_actions;
 pub use code_actions::refactors::{expand_star_action, extract_yaml_action};
 pub use code_actions::yaml_columns::{

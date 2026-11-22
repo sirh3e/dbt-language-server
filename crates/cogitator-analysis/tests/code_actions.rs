@@ -308,3 +308,100 @@ fn schema_extraction_is_an_edit_too() {
         .unwrap()
         .contains("- name: stg_stripe_payments"));
 }
+
+/// The text after applying `edits` (byte columns, as the server sends).
+fn applied(text: &str, edits: &serde_json::Value) -> String {
+    let starts: Vec<usize> = std::iter::once(0)
+        .chain(text.match_indices('\n').map(|(i, _)| i + 1))
+        .collect();
+    let offset = |p: &serde_json::Value| {
+        starts[p["line"].as_u64().unwrap() as usize] + p["character"].as_u64().unwrap() as usize
+    };
+    let mut edits: Vec<(usize, usize, String)> = edits
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| {
+            (
+                offset(&e["range"]["start"]),
+                offset(&e["range"]["end"]),
+                e["newText"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    edits.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut out = text.to_string();
+    for (start, end, new) in edits {
+        out.replace_range(start..end, &new);
+    }
+    out
+}
+
+fn extract(text: &str, needle: &str) -> Option<(String, String, String)> {
+    let (ctx, docs, uri) = open_lines(text);
+    let (line, column) = text
+        .lines()
+        .enumerate()
+        .find_map(|(i, l)| l.find(needle).map(|c| (i, c)))
+        .unwrap();
+    let range = Range::zero_width(Position {
+        line: line as u32,
+        character: column as u32,
+    });
+    let action = features::extract_cte_action(&ctx, docs.get(&uri).unwrap(), &uri, range)?;
+    let wire = serde_json::to_value(action.edit.as_ref().unwrap()).unwrap();
+    let changes = &wire["documentChanges"];
+    let created = changes[0]["uri"].as_str().unwrap().to_string();
+    let body = changes[1]["edits"][0]["newText"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let rest = applied(text, &changes[2]["edits"]);
+    assert_eq!(action.kind, Some("refactor.extract"));
+    Some((created, body, rest))
+}
+
+fn open_lines(text: &str) -> (cogitator_analysis::DbtContext, Documents, String) {
+    open(text)
+}
+
+#[test]
+fn the_first_of_two_ctes_moves_to_a_model_and_is_ref_d() {
+    let text = "with recent as (\n    select * from {{ ref('stg_orders') }}\n),\n\nfinal as (\n    select r.order_id from recent r\n)\n\nselect * from final\n";
+    let (created, body, rest) = extract(text, "recent as").expect("an action");
+    assert_eq!(created, model_uri("models/recent.sql"));
+    assert_eq!(body, "select * from {{ ref('stg_orders') }}\n");
+    assert_eq!(
+        rest,
+        "with final as (\n    select r.order_id from {{ ref('recent') }} r\n)\n\nselect * from final\n"
+    );
+}
+
+#[test]
+fn an_only_cte_takes_its_with_along_and_its_use_keeps_the_name() {
+    let text = "with base as (\n    select 1 as id\n)\nselect base.id from base\n";
+    let (_, body, rest) = extract(text, "base.id").expect("an action on a use");
+    assert_eq!(body, "select 1 as id\n");
+    assert_eq!(rest, "select base.id from {{ ref('base') }} as base\n");
+}
+
+#[test]
+fn the_last_of_several_ctes_takes_the_comma_before_it() {
+    let text = "with a as (\n    select 1 as id\n), b as (\n    select 2 as id\n)\nselect * from a join b on a.id = b.id\n";
+    let (_, _, rest) = extract(text, "b as").expect("an action");
+    assert_eq!(
+        rest,
+        "with a as (\n    select 1 as id\n)\nselect * from a join {{ ref('b') }} as b on a.id = b.id\n"
+    );
+}
+
+#[test]
+fn a_cte_that_would_not_stand_alone_is_not_extracted() {
+    // reads another CTE of the file
+    let text =
+        "with a as (\n    select 1 as id\n), b as (\n    select id from a\n)\nselect * from b\n";
+    assert!(extract(text, "b as").is_none());
+    // a model of that name exists
+    let text = "with orders as (\n    select 1 as id\n)\nselect * from orders\n";
+    assert!(extract(text, "orders as").is_none());
+}

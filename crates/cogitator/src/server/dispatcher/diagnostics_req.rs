@@ -142,6 +142,7 @@ impl Dispatcher {
                         &snap.ctx, doc, &uri, range, &read,
                     ));
                     extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
+                    extra.extend(features::extract_cte_action(&snap.ctx, doc, &uri, range));
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
                 }
             }
