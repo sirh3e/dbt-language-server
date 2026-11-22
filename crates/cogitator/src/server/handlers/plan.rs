@@ -154,6 +154,27 @@ impl<'a> Planner<'a> {
     }
 }
 
+/// `dbt.incrementality` (specs/ir-pipeline/10): every table model's
+/// incrementality verdict, the slowest rebuilds first.
+#[tracing::instrument(skip_all)]
+pub fn incrementality(snap: &Snapshot, derived: &DerivedCache, artifact_cap: u64) -> Reply {
+    let ctx = &snap.ctx;
+    let artifacts = match ctx.project_root.as_deref() {
+        Some(root) => derived.artifacts(root, artifact_cap),
+        None => ArtifactSet::default(),
+    };
+    let project = project_of(ctx, derived);
+    let revision = project.as_ref().map_or(0, |p| p.revision);
+    let report = cogitator_analysis::features::plan::incrementality_report(
+        ctx,
+        &artifacts,
+        project.as_deref(),
+        revision,
+        &|path| std::fs::read_to_string(path).ok(),
+    );
+    Reply::result(&report)
+}
+
 fn project_of(ctx: &DbtContext, derived: &DerivedCache) -> Option<Arc<SchemaSnapshot>> {
     ctx.project_root
         .as_deref()

@@ -529,6 +529,60 @@ fn editing_actions_declare_table_and_docs_block() {
     lsp.shutdown();
 }
 
+/// `dbt.incrementality` over the project: a table model linear in an
+/// input with a growing timestamp is offered `append`; one with a LIMIT
+/// stays a table and says why.
+#[test]
+fn incrementality_lists_table_models_with_their_verdicts() {
+    let project = jaffle();
+    let root = project.root.clone();
+    std::fs::write(
+        root.join("models/raw_events.sql"),
+        "select 1 as id, cast('2024-01-01' as timestamp) as loaded_at\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/raw_events.yml"),
+        "version: 2\n\nmodels:\n  - name: raw_events\n    columns:\n      - name: id\n        data_type: bigint\n      - name: loaded_at\n        data_type: timestamp\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/probe_append.sql"),
+        "{{ config(materialized='table') }}\nselect id, loaded_at from {{ ref('raw_events') }}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("models/probe_top.sql"),
+        "{{ config(materialized='table') }}\nselect id, loaded_at from {{ ref('raw_events') }} order by loaded_at desc limit 3\n",
+    )
+    .unwrap();
+    let (mut lsp, _uri) = project.booted();
+    let reply = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.incrementality", "arguments": [{}]}),
+    );
+    let models = reply["result"]["models"].as_array().expect("models");
+    let find = |name: &str| {
+        models
+            .iter()
+            .find(|m| m["model"] == name)
+            .unwrap_or_else(|| panic!("no {name} in {models:?}"))
+    };
+    let append = find("probe_append");
+    assert_eq!(append["verdict"], "append", "{append}");
+    assert_eq!(append["inputs"][0]["column"], "loaded_at", "{append}");
+    let top = find("probe_top");
+    assert_eq!(top["verdict"], "keep", "{top}");
+    assert!(
+        top["reasons"][0]["reason"]
+            .as_str()
+            .is_some_and(|r| r.contains("LIMIT")),
+        "{top}"
+    );
+    assert!(reply["result"]["incremental"].as_u64().unwrap() >= 1);
+    lsp.shutdown();
+}
+
 /// Go-to-definition on a built-in SQL function (03 §9): the bundled
 /// documentation materializes under target/.cogitator/docs/ and the
 /// Location jumps into it; plain unknown words keep the self-location

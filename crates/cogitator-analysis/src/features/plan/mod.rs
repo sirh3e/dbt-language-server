@@ -29,6 +29,7 @@ mod env;
 mod facts;
 mod incremental;
 mod incrementality;
+mod incrementality_report;
 mod passes;
 mod phys;
 mod report;
@@ -42,6 +43,8 @@ mod tests_compiled;
 mod tests_facts;
 mod trace;
 
+pub use incrementality::{DeltaView, IncrementalityView, ReasonView};
+pub use incrementality_report::{incrementality_report, IncrementalityReport, ModelIncrementality};
 pub use report::{
     EvidenceView, FindingView, FixEditView, FixView, LevelReport, OriginView, Placement,
     PlanLevels, PlanStatus, QueryPlan,

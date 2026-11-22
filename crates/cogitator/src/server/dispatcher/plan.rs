@@ -14,4 +14,14 @@ impl Dispatcher {
             crate::server::handlers::plan::query_plan(&snap, &derived, &uri, cap, catalog_stats)
         });
     }
+
+    /// `dbt.incrementality`: project-wide, so the whole context snapshot.
+    pub(super) fn incrementality(&mut self, id: i64) {
+        let snap = self.snapshot_for("");
+        let derived = self.derived.clone();
+        let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        self.offload_blocking(id, "dbt.incrementality", move || {
+            crate::server::handlers::plan::incrementality(&snap, &derived, cap)
+        });
+    }
 }
