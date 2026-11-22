@@ -69,7 +69,10 @@ fn config_file_hot_reload() {
     // 4. deleting the file reverts its keys to the launch values
     std::fs::remove_file(&config).unwrap();
     lsp.reload_config();
-    let reverted = lsp.wait_status(|s| s["config"]["loaded"] == false);
+    // the reverted target lands with the context refresh, which can
+    // publish a moment after the unloaded config: wait for both
+    let reverted =
+        lsp.wait_status(|s| s["config"]["loaded"] == false && s["profiles"]["activeTarget"] == "");
     assert!(reverted["config"]["path"].is_null(), "{reverted}");
     assert_eq!(reverted["profiles"]["activeTarget"], "", "{reverted}");
 
