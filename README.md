@@ -80,7 +80,17 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   dbt_project.yml" for an unknown `var()`; "Add N missing column(s)" to
   the schema YAML for produced but undocumented columns; "Remove the
   trailing comma" and "Qualify with 'alias'" for the lint findings —
-  preferred, and bundled into `source.fixAll`, where they change no result
+  preferred, and bundled into `source.fixAll`, where they change no result;
+  "Declare source", "Add table to source" and "Create docs block" for
+  undeclared `source()`/`doc()` names; for an enforced contract that
+  drifted, add the undeclared columns (with `data_type`) or drop the
+  contracted ones the model never produces; for a ref into another
+  group's private model, "Make 'x' protected" or "Move into group";
+  "Run dbt deps" in a packages.yml naming uninstalled packages
+- **Refactors**: "Expand `c.*`" to the relation's known columns,
+  "Extract CTE to a model" (the CTE becomes its own model and is
+  `ref()`'d), and "Extract schema YAML" as an edit for editors that run
+  no custom commands
 - **Code lenses** per model: `N downstream` / `N upstream`, go to schema,
   column lineage, dbt run/test/compile, `N tests` (documented) or
   `Extract schema YAML` (undocumented); per macro: `N call sites`
