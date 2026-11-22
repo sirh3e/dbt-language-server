@@ -182,6 +182,7 @@ M.SUBCOMMANDS = {
     run = module_call("cogitator.tshl", "toggle"),
     desc = "colour this buffer with tree-sitter-dbt (server)",
   },
+  node = { run = with_args("node"), desc = "a node's card: [kind:]name (dbt.nodeInfo)" },
   astgrep = {
     run = function(args)
       require("cogitator.astgrep").command({ args = args })

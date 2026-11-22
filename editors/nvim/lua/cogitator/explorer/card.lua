@@ -1,6 +1,8 @@
---- The explorer's middle pane: everything known about the selected model
---- on one card — what it is, its description, tags, relation, versions,
---- documented columns and tests. Lines with a jump target (a test, a
+--- The explorer's middle pane: everything known about the selected node
+--- on one card. A model: what it is, its description, tags, relation,
+--- versions, documented columns and tests. A macro: its signature, who
+--- calls it and what it calls. A test: what it tests, whether it is
+--- compiled; a generic test, where YAML applies it (dbt.nodeInfo). Lines with a jump target (a test, a
 --- version) open it on <CR>. Pure: lines and jumps from the state.
 
 local render_lib = require("cogitator.render")
@@ -14,6 +16,138 @@ local M = {}
 
 local function present(v)
   return v ~= nil and v ~= vim.NIL and v ~= ""
+end
+
+--- A macro's or generic test's signature: `name(a, b='x')`.
+---@param name string
+---@param params table[]|string[]
+---@return string
+function M.signature(name, params)
+  local parts = {}
+  for _, p in ipairs(params or {}) do
+    if type(p) == "string" then
+      parts[#parts + 1] = p
+    else
+      parts[#parts + 1] = p.name .. (present(p.default) and ("=" .. p.default) or "")
+    end
+  end
+  return name .. "(" .. table.concat(parts, ", ") .. ")"
+end
+
+--- The card lines of a node that is not a model (dbt.nodeInfo's answer):
+--- a macro, a singular or generic test, a source, an exposure…, appended
+--- through `add` and `heading`.
+---@param info table
+---@param add fun(line: string, jump: table?)
+---@param heading fun(text: string)
+local function node_lines(info, add, heading)
+  local function entries(title, list, empty)
+    heading(("%s (%d)"):format(title, #(list or {})))
+    if not list or #list == 0 then
+      add("  · " .. empty .. " ·")
+      return
+    end
+    for _, e in ipairs(list) do
+      add(("  %s  [%s]"):format(e.name, e.kind or "?"), present(e.uri) and { uri = e.uri } or nil)
+    end
+  end
+  local kind = info.kind
+  if kind == "macro" then
+    add("")
+    add(M.signature(info.name, info.params))
+    if present(info.package) then
+      add("package: " .. info.package)
+    end
+    entries("called by", info.callers, "no model or test calls it")
+    entries("calls", info.calls, "no other macro")
+  elseif kind == "generic_test" then
+    add("")
+    add("{% test " .. M.signature(info.name, info.params) .. " %}")
+    if present(info.package) then
+      add("package: " .. info.package)
+    end
+    heading(("applied to (%d, <CR> jumps)"):format(#(info.appliedTo or {})))
+    if not info.appliedTo or #info.appliedTo == 0 then
+      add("  · no YAML applies it ·")
+    end
+    for _, a in ipairs(info.appliedTo or {}) do
+      local where = a.model .. (present(a.column) and ("." .. a.column) or "")
+      add("  " .. where, { uri = a.uri, range = a.range })
+    end
+  else
+    entries(kind == "test" and "tests" or "upstream", info.refs or info.upstream, "nothing")
+    if present(info.calls) and #info.calls > 0 then
+      entries("calls", info.calls, "no macro")
+    end
+    if kind ~= "test" and kind ~= "analysis" then
+      entries("downstream", info.downstream, "nothing depends on it")
+    end
+    if kind == "test" or kind == "analysis" then
+      add("")
+      add(present(info.compiledUri) and "compiled: yes — below" or "compiled: not yet (dbt compile)")
+    end
+  end
+end
+
+--- The card of a dbt.nodeInfo answer on its own (:DbtNode's float).
+---@param info table
+---@param width integer?
+---@return cogitator.explorer.Card
+function M.node(info, width)
+  local lines, jumps, headings = {}, {}, {}
+  local function add(line, jump)
+    lines[#lines + 1] = line
+    if jump then
+      jumps[#lines] = jump
+    end
+  end
+  local function heading(text)
+    add("")
+    add(text)
+    headings[#headings + 1] = #lines
+  end
+  add(info.name or info.model or "?")
+  headings[1] = 1
+  local file = present(info.uri) and vim.fn.fnamemodify(vim.uri_to_fname(info.uri), ":~:.")
+  add((info.kind or "model") .. (file and ("  ·  " .. file) or ""))
+  if present(info.description) then
+    add("")
+    for _, l in ipairs(M.wrap(info.description, width)) do
+      add(l)
+    end
+  end
+  if info.kind == "model" then
+    for _, t in ipairs({ { "upstream", info.upstream }, { "downstream", info.downstream } }) do
+      heading(("%s (%d)"):format(t[1], #(t[2] or {})))
+      for _, e in ipairs(t[2] or {}) do
+        add("  " .. e.name, present(e.uri) and { uri = e.uri } or nil)
+      end
+    end
+  else
+    node_lines(info, add, heading)
+  end
+  return { lines = lines, jumps = jumps, headings = headings }
+end
+
+--- `text` wrapped to `width` cells.
+---@param text string
+---@param width integer?
+---@return string[]
+function M.wrap(text, width)
+  local out, line = {}, ""
+  local wrap = math.max(20, (width or 60) - 1)
+  for word in text:gsub("%s+", " "):gmatch("%S+") do
+    if line ~= "" and vim.fn.strdisplaywidth(line .. " " .. word) > wrap then
+      out[#out + 1] = line
+      line = word
+    else
+      line = line == "" and word or (line .. " " .. word)
+    end
+  end
+  if line ~= "" then
+    out[#out + 1] = line
+  end
+  return out
 end
 
 --- The card for the state's selection.
@@ -48,23 +182,20 @@ function M.view(s, width)
 
   if info and present(info.description) then
     add("")
-    local text = info.description:gsub("%s+", " ")
-    local wrap = math.max(20, (width or 60) - 1)
-    local line = ""
-    for word in text:gmatch("%S+") do
-      if line ~= "" and vim.fn.strdisplaywidth(line .. " " .. word) > wrap then
-        add(line)
-        line = word
-      else
-        line = line == "" and word or (line .. " " .. word)
-      end
-    end
-    if line ~= "" then
+    for _, line in ipairs(M.wrap(info.description, width)) do
       add(line)
     end
   elseif not info then
     add("")
     add("· loading ·")
+  end
+
+  -- a macro, a test, a source…: dbt.nodeInfo's card
+  if kind ~= "model" then
+    if info then
+      node_lines(info, add, heading)
+    end
+    return { lines = lines, jumps = jumps, headings = headings }
   end
 
   local tags = {}
