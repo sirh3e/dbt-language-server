@@ -121,6 +121,11 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Show the row counts catalog statistics prove for each CTE as inlay hints (default true).",
                 "bool",
             ),
+            key(
+                "inline_findings",
+                "Also show the reported findings as inlay hints, with the whole finding as the tooltip (default false).",
+                "bool",
+            ),
         ],
     },
     SectionSchema {

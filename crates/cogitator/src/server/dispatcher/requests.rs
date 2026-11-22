@@ -347,7 +347,7 @@ impl Dispatcher {
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
-            let mut hints = match snap.doc.as_deref() {
+            let hints = match snap.doc.as_deref() {
                 Some(doc) => {
                     let mut hints = features::inlay_hints_with(
                         &snap.ctx,
@@ -367,7 +367,11 @@ impl Dispatcher {
                 }
                 None => Vec::new(),
             };
-            hints.extend(crate::server::handlers::plan_hints::row_hints(
+            let mut hints: Vec<cogitator_lsp::AnyInlayHint> = hints
+                .into_iter()
+                .map(cogitator_lsp::AnyInlayHint::Plain)
+                .collect();
+            hints.extend(crate::server::handlers::plan_hints::plan_hints(
                 &snap, &derived, &uri, range, &perf, cap,
             ));
             crate::server::reply::Reply::result(&hints)

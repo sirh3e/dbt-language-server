@@ -110,6 +110,7 @@ pub struct PerfSection {
     pub profile: Option<String>,
     pub catalog_stats: Option<bool>,
     pub row_hints: Option<bool>,
+    pub inline_findings: Option<bool>,
 }
 
 /// The editor-visible log stream (05 §6.3 addendum).
@@ -226,7 +227,7 @@ const LINT_KEYS: &[&str] = &[
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
-const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints"];
+const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
 const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[

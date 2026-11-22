@@ -159,7 +159,7 @@ editor integrations live under `editors/`.
   `--no-tree-sitter`, `--debug`, `--otlp [endpoint]`, `--config [path]`.
 - **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
   `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
-  `refresh.debounce_ms`, `perf.{profile,catalog_stats,row_hints}` and `perf_rules`
+  `refresh.debounce_ms`, `perf.{profile,catalog_stats,row_hints,inline_findings}` and `perf_rules`
   (rule id → severity or off; profile default `off`, specs/ir-pipeline/08)
   hot-reload (2 s stamp poll + didSave fast-path +
   `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch

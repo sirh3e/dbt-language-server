@@ -230,8 +230,13 @@ names what already exists in the codebase.
       groups, DISTINCT, LIMIT and semi/anti joins, nothing through other
       joins or without statistics (`features/plan/row_hints.rs`,
       `row_inlay.rs`; `perf.row_hints`, off with `perf.catalog_stats`). The
-      plan rules' findings already sit at their source as diagnostics
-      (`features/plan/diagnostics.rs`, `perf_rules`).
+      plan rules' findings sit at their source as diagnostics
+      (`features/plan/diagnostics.rs`, `perf_rules`) and, with
+      `perf.inline_findings` (default false), as inlay hints too —
+      `⚠ join.cartesian`, the whole finding as the tooltip, a label part
+      running `dbt.queryPlan`, merged with the CTE's row count into one hint
+      (`1,200 rows · ⚠ model.unused_cte`; `features/plan/finding_inlay.rs`,
+      `perf.inlineFindings` in dbt.status/dbt.doctor).
 - [x] **Incremental-model helper**: `dbt.incrementalDiff {uri, show?}` renders
       the model with `is_incremental()` false and true (the dbt.expandJinja
       stubs, `{{ this }}` as the model's relation) and diffs them; incremental

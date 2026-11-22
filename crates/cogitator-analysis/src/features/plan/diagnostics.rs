@@ -20,7 +20,7 @@ use super::suppress::Suppressions;
 /// May this finding become a diagnostic at all? The eligibility rule:
 /// its spans must map onto the document and be fresh, which each finding
 /// records.
-fn eligible(finding: &FindingView) -> bool {
+pub(super) fn eligible(finding: &FindingView) -> bool {
     finding.diagnostics_eligible
 }
 
@@ -73,7 +73,7 @@ pub fn plan_diagnostics(
     out
 }
 
-fn message(finding: &FindingView) -> String {
+pub(super) fn message(finding: &FindingView) -> String {
     match &finding.evidence {
         EvidenceView::Exact => finding.message.clone(),
         EvidenceView::Catalog { generated_at } => {
@@ -85,7 +85,7 @@ fn message(finding: &FindingView) -> String {
     }
 }
 
-fn parse_severity(name: &str) -> Severity {
+pub(super) fn parse_severity(name: &str) -> Severity {
     match name {
         "warning" => Severity::Warning,
         "info" => Severity::Info,

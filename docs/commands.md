@@ -216,6 +216,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Argument**: `{uri}` — the document the command is about
 - **Result**: `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}, rowHints?: [{cte, span, rows: {exact\|atMost}}]}`
 - **Side effects**: none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan
+- **Inlay hints**: the findings' label parts (`perf.inline_findings: true`, specs/ir-pipeline/08) carry `dbt.queryPlan {uri}` as their command, so a click on `⚠ join.cartesian` asks for this plan
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
 ### `dbt.incrementality`

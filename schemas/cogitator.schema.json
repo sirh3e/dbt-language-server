@@ -96,6 +96,10 @@
           "description": "Use catalog statistics when ordering findings; statistics never raise a severity. (bool)",
           "type": "boolean"
         },
+        "inline_findings": {
+          "description": "Also show the reported findings as inlay hints, with the whole finding as the tooltip (default false). (bool)",
+          "type": "boolean"
+        },
         "profile": {
           "description": "Which rules report as diagnostics: off (default), recommended or strict. (off|recommended|strict)",
           "type": "string",

@@ -27,6 +27,7 @@ pub mod diagnostics_config;
 mod drive;
 mod env;
 mod facts;
+mod finding_inlay;
 mod incremental;
 mod incrementality;
 mod incrementality_report;
@@ -46,6 +47,7 @@ mod tests_compiled;
 mod tests_facts;
 mod trace;
 
+pub use finding_inlay::{finding_hints, merge_plan_hints, FindingHint};
 pub use incrementality::{DeltaView, IncrementalityView, ReasonView};
 pub use incrementality_report::{incrementality_report, IncrementalityReport, ModelIncrementality};
 pub use report::{
