@@ -77,6 +77,17 @@ return function(ctx)
     vim.inspect(diff_result):sub(1, 200)
   )
 
+  local unresolved_result = H.exec_cmd(client, bufnr, "dbt.unresolved", {
+    uri = vim.uri_from_bufnr(bufnr),
+  }, "integration: dbt.unresolved")
+  H.check(
+    type(unresolved_result) == "table"
+      and type(unresolved_result.items) == "table"
+      and type(unresolved_result.count) == "number",
+    "integration: dbt.unresolved lists the project's unresolved names",
+    vim.inspect(unresolved_result):sub(1, 200)
+  )
+
   local cache_result = H.exec_cmd(client, bufnr, "dbt.cache", {
     uri = vim.uri_from_bufnr(bufnr),
     action = "stats",

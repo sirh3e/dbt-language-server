@@ -62,11 +62,13 @@ pub struct Dispatcher {
 }
 
 mod commands_exec;
+mod compiled_nav;
 mod dbt_ops;
 mod diagnostics_req;
 mod navigation;
 mod plan;
 mod requests;
+mod semantic;
 mod sync;
 mod yaml_props;
 
@@ -248,7 +250,8 @@ impl Dispatcher {
             "textDocument/documentHighlight" => self.document_highlight(content),
             "textDocument/foldingRange" => self.folding_range(content),
             "textDocument/selectionRange" => self.selection_range(content),
-            "textDocument/semanticTokens/full" => self.semantic_tokens(content),
+            "textDocument/semanticTokens/full" => self.semantic_tokens(content, false),
+            "textDocument/semanticTokens/range" => self.semantic_tokens(content, true),
             "textDocument/signatureHelp" => self.signature_help(content),
             "textDocument/rename" => self.rename(content),
             "textDocument/prepareRename" => self.prepare_rename(content),

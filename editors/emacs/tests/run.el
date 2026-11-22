@@ -328,6 +328,18 @@
   (check (= (length (plist-get found :matches)) 4)
          "integration: dbt.astGrep finds the model's refs" (length (plist-get found :matches))))
 
+;; unit + integration: unresolved names
+(check (equal (cogitator--unresolved-line
+               '(:kind "ref" :name "ghost" :uri "file:///p/models/a.sql"
+                 :message "model 'ghost' not found in the project"
+                 :range (:start (:line 2 :character 14) :end (:line 2 :character 19))))
+              "/p/models/a.sql:3:15: [ref] ghost — model 'ghost' not found in the project")
+       "unresolved: an item is a grep line")
+(let ((found (run--exec "dbt.unresolved" (cogitator--command-argument))))
+  (check (and (numberp (plist-get found :count))
+              (= (plist-get found :count) (length (plist-get found :items))))
+         "integration: dbt.unresolved lists the project's unresolved names" found))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")

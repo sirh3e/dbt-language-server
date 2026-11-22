@@ -6,6 +6,7 @@ mod artifact_status;
 mod call_hierarchy;
 mod code_actions;
 mod compiled;
+mod compiled_map;
 mod completion;
 mod dead_models;
 mod definition;
@@ -31,9 +32,12 @@ mod references;
 mod relation;
 mod rename;
 mod rename_macro;
+mod semantic_captures;
 mod signature;
 mod structure;
 mod tests_nav;
+mod unresolved;
+mod unresolved_builtins;
 mod vars;
 mod workspace_diagnostics;
 
@@ -57,6 +61,9 @@ pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_a
 pub use code_actions::yaml_unproduced::unproduced_column_diagnostics;
 pub use code_actions::{code_actions, model_entry_at, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
+pub use compiled_map::{
+    compiled_definition, compiled_hover, compiled_line_map, compiled_source_path, SourceLines,
+};
 pub use completion::{completion, resolve_completion_documentation};
 pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
@@ -85,9 +92,13 @@ pub use references::references_at;
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
 pub use rename::{prepare_rename, rename_model};
 pub use rename_macro::{prepare_rename_at, rename_at};
+pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
+pub use unresolved::{
+    document_unresolved, project_files, project_unresolved, Unresolved, UnresolvedKind,
+};
 pub use vars::{key_definition, var_key_at, var_references};
 pub use workspace_diagnostics::project_diagnostics;
 
