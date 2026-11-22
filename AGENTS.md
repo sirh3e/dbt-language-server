@@ -106,11 +106,22 @@ editor integrations live under `editors/`.
   dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
   dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
   dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
-  findings and rule trace for one model; `features/plan/`). Every
-  command takes one argument object (`{uri, position?, …}`).
+  findings and rule trace for one model; `features/plan/`), dbt.deps
+  (project-wide `dbt deps`, refreshes the context; the packages.yml
+  quickfix runs it). Every command takes one argument object (`{uri, position?, …}`).
 - `textDocument/codeAction` serves the executable lens set as
-  command-only actions (shared truth: `lenses::model_commands`); the
-  completion capability advertises `triggerCharacters`.
+  command-only actions (shared truth: `lenses::model_commands`), plus
+  edit-bearing quickfixes: from a diagnostic's typed `data`
+  (`FixKind::MultiEdit`, `preserving` = preferred + `source.fixAll`;
+  the lint checks attach theirs there) and from the cursor
+  (`define_missing.rs`: create model, define var; `declare_missing.rs`:
+  declare a source, a source table, a docs block; `governance_fixes.rs`:
+  private refs; `yaml_columns.rs`: add undocumented or undeclared
+  columns, drop contracted ones; `refactors.rs`: expand a star, extract
+  schema YAML; `extract_cte.rs`: CTE → model). All pure: the shell
+  passes file text through a `read` closure; YAML is edited line-wise
+  through `yaml_text.rs`, never re-serialized. The completion
+  capability advertises `triggerCharacters`.
 - `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
 - `$/progress` reports context refreshes and dbt runs when the client
   advertises window.workDoneProgress.

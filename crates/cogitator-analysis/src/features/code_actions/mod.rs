@@ -5,8 +5,15 @@
 //! make dishonest actions because clients drop executeCommand results.
 
 pub(crate) mod convert_relation;
+pub(crate) mod declare_missing;
+pub(crate) mod define_missing;
+pub(crate) mod extract_cte;
+pub(crate) mod governance_fixes;
 mod quickfix;
+pub(crate) mod refactors;
+pub(crate) mod yaml_columns;
 pub(crate) mod yaml_fixes;
+mod yaml_text;
 
 use cogitator_lsp::{CodeAction, Command, Diagnostic, Range};
 use cogitator_parser::TokenKind;
@@ -60,6 +67,7 @@ pub fn code_actions(
     };
     // quickfixes first: a fix beats a workflow command in every menu
     let mut all = quickfix::quickfixes(uri, context_diagnostics);
+    all.extend(deps_action(ctx, uri, context_diagnostics));
     all.extend(quickfix::fix_all(uri, context_diagnostics, only));
     all.append(&mut actions);
     // kind filtering (01 §6.2): kind-less command actions drop out of a
@@ -126,6 +134,37 @@ fn yaml_entry_actions(ctx: &DbtContext, uri: &str, range: Range) -> Vec<CodeActi
             model_uri,
         ),
     ]
+}
+
+/// packages.yml naming packages that are not installed: "Run dbt deps",
+/// a quickfix that runs `dbt.deps` (the edit is dbt's to make). Tied to
+/// the client's package-not-installed diagnostics where it sent them.
+fn deps_action(ctx: &DbtContext, uri: &str, context: &[Diagnostic]) -> Option<CodeAction> {
+    let missing = super::diagnostics::packages_diagnostics(ctx, uri);
+    if missing.is_empty() {
+        return None;
+    }
+    let tied: Vec<Diagnostic> = context
+        .iter()
+        .filter(|d| d.code == "package-not-installed")
+        .cloned()
+        .collect();
+    let title = format!("Run dbt deps ({} package(s) missing)", missing.len());
+    let arg = serde_json::to_value(CommandArgument {
+        uri: uri.to_string(),
+    })
+    .expect("action argument serializes");
+    let mut action = CodeAction::command_only(
+        title.clone(),
+        Command {
+            title,
+            command: "dbt.deps".to_string(),
+            arguments: vec![arg],
+        },
+    );
+    action.kind = Some("quickfix");
+    action.diagnostics = (!tied.is_empty()).then_some(tied);
+    Some(action)
 }
 
 fn target_action(choice: &TargetChoice) -> CodeAction {

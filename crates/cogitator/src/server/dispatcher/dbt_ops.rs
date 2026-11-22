@@ -130,13 +130,15 @@ impl Dispatcher {
                 (!cfg.profile.is_empty()).then(|| cfg.profile.clone()),
             )
         };
-        // parse and source freshness are project-wide (no --select);
-        // parse additionally refreshes the context on success
-        let project_wide = kind == "parse" || kind == "source freshness";
+        // parse, deps and source freshness are project-wide (no
+        // --select); parse and deps also refresh the context on success
+        // (deps installs packages whose macros and models the scan reads)
+        let project_wide = matches!(kind, "parse" | "deps" | "source freshness");
         let selector = selector_override.or_else(|| {
             (!project_wide).then(|| crate::server::fusion::model_selector_from_uri(uri))
         });
-        let refresh = (kind == "parse").then(|| (self.refresh_tx.clone(), self.root_path.clone()));
+        let refresh = matches!(kind, "parse" | "deps")
+            .then(|| (self.refresh_tx.clone(), self.root_path.clone()));
         let token = crate::server::commands::spawn_dbt(
             link,
             crate::server::commands::DbtInvocation {

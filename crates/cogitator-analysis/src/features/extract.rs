@@ -23,6 +23,42 @@ pub enum ExtractEdit {
     },
 }
 
+impl ExtractEdit {
+    /// The edit itself — one truth for the `dbt.extractModelYaml`
+    /// command and the edit-bearing code action.
+    pub fn workspace_edit(&self) -> cogitator_lsp::WorkspaceEdit {
+        use cogitator_lsp::{CreateFile, DocumentChange, TextDocumentEdit, TextEdit};
+        let document_changes = match self {
+            ExtractEdit::CreateFile { path, content } => {
+                let uri = cogitator_lsp::fs_path_to_uri(path);
+                vec![
+                    DocumentChange::Create(CreateFile::new(uri.clone())),
+                    DocumentChange::Edit(TextDocumentEdit::new(
+                        uri,
+                        vec![TextEdit {
+                            range: Range::default(),
+                            new_text: content.clone(),
+                        }],
+                    )),
+                ]
+            }
+            ExtractEdit::AddVersion {
+                schema_path, edits, ..
+            } => vec![DocumentChange::Edit(TextDocumentEdit::new(
+                cogitator_lsp::fs_path_to_uri(schema_path),
+                edits
+                    .iter()
+                    .map(|(range, text)| TextEdit {
+                        range: *range,
+                        new_text: text.clone(),
+                    })
+                    .collect(),
+            ))],
+        };
+        cogitator_lsp::WorkspaceEdit { document_changes }
+    }
+}
+
 /// Column names for the scaffold: lineage first (the real select list),
 /// then the already-documented YAML columns, else none.
 fn column_names(ctx: &DbtContext, model: &str, lineage: Option<&ModelLineage>) -> Vec<String> {

@@ -176,66 +176,45 @@ pub fn extract_model_yaml(snap: &Snapshot, uri: &str, lineage: Option<&ModelLine
                 .fix("open the model's .sql file and check its YAML.")
                 .to_message(),
         )),
-        Some(features::ExtractEdit::CreateFile { path, content }) => {
-            let new_uri = cogitator_lsp::fs_path_to_uri(&path);
-            Reply::null()
-                .with(Effect::ApplyEdit(cogitator_lsp::ApplyWorkspaceEditParams {
-                    label: "Extract model YAML".to_string(),
-                    edit: cogitator_lsp::WorkspaceEdit {
-                        document_changes: vec![
-                            cogitator_lsp::DocumentChange::Create(cogitator_lsp::CreateFile::new(
-                                new_uri.clone(),
-                            )),
-                            cogitator_lsp::DocumentChange::Edit(
-                                cogitator_lsp::TextDocumentEdit::new(
-                                    new_uri.clone(),
-                                    vec![cogitator_lsp::TextEdit {
-                                        range: cogitator_lsp::Range::default(),
-                                        new_text: content,
-                                    }],
-                                ),
-                            ),
-                        ],
-                    },
-                }))
-                .with(show_document(new_uri, None))
-                .with(info(format!(
-                    "Created {} with the model's columns — fill in the \
-                     descriptions and add data_tests.",
-                    path.display()
-                )))
-        }
-        Some(features::ExtractEdit::AddVersion {
-            schema_path,
-            edits,
-            next,
-        }) => {
-            let schema_uri = cogitator_lsp::fs_path_to_uri(&schema_path);
-            let selection = edits.first().map(|(range, _)| *range);
-            let text_edits: Vec<cogitator_lsp::TextEdit> = edits
-                .iter()
-                .map(|(range, text)| cogitator_lsp::TextEdit {
-                    range: *range,
-                    new_text: text.clone(),
-                })
-                .collect();
-            Reply::null()
-                .with(Effect::ApplyEdit(cogitator_lsp::ApplyWorkspaceEditParams {
-                    label: format!("Add model version {next}"),
-                    edit: cogitator_lsp::WorkspaceEdit {
-                        document_changes: vec![cogitator_lsp::DocumentChange::Edit(
-                            cogitator_lsp::TextDocumentEdit::new(schema_uri.clone(), text_edits),
-                        )],
-                    },
-                }))
-                .with(show_document(schema_uri, selection))
-                .with(info(format!(
-                    "Added version {next} to {}.\n\
-                     Next: create the versioned model file \
-                     (<model>_v{next}.sql) or set `defined_in` on the \
-                     version entry.",
-                    schema_path.display()
-                )))
+        Some(extract) => {
+            let edit = extract.workspace_edit();
+            match extract {
+                features::ExtractEdit::CreateFile { path, .. } => {
+                    let new_uri = cogitator_lsp::fs_path_to_uri(&path);
+                    Reply::null()
+                        .with(Effect::ApplyEdit(cogitator_lsp::ApplyWorkspaceEditParams {
+                            label: "Extract model YAML".to_string(),
+                            edit,
+                        }))
+                        .with(show_document(new_uri, None))
+                        .with(info(format!(
+                            "Created {} with the model's columns — fill in the \
+                             descriptions and add data_tests.",
+                            path.display()
+                        )))
+                }
+                features::ExtractEdit::AddVersion {
+                    schema_path,
+                    edits,
+                    next,
+                } => {
+                    let schema_uri = cogitator_lsp::fs_path_to_uri(&schema_path);
+                    let selection = edits.first().map(|(range, _)| *range);
+                    Reply::null()
+                        .with(Effect::ApplyEdit(cogitator_lsp::ApplyWorkspaceEditParams {
+                            label: format!("Add model version {next}"),
+                            edit,
+                        }))
+                        .with(show_document(schema_uri, selection))
+                        .with(info(format!(
+                            "Added version {next} to {}.\n\
+                             Next: create the versioned model file \
+                             (<model>_v{next}.sql) or set `defined_in` on the \
+                             version entry.",
+                            schema_path.display()
+                        )))
+                }
+            }
         }
     }
 }

@@ -66,3 +66,33 @@ fn fake_dbt_runs_jobs_cross_platform() {
     );
     lsp.shutdown();
 }
+
+/// `dbt.deps` (the packages.yml quickfix runs it): project-wide, so the
+/// fake dbt sees `deps` and no `--select`.
+#[cfg(feature = "e2e")]
+#[test]
+fn dbt_deps_runs_project_wide() {
+    let project = jaffle();
+    let fake = harness::fake::install(harness::fake::FakeDbt::printing("done\n"));
+    let envs = fake.envs();
+    let env_refs: Vec<(&str, &str)> = envs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let (mut lsp, uri) = project.booted_with(&env_refs, serde_json::json!({}));
+
+    let started = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.deps", "arguments": [{"uri": uri}]}),
+    );
+    assert!(started["result"]["token"].as_u64().is_some(), "{started}");
+    lsp.wait_notification("window/showMessage", |frame| {
+        frame["params"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("dbt deps succeeded"))
+    });
+    let args = fake.logged_args();
+    assert!(
+        args.iter()
+            .any(|line| line.starts_with("deps") && !line.contains("--select")),
+        "the fake dbt ran deps project-wide: {args:?}"
+    );
+    lsp.shutdown();
+}
