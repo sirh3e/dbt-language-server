@@ -73,6 +73,13 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Model rename** (`textDocument/rename`): rewrites every dependent's
   `ref()`, updates the schema-YAML entry and renames the model file — one
   WorkspaceEdit over the project graph
+- **File operations** (`workspace.fileOperations`): renaming a model file
+  in the editor's tree rewrites its refs and YAML entry, deleting one
+  warns about its dependents, and created files join the context
+  ([docs/file-operations.md](docs/file-operations.md))
+- **Declaration** (`textDocument/declaration`): a model's properties-YAML
+  entry, beside definition's SQL; a YAML column's definition is the
+  select item producing it
 - **Code actions** (`textDocument/codeAction`): the executable lens set
   at the cursor as command-only actions, so every stock LSP editor —
   eglot, lsp-mode, Zed, plain Neovim — gets dbt workflows through its

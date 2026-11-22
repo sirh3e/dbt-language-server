@@ -24,6 +24,9 @@ pub struct ServerCapabilities {
     pub hover_provider: bool,
     #[serde(rename = "definitionProvider")]
     pub definition_provider: bool,
+    /// A model's properties-YAML entry (definition stays its SQL).
+    #[serde(rename = "declarationProvider")]
+    pub declaration_provider: bool,
     #[serde(rename = "completionProvider")]
     pub completion_provider: CompletionOptions,
     #[serde(rename = "executeCommandProvider")]
@@ -64,6 +67,8 @@ pub struct ServerCapabilities {
     pub linked_editing_range_provider: bool,
     #[serde(rename = "documentFormattingProvider")]
     pub document_formatting_provider: bool,
+    /// workspace.fileOperations: will/didRename, will/didDelete, didCreate.
+    pub workspace: super::file_ops::WorkspaceServerCapabilities,
 }
 
 #[derive(Debug, Serialize)]
@@ -205,6 +210,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 text_document_sync: 2,
                 hover_provider: true,
                 definition_provider: true,
+                declaration_provider: true,
                 completion_provider: CompletionOptions {
                     resolve_provider: true,
                     trigger_characters: &[".", "'", "\"", " ", "("],
@@ -249,6 +255,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 },
                 linked_editing_range_provider: true,
                 document_formatting_provider: true,
+                workspace: super::file_ops::workspace_capabilities(),
             },
             server_info: ServerInfo {
                 name: "cogitator",

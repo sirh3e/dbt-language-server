@@ -71,6 +71,24 @@ names what already exists in the codebase.
       header, every call resolving to it (qualified too) and the YAML
       entry. Macros of installed packages are refused with the reason
       (`RequestFailed`), as are invalid and already-taken names.
+- [x] **Workspace file operations** (`features/file_ops/`,
+      `workspace.fileOperations`): `willRenameFiles` of a model (or seed)
+      file answers the model rename's text edits — every `ref('old')` in
+      SQL and YAML and the properties-YAML `name:` — without the file
+      rename, which the client does; a move that keeps the name, a macro,
+      YAML or snapshot file and a folder answer no edits.
+      `willDeleteFiles` answers an empty edit and one warning per request
+      naming the dependents a deleted model (or folder of models) leaves
+      dangling. `didCreateFiles`/`didRenameFiles`/`didDeleteFiles`
+      refresh the context, so a new model gets its "Extract schema YAML"
+      lens and a renamed one its new name without a watcher registration.
+- [x] **`textDocument/declaration`** (`features/declaration.rs`): a
+      ref's or model file's declaration is its properties-YAML entry
+      (definition stays the SQL), a documented column's its YAML column;
+      definition on a YAML column entry now goes to the select item of
+      the model's SQL that produces it (the last `as col` / `[q.]col,`
+      item, else its first mention). Sources, macros, vars and docs:
+      declaration = definition.
 - [x] **Macro call hierarchy, both ways**: prepare from a call site or a
       definition header; incomingCalls lists models, tests, analyses and
       calling macros; outgoingCalls lists the macros a macro's body (or a
@@ -266,12 +284,13 @@ Still open, with reasons:
 - `textDocument/codeAction`, `prepareRename`,
   `inlineValue`,
   `documentColor`
-- `textDocument/typeDefinition` / `implementation` / `declaration`
-  (little meaning for dbt sources)
+- `textDocument/typeDefinition` / `implementation`
+  (little meaning for dbt sources; `declaration` is implemented above)
 - Call/type hierarchy (could model macro call chains someday)
 - workspace folders / multi-root (only the deprecated
   `rootPath` is read), `workspace/didChangeConfiguration`,
-  `workspace/applyEdit`, file-operation notifications, `$/progress`
+  `workspace/applyEdit`, `$/progress` (file operations: implemented
+  above)
 
 - [ ] **Quickfix code actions from did-you-mean suggestions** — purely
       additive on top of the Guidance diagnostics: needs Diagnostic.data +

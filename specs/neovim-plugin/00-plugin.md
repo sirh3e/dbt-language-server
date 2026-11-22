@@ -69,6 +69,14 @@ writer wins).
   parameter names), `documentLinkProvider: { resolveProvider: false }`
   (ref/source → definition targets), `linkedEditingRangeProvider:
   true` (CTE names only)
+- `declarationProvider: true` — a model's (or ref's) properties-YAML
+  entry and a documented column's YAML entry; definition stays the SQL
+  (a YAML column's definition is the select item producing it)
+- `workspace.fileOperations` — willRenameFiles answers the ref/YAML
+  edits of a renamed model file (the client renames the file),
+  willDeleteFiles an empty edit plus one showMessage warning naming the
+  dependents, the did* notifications refresh the context. Neovim 0.11
+  sends none of these by itself; VS Code does.
 - `documentFormattingProvider: true` — sqlformat over Jinja-segmented
   SQL; full-line `{% %}` lines pass verbatim, `{{ }}` expressions are
   sentinel-masked, and ANY doubt (inline statements, sentinel

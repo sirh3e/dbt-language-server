@@ -160,3 +160,17 @@ fn column_word_target(
         column,
     })
 }
+
+/// The documented model column whose properties-YAML entry the cursor
+/// is on (`(model, column)`), for declaration and definition.
+pub(crate) fn yaml_column_at(
+    ctx: &DbtContext,
+    doc: &Document,
+    uri: &str,
+    pos: Position,
+) -> Option<(String, String)> {
+    match yaml_target(ctx, doc, uri, pos)? {
+        Target::Column { model, column } => Some((model, column)),
+        _ => None,
+    }
+}

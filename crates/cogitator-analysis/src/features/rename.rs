@@ -57,16 +57,47 @@ pub fn rename_model(
         })
         .or_else(|| model_name_from_uri(uri))?;
     let details = ctx.model_detail_map.get(&model)?;
+    let read = |p: &std::path::Path| std::fs::read_to_string(p).ok();
+    let mut document_changes = model_ref_edits(ctx, &model, new_name, &read);
 
+    // 3. rename the model file itself (last: text edits address old uris)
+    let extension = details
+        .uri
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("sql");
+    let new_path = details
+        .uri
+        .with_file_name(format!("{new_name}.{extension}"));
+    document_changes.push(DocumentChange::Rename(RenameFile::new(
+        file_uri(&details.uri),
+        file_uri(&new_path),
+    )));
+
+    Some(WorkspaceEdit { document_changes })
+}
+
+/// The text half of a model rename: every `ref('old')` (SQL, YAML
+/// Jinja, plain YAML scalars) and the properties-YAML `name:`, as one
+/// edit per file, in path order. Files come through `read`.
+pub(crate) fn model_ref_edits(
+    ctx: &DbtContext,
+    model: &str,
+    new_name: &str,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+) -> Vec<DocumentChange> {
+    let Some(details) = ctx.model_detail_map.get(model) else {
+        return Vec::new();
+    };
     let mut edits: BTreeMap<PathBuf, Vec<Range>> = BTreeMap::new();
 
     // 1. ref('old') in every dependent, and plain-YAML refs project-wide
-    let mut files = node_files(ctx.graph.downstream_of(&model));
+    let mut files = node_files(ctx.graph.downstream_of(model));
     files.extend(yaml_files(ctx));
     files.sort();
     files.dedup();
     for path in files {
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Some(text) = read(&path) else {
             continue;
         };
         let mut ranges: Vec<Range> = match JinjaSqlParser.parse(&text, &ctx.dialect) {
@@ -98,9 +129,8 @@ pub fn rename_model(
         .filter(|p| !p.as_os_str().is_empty())
     {
         let start = details.schema_range.start;
-        let range = std::fs::read_to_string(schema_uri)
-            .ok()
-            .and_then(|text| name_span(&text, start, &model))
+        let range = read(schema_uri)
+            .and_then(|text| name_span(&text, start, model))
             .unwrap_or(Range {
                 start,
                 end: Position {
@@ -111,7 +141,7 @@ pub fn rename_model(
         edits.entry(schema_uri.clone()).or_default().push(range);
     }
 
-    let mut document_changes: Vec<DocumentChange> = edits
+    edits
         .into_iter()
         .map(|(path, mut ranges)| {
             ranges.sort_by_key(|r| (r.start.line, r.start.character));
@@ -125,21 +155,5 @@ pub fn rename_model(
                 .collect();
             DocumentChange::Edit(TextDocumentEdit::new(file_uri(&path), edits))
         })
-        .collect();
-
-    // 3. rename the model file itself (last: text edits address old uris)
-    let extension = details
-        .uri
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("sql");
-    let new_path = details
-        .uri
-        .with_file_name(format!("{new_name}.{extension}"));
-    document_changes.push(DocumentChange::Rename(RenameFile::new(
-        file_uri(&details.uri),
-        file_uri(&new_path),
-    )));
-
-    Some(WorkspaceEdit { document_changes })
+        .collect()
 }

@@ -31,6 +31,19 @@ fn full_session() {
     assert_eq!(caps["textDocumentSync"], 2);
     assert_eq!(caps["hoverProvider"], true);
     assert_eq!(caps["definitionProvider"], true);
+    assert_eq!(caps["declarationProvider"], true);
+    for op in [
+        "didCreate",
+        "willRename",
+        "didRename",
+        "willDelete",
+        "didDelete",
+    ] {
+        assert!(
+            caps["workspace"]["fileOperations"][op]["filters"].is_array(),
+            "{op}: {caps}"
+        );
+    }
     assert_eq!(
         caps["executeCommandProvider"]["commands"][0],
         "dbt.goToSchema"
