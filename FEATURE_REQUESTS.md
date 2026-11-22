@@ -92,6 +92,13 @@ names what already exists in the codebase.
 - [x] **Inline Jinja preview**: hover inside `{{ … }}` shows what it
       renders to (dbt.expandJinja's stubs, fuel- and size-capped); opt-in
       inlay hints for short single-line renderings (`inlay.jinja`).
+- [x] **Macro calls inside Jinja blocks**: calls in `{% set %}`, `{% if
+      %}`, `{% for %}`, `{% do %}` and `{% call %}`, nested and filter
+      arguments are call tokens like `{{ m() }}` (parser,
+      `cogitator-parser/src/calls.rs`), so references, rename, the call
+      hierarchy, links, hover/definition, the graph's model→macro edges and
+      `dbt.unresolved` see them; context functions, methods, filters,
+      tests and template-bound names are not calls.
 - [x] **CodeLens batch** on model files — "N downstream" / "N upstream"
       counts (graph; dbt terminology: `downstream_of`/`upstream_of`),
       "Go to schema" (navigates via window/showDocument), "Column lineage"

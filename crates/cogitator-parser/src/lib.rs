@@ -4,6 +4,8 @@
 //! No hand-written lexer: minijinja tokenizes the Jinja layer, sqlparser the
 //! SQL layer; the refinement pass marks dbt constructs (REF/SOURCE/VAR/MACRO).
 
+pub(crate) mod call_words;
+pub(crate) mod calls;
 pub mod jinja_scan;
 pub mod jinja_spans;
 pub mod pipeline;
