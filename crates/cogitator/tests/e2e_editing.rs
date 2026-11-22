@@ -486,6 +486,49 @@ fn editing_actions_create_define_document() {
     lsp.shutdown();
 }
 
+/// The declaring actions through textDocument/codeAction: a table a
+/// known source lacks, and a docs block no file holds.
+#[test]
+fn editing_actions_declare_table_and_docs_block() {
+    let project = jaffle();
+    let root = project.root.clone();
+    let (mut lsp, _uri) = project.booted();
+    let text = "select * from {{ source('stripe', 'refunds') }} -- {{ doc('fresh_doc') }}\n";
+    let uri = cogitator_lsp::fs_path_to_uri(&root.join("models/declare_probe.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1,
+            "text": text}}),
+    );
+    let titles_at = |lsp: &mut Lsp, needle: &str| -> Vec<String> {
+        let character = text.find(needle).unwrap() + 1;
+        let reply = lsp.request(
+            "textDocument/codeAction",
+            serde_json::json!({"textDocument": {"uri": uri},
+                               "range": {"start": {"line": 0, "character": character},
+                                         "end": {"line": 0, "character": character}},
+                               "context": {"diagnostics": []}}),
+        );
+        reply["result"]
+            .as_array()
+            .expect("actions")
+            .iter()
+            .map(|a| a["title"].as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+    let at_table = titles_at(&mut lsp, "refunds");
+    assert!(
+        at_table.contains(&"Add table 'refunds' to source 'stripe'".to_string()),
+        "{at_table:?}"
+    );
+    let at_doc = titles_at(&mut lsp, "fresh_doc");
+    assert!(
+        at_doc.contains(&"Create docs block 'fresh_doc'".to_string()),
+        "{at_doc:?}"
+    );
+    lsp.shutdown();
+}
+
 /// Go-to-definition on a built-in SQL function (03 §9): the bundled
 /// documentation materializes under target/.cogitator/docs/ and the
 /// Location jumps into it; plain unknown words keep the self-location

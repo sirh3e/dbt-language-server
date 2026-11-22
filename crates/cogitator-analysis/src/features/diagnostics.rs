@@ -13,8 +13,13 @@ use super::{token_range, DbtContext, Document};
 /// flag everything).
 pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
+    // the source name of the source() call being read, for its table
+    let mut current_source: Option<&str> = None;
     for t in &doc.parsed.tokens {
         let literal = doc.parsed.literal(t);
+        if t.kind == TokenKind::SourceName {
+            current_source = Some(literal);
+        }
         let diagnostic = match t.kind {
             TokenKind::Ref if !ctx.model_detail_map.is_empty() => (!ctx
                 .model_detail_map
@@ -41,6 +46,25 @@ pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnos
                     )
                 })
             }
+            // a declared source without that table: the call fails at
+            // compile time as surely as an unknown source does
+            TokenKind::SourceTable => current_source
+                .and_then(|name| ctx.source_detail_map.get(name))
+                .filter(|source| !source.tables.contains_key(literal))
+                .map(|source| {
+                    entry(
+                        t,
+                        "dangling-source-table",
+                        Guidance::new(format!(
+                            "table '{literal}' is not declared in source '{}'",
+                            source.name
+                        ))
+                        .suggest(closest_matches(
+                            literal,
+                            source.tables.keys().map(String::as_str),
+                        )),
+                    )
+                }),
             // var('name', default) is legitimate without a project var —
             // only defaultless lookups can dangle
             TokenKind::Var if !ctx.variable_detail_map.is_empty() && !has_default(doc, t) => {

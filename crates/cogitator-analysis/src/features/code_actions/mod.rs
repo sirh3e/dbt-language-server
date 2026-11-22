@@ -5,7 +5,9 @@
 //! make dishonest actions because clients drop executeCommand results.
 
 pub(crate) mod convert_relation;
+pub(crate) mod declare_missing;
 pub(crate) mod define_missing;
+pub(crate) mod governance_fixes;
 mod quickfix;
 pub(crate) mod refactors;
 pub(crate) mod yaml_columns;

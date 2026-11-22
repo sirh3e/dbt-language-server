@@ -59,6 +59,110 @@ pub(super) fn insert_after_line(text: &str, after: usize, body: String) -> TextE
     }
 }
 
+/// One `- …` item of a YAML list: its dash line, the indent of its keys
+/// and its last content line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Entry {
+    pub dash_line: usize,
+    pub key_indent: usize,
+    pub end: usize,
+}
+
+/// The list item holding `line` (its `name:` line, say): the nearest
+/// dash line at or above it.
+pub(super) fn entry_at(lines: &[&str], line: usize) -> Option<Entry> {
+    let dash_line = (0..=line).rev().find(|&i| {
+        lines
+            .get(i)
+            .is_some_and(|l| l.trim_start().starts_with('-'))
+    })?;
+    let dash = indent(lines[dash_line]);
+    Some(Entry {
+        dash_line,
+        key_indent: dash + 2,
+        end: block_end(lines, dash_line, dash),
+    })
+}
+
+/// The line of `key:` among the entry's own keys (not nested ones).
+pub(super) fn key_line(lines: &[&str], entry: Entry, key: &str) -> Option<usize> {
+    let prefix = format!("{key}:");
+    let own = |i: usize| {
+        let line = lines[i];
+        // the dash line carries its first key after `- `
+        let at = if i == entry.dash_line {
+            indent(line) + 2
+        } else {
+            indent(line)
+        };
+        at == entry.key_indent && line[at.min(line.len())..].starts_with(&prefix)
+    };
+    (entry.dash_line..=entry.end).find(|&i| own(i))
+}
+
+/// Append list items under `key:` of the entry holding `line`, or start
+/// the list at the entry's end. Each item is its lines without indent,
+/// the first beginning `- `. None where `key:` has an inline value.
+pub(super) fn append_to_list(
+    text: &str,
+    line: usize,
+    key: &str,
+    items: &[Vec<String>],
+) -> Option<TextEdit> {
+    let lines: Vec<&str> = text.lines().collect();
+    let entry = entry_at(&lines, line)?;
+    let (after, item_indent, header) = match key_line(&lines, entry, key) {
+        Some(at) => {
+            let value = lines[at].trim_start().trim_start_matches("- ");
+            let value = value[key.len() + 1..].trim();
+            if !value.is_empty() && !value.starts_with('#') {
+                return None; // `key: []` and the like: left to the reader
+            }
+            let end = block_end(&lines, at, entry.key_indent);
+            let item_indent = (at + 1..=end)
+                .find(|&i| is_content(lines[i]) && lines[i].trim_start().starts_with('-'))
+                .map_or(entry.key_indent + 2, |i| indent(lines[i]));
+            (end, item_indent, None)
+        }
+        None => (entry.end, entry.key_indent + 2, Some(entry.key_indent)),
+    };
+    let mut body = String::new();
+    if let Some(header_indent) = header {
+        body.push_str(&format!("{}{key}:\n", " ".repeat(header_indent)));
+    }
+    let pad = " ".repeat(item_indent);
+    for item in items {
+        for piece in item {
+            body.push_str(&format!("{pad}{piece}\n"));
+        }
+    }
+    Some(insert_after_line(text, after, body))
+}
+
+/// Whole lines `first..=last`, as a range that deletes them.
+pub(super) fn lines_range(text: &str, first: usize, last: usize) -> Range {
+    let count = text.lines().count();
+    let end = if last + 1 < count || text.ends_with('\n') {
+        Position {
+            line: (last + 1) as u32,
+            character: 0,
+        }
+    } else {
+        let line = text.lines().nth(last).unwrap_or("");
+        Position {
+            line: last as u32,
+            character: line.encode_utf16().count() as u32,
+        }
+    };
+    Range {
+        start: Position {
+            line: first as u32,
+            character: 0,
+        },
+        end,
+    }
+}
+
 /// A plain YAML scalar for a name, or None when it would need quoting:
 /// the actions only write names a reader would write unquoted.
 pub(super) fn plain_name(name: &str) -> Option<&str> {
@@ -99,6 +203,25 @@ mod tests {
             }
         );
         assert_eq!(edit.new_text, "\nb: 2\n");
+    }
+
+    #[test]
+    fn the_own_keys_of_an_entry_are_found_not_nested_ones() {
+        let text = "- name: a\n  config:\n    group: x\n  group: y\n- name: b\n";
+        let lines: Vec<&str> = text.lines().collect();
+        let entry = entry_at(&lines, 0).unwrap();
+        assert_eq!(entry.end, 3);
+        assert_eq!(key_line(&lines, entry, "group"), Some(3));
+        assert_eq!(key_line(&lines, entry, "name"), Some(0));
+        assert_eq!(key_line(&lines, entry, "access"), None);
+    }
+
+    #[test]
+    fn lines_range_takes_the_line_break_or_runs_to_the_end() {
+        let r = lines_range("a\nb\nc\n", 1, 1);
+        assert_eq!((r.start.line, r.end.line, r.end.character), (1, 2, 0));
+        let r = lines_range("a\nb", 1, 1);
+        assert_eq!((r.start.line, r.end.line, r.end.character), (1, 1, 1));
     }
 
     #[test]

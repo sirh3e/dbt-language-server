@@ -207,6 +207,7 @@ fn undocumented_columns_hint_from_lineage() {
     let schema = model.schema_uri.as_deref().expect("schema entry");
     let yaml = std::fs::read_to_string(schema).unwrap();
     let action = cogitator_analysis::features::add_missing_columns_action(
+        &ctx,
         "customers",
         model,
         &lineage,
