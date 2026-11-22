@@ -31,10 +31,16 @@ impl ScopeIndex {
     }
 
     pub fn build(doc: &Document) -> Self {
-        let tokens = &doc.parsed.tokens;
+        Self::build_within(doc, 0, doc.parsed.tokens.len())
+    }
+
+    /// The relations read between token `lo` (inclusive) and `hi`
+    /// (exclusive): one query's FROM/JOIN, where `build` reads them all.
+    pub fn build_within(doc: &Document, lo: usize, hi: usize) -> Self {
+        let tokens = &doc.parsed.tokens[..hi.min(doc.parsed.tokens.len())];
         let mut relations = Vec::new();
 
-        let mut i = 0;
+        let mut i = lo;
         while i < tokens.len() {
             if !matches!(
                 tokens[i].kind,

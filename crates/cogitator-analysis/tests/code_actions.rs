@@ -291,6 +291,31 @@ fn a_bare_star_expands_only_as_a_select_item_of_one_relation() {
 }
 
 #[test]
+fn a_bare_star_in_one_cte_of_many_expands_to_that_ctes_relation() {
+    // the shape of nearly every model of a real project: CTEs that each
+    // read one relation, so the document as a whole reads several
+    let text = "with orders as (select * from {{ ref('stg_orders') }}), \
+                customers as (select * from {{ ref('stg_customers') }}) \
+                select * from orders join customers on orders.order_id = customers.customer_id";
+    let (ctx, docs, uri) = open(text);
+    let doc = docs.get(&uri).unwrap();
+    let stars: Vec<u32> = text
+        .match_indices("select *")
+        .map(|(i, _)| i as u32 + 7)
+        .collect();
+    let first = features::expand_star_action(&ctx, doc, &uri, at(stars[0])).expect("first CTE");
+    assert_eq!(new_text(&first), "order_id, status");
+    let second = features::expand_star_action(&ctx, doc, &uri, at(stars[1])).expect("second CTE");
+    assert!(second.title.starts_with("Expand * to "), "{}", second.title);
+    assert!(
+        !new_text(&second).contains("status"),
+        "stg_customers' own columns only"
+    );
+    // the final select reads two relations: a bare star stays ambiguous
+    assert!(features::expand_star_action(&ctx, doc, &uri, at(stars[2])).is_none());
+}
+
+#[test]
 fn schema_extraction_is_an_edit_too() {
     let ctx = ctx();
     let uri = model_uri("models/staging/stg_stripe_payments.sql");

@@ -29,17 +29,24 @@ pub fn expand_star_action(
     let star =
         (at..tokens.len().min(at + 3)).find(|&i| tokens[i].kind == TokenKind::Symbol('*'))?;
     let qualified = star >= 2 && tokens[star - 1].kind == TokenKind::Symbol('.');
-    let scope = ScopeIndex::build(doc);
-    let relations = distinct(&scope);
+    // the query the star selects from: the parentheses around it (a CTE
+    // body, a subquery), else the whole document
+    let (lo, hi) = enclosing_query(tokens, star);
+    let local = ScopeIndex::build_within(doc, lo, hi);
+    let relations = distinct(&local);
     let (start, alias, target) = if qualified {
         let alias = parsed.literal(&tokens[star - 2]);
-        let target = scope.resolve(alias)?;
-        (star - 2, Some(alias), target)
+        let target = match local.resolve(alias) {
+            Some(target) => target.clone(),
+            None => ScopeIndex::build(doc).resolve(alias)?.clone(),
+        };
+        let target = &target;
+        (star - 2, Some(alias), target.clone())
     } else {
         let [target] = relations.as_slice() else {
             return None;
         };
-        (star, None, *target)
+        (star, None, (*target).clone())
     };
     if start > at {
         return None; // the cursor is before the expression, not on it
@@ -55,7 +62,7 @@ pub fn expand_star_action(
     ) {
         return None;
     }
-    let columns = relation_columns(ctx, doc, target);
+    let columns = relation_columns(ctx, doc, &target);
     if columns.is_empty() {
         return None;
     }
@@ -92,6 +99,38 @@ pub fn expand_star_action(
         command: None,
         is_preferred: None,
     })
+}
+
+/// The token bounds of the query around `at`: just inside the nearest
+/// unmatched `(` before it and its `)` after it, or the whole document
+/// where no parenthesis encloses it.
+fn enclosing_query(tokens: &[cogitator_parser::Token], at: usize) -> (usize, usize) {
+    let mut depth = 0usize;
+    let mut lo = 0;
+    for i in (0..at).rev() {
+        match tokens[i].kind {
+            TokenKind::Symbol(')') => depth += 1,
+            TokenKind::Symbol('(') if depth == 0 => {
+                lo = i + 1;
+                break;
+            }
+            TokenKind::Symbol('(') => depth -= 1,
+            _ => {}
+        }
+    }
+    if lo == 0 {
+        return (0, tokens.len());
+    }
+    let mut depth = 0usize;
+    for (i, token) in tokens.iter().enumerate().skip(at) {
+        match token.kind {
+            TokenKind::Symbol('(') => depth += 1,
+            TokenKind::Symbol(')') if depth == 0 => return (lo, i),
+            TokenKind::Symbol(')') => depth -= 1,
+            _ => {}
+        }
+    }
+    (lo, tokens.len())
 }
 
 /// Each relation of the scope once (it lists an aliased one twice).
