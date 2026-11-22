@@ -122,6 +122,11 @@ end
 ---@param on_choice fun(item: any?, idx: integer?)
 function M.select(list, opts, on_choice)
   opts = opts or {}
+  -- the dialogs are the yazi-style picker unless ui.picker is off
+  local config = package.loaded["cogitator"] and require("cogitator").config
+  if not (config and config.ui and config.ui.picker == false) and not opts.preview then
+    return require("cogitator.picker").select(list, opts, on_choice)
+  end
   if #list == 0 then
     on_choice(nil, nil)
     return

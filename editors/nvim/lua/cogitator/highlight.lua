@@ -23,6 +23,25 @@ local LINES = {
   DbtDagDim = { "#919599", 246 },
 }
 
+--- Picker groups (the yazi-style dialogs): links, so they follow the
+--- colorscheme.
+local LINKS = {
+  DbtPickerNormal = "NormalFloat",
+  DbtPickerBorder = "FloatBorder",
+  DbtPickerSelected = "Visual",
+  DbtPickerParent = "CursorLine",
+  DbtPickerGroup = "Directory",
+  DbtPickerDetail = "Comment",
+  DbtPickerTitle = "Title",
+  DbtPickerDisabled = "NonText",
+  DbtPickerPreferred = "DiagnosticOk",
+  DbtPickerQuickfix = "DiagnosticWarn",
+  DbtPickerRefactor = "Function",
+  DbtPickerSource = "Constant",
+  DbtPickerCommand = "Special",
+  DbtPickerKey = "Special",
+}
+
 local KIND_GROUPS = {
   source = "DbtDagSource",
   exposure = "DbtDagExposure",
@@ -39,6 +58,9 @@ local function define()
   end
   for name, c in pairs(LINES) do
     set(0, name, { fg = c[1], ctermfg = c[2], default = true })
+  end
+  for name, target in pairs(LINKS) do
+    set(0, name, { link = target, default = true })
   end
 end
 

@@ -272,6 +272,9 @@ return function(ctx)
   local config = require("cogitator").config
   local backend_before = config.picker
   config.picker = "builtin"
+  -- the dialogs reach the backend only with the yazi picker off
+  local ui_before = config.ui.picker
+  config.ui.picker = false
   local answer
   pick.select({ "a", "b", "c" }, { prompt = "letter:" }, function(choice, idx)
     answer = { choice, idx }
@@ -293,6 +296,7 @@ return function(ctx)
   builtin.close(true)
   H.check(answer ~= nil and answer[1] == nil, "pick: a cancelled select answers nil")
   config.picker = backend_before
+  config.ui.picker = ui_before
 
   -- sources from a canned graph (no server)
   local graph = require("cogitator.pick.graph")

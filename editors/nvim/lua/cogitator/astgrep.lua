@@ -164,12 +164,15 @@ end
 --- Ask for a pattern (`[sql:]pattern`), then `on_query(query)`.
 ---@param on_query fun(query: table)
 function M.prompt(on_query)
-  vim.ui.input({ prompt = "ast-grep pattern ([sql:]pattern): ", default = M.DEFAULT_PATTERN }, function(text)
-    local query = text and M.parse(text)
-    if query then
-      on_query(query)
+  require("cogitator.picker").input(
+    { prompt = "ast-grep pattern ([sql:]pattern): ", default = M.DEFAULT_PATTERN },
+    function(text)
+      local query = text and M.parse(text)
+      if query then
+        on_query(query)
+      end
     end
-  end)
+  )
 end
 
 return M

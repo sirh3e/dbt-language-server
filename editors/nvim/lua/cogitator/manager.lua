@@ -183,19 +183,22 @@ function M.project_actions(root)
     {
       label = "set profiles directory",
       run = function()
-        vim.ui.input({ prompt = "profiles.yml directory: ", completion = "dir" }, function(dir)
-          if not dir or dir == "" then
-            return
+        require("cogitator.picker").input(
+          { prompt = "profiles.yml directory: ", completion = "dir" },
+          function(dir)
+            if not dir or dir == "" then
+              return
+            end
+            local expanded = vim.fn.expand(dir)
+            M.remember(root, { profiles_dir = expanded, profile = vim.NIL, target = vim.NIL })
+            local client = client_of(root)
+            if client then
+              client:exec_cmd({ command = "dbt.setProfilesDir", arguments = { { dir = expanded } } })
+            else
+              vim.notify("stored; applied when " .. root .. " next attaches")
+            end
           end
-          local expanded = vim.fn.expand(dir)
-          M.remember(root, { profiles_dir = expanded, profile = vim.NIL, target = vim.NIL })
-          local client = client_of(root)
-          if client then
-            client:exec_cmd({ command = "dbt.setProfilesDir", arguments = { { dir = expanded } } })
-          else
-            vim.notify("stored; applied when " .. root .. " next attaches")
-          end
-        end)
+        )
       end,
     },
     {
@@ -208,11 +211,14 @@ function M.project_actions(root)
     {
       label = "rename",
       run = function()
-        vim.ui.input({ prompt = "name: ", default = M.for_root(root).label or "" }, function(label)
-          if label then
-            M.rename(root, label)
+        require("cogitator.picker").input(
+          { prompt = "name: ", default = M.for_root(root).label or "" },
+          function(label)
+            if label then
+              M.rename(root, label)
+            end
           end
-        end)
+        )
       end,
     },
     {

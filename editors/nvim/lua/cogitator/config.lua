@@ -37,10 +37,14 @@ M.defaults = {
   -- project; "always" every buffer; false only :DbtHighlight. A layer set
   -- to false is never painted.
   highlight = { server = "auto", layers = { yaml = true, sql = true, jinja = true, dbt = true } },
+  -- the dialogs (choices, prompts, :Dbt) and the code-action menu: the
+  -- yazi-style picker walked with h/j/k/l; false → the `picker` backend
+  -- for choices, vim.ui.input for prompts, the stock code-action menu
+  ui = { picker = true },
 }
 
 -- the nested tables whose keys are checked like the top level's
-local NESTED = { "lens", "lineage", "dag", "grammar", "navigator", "highlight" }
+local NESTED = { "lens", "lineage", "dag", "grammar", "navigator", "highlight", "ui" }
 -- nested keys whose default is nil (invisible to the defaults lookup)
 local NESTED_NIL = { grammar = { url = true, rev = true } }
 
@@ -96,6 +100,8 @@ local function validate(opts)
   vim.validate("grammar.auto_install", grammar.auto_install, "boolean", true)
   vim.validate("grammar.url", grammar.url, "string", true)
   vim.validate("grammar.rev", grammar.rev, "string", true)
+  vim.validate("ui", opts.ui, "table", true)
+  vim.validate("ui.picker", (opts.ui or {}).picker, "boolean", true)
   vim.validate("highlight", opts.highlight, "table", true)
   local highlight = opts.highlight or {}
   vim.validate("highlight.server", highlight.server, function(v)

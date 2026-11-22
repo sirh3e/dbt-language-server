@@ -108,7 +108,11 @@ lineage… in fzf-lua, snacks.picker or telescope when installed, else a
 built-in one), `:DbtBrowse` for the model explorer (upstream | model | downstream over
 its dbt SQL | compiled SQL), `:DbtGraph`
 and `:DbtDag` for the graph browsers, `:DbtSchema`,
-`:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more — the full list,
+`:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more. `gra` (or
+`<leader>dA`) opens every code action at the cursor — the server's fixes
+and refactors with a diff preview, and the plugin's own commands — in a
+yazi-style menu walked with `h j k l`, as every dialog of the plugin
+is. The full list,
 options and keymaps are in `:h cogitator`
 ([doc/cogitator.txt](doc/cogitator.txt)); the binding behavior spec is
 [specs/neovim-plugin/00-plugin.md](../../specs/neovim-plugin/00-plugin.md).

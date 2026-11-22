@@ -650,7 +650,7 @@ function M.run_selection(opts)
   if opts and opts.args and opts.args ~= "" then
     start(opts.args)
   else
-    vim.ui.input({ prompt = "dbt selector: " }, start)
+    require("cogitator.picker").input({ prompt = "dbt selector: " }, start)
   end
 end
 
