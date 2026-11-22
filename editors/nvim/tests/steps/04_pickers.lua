@@ -96,7 +96,7 @@ return function(ctx)
     return vim.inspect(explorer._state and explorer._state.selected)
   end)
 
-  -- the navigator: history, marks, fuzzy filter, columns tab, every kind
+  -- the explorer: history, breadcrumb, the card's columns, every kind
   local s = explorer._state
   if s then
     explorer.focus("customers", { record = true })
@@ -114,31 +114,10 @@ return function(ctx)
     explorer._history(1)
     H.check(s.selected == "orders", "navigator: ] goes forward", s.selected)
 
-    explorer._apply_filter("stg pay")
-    H.check(
-      #s.filtered >= 1 and s.filtered[1].name == "stg_payments" and #(s.positions.stg_payments or {}) > 0,
-      "navigator: / filters with fzf's syntax and remembers the matches",
-      vim.inspect(vim.tbl_map(function(n)
-        return n.name
-      end, s.filtered))
-    )
-    explorer._apply_filter("^stg")
-    vim.api.nvim_win_set_cursor(s.wins.center, { 1, 0 })
-    explorer._toggle_mark()
-    explorer._toggle_mark()
-    local chosen = vim.tbl_map(function(n)
-      return n.name
-    end, explorer._chosen())
-    H.check(#chosen == 2, "navigator: <Space> marks nodes", vim.inspect(chosen))
-    local center = table.concat(vim.api.nvim_buf_get_lines(s.bufs.center, 0, -1, false), "\n")
-    H.check(center:find("● ", 1, true) ~= nil, "navigator: marked nodes are shown", center)
-
-    explorer._apply_filter("")
     explorer.focus("customers")
-    explorer._set_tab(5)
-    H.wait("navigator: the columns tab lists the documented columns", 10000, function()
+    H.wait("navigator: the card lists the documented columns", 10000, function()
       return table
-        .concat(vim.api.nvim_buf_get_lines(s.bufs.preview, 0, -1, false), "\n")
+        .concat(vim.api.nvim_buf_get_lines(s.bufs.center, 0, -1, false), "\n")
         :find("customer_id", 1, true) ~= nil
     end)
     local models_only = #s.nodes

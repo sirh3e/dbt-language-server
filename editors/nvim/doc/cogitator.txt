@@ -78,7 +78,7 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    show column lineage (message)       <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
-  :DbtBrowse     project-wide model browser          <leader>db
+  :DbtBrowse     the model explorer                  <leader>db
   :DbtProfiles   show/switch the profiles directory
   :DbtTarget     pick the active profile/target      <leader>dT
   :DbtExtract    model → schema YAML / add version   <leader>dy
@@ -177,16 +177,22 @@ with the matched letters highlighted and a preview. The query is fzf's:
 Every other choice (:Dbt, :DbtTests, :DbtTags, :DbtCancel, targets,
 projects) uses the same picker.
 
-NAVIGATOR                                               *cogitator-navigator*
+EXPLORER                                                 *cogitator-navigator*
 
-:DbtBrowse (<leader>db) is a yazi-style navigator over the lineage:
-upstream | models | downstream, the preview below; <leader>dn opens it at
-the buffer's model. h/l enter the side panes and, pressed again there,
-walk the lineage; [ or - goes back, ] forward, and the centre's title is
-the trail walked. / filters with fzf's syntax, f opens the models picker,
-<Space> marks, y yanks and r dbt-runs the marked, . lists every kind of
-node, <Tab> or 1-5<Tab> picks the preview (5 = columns), ? lists the
-keys.
+:DbtBrowse (<leader>db) shows one model, opening on the buffer's model:
+
+    upstream ⯇       |   the model's card   |   ⯈ downstream
+    dbt SQL                  |                 compiled SQL
+
+The card holds the description, tags, relation, versions, columns and
+tests (<CR> on a test or a version opens it). h/l enter the side panes
+and, pressed again there, walk the lineage; <CR> on an entry makes it
+the model. [ or - goes back, ] forward, and the card's title is the trail
+walked. f or / picks any model with the fuzzy picker; . lets it take
+every kind of node. p enters the dbt SQL, h/l move between the SQL
+panes, <Esc> returns, J/K scroll both. <Space> marks, y yanks and r
+dbt-runs the marked; o s v t open, c compiles, g :DbtDag, L column
+lineage; ? lists the keys.
 
 Context refreshes and dbt runs also report through $/progress, so they
 appear in |vim.lsp.status()| and plugins like fidget.nvim.

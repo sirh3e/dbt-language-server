@@ -244,55 +244,62 @@ payload of column nodes (`model:<m>::<col>`, `source:<s>.<t>::<col>`,
 `unknown:<name>::<col>`) with layers from the longest path. The server command is editor-neutral; this UI is
 deliberately implemented only in the Neovim plugin.
 
-### 5.3c Project browser (`:DbtBrowse`) — **Neovim only**
+### 5.3c Model explorer (`:DbtBrowse`, `:DbtExplorer`) — **Neovim only**
 
-The navigator (yazi-style): `/` filters with fzf's syntax (fuzzy,
-`'exact`, `^prefix`, `suffix$`, `!not`, `a | b`) and highlights what
-matched; re-centring (a side-pane walk, `f`, `<C-g>` from a picker)
-records a history, `[`/`-` back and `]` forward, shown as a breadcrumb
-(`a › b › c`) in the centre title; `<Space>` marks nodes, `y` yanks and
-`r` dbt-runs the marked (one `dbt.runSelection`); `f` opens the models
-picker; `.` lists every kind of node (sources, exposures…) beside the
-models (`navigator.show_all_kinds`); `?` lists the keys; preview tab
-`[5]` lists the documented columns, and the raw tab reads the file in
-the background. `:DbtBrowse` opens on every model, `<leader>dn` at the
-buffer's model (`open({ focus = name })` / `{ focus_buffer = true }`).
-The project graph is cached per client (`cogitator.pick.graph`) and
-dropped on each `$/progress` end.
+One model at a time, in five floats:
 
-Actions on the selected entry (center or side pane): `s`/`v`/`t` open it
-in a split/vsplit/tab, `c` compile it, `g` show it in :DbtDag, `L` its
-column-lineage graph, `P` parse the project.
+```
+┌ upstream ⯇ (n) ┐┌ model · a › b › c ──┐┌ ⯈ downstream (n) ┐
+│ direct parents ││ the model's card    ││ direct children  │
+└────────────────┘└─────────────────────┘└──────────────────┘
+┌ dbt SQL · x.sql ───────────────┐┌ compiled SQL ───────────────────┐
+│ the file (Jinja and all)       ││ target/compiled/<project>/…     │
+└────────────────────────────────┘└─────────────────────────────────┘
+```
 
-`lua/cogitator/browse.lua` is the yazi-style browser over the whole project: the
-center float lists every model from `dbt.projectGraph` (`/` filters
-live, smart-case substring), the side floats show the selection's
-direct upstream/downstream from `dbt.modelInfo` (debounced per cursor
-move, stale responses discarded), and the full-width preview below
-switches between `[1]` the raw SQL, `[2]` the compiled SQL from
-`target/compiled/<project>/…` (a hint when dbt has not compiled the
-model — the browser never runs dbt itself) and `[3]` versions + tests.
-Keys: `j`/`k` and the other native motions move (counts included, which
-is why the preview tabs are not on the digit keys); from the center
-`h`/`l` enter the upstream/downstream pane; in a side pane `h` upstream
-or `l` downstream re-centers on the entry and stays there, so repeating
-it walks the lineage (`[count]` walks that many; steps queue while
-`dbt.modelInfo` is in flight), and the opposite key returns to the
-center. `p` focuses the preview, `J`/`K` scroll it from any pane, `n`/`N`
-step the center list with wraparound, `y` yanks a name, `<CR>` on a side
-entry re-selects it in the center, `<CR>`/`o` on the center opens the
-file, `<Tab>`/`<S-Tab>` cycle the preview tab and `[count]<Tab>` picks
-one (1 raw / 2 compiled / 3 versions+tests / 4 info), `<Esc>` clears the
-filter first and closes second, `q` closes. Side-pane entries use the
-`DbtDag*Fg` resource colours. The info tab shows description, tags, the
-dbt.relation name, documented columns from the project graph, and the
-model's tests — `<CR>` on a test line jumps to its YAML entry. The
-implementation is the `cogitator.explorer` package (init/render/
-filter/keys/preview/info) with `cogitator.browse` as a facade and
-`:DbtExplorer` as a command alias; the DAG's canvas + barycenter
-layout engine is the pure `cogitator.layout` module. The server
-command is editor-neutral; this UI is deliberately implemented only in
-the Neovim plugin.
+- **Opens** on the current buffer's model; elsewhere it asks with the
+  models picker (§5.3e), and closes if nothing is chosen.
+  `open({ focus = name })` opens on a given model.
+- **The card** (centre, `explorer/card.lua`) shows the model's name and
+  kind with its file, the description (wrapped), tags, the `dbt.relation`
+  name, versions (`<CR>` opens a version's file), the documented columns
+  from the project graph and the tests (`<CR>` jumps to the test's YAML).
+  `<CR>` on any other line opens the model.
+- **The side panes** list the direct upstream and downstream from
+  `dbt.modelInfo`, in the `DbtDag*Fg` resource colours. `<CR>` on an
+  entry, or `h` (upstream) / `l` (downstream) pressed again in its pane,
+  makes it the model and stays in the pane, so repeating walks the
+  lineage (`[count]` walks that many; steps queue while `dbt.modelInfo`
+  is in flight). From the card, `h`/`l` enter the panes.
+- **History:** every re-centring (a walk, `f`/`/`, `<C-g>` from a picker)
+  records the model left behind. `[`/`-` go back and `]` forward, and the
+  card's title shows the trail (`a › b › c`).
+- **The two SQL panes** show the dbt SQL (the loaded buffer when there is
+  one, else the file read in the background) and the compiled SQL from
+  `dbt.compiledSql`. When the model has not been compiled they say so;
+  the explorer never runs dbt itself. Both are `sql` buffers; `J`/`K`
+  scroll them together from any pane, `p` enters the dbt SQL, `h`/`l`
+  move between the two, and `<Esc>` returns to the card.
+- **Fetching:** changing the model fetches `dbt.modelInfo`,
+  `dbt.compiledSql` and then `dbt.relation`, debounced; answers for an
+  older model are dropped (generation counter). The project graph is
+  cached per client (`cogitator.pick.graph`) and dropped on each
+  `$/progress` end.
+- **Keys** (on the card, or on a side entry):
+  - `f` or `/` pick any model (the fuzzy picker, fzf syntax);
+  - `.` lets the picker and the walks take every kind of node
+    (`navigator.show_all_kinds`);
+  - `<Space>` marks; `y` yanks and `r` dbt-runs the marked models, or the
+    entry (one `dbt.runSelection`);
+  - `o`/`s`/`v`/`t` open / split / vsplit / tab; `c` compile; `g` show in
+    :DbtDag; `L` column lineage; `P` dbt parse;
+  - `?` lists the keys; `q` closes, as does `<Esc>` on the card.
+
+The implementation is the `cogitator.explorer` package (init/render/card/
+preview/keys), with `cogitator.browse` as a facade; `explorer/filter.lua`
+keeps only the substring match :DbtDag's search uses. The server commands
+are editor-neutral; this UI is deliberately implemented only in the
+Neovim plugin.
 
 `dbt.modelInfo` takes `{uri?, model?}` (`model` wins) and answers
 everything the browser's preview needs in one round trip:
