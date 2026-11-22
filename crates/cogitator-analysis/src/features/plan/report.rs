@@ -259,6 +259,10 @@ pub struct QueryPlan {
     pub findings: Vec<FindingView>,
     pub trace: TraceView,
     pub needs: NeedsView,
+    /// For a `table` model: could it be built incrementally, and if not,
+    /// why (specs/ir-pipeline/10).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub incrementality: Option<super::incrementality::IncrementalityView>,
 }
 
 impl QueryPlan {
@@ -281,6 +285,7 @@ impl QueryPlan {
             findings: Vec::new(),
             trace: TraceView::unavailable(Level::Hir),
             needs: NeedsView::of(Needs::NONE),
+            incrementality: None,
         }
     }
 }

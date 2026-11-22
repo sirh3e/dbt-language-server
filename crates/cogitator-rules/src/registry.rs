@@ -159,6 +159,11 @@ pub static REGISTRY: &[Registered] = &[
         hir: Some(&incr::no_unique_key::NoUniqueKey),
         ..EMPTY
     },
+    Registered {
+        meta: &incr::could_be_incremental::META,
+        mir: Some(&incr::could_be_incremental::CouldBeIncremental),
+        ..EMPTY
+    },
 ];
 
 #[cfg(test)]
@@ -198,6 +203,9 @@ mod tests {
         "incr.no_unique_key",
     ];
 
+    /// specs/ir-pipeline/10: incrementality.
+    const TRANCHE_THREE: [&str; 1] = ["incr.could_be_incremental"];
+
     #[test]
     fn registry_covers_both_tranches_exactly() {
         let mut ids: Vec<&str> = REGISTRY.iter().map(|r| r.meta.id.as_str()).collect();
@@ -206,6 +214,7 @@ mod tests {
         assert_eq!(ids.len(), REGISTRY.len(), "duplicate rule id");
         let mut expected = TRANCHE_ONE.to_vec();
         expected.extend(TRANCHE_TWO);
+        expected.extend(TRANCHE_THREE);
         expected.sort_unstable();
         assert_eq!(ids, expected);
     }

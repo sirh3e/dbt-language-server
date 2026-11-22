@@ -33,9 +33,6 @@ impl Walk<'_> {
                 .collect::<Vec<_>>()
                 .join("."),
         };
-        if open {
-            return self.unknown();
-        }
         let declared = self
             .inputs
             .and_then(|inputs| inputs.by_name.get(relation.as_str()))
@@ -70,6 +67,11 @@ impl Walk<'_> {
             if append_declared {
                 // grows, but by no column the analysis can read back
                 return self.block(Blocker::NoMonotoneColumn, prov);
+            }
+            if open {
+                // the schema is partial: a column it does not list may
+                // grow, so this is no evidence the input is static
+                return self.unknown();
             }
             self.notes.insert(Note::AssumesStatic(relation));
             return Node::fixed();

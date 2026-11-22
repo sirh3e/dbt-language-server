@@ -183,6 +183,16 @@
             "warning"
           ]
         },
+        "incr.could_be_incremental": {
+          "description": "A table that could be built incrementally. (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
         "incr.missing_guard": {
           "description": "Incremental model reprocesses all input each run. (off|hint|info|warning)",
           "type": "string",

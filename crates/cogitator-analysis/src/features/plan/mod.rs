@@ -28,6 +28,7 @@ mod drive;
 mod env;
 mod facts;
 mod incremental;
+mod incrementality;
 mod passes;
 mod phys;
 mod report;

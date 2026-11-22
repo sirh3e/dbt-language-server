@@ -127,6 +127,49 @@ pub enum Blocker {
     KeysNotInOutput,
 }
 
+impl Blocker {
+    /// Why this keeps the model a table, in a sentence.
+    pub fn describe(&self) -> String {
+        match self {
+            Blocker::NonDeterministic(func) => {
+                format!("`{func}()` in the output is not a function of the rows")
+            }
+            Blocker::TemporalFilter(func) => format!(
+                "a filter on `{func}()`: rows leave the result as time passes, not only arrive"
+            ),
+            Blocker::Limit => "LIMIT keeps only some rows of the whole input".into(),
+            Blocker::WindowOverWholeTable => {
+                "a window function over the whole table (no PARTITION BY)".into()
+            }
+            Blocker::AggregateOverWholeTable => {
+                "an aggregate over the whole table (no GROUP BY)".into()
+            }
+            Blocker::GroupingSets => "GROUPING SETS / ROLLUP / CUBE".into(),
+            Blocker::SetDifference => "EXCEPT / INTERSECT need the whole of both inputs".into(),
+            Blocker::FullJoin => "a FULL JOIN of a growing input".into(),
+            Blocker::OuterJoinOnGrowingSide => {
+                "an outer join whose preserved side is not the growing input".into()
+            }
+            Blocker::SubqueryOverGrowingInput => {
+                "a subquery or semi-join over a growing input changes which old rows pass".into()
+            }
+            Blocker::ChangingInput(name) => {
+                format!("`{name}` has rows that change, not only arrive")
+            }
+            Blocker::OverChangingRows(op) => {
+                format!("a {op} over re-aggregated rows, which change rather than arrive")
+            }
+            Blocker::StaticUnionBranch => {
+                "a UNION ALL branch that does not grow would be appended again on every run".into()
+            }
+            Blocker::NoMonotoneColumn => {
+                "no output column tells new rows apart (declare `event_time` on the input)".into()
+            }
+            Blocker::KeysNotInOutput => "the group keys are not all in the output".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Blocked {
     pub blocker: Blocker,

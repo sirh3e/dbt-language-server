@@ -4,6 +4,7 @@
 use std::cell::RefCell;
 
 use cogitator_ir::common::Level;
+use cogitator_ir::common::Materialization;
 use cogitator_ir::hir::Hir;
 use cogitator_ir::lir::{Backend, Lir};
 use cogitator_ir::mir::Mir;
@@ -30,6 +31,8 @@ pub(super) struct Run {
     pub(super) findings: Vec<FindingView>,
     pub(super) trace: TraceView,
     pub(super) needs: NeedsView,
+    /// For a `table` model: could it be built incrementally, or why not.
+    pub(super) incrementality: Option<super::incrementality::IncrementalityView>,
 }
 
 pub(super) struct LirOutcome {
@@ -99,6 +102,8 @@ impl Passes<'_, '_> {
         Run {
             findings: output.findings.iter().map(FindingView::of).collect(),
             trace,
+            incrementality: (hir.config.materialized == Some(Materialization::Table))
+                .then(|| super::incrementality::IncrementalityView::of(&output.mir, Some(&inputs))),
             mir: output.mir,
             lir: output.lir,
             lir_outcome: outcome.into_inner(),
