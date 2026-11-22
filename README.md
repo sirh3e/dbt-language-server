@@ -353,6 +353,8 @@ perf_rules:                # per-rule severity or off; wins over the profile
   filter.non_sargable: off
 inlay:
   vars: true               # the value after each var() (docs/variables.md)
+  env_vars: true           # the value after each env_var(), secrets masked
+  jinja: false             # what short {{ … }} expressions render to
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
 ```

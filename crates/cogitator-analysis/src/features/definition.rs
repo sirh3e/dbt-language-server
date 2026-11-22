@@ -70,6 +70,9 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 })
                 .unwrap_or(fallback),
         },
+        TokenKind::EnvVar => {
+            super::env_vars::env_definition(ctx, doc, uri, idx).unwrap_or(fallback)
+        }
         TokenKind::Doc => ctx
             .doc_detail_map
             .get(literal)

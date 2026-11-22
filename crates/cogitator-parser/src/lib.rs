@@ -33,6 +33,8 @@ pub enum TokenKind {
     // refined dbt kinds (02 §3.3)
     Ref,
     Var,
+    /// The name argument of an `env_var('…')` call.
+    EnvVar,
     SourceName,
     SourceTable,
     Macro,
@@ -188,7 +190,7 @@ impl ParsedDocument {
             .find(|t| t.kind == kind)
     }
 
-    /// The rest of the `var('name', default)` call whose name is the
+    /// The rest of the `var('name', default)` call (or `env_var(…)`) whose name is the
     /// Var token `var_index`: the default argument's text (trimmed, byte
     /// span) and the closing parenthesis' token, when the call closes.
     pub fn var_call(&self, var_index: usize) -> VarCall {

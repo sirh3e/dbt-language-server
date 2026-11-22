@@ -33,9 +33,37 @@ pub struct PreviewInputs {
     pub is_incremental: bool,
     /// `{{ this }}`: the model's own relation, when the shell knows it.
     pub this: Option<String>,
+    /// The environment `env_var()` reads (secret-looking names render
+    /// masked).
+    pub env: HashMap<String, String>,
 }
 
 pub fn expand_jinja(body: &str, inputs: &PreviewInputs) -> Result<ExpandedSql, Guidance> {
+    let mut env = environment(inputs);
+
+    // macros first, body last: one template, dbt-ish scoping
+    let mut template = String::new();
+    for source in &inputs.macro_sources {
+        template.push_str(source);
+        template.push('\n');
+    }
+    template.push_str(body);
+
+    env.add_template("model", &template).map_err(render_error)?;
+    let rendered = env
+        .get_template("model")
+        .and_then(|t| t.render(minijinja::context! {}))
+        .map_err(render_error)?;
+
+    // the macro preamble renders to whitespace; trim the noise away
+    Ok(ExpandedSql {
+        sql: rendered.trim_start_matches(['\n', ' ', '\t']).to_string(),
+    })
+}
+
+/// The preview's environment: the dbt stubs, no templates yet (shared
+/// with the inline preview of one `{{ … }}`).
+pub(crate) fn environment(inputs: &PreviewInputs) -> Environment<'static> {
     let mut env = Environment::new();
     let models = inputs.model_relations.clone();
     let sources = inputs.source_relations.clone();
@@ -71,6 +99,21 @@ pub fn expand_jinja(body: &str, inputs: &PreviewInputs) -> Result<ExpandedSql, G
             }
         },
     );
+    let process = inputs.env.clone();
+    env.add_function(
+        "env_var",
+        move |name: String, default: Option<Value>| -> Result<Value, Error> {
+            match process.get(&name) {
+                Some(v) => Ok(Value::from(crate::context::env::shown_value(&name, v))),
+                None => default.ok_or_else(|| {
+                    Error::new(
+                        ErrorKind::UndefinedError,
+                        format!("env_var('{name}') is unset and has no default"),
+                    )
+                }),
+            }
+        },
+    );
     env.add_function("config", |_kwargs: minijinja::value::Kwargs| {
         Ok::<Value, Error>(Value::from(""))
     });
@@ -89,24 +132,7 @@ pub fn expand_jinja(body: &str, inputs: &PreviewInputs) -> Result<ExpandedSql, G
         )])),
     );
 
-    // macros first, body last: one template, dbt-ish scoping
-    let mut template = String::new();
-    for source in &inputs.macro_sources {
-        template.push_str(source);
-        template.push('\n');
-    }
-    template.push_str(body);
-
-    env.add_template("model", &template).map_err(render_error)?;
-    let rendered = env
-        .get_template("model")
-        .and_then(|t| t.render(minijinja::context! {}))
-        .map_err(render_error)?;
-
-    // the macro preamble renders to whitespace; trim the noise away
-    Ok(ExpandedSql {
-        sql: rendered.trim_start_matches(['\n', ' ', '\t']).to_string(),
-    })
+    env
 }
 
 /// serde_json → minijinja without the serde bridge feature.
@@ -131,13 +157,13 @@ fn json_to_value(value: &serde_json::Value) -> Value {
     }
 }
 
-fn render_error(err: Error) -> Guidance {
+pub(crate) fn render_error(err: Error) -> Guidance {
     let mut guidance = Guidance::new("Jinja preview could not render.").because(err.to_string());
     if let Some(line) = err.line() {
         guidance = guidance.at(format!("template line {line}"));
     }
     guidance.fix(
-        "the preview stubs a subset (ref/source/var/config/is_incremental/target); \
+        "the preview stubs a subset (ref/source/var/env_var/config/is_incremental/target); \
          adapter calls and incremental blocks need a real dbt compile.",
     )
 }
@@ -161,6 +187,7 @@ mod tests {
             target_name: "dev".to_string(),
             is_incremental: false,
             this: None,
+            env: HashMap::new(),
         }
     }
 

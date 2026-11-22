@@ -12,6 +12,7 @@ mod dead_models;
 mod definition;
 mod diagnostics;
 mod document_links;
+mod env_vars;
 mod extract;
 pub mod formatting;
 mod governance;
@@ -20,6 +21,7 @@ mod hover;
 mod impact;
 mod incremental_diff;
 mod inlay_hints;
+mod jinja_inline;
 mod jinja_preview;
 mod lenses;
 mod linked_editing;
@@ -32,12 +34,14 @@ mod references;
 mod relation;
 mod rename;
 mod rename_macro;
+mod rename_var;
 mod semantic_captures;
 mod signature;
 mod structure;
 mod tests_nav;
 mod unresolved;
 mod unresolved_builtins;
+mod unused_vars;
 mod vars;
 mod workspace_diagnostics;
 
@@ -71,6 +75,7 @@ pub use diagnostics::{
     citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
 };
 pub use document_links::{document_links, document_links_at};
+pub use env_vars::env_var_diagnostics;
 pub use extract::{extract_model_yaml, ExtractEdit};
 pub use governance::{contract_diagnostics, private_ref_diagnostics};
 pub use graph_nav::{
@@ -83,6 +88,10 @@ pub use incremental_diff::{
     INCREMENTAL_LENS_TITLE,
 };
 pub use inlay_hints::{inlay_hints, inlay_hints_with, InlayOptions};
+pub use jinja_inline::{
+    jinja_expression_at, jinja_expressions, jinja_hover, jinja_inlay_hints, InlineRenderer,
+    JinjaExpr, Rendered,
+};
 pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
@@ -92,6 +101,7 @@ pub use references::references_at;
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
 pub use rename::{prepare_rename, rename_model};
 pub use rename_macro::{prepare_rename_at, rename_at};
+pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};
 pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
@@ -99,6 +109,7 @@ pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
 pub use unresolved::{
     document_unresolved, project_files, project_unresolved, Unresolved, UnresolvedKind,
 };
+pub use unused_vars::unused_var_diagnostics;
 pub use vars::{key_definition, var_key_at, var_references};
 pub use workspace_diagnostics::project_diagnostics;
 

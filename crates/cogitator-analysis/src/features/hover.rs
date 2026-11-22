@@ -80,6 +80,7 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
                 None => format!("{literal}: undefined"),
             },
         },
+        TokenKind::EnvVar => super::env_vars::env_hover(ctx, doc, idx),
         TokenKind::Macro => {
             let package = parsed
                 .lookback_find(idx, TokenKind::Package, 2)

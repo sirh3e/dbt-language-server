@@ -102,6 +102,7 @@ fn the_rendered_jaffle_models_map_back_to_their_lines(#[case] model: &str) {
         target_name: "dev".into(),
         is_incremental: false,
         this: None,
+        env: HashMap::new(),
     };
     let Ok(compiled) = expand_jinja(&source, &inputs) else {
         return; // a model the preview cannot render is no evidence either way

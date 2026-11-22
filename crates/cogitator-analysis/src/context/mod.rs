@@ -2,12 +2,14 @@
 //! types, the build orchestrator, and one submodule per detail-map builder.
 
 pub mod docs;
+pub mod env;
 pub mod exposures;
 mod macros;
 mod models;
 mod packages;
 pub mod persist;
 pub mod types;
+mod var_reads;
 mod variables;
 
 use std::collections::HashMap;
@@ -42,6 +44,8 @@ pub struct ContextBuilder {
     edges: FileCache<Vec<EdgeSeed>>,
     /// `{{ config(tags=…) }}` per model file (tag search).
     sql_tags: FileCache<Vec<String>>,
+    /// The var names each file reads (unused-var diagnostics).
+    var_reads: FileCache<Vec<String>>,
     /// Explicit profiles directory (`--profiles-dir` /
     /// `initializationOptions.profilesDir`); empty → dbt-style search order.
     profiles_dir: String,
@@ -85,6 +89,8 @@ impl ContextBuilder {
     }
 }
 
+pub use var_reads::{var_names_read, VarReads};
+
 pub use types::{
     MacroDetails, ModelDetails, ModelKind, PackageVars, SelectorDetails, SourceDetails,
     SourceTableDetails, VarOverride, VarSource, VariableDetails,
@@ -103,6 +109,10 @@ pub struct DbtContext {
     pub variable_detail_map: HashMap<String, VariableDetails>,
     /// Each installed package's vars as its own files see them.
     pub package_variables: Vec<PackageVars>,
+    /// Project name → the var names its files read (`None` before a scan).
+    pub var_reads: Option<var_reads::VarReads>,
+    /// What `env_var()` sees: process environment, `.env`, profiles uses.
+    pub env: env::EnvVars,
     pub selector_detail_map: HashMap<String, SelectorDetails>,
     /// packages.yml/dependencies.yml declarations, by installable name.
     pub declared_packages: Vec<String>,
@@ -172,6 +182,8 @@ impl ContextBuilder {
             &mut self.sql_tags,
         );
         let snapshots_cache = &mut self.snapshots;
+        let var_reads_cache = &mut self.var_reads;
+        let mut var_reads = var_reads::VarReads::new();
         let var_overrides = &self.var_overrides;
         // scoped threads lose the span context: hand each builder the
         // parent explicitly so per-builder child spans nest (05 §6.3)
@@ -197,6 +209,10 @@ impl ContextBuilder {
                 let _span = tracing::info_span!(parent: &parent, "build_variables").entered();
                 build_variables(&root, &project, &process_list[1..], var_overrides)
             });
+            let reads_handle = scope.spawn(|| {
+                let _span = tracing::info_span!(parent: &parent, "build_var_reads").entered();
+                var_reads::build_var_reads(&process_list, &dialect, var_reads_cache)
+            });
             let graph_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_graph").entered();
                 ProjectGraph::build(&root, &project, &dialect, edges_cache)
@@ -205,6 +221,7 @@ impl ContextBuilder {
             macros = macros_handle.join().unwrap_or_default();
             (variables, package_variables) = vars_handle.join().unwrap_or_default();
             graph = graph_handle.join().unwrap_or_default();
+            var_reads = reads_handle.join().unwrap_or_default();
         });
 
         // Refs to seeds and snapshots created empty-uri graph nodes during
@@ -214,6 +231,7 @@ impl ContextBuilder {
 
         let selector_detail_map = load_selectors(&root);
         let declared_packages = packages::declared_packages(&root);
+        let env = env::load_env(&root, &self.profiles_dir, workspace_root);
 
         // exposures/metrics/semantic models: a marked-YAML pass over the
         // own project's properties files (03 §10), then into the graph
@@ -255,6 +273,8 @@ impl ContextBuilder {
             macro_detail_map: macros,
             variable_detail_map: variables,
             package_variables,
+            var_reads: Some(var_reads),
+            env,
             selector_detail_map,
             declared_packages,
             exposure_detail_map,

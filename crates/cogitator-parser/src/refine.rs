@@ -23,6 +23,7 @@ fn refine_at(text: &str, tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> 
     match lit {
         "ref" => ref_args(tokens, i),
         "var" => call_string_arg(tokens, i, TokenKind::Var),
+        "env_var" => call_string_arg(tokens, i, TokenKind::EnvVar),
         "source" => source_args(tokens, i),
         "doc" => call_string_arg(tokens, i, TokenKind::Doc),
         "config" => config_marker(tokens, i),
@@ -174,6 +175,22 @@ mod tests {
             tokens.contains(&(TokenKind::Macro, "star".into())),
             "{tokens:?}"
         );
+    }
+
+    #[test]
+    fn env_var_call_marks_the_name_and_says_its_default() {
+        let doc = parse_document(
+            "select '{{ env_var(\"DBT_SCHEMA\", 'dev') }}'",
+            &Dialect::default(),
+        )
+        .unwrap();
+        let i = doc
+            .tokens
+            .iter()
+            .position(|t| t.kind == TokenKind::EnvVar)
+            .expect("an EnvVar token");
+        assert_eq!(doc.literal(&doc.tokens[i]), "DBT_SCHEMA");
+        assert_eq!(doc.var_default(i), Some("'dev'"));
     }
 
     fn var_default(text: &str) -> Option<String> {
