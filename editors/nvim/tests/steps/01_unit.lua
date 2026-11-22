@@ -47,7 +47,12 @@ return function(ctx)
         lir = { available = false, unavailable = "not lowered", degradations = {}, violations = {} },
       },
       findings = {
-        { id = "join.cartesian", span = { start = 3, ["end"] = 4 }, severity = "warning", message = "no key" },
+        {
+          id = "join.cartesian",
+          span = { start = 3, ["end"] = 4 },
+          severity = "warning",
+          message = "no key",
+        },
       },
       trace = {
         incomplete = true,
@@ -83,4 +88,5 @@ return function(ctx)
   H.check(vim.tbl_contains(manager.roots(), proj), "manager: roots lists the project")
 
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_ui.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_graphs.lua"))(ctx)
 end

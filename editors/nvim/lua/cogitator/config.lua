@@ -18,7 +18,15 @@ M.defaults = {
   keymaps = true,
   semantic_tokens = true,
   inlay_hints = false, -- true → vim.lsp.inlay_hint on attach
+  -- column lineage graphs: hops each way, dbt.columnLineage calls at most
+  lineage = { depth = 3, max_requests = 60 },
+  -- :DbtDag: hops shown around the selection when focused (f, +/-),
+  -- follow the current buffer's model, redraw after a save
+  dag = { focus_depth = 2, follow = false, refresh_on_save = true },
 }
+
+-- the nested tables whose keys are checked like the top level's
+local NESTED = { "lens", "lineage", "dag" }
 
 local function check_known_keys(opts)
   -- keys whose default is nil and so invisible to the defaults lookup
@@ -28,9 +36,13 @@ local function check_known_keys(opts)
       error(("cogitator.nvim: unknown setup key %q"):format(key), 0)
     end
   end
-  for key in pairs(opts.lens or {}) do
-    if M.defaults.lens[key] == nil then
-      error(("cogitator.nvim: unknown setup key lens.%q"):format(key), 0)
+  for _, section in ipairs(NESTED) do
+    if type(opts[section]) == "table" then
+      for key in pairs(opts[section]) do
+        if M.defaults[section][key] == nil then
+          error(("cogitator.nvim: unknown setup key %s.%q"):format(section, key), 0)
+        end
+      end
     end
   end
 end
@@ -49,6 +61,14 @@ local function validate(opts)
   vim.validate("lens", opts.lens, "table", true)
   vim.validate("keymaps", opts.keymaps, "boolean", true)
   vim.validate("semantic_tokens", opts.semantic_tokens, "boolean", true)
+  vim.validate("lineage", opts.lineage, "table", true)
+  vim.validate("dag", opts.dag, "table", true)
+  local lineage, dag = opts.lineage or {}, opts.dag or {}
+  vim.validate("lineage.depth", lineage.depth, "number", true)
+  vim.validate("lineage.max_requests", lineage.max_requests, "number", true)
+  vim.validate("dag.focus_depth", dag.focus_depth, "number", true)
+  vim.validate("dag.follow", dag.follow, "boolean", true)
+  vim.validate("dag.refresh_on_save", dag.refresh_on_save, "boolean", true)
 end
 
 --- The server command with the flags derived from the options (spec §1.2).

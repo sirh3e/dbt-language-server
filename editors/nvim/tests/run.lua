@@ -37,7 +37,7 @@ require("cogitator").setup({
 })
 
 local ctx = { H = H, fixture = fixture, repo_root = repo_root }
-for _, step in ipairs({ "01_unit", "02_session", "03_features", "04_browser", "05_profiles" }) do
+for _, step in ipairs({ "01_unit", "02_session", "03_features", "04_browser", "04_graphs", "05_profiles" }) do
   dofile(vim.fs.joinpath(tests_dir, "steps", step .. ".lua"))(ctx)
 end
 

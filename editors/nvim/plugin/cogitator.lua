@@ -69,6 +69,10 @@ vim.api.nvim_create_user_command("DbtDag", function()
   require("cogitator.dag").open()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
 
+vim.api.nvim_create_user_command("DbtColumnLineage", function(opts)
+  require("cogitator.dag").open({ columns = true, column = opts.args ~= "" and opts.args or nil })
+end, { nargs = "?", desc = "column-lineage graph of this model (optionally of one column)" })
+
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()
 end, { desc = "browse the model graph (upstream | model | downstream)" })
