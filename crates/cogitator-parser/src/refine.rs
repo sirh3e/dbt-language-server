@@ -2,6 +2,9 @@
 //! dbt kinds — ref()/source()/var() arguments, config markers and
 //! macro call sites — purely over the token slice.
 
+use std::collections::HashSet;
+
+use crate::calls::{bound_names, macro_call_at};
 use crate::{JinjaKind, Token, TokenKind};
 
 /// Refinement pass (02 §3.3 behavior over the crates-based stream),
@@ -9,16 +12,22 @@ use crate::{JinjaKind, Token, TokenKind};
 /// stream and yields `(index, kind)` edits; the pass applies them at the
 /// end, so matchers never observe each other's effects.
 pub(crate) fn refine(text: &str, tokens: &mut [Token]) {
+    let bound = bound_names(text, tokens);
     let edits: Vec<(usize, TokenKind)> = (0..tokens.len())
         .filter(|&i| tokens[i].kind == TokenKind::Ident)
-        .flat_map(|i| refine_at(text, tokens, i))
+        .flat_map(|i| refine_at(text, tokens, i, &bound))
         .collect();
     for (index, kind) in edits {
         tokens[index].kind = kind;
     }
 }
 
-fn refine_at(text: &str, tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
+fn refine_at(
+    text: &str,
+    tokens: &[Token],
+    i: usize,
+    bound: &HashSet<&str>,
+) -> Vec<(usize, TokenKind)> {
     let lit = &text[tokens[i].start as usize..tokens[i].end as usize];
     match lit {
         "ref" => ref_args(tokens, i),
@@ -27,7 +36,7 @@ fn refine_at(text: &str, tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> 
         "source" => source_args(tokens, i),
         "doc" => call_string_arg(tokens, i, TokenKind::Doc),
         "config" => config_marker(tokens, i),
-        _ => macro_markers(tokens, i),
+        _ => macro_call_at(text, tokens, i, bound),
     }
 }
 
@@ -72,27 +81,6 @@ fn source_args(tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
 fn config_marker(tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
     match i.checked_sub(1).and_then(|p| kind_at(tokens, p)) {
         Some(TokenKind::JinjaOpen(JinjaKind::Expr)) => vec![(i, TokenKind::Config)],
-        _ => Vec::new(),
-    }
-}
-
-/// `{{ macro(` and `{{ pkg.macro(` — only directly after `{{` (02 §3.2).
-fn macro_markers(tokens: &[Token], i: usize) -> Vec<(usize, TokenKind)> {
-    let after_opener = matches!(
-        i.checked_sub(1).and_then(|p| kind_at(tokens, p)),
-        Some(TokenKind::JinjaOpen(JinjaKind::Expr))
-    );
-    if !after_opener {
-        return Vec::new();
-    }
-    let qualified = matches!(kind_at(tokens, i + 1), Some(TokenKind::Symbol('.')))
-        && matches!(kind_at(tokens, i + 2), Some(TokenKind::Ident))
-        && matches!(kind_at(tokens, i + 3), Some(TokenKind::Symbol('(')));
-    if qualified {
-        return vec![(i, TokenKind::Package), (i + 2, TokenKind::Macro)];
-    }
-    match kind_at(tokens, i + 1) {
-        Some(TokenKind::Symbol('(')) => vec![(i, TokenKind::Macro)],
         _ => Vec::new(),
     }
 }

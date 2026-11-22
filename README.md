@@ -111,7 +111,8 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   (`:DbtIncrementalDiff`, `M-x cogitator-incremental-diff`, `dbt: Compare
   incremental / full refresh`). With catalog.json statistics, each CTE shows
   the row count they prove as an inlay hint (`1,200 rows`, `≤ 1,200 rows`;
-  `perf.row_hints`)
+  `perf.row_hints`); `perf.inline_findings: true` shows the plan findings
+  inline too (`⚠ join.cartesian`, the whole finding as the tooltip)
 - **Refactors**: "Expand `c.*`" to the relation's known columns,
   "Extract CTE to a model" (the CTE becomes its own model and is
   `ref()`'d), and "Extract schema YAML" as an edit for editors that run
@@ -348,6 +349,7 @@ perf:
   profile: off             # off | recommended | strict: which plan rules
   catalog_stats: true      # report as diagnostics (dbt.queryPlan always works)
   row_hints: true          # CTE row counts proven by catalog stats, as inlay hints
+  inline_findings: false   # the reported findings as inlay hints too
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off

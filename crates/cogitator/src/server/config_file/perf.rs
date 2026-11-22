@@ -23,6 +23,9 @@ impl FileConfig {
         if let Some(on) = self.perf.row_hints {
             settings.row_hints = on;
         }
+        if let Some(on) = self.perf.inline_findings {
+            settings.inline_findings = on;
+        }
         let known: Vec<&str> = advice_rule_ids().collect();
         for (id, value) in &self.perf_rules {
             if !known.contains(&id.as_str()) {

@@ -32,3 +32,5 @@ UNION, INTERSECT and EXCEPT; one row exactly for a global aggregate. Other
 joins, Unnest, Opaque holes and grouping sets prove nothing, and a CTE that
 reaches no statistic gets no hint — a guess is never shown. The editor sees
 them as inlay hints after the CTE name (`1,200 rows`, `≤ 1,200 rows`).
+With `perf.inline_findings` (08) a finding on the same CTE joins that hint
+instead of adding a second one: `1,200 rows · ⚠ model.unused_cte`.

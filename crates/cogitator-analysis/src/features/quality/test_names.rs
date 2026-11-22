@@ -1,16 +1,20 @@
 //! The node name dbt gives a generic test, so a selector can pick
-//! exactly that test. Mirrors dbt-core's `synthesize_generic_test_names`
+//! exactly that test. Mirrors dbt-core 1.11's `synthesize_generic_test_names`
 //! (parser/generic_test_builders.py): `<test>_<target>_<flattened args>`,
-//! the arguments sorted by key (`model` skipped), each value flattened
-//! (a mapping by its values, a list by its items) and every run of
+//! the arguments sorted by key (`model` skipped, `column_name` among
+//! them), each value flattened (a mapping by its values, a list by its
+//! items) into Python's `str()` of each part, and every run of
 //! characters outside `[0-9A-Za-z_]` replaced by `_`, joined with `__`.
-//! This is the *full* name — dbt hashes it down to 30 characters plus
-//! an md5 for the compiled file once it reaches 64, but the full name
-//! stays the last element of the test's FQN, which is what a bare
-//! `--select <name>` matches.
+//! This is the *full* name: once it reaches 64 characters dbt gives the
+//! test an alias of its first 30 identifying characters plus an md5,
+//! but the node's name and the last element of its FQN stay the full
+//! name, which is what a bare `--select <name>` matches (checked
+//! against dbt-core 1.11.17, testdata/test_names/golden.json).
 
 use cogitator_schemas::yaml::{as_str, entries, items};
-use saphyr::{MarkedYaml, Scalar, YamlData};
+use saphyr::{MarkedYaml, YamlData};
+
+use super::py_yaml::{py_str, Source};
 
 /// Keys of a generic test entry that are configuration, never arguments
 /// (dbt's `TestBuilder.CONFIG_ARGS` plus the entry's own keys).
@@ -87,8 +91,9 @@ fn clean(part: &str) -> String {
 }
 
 /// One test entry of a `data_tests:`/`tests:` list, read: the test as
-/// written, a `name:` override, and the arguments (flattened). None for
-/// an item that names no test.
+/// written, a `name:` override, and the arguments (flattened, each key
+/// once, an `arguments:` entry winning over a top-level one as in dbt).
+/// None for an item that names no test.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TestEntry {
     pub test: String,
@@ -96,7 +101,25 @@ pub struct TestEntry {
     pub args: Vec<(String, Vec<String>)>,
 }
 
-pub fn read_test_entry(item: &MarkedYaml<'_>) -> Option<TestEntry> {
+impl TestEntry {
+    /// The dbt name of this entry on `target`, a column's test with that
+    /// column as its `column_name` (unless the arguments name one).
+    pub fn name(&self, target: &str, is_source: bool, column: Option<&str>) -> String {
+        if let Some(name) = &self.custom_name {
+            return name.clone();
+        }
+        let mut args = self.args.clone();
+        if let Some(column) = column {
+            if !args.iter().any(|(k, _)| k == "column_name") {
+                args.push(("column_name".to_string(), vec![column.to_string()]));
+            }
+        }
+        generic_test_name(&self.test, target, is_source, &args)
+    }
+}
+
+/// Read one item of a test list; `src` is the document the item is from.
+pub fn read_test_entry(item: &MarkedYaml<'_>, src: &Source<'_>) -> Option<TestEntry> {
     if let Some(name) = as_str(item) {
         return Some(TestEntry {
             test: name.to_string(),
@@ -110,14 +133,14 @@ pub fn read_test_entry(item: &MarkedYaml<'_>) -> Option<TestEntry> {
         return Some(TestEntry {
             test: as_str(test)?.to_string(),
             custom_name: custom_name(item),
-            args: arguments(item),
+            args: arguments(item, src),
         });
     }
     let (key, body) = pairs.first()?;
     Some(TestEntry {
         test: as_str(key)?.to_string(),
         custom_name: custom_name(body),
-        args: arguments(body),
+        args: arguments(body, src),
     })
 }
 
@@ -127,66 +150,32 @@ fn custom_name(body: &MarkedYaml<'_>) -> Option<String> {
         .map(str::to_string)
 }
 
-/// The test's arguments: its non-config keys, and (dbt ≥ 1.10) the
-/// entries of an `arguments:` mapping.
-fn arguments(body: &MarkedYaml<'_>) -> Vec<(String, Vec<String>)> {
+/// The test's arguments: its non-config keys, then (dbt ≥ 1.10, the
+/// default `require_generic_test_arguments_property`) the entries of an
+/// `arguments:` mapping, which win over a top-level key of the same name.
+fn arguments(body: &MarkedYaml<'_>, src: &Source<'_>) -> Vec<(String, Vec<String>)> {
     let own = entries(body).filter(|(k, _)| as_str(k).is_some_and(|k| !NON_ARGS.contains(&k)));
     let nested = cogitator_schemas::yaml::get(body, "arguments")
         .into_iter()
         .flat_map(entries);
-    own.chain(nested)
-        .filter_map(|(k, v)| Some((as_str(k)?.to_string(), flatten(v))))
-        .collect()
+    let mut out: Vec<(String, Vec<String>)> = Vec::new();
+    for (k, v) in own.chain(nested) {
+        let Some(k) = as_str(k) else { continue };
+        let parts = flatten(v, src);
+        match out.iter_mut().find(|(key, _)| key == k) {
+            Some(slot) => slot.1 = parts,
+            None => out.push((k.to_string(), parts)),
+        }
+    }
+    out
 }
 
 /// dbt's flattening of one argument value into its string parts.
-fn flatten(value: &MarkedYaml<'_>) -> Vec<String> {
+fn flatten(value: &MarkedYaml<'_>, src: &Source<'_>) -> Vec<String> {
     match &value.data {
-        YamlData::Mapping(_) => entries(value).map(|(_, v)| py_str(v)).collect(),
-        YamlData::Sequence(_) => items(value).map(py_str).collect(),
-        _ => vec![py_str(value)],
-    }
-}
-
-/// Python's `str()` of a YAML value, as dbt stringifies an argument part.
-fn py_str(value: &MarkedYaml<'_>) -> String {
-    match &value.data {
-        YamlData::Value(Scalar::String(s)) => s.to_string(),
-        YamlData::Representation(s, _, _) => s.to_string(),
-        _ => py_repr(value),
-    }
-}
-
-/// Python's `repr()`, for values nested inside a list or mapping part.
-fn py_repr(value: &MarkedYaml<'_>) -> String {
-    match &value.data {
-        YamlData::Value(Scalar::String(s)) => format!("'{s}'"),
-        YamlData::Representation(s, _, _) => format!("'{s}'"),
-        YamlData::Value(Scalar::Null) => "None".to_string(),
-        YamlData::Value(Scalar::Boolean(true)) => "True".to_string(),
-        YamlData::Value(Scalar::Boolean(false)) => "False".to_string(),
-        YamlData::Value(Scalar::Integer(i)) => i.to_string(),
-        YamlData::Value(Scalar::FloatingPoint(f)) => {
-            let f = f.into_inner();
-            if f.fract() == 0.0 && f.is_finite() {
-                format!("{f:.1}")
-            } else {
-                f.to_string()
-            }
-        }
-        YamlData::Sequence(_) => format!(
-            "[{}]",
-            items(value).map(py_repr).collect::<Vec<_>>().join(", ")
-        ),
-        YamlData::Mapping(_) => format!(
-            "{{{}}}",
-            entries(value)
-                .map(|(k, v)| format!("{}: {}", py_repr(k), py_repr(v)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        YamlData::Tagged(_, inner) => py_repr(inner),
-        _ => "None".to_string(),
+        YamlData::Mapping(_) => entries(value).map(|(_, v)| py_str(v, src)).collect(),
+        YamlData::Sequence(_) => items(value).map(|v| py_str(v, src)).collect(),
+        _ => vec![py_str(value, src)],
     }
 }
 
@@ -198,15 +187,8 @@ mod tests {
     fn name_of(yaml: &str, target: &str, column: Option<&str>, source: bool) -> String {
         let docs = MarkedYaml::load_from_str(yaml).unwrap();
         let item = items(&docs[0]).next().unwrap();
-        let entry = read_test_entry(item).unwrap();
-        if let Some(name) = entry.custom_name {
-            return name;
-        }
-        let mut args = entry.args;
-        if let Some(c) = column {
-            args.push(("column_name".into(), vec![c.into()]));
-        }
-        generic_test_name(&entry.test, target, source, &args)
+        let entry = read_test_entry(item, &Source::new(yaml)).unwrap();
+        entry.name(target, source, column)
     }
 
     #[test]

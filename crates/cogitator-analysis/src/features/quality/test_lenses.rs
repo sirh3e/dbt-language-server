@@ -2,21 +2,27 @@
 //! YAML (model, seed, snapshot and source tests, per column, per
 //! version), one per unit test, and one on a singular test file. Each
 //! runs `dbt test --select <that test's dbt name>` through
-//! dbt.runSelection, so exactly that test runs.
+//! dbt.runSelection, so exactly that test runs. A test entry on a
+//! versioned model's base entry is one dbt test per version it applies
+//! to; its lens selects all of them (`a b`, dbt's space union).
 
 use cogitator_lsp::{CodeLens, Command, Range};
-use cogitator_schemas::yaml::{as_str, get, items, position_of, to_json};
+use cogitator_schemas::yaml::{as_str, get, items, position_of};
 use saphyr::{LoadableYamlNode, MarkedYaml};
 use serde::Serialize;
 
-use super::test_names::{generic_test_name, read_test_entry};
+use super::py_yaml::Source;
+use super::test_names::read_test_entry;
+use super::test_scope::applied_tests;
 use crate::graph::NodeKind;
 use crate::DbtContext;
 
-/// One test the YAML defines, with the selector that picks it alone.
+/// One test entry the YAML defines, with the dbt names of the tests it
+/// becomes and the selector that picks exactly those.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TestTarget {
     pub selector: String,
+    pub names: Vec<String>,
     pub unit: bool,
     pub range: Range,
 }
@@ -36,47 +42,34 @@ pub fn yaml_tests(text: &str) -> Vec<TestTarget> {
     let Some(root) = docs.first() else {
         return Vec::new();
     };
-    let mut out = Vec::new();
-    for key in ["models", "seeds", "snapshots"] {
-        for entry in get(root, key).into_iter().flat_map(items) {
-            let Some(name) = get(entry, "name").and_then(as_str) else {
-                continue;
-            };
-            node_tests(entry, name, false, &mut out);
-            for version in get(entry, "versions").into_iter().flat_map(items) {
-                let Some(v) = get(version, "v").map(to_json) else {
-                    continue;
-                };
-                let v = v
-                    .as_i64()
-                    .map(|v| v.to_string())
-                    .or_else(|| v.as_str().map(str::to_string));
-                if let Some(v) = v {
-                    node_tests(version, &format!("{name}_v{v}"), false, &mut out);
-                }
-            }
-        }
-    }
-    for source in get(root, "sources").into_iter().flat_map(items) {
-        let Some(source_name) = get(source, "name").and_then(as_str) else {
+    let src = Source::new(text);
+    let mut out: Vec<TestTarget> = Vec::new();
+    for applied in applied_tests(root, &src) {
+        let Some(entry) = read_test_entry(applied.item, &src) else {
             continue;
         };
-        for table in get(source, "tables").into_iter().flat_map(items) {
-            if let Some(table_name) = get(table, "name").and_then(as_str) {
-                node_tests(
-                    table,
-                    &format!("{source_name}_{table_name}"),
-                    true,
-                    &mut out,
-                );
-            }
+        let name = entry.name(&applied.target, applied.is_source, applied.column);
+        let range = Range::zero_width(position_of(applied.item));
+        match out.iter_mut().find(|t| t.range == range) {
+            Some(t) if !t.names.contains(&name) => t.names.push(name),
+            Some(_) => {}
+            None => out.push(TestTarget {
+                selector: String::new(),
+                names: vec![name],
+                unit: false,
+                range,
+            }),
         }
+    }
+    for t in &mut out {
+        t.selector = t.names.join(" ");
     }
     for unit in get(root, "unit_tests").into_iter().flat_map(items) {
         if let Some(name_node) = get(unit, "name") {
             if let Some(name) = as_str(name_node) {
                 out.push(TestTarget {
                     selector: name.to_string(),
+                    names: vec![name.to_string()],
                     unit: true,
                     range: Range::zero_width(position_of(name_node)),
                 });
@@ -87,54 +80,17 @@ pub fn yaml_tests(text: &str) -> Vec<TestTarget> {
     out
 }
 
-/// The tests on `node` (a model, version or source table) and on each of
-/// its columns.
-fn node_tests(node: &MarkedYaml<'_>, target: &str, is_source: bool, out: &mut Vec<TestTarget>) {
-    let mut push = |item: &MarkedYaml<'_>, column: Option<&str>| {
-        let Some(entry) = read_test_entry(item) else {
-            return;
-        };
-        let selector = entry.custom_name.unwrap_or_else(|| {
-            let mut args = entry.args;
-            if let Some(column) = column {
-                args.push(("column_name".to_string(), vec![column.to_string()]));
-            }
-            generic_test_name(&entry.test, target, is_source, &args)
-        });
-        out.push(TestTarget {
-            selector,
-            unit: false,
-            range: Range::zero_width(position_of(item)),
-        });
-    };
-    for key in ["data_tests", "tests"] {
-        for item in get(node, key).into_iter().flat_map(items) {
-            push(item, None);
-        }
-    }
-    for column in get(node, "columns").into_iter().flat_map(items) {
-        let Some(column_name) = get(column, "name").and_then(as_str) else {
-            continue;
-        };
-        for key in ["data_tests", "tests"] {
-            for item in get(column, key).into_iter().flat_map(items) {
-                push(item, Some(column_name));
-            }
-        }
-    }
-}
-
 /// The lenses over a properties YAML's tests.
 pub fn yaml_test_lenses(uri: &str, text: &str) -> Vec<CodeLens> {
     yaml_tests(text)
         .into_iter()
         .map(|t| {
-            let title = if t.unit {
-                "Run this unit test"
-            } else {
-                "Run this test"
+            let title = match (t.unit, t.names.len()) {
+                (true, _) => "Run this unit test".to_string(),
+                (false, 1) => "Run this test".to_string(),
+                (false, n) => format!("Run this test ({n} versions)"),
             };
-            run_lens(uri, t.range, title, &t.selector)
+            run_lens(uri, t.range, &title, &t.selector)
         })
         .collect()
 }
@@ -186,11 +142,6 @@ models:
         tests:
           - accepted_values:
               values: ['placed', 'shipped']
-    versions:
-      - v: 2
-        columns:
-          - name: order_id
-            data_tests: [not_null]
 sources:
   - name: raw
     tables:
@@ -217,9 +168,8 @@ unit_tests:
                 expect("unique_orders_order_id", false, 9),
                 expect("not_null_orders_order_id", false, 10),
                 expect("accepted_values_orders_status__placed__shipped", false, 13),
-                expect("not_null_orders_v2_order_id", false, 19),
-                expect("source_unique_raw_orders_id", false, 26),
-                expect("orders_unit", true, 28),
+                expect("source_unique_raw_orders_id", false, 21),
+                expect("orders_unit", true, 23),
             ]
         );
     }

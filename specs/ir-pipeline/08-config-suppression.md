@@ -3,7 +3,7 @@
 `cogitator.yml`:
 
 ```yaml
-perf: { profile: off, catalog_stats: true, row_hints: true }   # off | recommended | strict
+perf: { profile: off, catalog_stats: true, row_hints: true, inline_findings: false }   # off | recommended | strict
 perf_rules: { join.cartesian: warning, filter.non_sargable: off }
 ```
 
@@ -26,6 +26,22 @@ operators, an upper bound through filters, groups, DISTINCT, LIMIT and
 semi/anti joins, and nothing through other joins, unnest, opaque holes or
 without statistics. It needs `catalog_stats` and a catalog with row counts;
 the `profile` does not gate it, as hints are no rule findings.
+
+`inline_findings` (default false: the diagnostics already show them) also
+shows every finding the diagnostics report as an inlay hint
+(`features/plan/finding_inlay.rs`) — the same eligibility, suppression,
+profile and `perf_rules` severity, so a rule that is off or below the
+profile shows none. The hint sits at the end of the first line of the
+finding's span and reads `<icon> <rule id>` (`⚠` warning, `ℹ` info, `💡`
+hint); its tooltip is the whole finding (message with the evidence tag,
+`rule: <id> (<severity>)`, a `suggestion:` line per fix), and its label part
+carries a `dbt.queryPlan {uri}` command. A row-count hint on the finding's
+first line, within its span (the CTE's name), absorbs the finding into ONE
+hint at the row count's position, the count first: `≤ 1,200 rows · ⚠
+model.unused_cte`; several findings at one position share a hint in plan
+order. Both kinds come from the one cached plan (`document_plan`), never a
+second planning; a document that wants neither does not plan for hints.
+`dbt.status` and `dbt.doctor` report it as `perf.inlineFindings`.
 
 ## Profiles
 

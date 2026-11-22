@@ -102,6 +102,9 @@ pub struct PerfSettings {
     pub rules: BTreeMap<String, RuleOverride>,
     /// `perf.row_hints`: catalog-proven CTE row counts as inlay hints.
     pub row_hints: bool,
+    /// `perf.inline_findings`: the reported findings as inlay hints too
+    /// (off by default: the diagnostics already show them).
+    pub inline_findings: bool,
 }
 
 impl Default for PerfSettings {
@@ -111,6 +114,7 @@ impl Default for PerfSettings {
             catalog_stats: true,
             rules: BTreeMap::new(),
             row_hints: true,
+            inline_findings: false,
         }
     }
 }
@@ -166,6 +170,7 @@ mod tests {
             catalog_stats: true,
             rules: rules.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
             row_hints: true,
+            inline_findings: false,
         }
     }
 

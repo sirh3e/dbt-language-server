@@ -1,0 +1,7 @@
+nasty:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: 'nasty.duckdb'
+      threads: 4

@@ -3,8 +3,10 @@
 
 pub mod coverage;
 mod coverage_lenses;
+pub mod py_yaml;
 mod test_lenses;
 pub mod test_names;
+mod test_scope;
 
 pub use coverage::{model_coverage, project_coverage, ModelCoverage, ProjectCoverage};
 pub use coverage_lenses::{model_coverage_lens, yaml_coverage_lenses};

@@ -37,6 +37,23 @@ fn found(uri: &str, text: &str) -> Vec<(K, String)> {
 #[case("select {{ jaffle_shop.no_such_macro() }}", vec![(K::Macro, "no_such_macro")])]
 #[case("select {{ dbt.whatever() }}", vec![])]
 #[case("select {{ current_timestamp() }}, {{ is_incremental() }}", vec![])]
+#[case("{% set x = full_name('a', 'b') %}{% do times_five(1) %}", vec![])]
+#[case("{% set x = nope_set() %}", vec![(K::Macro, "nope_set")])]
+#[case("{% if nope_if() %}{% endif %}", vec![(K::Macro, "nope_if")])]
+#[case("{% for c in nope_for(ref('customers')) %}{% endfor %}", vec![(K::Macro, "nope_for")])]
+#[case("{% call nope_call() %}x{% endcall %}", vec![(K::Macro, "nope_call")])]
+#[case("select {{ full_name(nope_inner(), 'b') }}", vec![(K::Macro, "nope_inner")])]
+#[case(
+    concat!(
+        "{% set d = {'a': 1} %}{% for k, v in d.items() %}{{ loop.index }}{% endfor %}",
+        "{% for i in range(3) %}{% endfor %}{% do log('x') %}{% do return(1) %}",
+        "{% set s = 'a,b'.split(',') %}{% set e = env_var('X', 'y') %}",
+        "{% if x is defined %}{% endif %}{{ x | default(caller()) }}",
+        "{% do adapter.dispatch('m', 'p')() %}{% set q = run_query('select 1') %}",
+        "{% set f = full_name %}{{ f('a', 'b') }}{{ this.render() }}",
+    ),
+    vec![]
+)]
 #[case(
     "select {{ nope_m() }} from {{ ref('nope') }}",
     vec![(K::Macro, "nope_m"), (K::Ref, "nope")]

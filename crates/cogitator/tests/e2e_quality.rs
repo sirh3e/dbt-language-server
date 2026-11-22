@@ -135,3 +135,49 @@ fn run_this_test_lens_selects_the_one_test() {
     );
     lsp.shutdown();
 }
+
+/// A test on a versioned model's base entry is one dbt test per version:
+/// its lens selects all of them, and dbt gets that union.
+#[cfg(feature = "e2e")]
+#[test]
+fn run_this_test_lens_on_a_versioned_base_selects_every_version() {
+    let project = jaffle();
+    let root = project.root.clone();
+    let fake = harness::fake::install(harness::fake::FakeDbt::printing("done\n"));
+    let envs = fake.envs();
+    let env_refs: Vec<(&str, &str)> = envs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let (mut lsp, _uri) = project.booted_with(&env_refs, serde_json::json!({}));
+
+    let schema = cogitator_lsp::fs_path_to_uri(&root.join("models/customer_orders.yml"));
+    let lenses = lsp.request(
+        "textDocument/codeLens",
+        serde_json::json!({"textDocument": {"uri": schema}}),
+    );
+    let union = "unique_customer_orders_v1_customer_id unique_customer_orders_v2_customer_id";
+    let lens = lenses["result"]
+        .as_array()
+        .expect("lenses")
+        .iter()
+        .find(|l| l["command"]["arguments"][0]["selector"] == union)
+        .unwrap_or_else(|| panic!("no lens for the versioned test: {lenses}"))
+        .clone();
+    assert_eq!(lens["command"]["title"], "Run this test (2 versions)");
+
+    let started = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": lens["command"]["command"],
+                           "arguments": lens["command"]["arguments"]}),
+    );
+    assert!(started["result"]["token"].as_u64().is_some(), "{started}");
+    lsp.wait_notification("window/showMessage", |frame| {
+        frame["params"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("dbt test succeeded"))
+    });
+    let args = fake.logged_args();
+    assert!(
+        args.iter().any(|line| line.contains(union)),
+        "the fake dbt saw both versions' tests: {args:?}"
+    );
+    lsp.shutdown();
+}

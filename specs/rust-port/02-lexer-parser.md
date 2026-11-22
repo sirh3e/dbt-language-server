@@ -199,6 +199,17 @@ All "retype" operations mutate `cur.token.type` **before** it is appended to `to
   - then if cur is `IDENT` and peek is `LPAREN`: retype cur → `MACRO`.
   So `{{ pkg.macro(...) }}` yields `PACKAGE(pkg) DOT MACRO(macro)`, and
   `{{ macro(...) }}` yields `MACRO(macro)`. `{{ some_var }}` (no parens) stays IDENT.
+  *Addendum (cogitator):* the Rust port marks a call anywhere in the Jinja
+  layer, not only after `{{`: statement blocks (`{% set x = m() %}`, `{% if
+  m() %}`, `{% for c in m(ref('x')) %}`, `{% do m() %}`, `{% call m() %}`),
+  nested and filter arguments (`{{ a(b()) }}`, `{{ x | default(m()) }}`),
+  qualified the same way. Not calls: Jinja keywords, definition names
+  (`{% macro m(`), attributes and methods (`x.items()`, `adapter.dispatch(`),
+  filters (`| f(`) and tests (`is f(`), the template context's functions
+  (`return`, `range`, `log`, `caller`, `env_var`, …), qualified calls on a
+  context object (`this.`, `loop.`, `modules.`) or of a value method
+  (`.split(`), and names the template binds itself (`set`/`for` targets,
+  macro parameters, imports) — `crates/cogitator-parser/src/calls.rs`.
 - `parse_config` (entered on `{{ CONFIG`): advance; if cur is LPAREN, `inc_paren()`.
   Nothing else (config args parse as normal tokens).
 

@@ -134,7 +134,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 - **Argument**: `{uri, selector, kind?}` — any dbt selector; `kind` is `run` (default), `test`, `build` or `compile`
 - **Result**: `{token}` or InvalidParams
-- **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name
+- **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name (a test on a versioned model's base entry is one test per version, so its lens sends their names as a space-separated union)
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
 ### `dbt.cancel`
@@ -216,6 +216,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Argument**: `{uri}` — the document the command is about
 - **Result**: `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}, rowHints?: [{cte, span, rows: {exact\|atMost}}]}`
 - **Side effects**: none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan
+- **Inlay hints**: the findings' label parts (`perf.inline_findings: true`, specs/ir-pipeline/08) carry `dbt.queryPlan {uri}` as their command, so a click on `⚠ join.cartesian` asks for this plan
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
 ### `dbt.incrementality`
@@ -289,7 +290,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.unresolved`
 
 - **Argument**: `{kinds?}` — a list of `ref`, `source`, `source_table`, `doc`, `macro`, `var` to keep (all when absent)
-- **Result**: `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind: {kind: n}, truncated}` — every unresolved name of the root project's models, snapshots, macros, tests, analyses and property YAML, by file then position (at most 5 000 items; `count` is the total). The same checks as the dangling-ref diagnostics (`dangling-ref`, `dangling-source`, `dangling-source-table`, `unknown-var`, `dangling-doc`, `dangling-exposure-ref`), plus `{{ macro() }}` calls no package defines and dbt does not provide; open documents count with their unsaved text
+- **Result**: `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind: {kind: n}, truncated}` — every unresolved name of the root project's models, snapshots, macros, tests, analyses and property YAML, by file then position (at most 5 000 items; `count` is the total). The same checks as the dangling-ref diagnostics (`dangling-ref`, `dangling-source`, `dangling-source-table`, `unknown-var`, `dangling-doc`, `dangling-exposure-ref`), plus macro calls (in `{{ }}` or a `{% %}` block) no package defines and dbt does not provide; open documents count with their unsaved text
 - **Side effects**: none
 - **Editors**: Neovim ✓ (`:DbtUnresolved` quickfix, `:DbtFind unresolved` picker) · Emacs ✓ (`M-x cogitator-unresolved`) · VS Code ✓ (`dbt: Unresolved references`)
 
