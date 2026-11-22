@@ -225,6 +225,46 @@
               (equal (plist-get (aref (plist-get tree :nodes) 0) :depth) 0))
          "integration: dbt.syntaxTree answers the model's tree" (plist-get tree :truncated)))
 
+;; unit + integration: highlighting from the server
+(check (eq (cogitator--highlight-face "keyword.conditional") 'font-lock-keyword-face)
+       "highlight: a dotted capture takes its prefix's face")
+(check (eq (cogitator--highlight-face "variable.parameter") 'font-lock-variable-name-face)
+       "highlight: the longest prefix wins")
+(check (null (cogitator--highlight-face "spell"))
+       "highlight: a capture of no colour has no face")
+(with-temp-buffer
+  (insert "-- \U0001F980 x\nselect 1")
+  (check (= (cogitator--utf16-point 0 5) 5) "highlight: a surrogate pair is one character"
+         (cogitator--utf16-point 0 5))
+  (check (= (cogitator--highlight-apply
+             '(:spans [(:range (:start (:line 1 :character 0) :end (:line 1 :character 6))
+                        :capture "keyword")]))
+            1)
+         "highlight: a span becomes an overlay")
+  (check (eq (get-char-property 10 'face) 'font-lock-keyword-face)
+         "highlight: the overlay carries the face" (get-char-property 10 'face)))
+(let ((result (run--exec "dbt.highlight" (list :text "select {{ ref('a') }}" :language "dbt"))))
+  (check (seq-some (lambda (s) (equal (plist-get s :capture) "tag.delimiter"))
+                   (plist-get result :spans))
+         "integration: dbt.highlight colours the Jinja" (plist-get result :language)))
+
+;; unit + integration: ast-grep
+(check (equal (cogitator--ast-grep-parse "{{ ref($M) }} => {{ ref('x', $M) }}")
+              '(:pattern "{{ ref($M) }}" :rewrite "{{ ref('x', $M) }}" :language "dbt"))
+       "astgrep: a pattern and its rewrite")
+(check (equal (plist-get (cogitator--ast-grep-parse "sql: select $$$C from $T") :language) "sql")
+       "astgrep: sql: picks the SQL grammar")
+(check (null (cogitator--ast-grep-parse "  ")) "astgrep: no pattern, no query")
+(check (equal (cogitator--ast-grep-line
+               '(:uri "file:///p/models/a.sql" :text "{{ ref('a') }}" :replacement :null
+                 :range (:start (:line 2 :character 5) :end (:line 2 :character 19))))
+              "/p/models/a.sql:3:6: {{ ref('a') }}")
+       "astgrep: a match is a grep line")
+(let ((found (run--exec "dbt.astGrep" (append (cogitator--command-argument)
+                                               (list :pattern "{{ ref($M) }}")))))
+  (check (= (length (plist-get found :matches)) 4)
+         "integration: dbt.astGrep finds the model's refs" (length (plist-get found :matches))))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")

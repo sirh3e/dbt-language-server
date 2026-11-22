@@ -256,6 +256,8 @@ M.COMMANDS = {
   ["dbt.queryPlan"] = ":DbtPlan",
   ["dbt.doctor"] = "this report's server half",
   ["dbt.syntaxTree"] = ":DbtSyntaxTree",
+  ["dbt.highlight"] = "the explorer's SQL panes, picker previews, :DbtHighlight",
+  ["dbt.astGrep"] = ":DbtAstGrep, :DbtFind astgrep",
 }
 
 --- The LSP methods the plugin's own features need, beyond the stock ones.

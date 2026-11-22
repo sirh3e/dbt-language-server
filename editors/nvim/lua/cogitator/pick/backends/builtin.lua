@@ -118,6 +118,7 @@ local function render_preview(s)
         end
         ui.set_lines(s.bufs.preview, p.lines or {})
         vim.bo[s.bufs.preview].filetype = p.filetype or ""
+        require("cogitator.tshl").preview(s.bufs.preview, p)
         if valid(s.wins.preview) then
           local row = math.max(1, math.min(p.lnum or 1, vim.api.nvim_buf_line_count(s.bufs.preview)))
           pcall(vim.api.nvim_win_set_cursor, s.wins.preview, { row, 0 })

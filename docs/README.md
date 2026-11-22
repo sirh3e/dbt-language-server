@@ -4,6 +4,7 @@
 |---|---|
 | [neovim.md](neovim.md) | Using cogitator in Neovim: installing with lazy.nvim, the model explorer, fuzzy finding, the DAG, options, troubleshooting |
 | [incrementality.md](incrementality.md) | Which `table` models could be incremental, the rewrite cogitator offers, splitting a model at its frontier, reading the S-expressions |
+| [ast-grep.md](ast-grep.md) | Structural search and rewrite with ast-grep over tree-sitter-dbt, your ast-grep rules as diagnostics, the ast-grep CLI for CI, and the server's highlighting |
 | [commands.md](commands.md) | Every `dbt.*` workspace command: argument, result, side effects, and which editors expose it |
 | [editor-parity.md](editor-parity.md) | Contributors: how a new command reaches every editor, and the test that holds it |
 | [go-to-schema.md](go-to-schema.md) | `dbt.goToSchema` in detail, with a JSON-RPC example |

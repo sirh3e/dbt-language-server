@@ -2,6 +2,7 @@
 //! reader → dispatcher (owns Documents) → writer; debounced refresh task
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
+mod astgrep;
 mod cache_persist;
 mod client_link;
 mod commands;

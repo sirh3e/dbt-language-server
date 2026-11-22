@@ -74,6 +74,11 @@ included.
 frontier` (the plan as an S-expression beside the model, with an
 "Apply split" button), `dbt: Table models that could be incremental`
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the
-model's tree-sitter-dbt tree beside it), `dbt: Language server status`,
+model's tree-sitter-dbt tree beside it), `dbt: Highlight with
+tree-sitter-dbt` (colours the editor as the server highlights it — the
+Jinja and the SQL between the tags; compiled SQL as SQL), `dbt:
+Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
+files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
+rewrite` rewrites every match after asking), `dbt: Language server status`,
 `dbt: Restart language server`. Everything else (code lenses, code
 actions, rename, call hierarchy) rides the standard LSP features.
