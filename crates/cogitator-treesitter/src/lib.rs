@@ -12,6 +12,9 @@
 
 mod regions;
 mod sql_structure;
+mod syntax_tree;
+
+pub use syntax_tree::{syntax_tree, Point, SyntaxNode, SyntaxTree};
 
 use std::collections::HashMap;
 use std::ops::Range;

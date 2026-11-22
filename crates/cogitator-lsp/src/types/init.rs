@@ -175,6 +175,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.preview",
     "dbt.queryPlan",
     "dbt.deps",
+    "dbt.syntaxTree",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {
