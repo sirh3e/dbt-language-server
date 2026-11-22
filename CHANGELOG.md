@@ -8,6 +8,57 @@ the git history belong to the upstream Go project and are ignored
 here.
 
 <!-- git-cliff: end of header -->
+## [0.6.0] - 2026-11-22
+
+### 🚀 Features
+
+- *(nvim)* UI foundation for graph colours and motions (#12)
+- *(nvim)* Yazi-style walking and vim motions in the browsers (#13)
+- *(nvim)* Node navigation and dbt-docs colours in :DbtDag (#14)
+- *(ir)* HIR, MIR and LIR query pipeline with optimisation advice (#35)
+- *(actions)* Quickfixes, refactors and dbt.deps for code actions (#37)
+- *(rules)* DBSP incrementality, splitting at the frontier, and consumer parity (#38)
+- *(nvim)* The dbt components spec's missing parts — column-lineage graph, syntax tree, grammar install and more (#39)
+- *(nvim)* Nothing waits on the server; large DAGs paint in slices (#40)
+- *(nvim)* Fzf-style pickers and a yazi-style navigator (#41)
+- *(nvim)* The explorer as upstream | model | downstream over dbt SQL | compiled SQL (#43)
+- Tree-sitter-dbt highlighting from the server, and ast-grep for dbt (#46)
+- Highlighting for macros, tests and YAML; dbt.nodeInfo (epic #58) (#59)
+- *(vars)* Values inline, definitions by scope, overrides, references, YAML colouring (#60)
+- *(navigation)* References, rename and call hierarchy for sources, macros, docs and columns (#61)
+- *(yaml)* Schema-driven properties completion, add missing columns, unproduced-column warning (#62)
+- *(lsp)* Coverage and run-this-test lenses, unit-test scaffold (#63)
+- *(plan)* CTE row counts inline, and dbt.incrementalDiff (#64)
+- *(server)* YAML semantic tokens, dbt.unresolved, hover on compiled SQL (#65)
+- *(nvim)* Install with lazy.nvim in one line, with examples (#42)
+- *(vars)* Rename vars by scope, env_var() support, unused vars, inline Jinja preview (#66)
+- Macro calls in Jinja blocks, plan findings inline, test names checked against dbt (#67)
+- *(nvim)* A yazi-style code-action menu and dialogs walked with h/j/k/l (#68)
+
+### 🐛 Bug Fixes
+
+- *(parser)* Lex SQL across Jinja as one document (#9)
+- *(analysis)* One definition of a Jinja comment (#10)
+- *(treesitter)* Handle `##}` comment closers and raw blocks (#11)
+
+### 📚 Documentation
+
+- *(editors)* Per-editor install guides pairing plugin and server (#7)
+- Guides for Neovim, incrementality, the commands and editor parity (#44)
+- *(specs)* Highlighting for macros, tests and YAML property files (#47)
+
+### 🚜 Refactor
+
+- *(treesitter)* Parse with tree-sitter-dbt, its own repository (#36)
+
+### 🧪 Testing
+
+- *(e2e)* Two timing-dependent e2e tests wait for what they mean (#69)
+
+### ⚙️ Miscellaneous Tasks
+
+- Proper release assets — archives, checksums, vsix (#6)
+- *(release)* Compile the extension explicitly before vsce (#8)
 ## [0.5.0] - 2026-11-07
 
 ### 🚀 Features
@@ -206,4 +257,4 @@ here.
 - *(just)* Group the recipes for a structured listing
 - Run the editor system suites on ubuntu
 - Cover the VS Code suite in the editors job
-- *(just)* The release flow lands through a pull request
+- *(release)* V0.5.0 (#5)
