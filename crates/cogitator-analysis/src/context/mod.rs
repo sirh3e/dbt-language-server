@@ -49,11 +49,17 @@ pub struct ContextBuilder {
     /// → the project's profile and its default target.
     profile_override: String,
     target_override: String,
+    /// `--vars` equivalents (cogitator.yml / initializationOptions).
+    var_overrides: Vec<VarOverride>,
 }
 
 impl ContextBuilder {
     pub fn set_profiles_dir(&mut self, dir: impl Into<String>) {
         self.profiles_dir = dir.into();
+    }
+
+    pub fn set_var_overrides(&mut self, overrides: Vec<VarOverride>) {
+        self.var_overrides = overrides;
     }
 
     pub fn set_profile_override(&mut self, profile: impl Into<String>) {
@@ -80,8 +86,8 @@ impl ContextBuilder {
 }
 
 pub use types::{
-    MacroDetails, ModelDetails, ModelKind, SelectorDetails, SourceDetails, SourceTableDetails,
-    VariableDetails,
+    MacroDetails, ModelDetails, ModelKind, PackageVars, SelectorDetails, SourceDetails,
+    SourceTableDetails, VarOverride, VarSource, VariableDetails,
 };
 
 #[derive(Debug, Default)]
@@ -93,7 +99,10 @@ pub struct DbtContext {
     pub source_detail_map: HashMap<String, SourceDetails>,
     /// package name → macro name → details (03 §5).
     pub macro_detail_map: HashMap<String, HashMap<String, MacroDetails>>,
+    /// The root project's vars (03 §4), overrides included.
     pub variable_detail_map: HashMap<String, VariableDetails>,
+    /// Each installed package's vars as its own files see them.
+    pub package_variables: Vec<PackageVars>,
     pub selector_detail_map: HashMap<String, SelectorDetails>,
     /// packages.yml/dependencies.yml declarations, by installable name.
     pub declared_packages: Vec<String>,
@@ -153,6 +162,7 @@ impl ContextBuilder {
         let mut doc_details = HashMap::new();
         let mut macros = HashMap::new();
         let mut variables = HashMap::new();
+        let mut package_variables = Vec::new();
         let mut graph = ProjectGraph::default();
         let (props_cache, macros_cache, docs_cache, edges_cache, sql_tags_cache) = (
             &mut self.props,
@@ -162,6 +172,7 @@ impl ContextBuilder {
             &mut self.sql_tags,
         );
         let snapshots_cache = &mut self.snapshots;
+        let var_overrides = &self.var_overrides;
         // scoped threads lose the span context: hand each builder the
         // parent explicitly so per-builder child spans nest (05 §6.3)
         let parent = tracing::Span::current();
@@ -184,7 +195,7 @@ impl ContextBuilder {
             });
             let vars_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_variables").entered();
-                build_variables(&root, &project)
+                build_variables(&root, &project, &process_list[1..], var_overrides)
             });
             let graph_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_graph").entered();
@@ -192,7 +203,7 @@ impl ContextBuilder {
             });
             (models, sources, doc_details) = models_sources.join().unwrap_or_default();
             macros = macros_handle.join().unwrap_or_default();
-            variables = vars_handle.join().unwrap_or_default();
+            (variables, package_variables) = vars_handle.join().unwrap_or_default();
             graph = graph_handle.join().unwrap_or_default();
         });
 
@@ -243,6 +254,7 @@ impl ContextBuilder {
             source_detail_map: sources,
             macro_detail_map: macros,
             variable_detail_map: variables,
+            package_variables,
             selector_detail_map,
             declared_packages,
             exposure_detail_map,
@@ -295,6 +307,11 @@ fn load_selectors(root: &Path) -> HashMap<String, SelectorDetails> {
     out
 }
 
+/// [`load_project_file`] for other modules: a package's dbt_project.yml.
+pub(crate) fn load_project_file_at(root: &Path) -> ProjectFile {
+    load_project_file(root)
+}
+
 /// Parse `<root>/dbt_project.yml` with env_var resolution and defaults
 /// (03 §3). Failures degrade to the default/empty project file like Go.
 pub(super) fn load_project_file(root: &Path) -> ProjectFile {
@@ -314,6 +331,13 @@ pub(super) fn load_project_file(root: &Path) -> ProjectFile {
             ProjectFile::default()
         }
     };
+    // key ranges from the raw text: a resolved env_var() shifts columns
+    if resolved != text {
+        if let Some((top, nested)) = cogitator_schemas::project::var_ranges(&text, &path) {
+            file.var_ranges = top;
+            file.nested_var_ranges = nested;
+        }
+    }
     let dirs = list_dirs(root);
     apply_defaults(&mut file, &dirs);
     file
@@ -329,4 +353,29 @@ fn list_dirs(root: &Path) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+impl DbtContext {
+    /// The installed package a file belongs to (its files see the
+    /// package's vars), by path under the package's root.
+    pub fn package_of_uri(&self, uri: &str) -> Option<&PackageVars> {
+        let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+        let path = Path::new(&path);
+        self.package_variables
+            .iter()
+            .filter(|p| path.starts_with(&p.root))
+            .max_by_key(|p| p.root.as_os_str().len())
+    }
+
+    /// The vars a file sees (03 §4): its package's, else the root project's.
+    pub fn vars_for(&self, uri: &str) -> &HashMap<String, VariableDetails> {
+        self.package_of_uri(uri)
+            .map(|p| &p.vars)
+            .unwrap_or(&self.variable_detail_map)
+    }
+
+    /// The var a `var('name')` in `uri` resolves to.
+    pub fn var_for(&self, uri: &str, name: &str) -> Option<&VariableDetails> {
+        self.vars_for(uri).get(name)
+    }
 }

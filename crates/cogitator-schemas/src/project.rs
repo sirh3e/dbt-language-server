@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use cogitator_error::Result;
-use cogitator_lsp::Position;
+use cogitator_lsp::Range;
 
 use crate::generated::dbt_project::DbtProject;
 use crate::yaml;
@@ -31,11 +31,11 @@ pub struct ProjectFile {
     pub docs_paths_explicit: bool,
     /// Raw `vars` mapping (top level).
     pub vars: serde_json::Map<String, serde_json::Value>,
-    /// Position of each top-level `vars` entry's value node.
-    pub var_positions: HashMap<String, Position>,
-    /// Position side-table for nested var maps: top-level key → (inner key →
-    /// inner value position). Used for project-scoped vars (03 §4).
-    pub nested_var_positions: HashMap<String, HashMap<String, Position>>,
+    /// Range of each top-level `vars` entry's KEY (definition target).
+    pub var_ranges: HashMap<String, Range>,
+    /// Range side-table for nested var maps: top-level key → (inner key →
+    /// inner key range). Used for project- and package-scoped vars (03 §4).
+    pub nested_var_ranges: HashMap<String, HashMap<String, Range>>,
 }
 
 /// Parse `dbt_project.yml` text (already env_var-resolved, 03 §3.2).
@@ -83,23 +83,41 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         ..Default::default()
     };
 
-    if let Some(vars_node) = yaml::get(&marked, "vars") {
+    (file.var_ranges, file.nested_var_ranges) = ranges_in(&marked);
+
+    Ok(file)
+}
+
+/// Key ranges of the `vars:` entries (top level, and one level of
+/// nesting for scope blocks).
+pub type VarRanges = (
+    HashMap<String, Range>,
+    HashMap<String, HashMap<String, Range>>,
+);
+
+fn ranges_in(marked: &saphyr::MarkedYaml<'_>) -> VarRanges {
+    let mut top = HashMap::new();
+    let mut nested = HashMap::new();
+    if let Some(vars_node) = yaml::get(marked, "vars") {
         for (k, v) in yaml::entries(vars_node) {
             let Some(key) = yaml::as_str(k) else { continue };
-            file.var_positions
-                .insert(key.to_string(), yaml::position_of(v));
-            let nested: HashMap<String, Position> = yaml::entries(v)
-                .filter_map(|(nk, nv)| {
-                    yaml::as_str(nk).map(|s| (s.to_string(), yaml::position_of(nv)))
-                })
+            top.insert(key.to_string(), yaml::range_of(k));
+            let inner: HashMap<String, Range> = yaml::entries(v)
+                .filter_map(|(nk, _)| yaml::as_str(nk).map(|s| (s.to_string(), yaml::range_of(nk))))
                 .collect();
-            if !nested.is_empty() {
-                file.nested_var_positions.insert(key.to_string(), nested);
+            if !inner.is_empty() {
+                nested.insert(key.to_string(), inner);
             }
         }
     }
+    (top, nested)
+}
 
-    Ok(file)
+/// The `vars:` key ranges of a `dbt_project.yml` text — read from the RAW
+/// text, so an `env_var()` resolved elsewhere on a line cannot shift the
+/// columns (`None` when the raw text does not parse as YAML).
+pub fn var_ranges(text: &str, path: &Path) -> Option<VarRanges> {
+    yaml::load_marked(text, path).ok().map(|m| ranges_in(&m))
 }
 
 fn paths_of(arr: Option<&crate::generated::dbt_project::ArrayOfStrings>) -> Vec<String> {

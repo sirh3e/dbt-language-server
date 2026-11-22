@@ -34,6 +34,21 @@ pub struct FileConfig {
     /// deterministic; ids and values are validated, not assumed.
     #[serde(default)]
     pub perf_rules: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub inlay: InlaySection,
+    /// `--vars` equivalents: a mapping of var name → value.
+    #[serde(default)]
+    pub vars: Option<serde_json::Map<String, serde_json::Value>>,
+    /// `vars`, with the file and each key's range (filled by `parse`).
+    #[serde(skip)]
+    pub var_overrides: Vec<cogitator_analysis::context::VarOverride>,
+}
+
+/// Which inlay hints the server sends; absent keys keep the default (on).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct InlaySection {
+    /// The value after each `var()` call.
+    pub vars: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -145,12 +160,38 @@ pub fn parse(text: &str, path: &Path) -> Result<FileConfig, Guidance> {
             .fix("fix the YAML; the previous configuration stays active.")
     })?;
     let value = cogitator_schemas::yaml::to_json(&marked);
-    serde_json::from_value(value).map_err(|err| {
+    let mut config: FileConfig = serde_json::from_value(value).map_err(|err| {
         Guidance::new("cogitator.yml has a value of the wrong type.")
             .at(path.display().to_string())
             .because(err.to_string())
             .fix("compare against the documented schema in the README.")
-    })
+    })?;
+    config.var_overrides = var_overrides(&marked, config.vars.as_ref(), path);
+    Ok(config)
+}
+
+/// The `vars:` mapping as overrides, each with its key's range, in
+/// the file's order.
+fn var_overrides(
+    marked: &saphyr::MarkedYaml<'_>,
+    vars: Option<&serde_json::Map<String, serde_json::Value>>,
+    path: &Path,
+) -> Vec<cogitator_analysis::context::VarOverride> {
+    use cogitator_schemas::yaml::{as_str, entries, get, range_of};
+    let (Some(vars), Some(node)) = (vars, get(marked, "vars")) else {
+        return Vec::new();
+    };
+    entries(node)
+        .filter_map(|(key, _)| {
+            let name = as_str(key)?;
+            Some(cogitator_analysis::context::VarOverride {
+                name: name.to_string(),
+                value: vars.get(name)?.clone(),
+                uri: path.to_path_buf(),
+                range: range_of(key),
+            })
+        })
+        .collect()
 }
 
 // kept in lockstep with cogitator_analysis::config_schema (test-pinned)
@@ -163,6 +204,8 @@ const ROOT_KEYS: &[&str] = &[
     "log",
     "warehouse",
     "perf",
+    "inlay",
+    "vars",
     "perf_rules",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
@@ -179,6 +222,7 @@ const LINT_KEYS: &[&str] = &[
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats"];
+const INLAY_KEYS: &[&str] = &["vars"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
     "join.left_nullified",
@@ -246,6 +290,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("warehouse", WAREHOUSE_KEYS),
         ("perf", PERF_KEYS),
         ("perf_rules", PERF_RULE_KEYS),
+        ("inlay", INLAY_KEYS),
     ] {
         if let Some(node) = get(root, section) {
             for (key, _) in entries(node) {
@@ -280,6 +325,7 @@ mod tests {
             (WAREHOUSE_KEYS, "warehouse"),
             (PERF_KEYS, "perf"),
             (PERF_RULE_KEYS, "perf_rules"),
+            (INLAY_KEYS, "inlay"),
         ] {
             let schema: Vec<&str> = section(name)
                 .expect(name)

@@ -119,6 +119,8 @@ fn main() -> Result<()> {
             .target
             .or_else(|| launch.profiles.target.clone())
             .unwrap_or_default(),
+        vars_init: Vec::new(),
+        vars_file: launch.var_overrides.clone(),
     };
 
     let runtime = tokio::runtime::Builder::new_multi_thread()

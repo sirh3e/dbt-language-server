@@ -63,7 +63,7 @@ pub fn cogitator_diagnostics(text: &str) -> Vec<Diagnostic> {
             ));
         }
     }
-    for schema in COGITATOR_SCHEMA {
+    for schema in COGITATOR_SCHEMA.iter().filter(|s| !s.is_free_form()) {
         let Some(node) = get(root, schema.name) else {
             continue;
         };
