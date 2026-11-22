@@ -138,6 +138,13 @@ impl Dispatcher {
     }
 
     pub(super) fn completion(&mut self, content: &[u8]) {
+        // properties YAML: schema-driven, offloaded (lineage + test files)
+        if let Some((id, uri, pos)) = Self::position_request(content) {
+            if cogitator_analysis::yaml_properties::is_properties_file(&uri) {
+                self.properties_completion(id, uri, pos);
+                return;
+            }
+        }
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
             match doc {
                 // the server's own config file: schema-table completion

@@ -128,7 +128,9 @@ editor integrations live under `editors/`.
   (`define_missing.rs`: create model, define var; `declare_missing.rs`:
   declare a source, a source table, a docs block; `governance_fixes.rs`:
   private refs; `yaml_columns.rs`: add undocumented or undeclared
-  columns, drop contracted ones; `refactors.rs`: expand a star, extract
+  columns, drop contracted ones — offered from the YAML entry too;
+  `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
+  rename/remove fixes; `refactors.rs`: expand a star, extract
   schema YAML; `extract_cte.rs`: CTE → model). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion

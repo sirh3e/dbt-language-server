@@ -51,6 +51,7 @@ pub use code_actions::yaml_columns::{
     add_missing_columns_action, remove_unproduced_columns_action,
 };
 pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_action};
+pub use code_actions::yaml_unproduced::unproduced_column_diagnostics;
 pub use code_actions::{code_actions, model_entry_at, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use completion::{completion, resolve_completion_documentation};

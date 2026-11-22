@@ -9,6 +9,7 @@ pub mod artifacts;
 pub mod generated;
 pub mod project;
 pub mod properties;
+pub mod schema_walk;
 pub mod yaml;
 
 pub use project::{parse_dbt_project, ProjectFile};
@@ -21,7 +22,7 @@ pub use properties::{
 pub mod schema_keys {
     use std::sync::LazyLock;
 
-    static YML_FILES: LazyLock<serde_json::Value> = LazyLock::new(|| {
+    pub(crate) static YML_FILES: LazyLock<serde_json::Value> = LazyLock::new(|| {
         serde_json::from_str(include_str!(
             "../../../schemas/dbt/processed/dbt_yml_files.json"
         ))
