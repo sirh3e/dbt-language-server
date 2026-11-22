@@ -36,26 +36,65 @@ function M.reload_config()
   end)
 end
 
---- The column names dbt.columnLineage lists for the current buffer, for
---- completion (a short synchronous request; nothing when it is slow).
+--- bufnr → { tick = changedtick, names = string[] }: the columns
+--- dbt.columnLineage last listed for a buffer, which completion reads.
+---@type table<integer, {tick: integer, names: string[]}>
+M._columns = {}
+--- bufnr → the cancel function of a column fetch in flight
+---@type table<integer, fun()>
+M._fetching = {}
+
+--- Ask the server, in the background, for the columns of `bufnr`; the
+--- answer lands in `M._columns`. A fetch in flight for an older text is
+--- cancelled; nothing waits.
+---@param bufnr integer
+function M.fetch_columns(bufnr)
+  local client = actions.client_for(bufnr, true)
+  if not client then
+    return
+  end
+  local tick = vim.api.nvim_buf_get_changedtick(bufnr)
+  local cached = M._columns[bufnr]
+  if cached and cached.tick == tick then
+    return
+  end
+  if M._fetching[bufnr] then
+    M._fetching[bufnr]()
+  end
+  M._fetching[bufnr] = actions.request(client, bufnr, "workspace/executeCommand", {
+    command = "dbt.columnLineage",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, {
+    timeout_ms = 10000,
+    stale = function()
+      return not vim.api.nvim_buf_is_valid(bufnr)
+    end,
+  }, function(err, result)
+    M._fetching[bufnr] = nil
+    if err or type(result) ~= "table" or type(result.columns) ~= "table" then
+      return
+    end
+    M._columns[bufnr] = {
+      tick = tick,
+      names = vim.tbl_map(function(c)
+        return c.name
+      end, result.columns),
+    }
+  end)
+end
+
+--- The column names of the current buffer, for completion. Completion
+--- has to answer at once, so this is what was fetched last (none before
+--- the first answer); a missing or older list starts a fetch, so the
+--- next <Tab> has it.
 ---@return string[]
 function M.column_names()
   local bufnr = vim.api.nvim_get_current_buf()
-  local client = actions.client_for(bufnr, true)
-  if not client then
-    return {}
+  local cached = M._columns[bufnr]
+  if not cached or cached.tick ~= vim.api.nvim_buf_get_changedtick(bufnr) then
+    M.fetch_columns(bufnr)
   end
-  local response = client:request_sync("workspace/executeCommand", {
-    command = "dbt.columnLineage",
-    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
-  }, 800, bufnr)
-  local result = response and response.result
-  if type(result) ~= "table" or type(result.columns) ~= "table" then
-    return {}
-  end
-  return vim.tbl_map(function(c)
-    return c.name
-  end, result.columns)
+  return cached and cached.names or {}
 end
 
 --- The commands.lua functions the table routes to (checked by the suite).

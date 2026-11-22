@@ -79,6 +79,56 @@ local function on_attach(client, bufnr, config)
   end
   require("cogitator.lens").attach(bufnr, config)
   require("cogitator.treesitter").attach(bufnr)
+  -- what completion and :checkhealth read, fetched in the background so
+  -- neither ever waits on the server
+  M.prefetch_columns(bufnr)
+  require("cogitator.health").prefetch(client)
+end
+
+local COLUMN_DEBOUNCE_MS = 300
+
+--- Keep `bufnr`'s column list (for :Dbt impact / :DbtColumnLineage
+--- completion) fresh: fetched now, and again a moment after the buffer is
+--- entered, insert mode is left or it is saved.
+---@param bufnr integer
+function M.prefetch_columns(bufnr)
+  local dispatch = require("cogitator.dispatch")
+  local timer
+  local function soon()
+    if timer then
+      timer:stop()
+    else
+      timer = vim.uv.new_timer()
+    end
+    timer:start(
+      COLUMN_DEBOUNCE_MS,
+      0,
+      vim.schedule_wrap(function()
+        if vim.api.nvim_buf_is_valid(bufnr) then
+          dispatch.fetch_columns(bufnr)
+        end
+      end)
+    )
+  end
+  local group = vim.api.nvim_create_augroup("CogitatorColumns" .. bufnr, { clear = true })
+  vim.api.nvim_create_autocmd({ "BufEnter", "InsertLeave", "BufWritePost" }, {
+    group = group,
+    buffer = bufnr,
+    callback = soon,
+  })
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = group,
+    buffer = bufnr,
+    callback = function()
+      if timer then
+        timer:stop()
+        timer:close()
+        timer = nil
+      end
+      dispatch._columns[bufnr] = nil
+    end,
+  })
+  dispatch.fetch_columns(bufnr)
 end
 
 --- (Re-)register the server definition; assignment form replaces any
@@ -140,8 +190,22 @@ function M.setup(opts)
   end
 
   require("cogitator.highlight").setup()
+  require("cogitator.health").prefetch_versions(config)
   M.register(config)
   vim.lsp.enable("cogitator")
+
+  -- when the server finishes a piece of work it reports (a project
+  -- refresh, a dbt job), what :checkhealth shows is fetched again
+  vim.api.nvim_create_autocmd("LspProgress", {
+    group = vim.api.nvim_create_augroup("CogitatorProgress", { clear = true }),
+    pattern = "end",
+    callback = function(args)
+      local client = vim.lsp.get_client_by_id(args.data.client_id)
+      if client and client.name == "cogitator" then
+        require("cogitator.health").prefetch(client)
+      end
+    end,
+  })
 
   vim.api.nvim_create_autocmd("LspAttach", {
     group = vim.api.nvim_create_augroup("CogitatorAttach", { clear = true }),

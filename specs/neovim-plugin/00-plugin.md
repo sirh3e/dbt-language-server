@@ -462,6 +462,14 @@ runs.
 | `:DbtLineage` | `dbt.showLineage` | result arrives as a showMessage |
 
 Implementation: `client:exec_cmd({ command = …, arguments = { { uri = vim.uri_from_bufnr(0), position = <cursor> } } }, { bufnr = 0 }, handler)`.
+Nothing blocks the editor: no `request_sync`, `vim.wait` or `:wait()` in
+the plugin (the headless suite scans for them). Other LSP methods go
+through `actions.request` (a timeout, a staleness guard, cancel), and what
+must answer synchronously — command-line completion of column names,
+`:checkhealth` — reads a cache filled in the background (`dbt.columnLineage`
+on attach/enter/save, `dbt.doctor` on attach and after each `$/progress`
+end). The DAG paints large graphs' highlights in slices, the visible lines
+first.
 Only `:DbtSchema` needs a result handler; the rest are fire-and-forget
 (`null` results). All five must error cleanly ("cogitator is not attached to
 this buffer") when no client is attached.

@@ -15,10 +15,20 @@ return function(ctx)
   local function size(sel)
     return (sel[3] - sel[1]) * 1000 + math.abs(sel[4] - sel[2])
   end
+  -- expand asks in the background: it returns at once, the selection
+  -- changes when the answer comes
+  local t = vim.uv.hrtime()
   select.expand()
+  H.check((vim.uv.hrtime() - t) / 1e6 < 50, "select: expand returns without waiting for the server")
+  H.wait("select: expand starts a visual selection", 10000, function()
+    return vim.fn.mode() == "v"
+  end)
   local first = selected()
   H.check(first[5] == "v", "select: expand starts a visual selection", vim.inspect(first))
   select.expand()
+  H.wait("select: expanding again grows it", 10000, function()
+    return size(selected()) > size(first)
+  end)
   local second = selected()
   H.check(size(second) > size(first), "select: expanding again grows it", vim.inspect({ first, second }))
   select.shrink()
@@ -110,4 +120,26 @@ return function(ctx)
     end
   )
   H.check(#missing == 0, "health: the server offers every command the plugin uses", vim.inspect(missing))
+
+  -- :checkhealth never waits: the doctor report was fetched at attach
+  local health = require("cogitator.health")
+  H.wait("health: the dbt.doctor report is fetched in the background", 10000, function()
+    local cached = health._cache.doctor[client.id]
+    return type(cached) == "table" and type(cached.report) == "table"
+  end, function()
+    return vim.inspect(health._cache.doctor[client.id])
+  end)
+  t = vim.uv.hrtime()
+  vim.cmd("checkhealth cogitator")
+  local took = (vim.uv.hrtime() - t) / 1e6
+  local report = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+  H.check(
+    report:find("project 'jaffle_shop'", 1, true) ~= nil and report:find("report from", 1, true) ~= nil,
+    "health: :checkhealth shows the cached dbt.doctor report",
+    vim.inspect(vim.tbl_filter(function(l)
+      return l:find("doctor", 1, true) or l:find("server", 1, true) or l:find("project", 1, true)
+    end, vim.split(report, "\n")))
+  )
+  H.check(took < 1000, "health: :checkhealth does not wait on the server", took)
+  vim.cmd("bwipeout!")
 end

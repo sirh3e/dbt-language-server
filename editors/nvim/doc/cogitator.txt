@@ -147,6 +147,13 @@ Counts repeat h, j, k, l, n, N, <C-o> and <C-i>. The colours are the
 also works through |vim.lsp.buf.workspace_symbol| with `tag:x` and
 `selector:x` queries.
 
+Nothing waits on the server: every request is asynchronous. `<leader>dv`
+selects when the server's answer arrives (and not if you moved on), column
+completion for :Dbt impact / :DbtColumnLineage answers from the columns
+fetched in the background, :checkhealth shows the dbt.doctor report
+fetched at attach and after each refresh, and a large :DbtDag is coloured
+in slices while you keep working.
+
 Context refreshes and dbt runs also report through $/progress, so they
 appear in |vim.lsp.status()| and plugins like fidget.nvim.
 
