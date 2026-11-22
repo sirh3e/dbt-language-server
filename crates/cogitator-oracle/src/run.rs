@@ -2,7 +2,7 @@
 //! so the meaning of P and N lives in one place.
 
 use crate::claims::{check_claims, EngineReads};
-use crate::corpus::{Case, Fixture, Role};
+use crate::corpus::{Case, Fixture, Incremental, IncrementalStrategy, Role};
 
 /// One relation's columns as `(name, type)`, in result order.
 pub type Columns = Vec<(String, String)>;
@@ -59,7 +59,14 @@ fn check_fixture<E: Engine>(engine: &mut E, case: &Case, fixture: &Fixture) -> V
     let setup = case.setup(fixture);
     let name = &fixture.name;
     let mut failures = Vec::new();
-    match engine.bag(&setup, &case.model, &case.after) {
+    let (bag_setup, right) = match &case.incremental {
+        Some(incremental) => (
+            incremental_setup(case, fixture, incremental),
+            "select * from __next".to_owned(),
+        ),
+        None => (setup.clone(), case.after.clone()),
+    };
+    match engine.bag(&bag_setup, &case.model, &right) {
         Ok(report) => {
             if let Some(failure) = judge(fixture.role, &report) {
                 failures.push(format!("fixture {name}: {failure}: {report:?}"));
@@ -78,6 +85,41 @@ fn check_fixture<E: Engine>(engine: &mut E, case: &Case, fixture: &Fixture) -> V
         }
     }
     failures
+}
+
+/// An incremental run, as plain SQL every engine runs (no DELETE or
+/// INSERT): the model built on the seed as `this_model`, the inputs
+/// replaced by the delta, the increment computed against `this_model`,
+/// and the strategy applied into `__next` — which must equal the model
+/// rebuilt in full afterwards, the left side of the comparison. This is
+/// DBSP's claim for the case: the increment maintains the view.
+pub fn incremental_setup(case: &Case, fixture: &Fixture, incremental: &Incremental) -> String {
+    let body = |sql: &str| sql.trim().trim_end_matches(';').to_owned();
+    let next = match incremental.strategy {
+        IncrementalStrategy::Append => {
+            "select * from this_model union all select * from __increment".to_owned()
+        }
+        IncrementalStrategy::DeleteInsert => {
+            let same = incremental
+                .unique_key
+                .iter()
+                .map(|k| format!("t.{k} = i.{k}"))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            format!(
+                "select * from this_model t where not exists \
+                 (select 1 from __increment i where {same}) \
+                 union all select * from __increment"
+            )
+        }
+    };
+    format!(
+        "{}\ncreate table this_model as {};\n{}\ncreate table __increment as {};\ncreate table __next as {next};",
+        case.setup(fixture),
+        body(&case.model),
+        fixture.delta.as_deref().unwrap_or_default(),
+        body(&incremental.increment),
+    )
 }
 
 /// `None` when the report is what the role demands.

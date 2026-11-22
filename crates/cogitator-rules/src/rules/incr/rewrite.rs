@@ -5,11 +5,16 @@
 //!    `unique_key` for buckets), editing the call there is or adding one;
 //! 2. the delta filter on the one SELECT that reads the driving input,
 //!    guarded by `is_incremental()` so a full refresh still builds all:
-//!    - append: `col > (select max(out) from {{ this }})` — strictly
-//!      after, as append adds what it is given and a row at the boundary
-//!      would be appended twice;
-//!    - buckets: `col >= (select max(bucket) from {{ this }})` — the
-//!      newest bucket is recomputed whole and replaced by delete+insert.
+//!    - append: `col > max(out)` of `{{ this }}` — strictly after, as
+//!      append adds what it is given and a row at the boundary would be
+//!      appended twice;
+//!    - buckets: `col >= max(bucket)` of `{{ this }}` — the newest bucket
+//!      is recomputed whole and replaced by delete+insert;
+//!    - either way `max(..) is null or …`: a model built empty has no
+//!      newest value, and a comparison with NULL would let no row in, ever.
+//!
+//! testdata/oracle/incr_append_linear and incr_bucket_daily hold these
+//! increments to full rebuilds (specs/ir-pipeline/10).
 //!
 //! An existing WHERE is parenthesized first, so an OR in it keeps its
 //! meaning.
@@ -33,7 +38,7 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
     if !matches!(hir.origin, SourceOrigin::Template { .. }) {
         return None;
     }
-    let (input, args, condition) = match verdict {
+    let (input, args, (op, newest)) = match verdict {
         Verdict::Append { inputs, out_column } => {
             let [input] = inputs.as_slice() else {
                 return None;
@@ -41,7 +46,7 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
             (
                 input,
                 "incremental_strategy='append'".to_string(),
-                format!("> (select max({out_column}) from {{{{ this }}}})"),
+                (">", out_column.clone()),
             )
         }
         Verdict::ByBucket {
@@ -62,7 +67,7 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
             (
                 input,
                 format!("incremental_strategy='delete+insert', unique_key={keys}"),
-                format!(">= (select max({bucket}) from {{{{ this }}}})"),
+                (">=", bucket.clone()),
             )
         }
         _ => return None,
@@ -73,8 +78,11 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
         None => input.column.clone(),
     };
     let mut edits = config_edits(hir, text, &args)?;
+    let max = format!("(select max({newest}) from {{{{ this }}}})");
     let guard = |keyword: &str| {
-        format!("\n{{% if is_incremental() %}}\n{keyword} {column} {condition}\n{{% endif %}}")
+        format!(
+            "\n{{% if is_incremental() %}}\n{keyword} ({max} is null or {column} {op} {max})\n{{% endif %}}"
+        )
     };
     match select.filter.and_then(|f| hir.exprs.get(f)).map(|e| e.span) {
         Some(filter) => {

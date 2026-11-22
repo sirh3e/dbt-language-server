@@ -98,7 +98,7 @@ fn the_rewrite_makes_an_appending_model_and_keeps_an_or_whole() {
         "{{ config(materialized='incremental', incremental_strategy='append') }}\n\
          select id, ts from {{ ref('events') }} where (a > 0 or b > 0)\n\
          {% if is_incremental() %}\n\
-         and ts > (select max(ts) from {{ this }})\n\
+         and ((select max(ts) from {{ this }}) is null or ts > (select max(ts) from {{ this }}))\n\
          {% endif %}"
     );
 }
@@ -118,7 +118,7 @@ fn the_rewrite_adds_a_where_after_the_from_and_qualifies_by_alias() {
         "{{ config(materialized='incremental', incremental_strategy='delete+insert', unique_key='day') }}\n\
          select date_trunc('day', e.ts) as day, count(*) as n from {{ ref('events') }} e\n\
          {% if is_incremental() %}\n\
-         where e.ts >= (select max(day) from {{ this }})\n\
+         where ((select max(day) from {{ this }}) is null or e.ts >= (select max(day) from {{ this }}))\n\
          {% endif %} group by 1"
     );
 }
