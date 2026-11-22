@@ -28,6 +28,23 @@ fn missing_columns_action(
     features::add_missing_columns_action(&model, details, (*lineage).as_ref()?, &yaml)
 }
 
+/// `dbt.extractModelYaml` as an edit, on the lineage the command uses.
+fn extract_yaml_action(
+    snap: &crate::server::snapshot::Snapshot,
+    derived: &crate::server::derived_cache::DerivedCache,
+    uri: &str,
+) -> Option<cogitator_lsp::CodeAction> {
+    let model = features::model_name_from_uri(uri)?;
+    let lineage = crate::server::handlers::commands::lineage_for(
+        derived,
+        &snap.ctx,
+        snap.doc.as_deref(),
+        uri,
+    );
+    let extract = features::extract_model_yaml(&snap.ctx, uri, (*lineage).as_ref())?;
+    Some(features::extract_yaml_action(&model, &extract))
+}
+
 impl Dispatcher {
     pub(super) fn code_action(&mut self, content: &[u8]) {
         let Ok(req) = serde_json::from_slice::<Envelope<cogitator_lsp::CodeActionParams>>(content)
@@ -93,6 +110,8 @@ impl Dispatcher {
                         &snap.ctx, doc, &uri, range, &read,
                     ));
                     extra.extend(missing_columns_action(&snap, &derived, &uri, artifact_cap));
+                    extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
+                    extra.extend(extract_yaml_action(&snap, &derived, &uri));
                 }
             }
             extra.retain(|action| action.allowed_by(only.as_deref()));

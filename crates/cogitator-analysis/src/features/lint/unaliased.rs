@@ -11,7 +11,7 @@ use cogitator_lsp::{
 };
 use cogitator_parser::{Keyword, TokenKind};
 
-use super::super::completion::scope::{cte_columns, RelationTarget, ScopeIndex};
+use super::super::completion::scope::{relation_columns, RelationTarget, ScopeIndex};
 use super::super::{token_range, DbtContext, Document};
 
 /// At most this many "Qualify with …" fixes per column: a menu, not a wall.
@@ -90,28 +90,10 @@ fn qualifiers(ctx: &DbtContext, doc: &Document, scope: &ScopeIndex) -> Vec<Quali
         seen.push(target);
         out.push(Qualifier {
             name: key.clone(),
-            columns: known_columns(ctx, doc, target),
+            columns: relation_columns(ctx, doc, target),
         });
     }
     out
-}
-
-fn known_columns(ctx: &DbtContext, doc: &Document, target: &RelationTarget) -> Vec<String> {
-    match target {
-        RelationTarget::Model(name) => ctx
-            .model_detail_map
-            .get(name)
-            .map(|m| m.columns.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default(),
-        RelationTarget::SourceTable { source, table } => ctx
-            .source_detail_map
-            .get(source)
-            .and_then(|s| s.tables.get(table))
-            .map(|t| t.columns.iter().map(|c| c.name.clone()).collect())
-            .unwrap_or_default(),
-        RelationTarget::Cte(name) => cte_columns(doc, name),
-        RelationTarget::Unknown(_) => Vec::new(),
-    }
 }
 
 /// The relations known to have the column decide: exactly one makes a

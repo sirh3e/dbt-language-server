@@ -238,3 +238,73 @@ fn an_unknown_var_offers_to_define_it_in_dbt_project_yml() {
     let before: Vec<&str> = project.lines().take(line).collect();
     assert_eq!(before.last(), Some(&"    jaffle_number: 1"));
 }
+
+fn open(text: &str) -> (cogitator_analysis::DbtContext, Documents, String) {
+    let ctx = ctx();
+    let uri = model_uri("models/probe.sql");
+    let mut docs = Documents::default();
+    docs.open(uri.clone(), text, &ctx.dialect);
+    (ctx, docs, uri)
+}
+
+fn at(character: u32) -> Range {
+    Range::zero_width(Position { line: 0, character })
+}
+
+fn new_text(action: &cogitator_lsp::CodeAction) -> String {
+    let wire = serde_json::to_value(action.edit.as_ref().unwrap()).unwrap();
+    wire["documentChanges"][0]["edits"][0]["newText"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[test]
+fn a_qualified_star_expands_to_the_relations_known_columns() {
+    let text = "select o.*, c.customer_id from {{ ref('stg_orders') }} o \
+                join {{ ref('stg_customers') }} c on o.order_id = c.customer_id";
+    let (ctx, docs, uri) = open(text);
+    for cursor in [7, 8, 9] {
+        let action = features::expand_star_action(&ctx, docs.get(&uri).unwrap(), &uri, at(cursor))
+            .unwrap_or_else(|| panic!("an action at {cursor}"));
+        assert_eq!(action.title, "Expand o.* to 2 column(s)");
+        assert_eq!(action.kind, Some("refactor.rewrite"));
+        assert_eq!(new_text(&action), "o.order_id, o.status");
+    }
+    // on another select item: nothing
+    assert!(features::expand_star_action(&ctx, docs.get(&uri).unwrap(), &uri, at(14)).is_none());
+}
+
+#[test]
+fn a_bare_star_expands_only_as_a_select_item_of_one_relation() {
+    let (ctx, docs, uri) = open("select * from {{ ref('stg_orders') }}");
+    let action =
+        features::expand_star_action(&ctx, docs.get(&uri).unwrap(), &uri, at(7)).expect("action");
+    assert_eq!(new_text(&action), "order_id, status");
+
+    let (ctx, docs, uri) = open("select count(*) as n from {{ ref('stg_orders') }}");
+    assert!(features::expand_star_action(&ctx, docs.get(&uri).unwrap(), &uri, at(13)).is_none());
+
+    // a relation whose columns nobody documents: no expansion
+    let (ctx, docs, uri) = open("select * from {{ ref('stg_stripe_payments') }}");
+    assert!(features::expand_star_action(&ctx, docs.get(&uri).unwrap(), &uri, at(7)).is_none());
+}
+
+#[test]
+fn schema_extraction_is_an_edit_too() {
+    let ctx = ctx();
+    let uri = model_uri("models/staging/stg_stripe_payments.sql");
+    let extract = features::extract_model_yaml(&ctx, &uri, None).expect("an extraction");
+    let action = features::extract_yaml_action("stg_stripe_payments", &extract);
+    assert_eq!(
+        action.title,
+        "Extract schema YAML of 'stg_stripe_payments' to stg_stripe_payments.yml"
+    );
+    assert_eq!(action.kind, Some("refactor.extract"));
+    let wire = serde_json::to_value(action.edit.as_ref().unwrap()).unwrap();
+    assert_eq!(wire["documentChanges"][0]["kind"], "create");
+    assert!(wire["documentChanges"][1]["edits"][0]["newText"]
+        .as_str()
+        .unwrap()
+        .contains("- name: stg_stripe_payments"));
+}

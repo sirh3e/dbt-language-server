@@ -7,6 +7,7 @@
 pub(crate) mod convert_relation;
 pub(crate) mod define_missing;
 mod quickfix;
+pub(crate) mod refactors;
 pub(crate) mod yaml_columns;
 pub(crate) mod yaml_fixes;
 mod yaml_text;

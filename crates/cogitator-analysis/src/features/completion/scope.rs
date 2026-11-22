@@ -138,6 +138,26 @@ impl ScopeIndex {
     }
 }
 
+/// The columns the project knows a relation to have: a model's or a
+/// source table's from the YAML, a CTE's from its select list.
+pub fn relation_columns(ctx: &DbtContext, doc: &Document, target: &RelationTarget) -> Vec<String> {
+    match target {
+        RelationTarget::Model(name) => ctx
+            .model_detail_map
+            .get(name)
+            .map(|m| m.columns.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default(),
+        RelationTarget::SourceTable { source, table } => ctx
+            .source_detail_map
+            .get(source)
+            .and_then(|s| s.tables.get(table))
+            .map(|t| t.columns.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default(),
+        RelationTarget::Cte(name) => cte_columns(doc, name),
+        RelationTarget::Unknown(_) => Vec::new(),
+    }
+}
+
 /// Approximate columns of a CTE: identifiers in its `select … from` window.
 pub fn cte_columns(doc: &Document, name: &str) -> Vec<String> {
     let Some(def) = doc.parsed.def_tokens.get(name) else {
