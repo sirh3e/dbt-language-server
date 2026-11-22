@@ -77,7 +77,8 @@ binary, the project root and the profiles.yml resolution.
 `:DbtRun` / `:DbtTest` / `:DbtCompile` / `:DbtPreview` on the current
 model, `:DbtFind` for fuzzy pickers (models, definitions, columns,
 lineage… in fzf-lua, snacks.picker or telescope when installed, else a
-built-in one), `:DbtBrowse` for the yazi-style navigator, `:DbtGraph`
+built-in one), `:DbtBrowse` for the model explorer (upstream | model | downstream over
+its dbt SQL | compiled SQL), `:DbtGraph`
 and `:DbtDag` for the graph browsers, `:DbtSchema`,
 `:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more — the full list,
 options and keymaps are in `:h cogitator`
