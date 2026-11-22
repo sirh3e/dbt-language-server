@@ -135,11 +135,18 @@ fn governed() -> (DbtContext, impl Fn(&Path) -> Option<String>) {
     let read = move |path: &Path| {
         let text = read(path)?;
         Some(if path == staging {
-            text.replacen(
-                "  - name: stg_customers\n",
-                "  - name: stg_customers\n    access: private\n",
-                1,
-            )
+            // line by line: a Windows checkout has CRLF endings
+            let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+            let mut out = String::new();
+            for line in text.lines() {
+                out.push_str(line);
+                out.push_str(newline);
+                if line == "  - name: stg_customers" {
+                    out.push_str("    access: private");
+                    out.push_str(newline);
+                }
+            }
+            out
         } else {
             text
         })
