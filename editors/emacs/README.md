@@ -71,6 +71,7 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-graph` | model-graph browser (below) |
 | `M-x cogitator-split-plan` | split this table model at its incrementality frontier: the plan as an S-expression and the new model's file; `a` offers the split code action |
 | `M-x cogitator-incrementality` | pick a table model by whether it could be incremental (slowest last run first) and visit it |
+| `M-x cogitator-syntax-tree` | the model's tree-sitter-dbt tree (`dbt.syntaxTree`) in a buffer; `RET` jumps to a node in the model |
 
 Suggested bindings:
 

@@ -47,10 +47,7 @@
 "dbt.deps" = { kind = "internal", via = "code action 'Run dbt deps' for a missing package (code_actions/mod.rs)" }
 "dbt.incrementality" = { kind = "user" }
 "dbt.splitPlan" = { kind = "user" }
-
-[gaps.nvim]
-"dbt.columnLineage" = "predates the parity rule"
-"dbt.reloadConfig" = "predates the parity rule"
+"dbt.syntaxTree" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

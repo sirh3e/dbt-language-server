@@ -432,6 +432,71 @@ Shows the plan as an S-expression and the new model's file; \\`a' applies it."
            (when row
              (find-file (cogitator--uri-to-path (plist-get row :uri))))))))))
 
+;; ---------------------------------------------------------------------------
+;; syntax tree (dbt.syntaxTree): the open document's tree-sitter-dbt nodes
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--syntax-line (node)
+  "One tree line for NODE, as :DbtSyntaxTree draws it.
+Indentation by depth, the field, the kind and its 1-based line range."
+  (let* ((range (plist-get node :range))
+         (start (plist-get range :start))
+         (end (plist-get range :end))
+         (field (plist-get node :field))
+         (kind (plist-get node :kind)))
+    (format "%s%s%s [%d:%d - %d:%d]"
+            (make-string (* 2 (plist-get node :depth)) ?\s)
+            (if (stringp field) (concat field ": ") "")
+            (if (eq (plist-get node :missing) t) (concat "MISSING " kind) kind)
+            (1+ (plist-get start :line)) (plist-get start :character)
+            (1+ (plist-get end :line)) (plist-get end :character))))
+
+(defun cogitator--syntax-render (tree)
+  "The text of a dbt.syntaxTree TREE: a line per node, and a note when cut."
+  (concat (mapconcat #'cogitator--syntax-line (append (plist-get tree :nodes) nil) "\n")
+          "\n"
+          (when (eq (plist-get tree :truncated) t)
+            "… more nodes than the server sends; the rest are left out\n")))
+
+(defvar-local cogitator--syntax-source nil
+  "The source buffer of a *cogitator-syntax* buffer.")
+(defvar-local cogitator--syntax-nodes nil
+  "The nodes of a *cogitator-syntax* buffer, one per line.")
+
+(defun cogitator-syntax-jump ()
+  "Jump to the source range of the node on this tree line."
+  (interactive)
+  (let ((node (nth (1- (line-number-at-pos)) cogitator--syntax-nodes))
+        (source cogitator--syntax-source))
+    (when (and node (buffer-live-p source))
+      (let ((start (plist-get (plist-get node :range) :start)))
+        (pop-to-buffer source)
+        (goto-char (point-min))
+        (forward-line (plist-get start :line))
+        (forward-char (min (plist-get start :character)
+                           (- (line-end-position) (point))))))))
+
+;;;###autoload
+(defun cogitator-syntax-tree ()
+  "The tree-sitter-dbt tree of this model (dbt.syntaxTree) in a buffer.
+RET jumps to a node's place in the model, q closes."
+  (interactive)
+  (let ((source (current-buffer)))
+    (cogitator--execute
+     "dbt.syntaxTree" (cogitator--command-argument)
+     (lambda (tree)
+       (let ((buf (get-buffer-create "*cogitator-syntax*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (cogitator--syntax-render tree))
+             (goto-char (point-min)))
+           (special-mode)
+           (setq cogitator--syntax-source source
+                 cogitator--syntax-nodes (append (plist-get tree :nodes) nil))
+           (local-set-key (kbd "RET") #'cogitator-syntax-jump))
+         (pop-to-buffer buf))))))
+
 ;;;###autoload
 (defun cogitator-doctor ()
   "Health report: binary, project root, profiles candidates, client state.

@@ -9,7 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import type { CogitatorApi } from "../../extension";
-import { incrementalityLabel, splitText } from "../../extension";
+import { incrementalityLabel, splitText, syntaxLine } from "../../extension";
 
 let failures = 0;
 
@@ -168,6 +168,25 @@ export async function run(): Promise<void> {
     "vscode: incrementality labels name verdict, strategy, run time and why"
   );
 
+  // the syntax tree: the open model's tree, and how a line reads
+  const tree = (await exec("dbt.syntaxTree", {
+    uri: document.uri.toString(),
+  })) as { nodes?: Array<{ depth?: number }> } | null;
+  check(
+    (tree?.nodes?.length ?? 0) > 0 && tree?.nodes?.[0]?.depth === 0,
+    "vscode: dbt.syntaxTree answers the model's tree",
+    tree?.nodes?.length
+  );
+  check(
+    syntaxLine({
+      depth: 1,
+      kind: "select",
+      field: "body",
+      range: { start: { line: 0, character: 0 }, end: { line: 1, character: 4 } },
+    }) === "  body: select [1:0 - 2:4]",
+    "vscode: a syntax-tree line has depth, field, kind and range"
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -177,6 +196,7 @@ export async function run(): Promise<void> {
       "cogitator.restart",
       "cogitator.splitPlan",
       "cogitator.incrementality",
+      "cogitator.syntaxTree",
     ].every((c) =>
       commands.includes(c)
     ),

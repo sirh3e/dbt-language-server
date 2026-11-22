@@ -210,6 +210,21 @@
   (check (or (null plan) (eq plan :null) (stringp (plist-get plan :sexp)))
          "integration: dbt.splitPlan answers a plan or null" plan))
 
+;; unit + integration: the syntax tree
+(check (equal (cogitator--syntax-line
+               '(:depth 1 :kind "select" :field "body" :missing :json-false
+                 :range (:start (:line 0 :character 0) :end (:line 1 :character 4))))
+              "  body: select [1:0 - 2:4]")
+       "syntax: a tree line has depth, field, kind and range")
+(check (string-match-p "more nodes"
+                       (cogitator--syntax-render '(:nodes [] :truncated t)))
+       "syntax: a cut tree says so")
+(let ((tree (run--exec "dbt.syntaxTree" (cogitator--command-argument))))
+  (check (and (vectorp (plist-get tree :nodes))
+              (> (length (plist-get tree :nodes)) 0)
+              (equal (plist-get (aref (plist-get tree :nodes) 0) :depth) 0))
+         "integration: dbt.syntaxTree answers the model's tree" (plist-get tree :truncated)))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")

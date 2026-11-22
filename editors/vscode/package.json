@@ -73,6 +73,10 @@
         "title": "dbt: Table models that could be incremental"
       },
       {
+        "command": "cogitator.syntaxTree",
+        "title": "dbt: Show syntax tree"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },
