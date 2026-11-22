@@ -289,6 +289,11 @@
                         (plist-get result :spans)))
          "integration: a YAML file is highlighted with dbt captures" (plist-get result :language)))
 
+(check (eq (cogitator--highlight-face "variable.dbt.var") 'font-lock-variable-name-face)
+       "highlight: a var in YAML takes the variable face")
+(check (eq (cogitator--highlight-face "variable.dbt.var.unresolved") 'font-lock-warning-face)
+       "highlight: an undefined var is a warning")
+
 ;; unit + integration: ast-grep
 (check (equal (cogitator--ast-grep-parse "{{ ref($M) }} => {{ ref('x', $M) }}")
               '(:pattern "{{ ref($M) }}" :rewrite "{{ ref('x', $M) }}" :language "dbt"))

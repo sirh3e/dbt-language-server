@@ -49,7 +49,8 @@ them today — they unlock features no amount of static analysis can.
   YAML `description:` onto an undocumented downstream column (and a
   hint diagnostic listing undocumented columns, off by default).
 - **Inlay hints** (`textDocument/inlayHint`): the resolved relation
-  after `ref()`/`source()` calls (`→ jaffle.main.customers`), macro
+  after `ref()`/`source()` calls (`→ jaffle.main.customers`), the value
+  each `var()` resolves to (`= 'jaffle'`, docs/variables.md), macro
   default values at call sites (signatureHelp already parses params).
 - **Document links** (`textDocument/documentLink`): make every
   `ref('x')`/`source('a','b')` a clickable link — definition exists,

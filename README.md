@@ -344,6 +344,10 @@ perf:
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off
+inlay:
+  vars: true               # the value after each var() (docs/variables.md)
+vars:                      # overrides, like dbt's --vars; passed to dbt runs
+  since: '2025-06-01'
 ```
 
 Hot semantics are **changed-keys-only, last writer wins**: a reload
