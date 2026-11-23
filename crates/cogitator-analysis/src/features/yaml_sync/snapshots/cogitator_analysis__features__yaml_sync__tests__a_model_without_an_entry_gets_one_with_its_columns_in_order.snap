@@ -1,0 +1,18 @@
+---
+source: crates/cogitator-analysis/src/features/yaml_sync/tests.rs
+expression: file.new_text
+---
+version: 2
+
+models:
+  - name: orders
+    description: ""
+    columns:
+      - name: id
+        description: "The order key."
+      - name: amount
+        description: ""
+      - name: state
+        description: ""
+      - name: customer
+        description: "Who ordered."

@@ -194,6 +194,7 @@ fn stars_hide_the_current_columns() {
             .map(|n| ColumnLineage {
                 name: n.to_string(),
                 sources: vec![],
+                direct: false,
             })
             .collect(),
         origin: None,

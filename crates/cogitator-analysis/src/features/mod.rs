@@ -54,6 +54,7 @@ mod unresolved_builtins;
 mod unused_vars;
 mod vars;
 mod workspace_diagnostics;
+pub mod yaml_sync;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
 pub use call_hierarchy::{
