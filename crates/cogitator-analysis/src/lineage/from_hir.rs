@@ -38,7 +38,7 @@ pub fn column_lineage(doc: &ParsedDocument, dialect: &Dialect) -> Option<ModelLi
     })
 }
 
-pub(super) fn template_input<'a>(doc: &'a ParsedDocument, dialect: &'a Dialect) -> HirInput<'a> {
+pub(crate) fn template_input<'a>(doc: &'a ParsedDocument, dialect: &'a Dialect) -> HirInput<'a> {
     HirInput {
         text: &doc.text,
         dialect,
@@ -83,7 +83,7 @@ pub(super) fn columns_of(
 /// The 07 §3.2 rule: any statement tag but config and set declines. That
 /// includes a lone `{% if is_incremental() %}`, which HIR could analyse as
 /// its `Incremental` variant but lineage has never answered for.
-pub(super) fn has_control_block(doc: &ParsedDocument) -> bool {
+pub(crate) fn has_control_block(doc: &ParsedDocument) -> bool {
     let mut tokens = doc.tokens.iter();
     while let Some(open) = tokens.next() {
         if open.kind != TokenKind::JinjaOpen(JinjaKind::Stmt) {
