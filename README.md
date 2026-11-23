@@ -151,12 +151,21 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   lists what `tag:nightly +orders` or `selector:nightly` picks, and
   selectors.yml gets completion, diagnostics, a hover and "N nodes match"
   lenses
-- **Project DAG view — Neovim only**: `:DbtDag` renders the whole project
-  dbt-docs style (layered left→right, box-drawn nodes with tags, edges),
-  and docglow-style column information inside the nodes (`c`/`C` expand,
-  `L` column lineage, `<CR>` opens the model). The `dbt.projectGraph`
-  data command is editor-neutral, but this UI ships only in the Neovim
-  plugin.
+- **Project DAG view in the terminal — Neovim only**: `:DbtDag` renders
+  the whole project dbt-docs style (layered left→right, box-drawn nodes
+  with tags, edges), and docglow-style column information inside the nodes
+  (`c`/`C` expand, `L` column lineage, `<CR>` opens the model). This
+  text-mode UI ships only in the Neovim plugin.
+- **Lineage site** ([docs/lineage-site.md](docs/lineage-site.md)): the
+  project DAG with column-level lineage as one self-contained HTML page —
+  `cogitator lineage-site [--project-dir DIR] [--out DIR] [--open]`, from
+  static analysis alone (no dbt run, no warehouse, nothing fetched). Click
+  a column to see every column upstream and downstream of it across
+  models, with how each is made (passed through, renamed, derived); models
+  cogitator cannot trace are marked and say why. The same page is a live
+  panel in VS Code (`dbt: Show lineage view`, following the active model),
+  and `:DbtLineageSite` / `M-x cogitator-lineage-site` write and open it
+  from Neovim and Emacs (`dbt.lineageSite`).
 - **Fuzzy pickers — Neovim only**: `:DbtFind` finds models, sources,
   macros and selectors (jump to the definition), documented columns,
   a model's upstream/downstream with depth, the refs of the current
@@ -264,7 +273,8 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 | Pickers: targets, tags, selectors, projects | ✓ | ✓ | — |
 | Query workflow (bounded SELECT on the relation) | ✓ `:DbtQuery` (dadbod/scratch) | ✓ `cogitator-query` (sql buffer) | — |
 | Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — |
-| Project explorer / DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — |
+| Project explorer / text-mode DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — |
+| Lineage site (DAG + column lineage, HTML) | ✓ `:DbtLineageSite` (opens in the browser) | ✓ `cogitator-lineage-site` (opens in the browser) | `cogitator lineage-site` from a shell; VS Code: a live panel |
 | Fuzzy pickers | ✓ `:DbtFind` (fzf-lua / snacks / telescope / built-in) | — | — |
 | Profiles-dir live switch | ✓ persisted per project | ✓ command (dir-locals for persistence) | — |
 | Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | — |

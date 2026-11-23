@@ -250,6 +250,16 @@ names what already exists in the codebase.
       (a CTE of the compiled file still wins). The line map is a patience
       diff of the normalized texts: copied lines are exact anchors, the
       lines between anchors come from the source lines between them.
+- [x] **Lineage site**: `cogitator lineage-site` writes the project's DAG
+      and column-level lineage as one self-contained, offline HTML page
+      (`features/lineage_site/`: the data as a pure export over the
+      context, the schema job and each model's typed lineage; the page's
+      assets embedded with `include_str!`). `dbt.lineageSite` answers the
+      same data (and the page's assets) for VS Code's live "dbt: Show
+      lineage view" panel, and writes the page for Neovim
+      `:DbtLineageSite` and Emacs `cogitator-lineage-site`. Declined
+      models and unexpanded stars are marked, never guessed
+      (docs/lineage-site.md).
 
 ## P2 — quality of life
 

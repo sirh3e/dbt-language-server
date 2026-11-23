@@ -321,7 +321,8 @@ map, keyed by resolved project root:
   call-hierarchy calls (by the item's uri), dbt.modelGraph and
   dbt.goToSchema — never the primary snapshot. Requests with no URI
   (workspace/symbol, workspace/diagnostic, completionItem/resolve,
-  dbt.deadModels, dbt.projectGraph) stay on the primary context;
+  dbt.deadModels, dbt.projectGraph, dbt.lineageSite without a uri)
+  stay on the primary context;
 - the refresh task debounces per DISTINCT root and keeps one
   ContextBuilder per secondary root (same scan-cache warm start and
   persistence; no watch publish, no user-facing warnings);

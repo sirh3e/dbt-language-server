@@ -119,7 +119,7 @@ writer wins).
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
-  `dbt.previewCte`, `dbt.select`
+  `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -188,6 +188,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.nodeInfo` | `{kind, name, …}` per kind (specs/highlighting §6.1), or `null` + a WARNING with the closest names | none (read-only): `{node: {kind, name}}` — `model` (modelInfo's answer + kind), `macro` (package, description, params, uri, range, callers, calls, usedByTests), `test` / `analysis` / `source` / `exposure` / `metric` / `semantic_model` (uri, refs, calls, upstream, downstream, compiledUri for tests and analyses), `generic_test` (a `{% test %}` definition: params, uri, range, appliedTo [{model, column, uri, range}]) |
 | `dbt.breakingChanges` | `{model, status, baseline, summary, diff: {removed, added, retyped}, impacts: [{column, change, severity, tests, downstream}], exposures, public, truncated}` — the buffer's columns against `target/catalog.json`, else the manifest's documented columns | none (read-only): `{uri}`; `status: "noBaseline"` without target/ artifacts; also `breaking-change` diagnostics and an `N breaking changes` lens, computed on open/save |
 | `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
+| `dbt.lineageSite` | `{site, counts}` (`site`: format 1 — the `dbt.projectGraph` nodes/edges with each node's details and columns, each traced column's `inputs` one hop up and its `transform`); with `assets: true` also `assets: {script, style}`; with `write: true` `{written: {path, uri}, counts}` instead of `site`; `null` with no project | `{uri?, assets?, write?}`; `write` writes `<root>/target/cogitator-lineage/index.html` + `lineage.json` — :DbtLineageSite, `cogitator lineage-site` (docs/lineage-site.md) |
 | `dbt.select` | `{selector, count, nodes: [{uri, name, kind, uniqueId, range}], issues}` or InvalidParams for a selector that does not parse | none (read-only): `{selector}` — dbt's selector language (docs/selectors.md), `selector:<name>` for a selectors.yml entry; what `dbt ls --select` lists, tests by eager indirect selection — :DbtSelect |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
@@ -508,6 +509,7 @@ vim.lsp.enable("cogitator")
 | `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
 | `:DbtBreakingChanges` | `dbt.breakingChanges` | this model's removed, possibly renamed and retyped columns against its last built schema, and what reads them downstream, into quickfix |
+| `:DbtLineageSite` | `dbt.lineageSite` | `write: true`, then `vim.ui.open` on the written page; a message with the counts; never blocks |
 | `:DbtSelect {selector}` | `dbt.select` | the nodes a dbt selector picks into quickfix (asks for the selector when none is given); `:DbtFind select` shows them in the picker |
 | `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |

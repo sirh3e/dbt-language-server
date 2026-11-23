@@ -315,6 +315,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none (read-only; reads the project's files off the dispatcher). The "N nodes match" lens on each selectors.yml definition sends it with `selector:<name>`
 - **Editors**: Neovim ✓ (`:DbtSelect` quickfix, `:DbtFind select` picker) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes`)
 
+### `dbt.lineageSite`
+
+- **Argument**: `{uri?, assets?, write?}` — `uri` picks the project (multi-root), else the primary one; `assets: true` adds the page's script and stylesheet; `write: true` writes the page instead of answering its data
+- **Result**: `{site, counts}` — `site` is the lineage page's data (format 1: the `dbt.projectGraph` nodes and edges, each node's details and columns, and each traced column's inputs one hop up with how it is made); with `assets`, also `assets: {script, style}`; with `write`, `{written: {path, uri}, counts}` and no `site`. `null` with no project. See [lineage-site.md](lineage-site.md)
+- **Side effects**: `write: true` writes `target/cogitator-lineage/index.html` and `lineage.json` under the project root; otherwise none (reads model files, compiled SQL and `target/` artifacts off the dispatcher)
+- **Editors**: Neovim ✓ (`:DbtLineageSite` writes and opens the page) · Emacs ✓ (`M-x cogitator-lineage-site`, the same) · VS Code ✓ (`dbt: Show lineage view`, a live webview)
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`
