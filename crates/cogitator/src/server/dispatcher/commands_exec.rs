@@ -369,6 +369,31 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.lineageSite" => {
+                let flag = |name: &str| arg.get(name).and_then(|v| v.as_bool()) == Some(true);
+                let request = crate::server::handlers::lineage_site::Request {
+                    assets: flag("assets"),
+                    write: flag("write"),
+                };
+                let ctx = if uri.is_empty() {
+                    self.snapshot()
+                } else {
+                    self.ctx_for(&uri)
+                };
+                let derived = self.derived.clone();
+                let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+                let compiled_cap = self.limits.compiled_cap_bytes.load(Ordering::Relaxed);
+                self.offload_blocking(req.id, "dbt.lineageSite", move || {
+                    crate::server::handlers::lineage_site::command(
+                        &ctx,
+                        &derived,
+                        artifact_cap,
+                        compiled_cap,
+                        request,
+                    )
+                });
+                return;
+            }
             "dbt.setTarget" => {
                 let target = arg
                     .get("target")

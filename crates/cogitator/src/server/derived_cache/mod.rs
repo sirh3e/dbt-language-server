@@ -25,6 +25,7 @@ mod plan;
 mod schemas;
 
 pub use plan::CachedPlan;
+pub(crate) use schemas::Disk;
 
 /// (mtime secs, mtime nanos, size) — the same freshness idea as the scan
 /// cache; a file that changed under us gets a different stamp.

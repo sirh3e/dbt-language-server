@@ -16,7 +16,7 @@ mod diagnostics;
 mod dispatcher;
 mod function_docs;
 mod fusion;
-mod handlers;
+pub(crate) mod handlers;
 mod highlight;
 mod jobs;
 mod multi_root;

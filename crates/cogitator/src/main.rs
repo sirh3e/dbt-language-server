@@ -2,6 +2,7 @@
 //! bootstrap (05 §6.2).
 
 mod client_log;
+mod cmd_lineage_site;
 mod metrics;
 mod observability;
 mod server;
@@ -61,10 +62,16 @@ enum Command {
     Upgrade,
     /// Print the cogitator.yml JSON Schema (draft-07) to stdout and exit
     Schema,
+    /// Write the project's column-lineage dashboard as one HTML page
+    LineageSite(cmd_lineage_site::LineageSiteArgs),
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if let Some(Command::LineageSite(args)) = &cli.command {
+        std::process::exit(cmd_lineage_site::run(args));
+    }
 
     if matches!(cli.command, Some(Command::Schema)) {
         let schema = cogitator_analysis::config_schema::json::config_json_schema();
