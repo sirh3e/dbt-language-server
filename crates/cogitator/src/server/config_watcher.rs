@@ -70,6 +70,8 @@ impl ConfigWatcher {
             lint_flags: self.toggles.lints.load(Ordering::Relaxed),
             warehouse_columns: self.toggles.warehouse_columns.load(Ordering::Relaxed),
             client_log_level: crate::client_log::current_level(),
+            preview_rows: self.limits.preview_rows.load(Ordering::Relaxed),
+            preview_max_rows: self.limits.preview_max_rows.load(Ordering::Relaxed),
             perf: self
                 .toggles
                 .perf

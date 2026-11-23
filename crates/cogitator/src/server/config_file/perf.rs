@@ -117,6 +117,8 @@ mod tests {
             warehouse_columns: false,
             client_log_level: crate::client_log::level::INFO,
             perf: PerfSettings::default(),
+            preview_rows: 20,
+            preview_max_rows: 1000,
         };
         let toggles = SharedToggles::default();
         let limits = SharedLimits::default();

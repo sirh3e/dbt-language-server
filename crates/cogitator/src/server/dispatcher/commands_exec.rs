@@ -88,6 +88,7 @@ impl Dispatcher {
                 self.preview(req.id, &uri, limit);
                 return;
             }
+            "dbt.previewCte" => return self.preview_cte(req.id, uri, arg),
             "dbt.cancel" => {
                 let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
                 match self.jobs.cancel(token) {
@@ -207,6 +208,10 @@ impl Dispatcher {
                 self.status_report(req.id);
                 return;
             }
+            "dbt.breakingChanges" => {
+                self.breaking_changes(req.id, uri);
+                return;
+            }
             "dbt.impact" => {
                 let model = arg
                     .get("model")
@@ -304,6 +309,15 @@ impl Dispatcher {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.nodeInfo", move || {
                     crate::server::node_info::reply(&ctx, &kind, &name, quiet)
+                });
+                return;
+            }
+            "dbt.select" => {
+                let ctx = self.snapshot_for(&uri).ctx;
+                let open = crate::server::selectors::Open::of(self.documents.texts());
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.select", move || {
+                    crate::server::selectors::select_reply(&ctx, open, &arg)
                 });
                 return;
             }
@@ -447,33 +461,6 @@ impl Dispatcher {
                 let snap = self.snapshot_for(&uri);
                 self.offload_blocking(req.id, "dbt.compiledSql", move || {
                     crate::server::handlers::commands::compiled_sql(&snap, &uri, model.as_deref())
-                });
-                return;
-            }
-            "dbt.select" => {
-                let text = arg
-                    .get("select")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string();
-                let exclude = arg
-                    .get("exclude")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                let vocabulary = arg
-                    .get("vocabulary")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let snap = self.snapshot_for(&uri);
-                let derived = self.derived.clone();
-                self.offload_blocking(req.id, "dbt.select", move || {
-                    crate::server::handlers::selection::select(
-                        &snap,
-                        &derived,
-                        &text,
-                        exclude.as_deref(),
-                        vocabulary,
-                    )
                 });
                 return;
             }

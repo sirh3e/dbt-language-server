@@ -125,7 +125,13 @@ editor integrations live under `editors/`.
   false and true, and the unified diff; `show: true`, the lens on
   incremental models, opens it as a document), dbt.unresolved (every
   unresolved ref/source/doc/macro/var of the project;
-  `features/unresolved.rs`). Every command takes one argument object
+  `features/unresolved.rs`), dbt.breakingChanges (a model's columns
+  against target/catalog.json or the manifest's documented columns, and
+  what that breaks downstream; `features/breaking/`, the shell in
+  `server/breaking.rs`, computed on open/save for its diagnostics and
+  lens by `dispatcher/breaking.rs`), dbt.select (the nodes a dbt selector
+  picks, as `dbt ls` lists them; the selector engine, `selectors/`). Every
+  command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).
 - `textDocument/codeAction` serves the executable lens set as
@@ -144,6 +150,15 @@ editor integrations live under `editors/`.
   through `yaml_text.rs`, never re-serialized. The completion
   capability advertises `triggerCharacters`.
 - `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
+- **Selector engine** (`cogitator-analysis/src/selectors/`, docs/selectors.md):
+  dbt's node-selection language, pure — `syntax` (the `--select` string),
+  `yaml` (selectors.yml definitions), `universe` (the nodes and edges,
+  built from the context plus a `read` closure), `matcher` (one method),
+  `eval` (graph operators, set operations, `selector:` references, indirect
+  selection). `workspace/symbol`'s `tag:`, the run lenses, `dbt.runSelection`
+  validation, `dbt.select` and the selectors.yml features
+  (`features/selectors_yml/`) all go through it; the shell side is
+  `server/selectors.rs`, offloaded.
 - `$/progress` reports context refreshes and dbt runs when the client
   advertises window.workDoneProgress.
 - **Profiles auth manager**: `profiles::inventory` (cogitator-analysis)

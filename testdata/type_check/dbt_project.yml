@@ -1,0 +1,4 @@
+name: type_check
+version: '1.0'
+profile: type_check
+model-paths: ['models']

@@ -69,6 +69,17 @@ writer wins).
   parameter names), `documentLinkProvider: { resolveProvider: false }`
   (ref/source → definition targets), `linkedEditingRangeProvider:
   true` (CTE names only)
+- `declarationProvider: true` — a model's (or ref's) properties-YAML
+  entry and a documented column's YAML entry; definition stays the SQL
+  (a YAML column's definition is the select item producing it)
+- `workspace.fileOperations` — willRenameFiles answers the ref/YAML
+  edits of a renamed model file (the client renames the file),
+  willDeleteFiles an empty edit plus one showMessage warning naming the
+  dependents, the did* notifications refresh the context. Neovim 0.11
+  sends none of these by itself; VS Code does.
+- `implementationProvider: true` — a dispatched macro's
+  `<adapter>__x` / `default__x` implementations in dispatch order
+  (from the dispatch call, a call of the macro, or its header)
 - `documentFormattingProvider: true` — sqlformat over Jinja-segmented
   SQL; full-line `{% %}` lines pass verbatim, `{{ }}` expressions are
   sentinel-masked, and ANY doubt (inline statements, sentinel
@@ -107,7 +118,8 @@ writer wins).
   `dbt.deadModels`, `dbt.impact`, `dbt.expandJinja`, `dbt.doctor`,
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
-  `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`
+  `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
+  `dbt.previewCte`, `dbt.select`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -170,11 +182,13 @@ Every command takes **one argument object**, not positional values:
 | `dbt.queryPlan` | `{model, dialect, backend, schemaRevision, status: complete\|partial\|declined, guidance, origin, levels: {hir, mir, lir: {available, fidelity, text, unavailable, degradations, violations}}, findings, trace: {entries, incomplete}, needs: {available, missing}}` | none (read-only): runs the IR pipeline on the open buffer or file; a level dropped by a verifier violation is shown as unavailable; models with control flow other than a lone `is_incremental()` come back `declined` with a Guidance pointing at `dbt compile` until compiled fallback lands — :DbtPlan |
 | `dbt.syntaxTree` | `{nodes: [{depth, kind, field, error, missing, range}], truncated}` or InvalidParams | none (read-only): the open document's tree-sitter-dbt tree, named + ERROR + MISSING nodes in pre-order, ranges in UTF-16, at most 20 000 nodes — :DbtSyntaxTree |
 | `dbt.preview` | `{token}` (job started) | `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit] |
+| `dbt.previewCte` | `{model, cte, columns, rows, truncated, limit, sql, source: compiled\|rendered, uri, table}` (answered when dbt finishes; `RequestCancelled` after dbt.cancel), or RequestFailed Guidance | `{uri, cte?, position?, limit?}`: the model's SQL — `target/compiled` when it is no older than the model and the buffer is saved, else the dbt.expandJinja rendering — cut at `cte` (or the CTE under `position`; neither: the final select) with sqlparser into `<with up to cte> select * from <cte> limit N+1`, refused unless one SELECT; `dbt show --inline <sql> --limit N+1 --output json` (active target, profiles dir/profile, `--vars`) as a job (token in the `$/progress` title, dbt.cancel); N from `limit`, else cogitator.yml `preview.rows` (20), capped at `preview.max_rows` (1000); the markdown table lands in `target/.cogitator/preview/<model>.<cte\|final>.md` and opens via showDocument; every CTE and the final select carry a "Preview rows" lens — :DbtPreviewCte [limit] |
 | `dbt.highlight` | `{language, version?, spans: [{range, capture, layer}], truncated, layers}`, or `null` for compiled SQL that does not exist (an uncompiled model or test, a macro) | none (read-only): the grammars' highlights (specs/highlighting §2) of `{uri, language?}` (open text, else the file; the language from the path: `.yml` → yaml, `target/compiled\|run` → sql, else dbt), `{text, language?: dbt\|sql\|yaml}`, `{model?, compiled: true}` or `{node: {kind, name}, compiled?}`; `range: {start: {line}, end: {line}}` answers those lines' spans, `version` is echoed; YAML gets its base layer, Jinja and SQL inside values and dbt-aware captures (§3–§5); whole answers cached per document generation / file stamp; at most 50 000 spans, nothing past 2 MiB |
 | `dbt.astGrep` | `{language, files, matches: [{uri, range, text, env, replacement}], truncated}` or InvalidParams Guidance | ast-grep (`cogitator-astgrep`) over tree-sitter-dbt (`dbt`: Jinja structure; the SQL is opaque text) or tree-sitter-sequel (`sql`, compiled SQL, whole statements): `{pattern, language?, rewrite?, uri?}` — `uri` searches that document, else the project's dbt files (`dbt`) or `target/compiled` (`sql`); at most 500 matches; `apply: true` with a `rewrite` sends workspace/applyEdit. The project's `sgconfig.yml` rules (`language: dbt\|sql`) are pull diagnostics (`source: ast-grep`) and their `fix` a quickfix |
 | `dbt.nodeInfo` | `{kind, name, …}` per kind (specs/highlighting §6.1), or `null` + a WARNING with the closest names | none (read-only): `{node: {kind, name}}` — `model` (modelInfo's answer + kind), `macro` (package, description, params, uri, range, callers, calls, usedByTests), `test` / `analysis` / `source` / `exposure` / `metric` / `semantic_model` (uri, refs, calls, upstream, downstream, compiledUri for tests and analyses), `generic_test` (a `{% test %}` definition: params, uri, range, appliedTo [{model, column, uri, range}]) |
+| `dbt.breakingChanges` | `{model, status, baseline, summary, diff: {removed, added, retyped}, impacts: [{column, change, severity, tests, downstream}], exposures, public, truncated}` — the buffer's columns against `target/catalog.json`, else the manifest's documented columns | none (read-only): `{uri}`; `status: "noBaseline"` without target/ artifacts; also `breaking-change` diagnostics and an `N breaking changes` lens, computed on open/save |
 | `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
-| `dbt.select` | `{nodes: [{uniqueId, resourceType, name, package, path, tags, uri, range, graphId}], counts: {resourceType: n}, error: {message, start, end} \| null, vocabulary?: {methods, values: {method: [value]}}}` — what `dbt ls --select … --exclude …` lists, by resource type then name | none (read-only): `{select, exclude?, vocabulary?}`; `select` may carry its own `--exclude …`; error offsets are bytes into `select` (or `exclude`) |
+| `dbt.select` | `{selector, count, counts: {resourceType: n}, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error: {message, start, end} \| null, vocabulary?: {methods, values: {method: [value]}}}` — what `dbt ls --select … --exclude …` lists, by resource type then name; an error lists no node | none (read-only): `{select, exclude?, vocabulary?}` (`selector` for `select`, as the selectors.yml lenses send it); `select` may carry its own `--exclude …`; error offsets are bytes into `select` (or `exclude`); docs/selectors.md — `:DbtSelect`, the navigator's `f` and `/` |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -493,6 +507,8 @@ vim.lsp.enable("cogitator")
 | `:DbtSyntaxTree` | `dbt.syntaxTree` | toggle the syntax-tree split (§5.3d) |
 | `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
+| `:DbtBreakingChanges` | `dbt.breakingChanges` | this model's removed, possibly renamed and retyped columns against its last built schema, and what reads them downstream, into quickfix |
+| `:DbtSelect {selector}` | `dbt.select` | the nodes a dbt selector picks into quickfix (asks for the selector when none is given); `:DbtFind select` shows them in the picker |
 | `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
 | `:DbtSelect [selection]` | `dbt.select` | the navigator's finder over a dbt selection (`tag:x`, `+model`, `resource_type:test`, `a,b`, `--exclude …`), live as it is typed; completion of methods and values |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |

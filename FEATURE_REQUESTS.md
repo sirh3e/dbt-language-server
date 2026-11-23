@@ -9,7 +9,7 @@ The server currently implements exactly the original Go server's surface:
 | `textDocument/didOpen` / `didChange` / `didSave` | incremental sync (`textDocumentSync: 2`) |
 | `textDocument/hover` | refs, sources, vars, env vars, macros, dialect SQL functions, what a `{{ … }}` renders to |
 | `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), env vars (`.env` line, else profiles.yml), macros, in-file CTEs |
-| `textDocument/references` | models, vars |
+| `textDocument/references` | models, vars, sources, macros, docs, columns, file-local names (Jinja locals, macro parameters, CTEs, aliases) |
 | `textDocument/inlayHint` | relations, var values, env var values (secrets masked), macro parameters, opt-in Jinja renderings |
 | `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `{{` |
 | `workspace/executeCommand` → `dbt.goToSchema` | jump to the model's properties-YAML entry |
@@ -63,14 +63,42 @@ names what already exists in the codebase.
       macros (call sites resolved as dbt resolves them — bare and
       `pkg.macro`, in models, tests, analyses and macro files), docs
       blocks (`doc()` uses from a use or the `{% docs %}` header) and
-      documented columns (the YAML entry, the model's SQL, and direct
-      dependents whose column lineage reads it). `includeDeclaration` adds
+      columns (the YAML entry and every consumer at any depth that keeps
+      the name — the column rename's walk). `includeDeclaration` adds
       the definition; the model `ref()` references gain the model file.
 - [x] **Macro rename**: prepareRename accepts a macro call, its
       `{% macro %}` header or a `macros:` YAML entry; the edit renames the
       header, every call resolving to it (qualified too) and the YAML
       entry. Macros of installed packages are refused with the reason
       (`RequestFailed`), as are invalid and already-taken names.
+- [x] **Workspace file operations** (`features/file_ops/`,
+      `workspace.fileOperations`): `willRenameFiles` of a model (or seed)
+      file answers the model rename's text edits — every `ref('old')` in
+      SQL and YAML and the properties-YAML `name:` — without the file
+      rename, which the client does; a move that keeps the name, a macro,
+      YAML or snapshot file and a folder answer no edits.
+      `willDeleteFiles` answers an empty edit and one warning per request
+      naming the dependents a deleted model (or folder of models) leaves
+      dangling. `didCreateFiles`/`didRenameFiles`/`didDeleteFiles`
+      refresh the context, so a new model gets its "Extract schema YAML"
+      lens and a renamed one its new name without a watcher registration.
+- [x] **`textDocument/declaration`** (`features/declaration.rs`): a
+      ref's or model file's declaration is its properties-YAML entry
+      (definition stays the SQL), a documented column's its YAML column;
+      definition on a YAML column entry now goes to the select item of
+      the model's SQL that produces it (the last `as col` / `[q.]col,`
+      item, else its first mention). Sources, macros, vars and docs:
+      declaration = definition.
+- [x] **Column rename** (`textDocument/rename` + `prepareRename`) on a
+      model's output column (the SQL alias or bare column, or its YAML
+      entry), transitive: the model's item, its YAML entry, constraints,
+      `primary_key`/`combination_of_columns`, unit-test row keys, and every
+      consumer while the name is kept — downstream models (renamed in turn
+      when they output it under the same name), snapshots, analyses,
+      singular tests, `relationships` fields and semantic-model `expr`s; a
+      re-alias stops the walk. Refused as a whole (`RequestFailed`, file and
+      reason) when any affected file's lineage is unclear or the new name
+      collides (`features/rename_column/`, docs/column-rename.md).
 - [x] **Macro call hierarchy, both ways**: prepare from a call site or a
       definition header; incomingCalls lists models, tests, analyses and
       calling macros; outgoingCalls lists the macros a macro's body (or a
@@ -83,6 +111,15 @@ names what already exists in the codebase.
       cogitator.yml override): every call that resolves to the same
       definition and the keys that decide it, scope-aware
       (docs/variables.md, "Renaming a var").
+- [x] **File-local rename** (`textDocument/rename` + `prepareRename`,
+      references and document highlights; `features/rename_local/`):
+      Jinja `set` / block `set` / loop variables and `call(…)` arguments,
+      scoped as Jinja scopes them over minijinja's AST; macro parameters,
+      with the keyword arguments of the macro's calls project-wide; CTE
+      names and table aliases over the sql-front binder's HIR, refused when
+      a written occurrence is one the binder could not follow
+      (docs/local-names.md). Checked before the var rename, which still
+      wins on a `var('x')` call.
 - [x] **env_var() support**: the value inline (`inlay.env_vars`), hover
       with its source, definition into `.env` (else the profiles.yml
       use), an `env-var-unset` warning for a defaultless env_var() the
@@ -169,6 +206,44 @@ names what already exists in the codebase.
       provide; unsaved buffers count. Neovim `:DbtUnresolved` (quickfix) and
       `:DbtFind unresolved` (picker), Emacs `cogitator-unresolved`, VS Code
       "dbt: Unresolved references".
+- [x] **Breaking-change preview** (`dbt.breakingChanges`,
+      `features/breaking/`): the columns a model's SQL produces now (typed
+      lineage) against its last built schema — `target/catalog.json`, else
+      the documented columns of `target/manifest.json` — as removed, added,
+      "possibly renamed" (a removed and an added column with similar names,
+      never asserted) and retyped columns (only when both types are known;
+      the current side's are the proven inferred output-column types of
+      `features::column_types`, of the saved files); for each removed or retyped column its own
+      tests and the downstream columns whose lineage reads it, with their
+      tests, contracts and `access: public`, plus the model's exposures.
+      Computed on open and save, off the request path: `breaking-change`
+      diagnostics (error only for a removed column a test or a contracted
+      downstream relies on) and an "N breaking changes" lens; silent without
+      target/ artifacts (`dbt.status` says so under `breaking_changes`).
+      Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
+      VS Code "dbt: Breaking changes against the last build". No git
+      baseline (the model at `origin/main`) yet.
+- [x] **dbt node selection** (`selectors/`, docs/selectors.md): one pure
+      engine for dbt's selector language — methods (`fqn`, `tag`, `path`,
+      `file`, `package`, `config.<key>`, `resource_type`, `source`,
+      `exposure`, `metric`, `semantic_model`, `unit_test`, `test_type`,
+      `test_name`, `group`, `access`, `version`, `wildcard`; `state:`,
+      `result:` and `source_status:` reported as needing state), the graph
+      operators (`+x`, `x+`, `N+x`, `x+N`, `@x`), unions and
+      intersections, selectors.yml definitions (`union`, `intersection`,
+      `exclude`, `method`/`value` with `parents`, `children`, depths,
+      `childrens_parents`, `indirect_selection`, `selector:` references)
+      and dbt's eager/cautious/buildable/empty indirect selection of tests.
+      `workspace/symbol`'s `tag:`, the run lenses' selectors and
+      `dbt.runSelection`'s validation share it. In selectors.yml:
+      completion of methods and values (tags, paths, packages, node names,
+      config keys and values, selectors), diagnostics (unknown method or
+      key, unknown selector, cycles, a selector that matches nothing, state
+      methods), "N nodes match" lenses and a hover with the first names;
+      tag names complete in `tags:`/`+tags:` of dbt_project.yml and
+      properties files. `dbt.select {selector}` lists the nodes: Neovim
+      `:DbtSelect` (quickfix) and `:DbtFind select` (picker), Emacs
+      `cogitator-select`, VS Code "dbt: Select nodes".
 - [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
       `target/run/…`, hover shows the Jinja source lines a compiled line came
       from (a link to them) above the SQL hover, and definition jumps there
@@ -228,6 +303,16 @@ names what already exists in the codebase.
       - [x] `yaml-unproduced-column`: tests on a column the model does not
             produce (lineage-certain only), rename/remove quickfixes
       - [x] "Add missing columns" offered from the model's YAML entry too
+      - [x] output-column types (`features/column_types/`): each output
+            column's type off the schema job's cached MIR, with provenance
+            (cast, literal, function, aggregate, upstream column, union) and
+            a basis (proven only over inferred, catalog or contracted
+            upstream types); `column-type-mismatch` on a `data_type:` of
+            another type family (Error under an enforced contract) with
+            "Set data_type to …", "Fill data_type from the inferred types",
+            `unit-test-value-type` hints on impossible unit-test row values,
+            the type on hover (YAML column, SQL output column), and
+            `columnTypes` in dbt.modelInfo
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
 - [x] **Inline plan hints** (specs/ir-pipeline/06): each CTE's row count as
@@ -249,6 +334,17 @@ names what already exists in the codebase.
       models carry the "Compare incremental / full refresh" lens
       (`features/incremental_diff.rs`; :DbtIncrementalDiff,
       `cogitator-incremental-diff`, the VS Code palette).
+- [x] **Preview the rows of a CTE**: a "Preview rows" lens on every CTE of a
+      model and on its final select runs `dbt.previewCte {uri, cte?,
+      position?, limit?}` — the compiled SQL (or the dbt.expandJinja
+      rendering while no current compiled file exists) cut at the CTE with
+      sqlparser, refused unless it is one SELECT, run as `dbt show --inline
+      … --output json` through the job registry (cancellable, `$/progress`,
+      the active target); the answer carries columns, rows, `truncated` and
+      the SQL, and the markdown table opens from
+      `target/.cogitator/preview/` (`features/cte_preview/`,
+      `server/preview_cte.rs`; cogitator.yml `preview.rows`/`max_rows`;
+      :DbtPreviewCte, `cogitator-preview-cte`, the VS Code palette).
 - [ ] **AST-driven features for duckdb projects** (spec 07 §4,
       `json_serialize_sql` AST): column-name completion, AST-based graph
       edges, better CTE information.
@@ -256,6 +352,17 @@ names what already exists in the codebase.
 ## P4 — not planned / needs a Jinja renderer or major new scope
 
 Implemented from this bucket (they turned out cheap on the existing data):
+- [x] `textDocument/implementation` for dispatched macros: every
+      `<adapter>__x` / `default__x` in dbt's dispatch search order (the
+      `dispatch:` config, the root project, the namespace), asked from an
+      `adapter.dispatch` call, a call of the dispatching macro or its
+      header; hover names the implementation the active adapter picks
+      (`features/dispatch/`, docs/macros.md)
+- [x] Macro call checks: `macro-arg-count`, `macro-unknown-kwarg`
+      (did-you-mean quickfix), `macro-duplicate-kwarg` and
+      `dispatch-no-default`, arguments read by minijinja's parser, lenient
+      for bodies reading `varargs`/`kwargs`; on by default, `lint:
+      {macro_calls, dispatch}` turns them off (`features/macro_calls/`)
 - [x] `textDocument/documentHighlight` (same literal + kind occurrences)
 - [x] `workspace/symbol` (models, sources, macros)
 
@@ -266,12 +373,14 @@ Still open, with reasons:
 - `textDocument/codeAction`, `prepareRename`,
   `inlineValue`,
   `documentColor`
-- `textDocument/typeDefinition` / `implementation` / `declaration`
-  (little meaning for dbt sources)
+- `textDocument/typeDefinition`
+  (little meaning for dbt sources; `declaration` and `implementation`
+  are implemented above)
 - Call/type hierarchy (could model macro call chains someday)
 - workspace folders / multi-root (only the deprecated
   `rootPath` is read), `workspace/didChangeConfiguration`,
-  `workspace/applyEdit`, file-operation notifications, `$/progress`
+  `workspace/applyEdit`, `$/progress` (file operations: implemented
+  above)
 
 - [ ] **Quickfix code actions from did-you-mean suggestions** — purely
       additive on top of the Guidance diagnostics: needs Diagnostic.data +

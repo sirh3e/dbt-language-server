@@ -23,12 +23,25 @@ pub fn model_info(
     uri: &str,
     model: Option<&str>,
 ) -> Reply {
-    let compute = || serde_json::to_string(&features::model_info(&snap.ctx, uri, model)).ok();
+    let project = snap
+        .ctx
+        .project_root
+        .as_deref()
+        .and_then(|root| derived.project_schemas(root));
+    let compute = || {
+        let mut info = features::model_info(&snap.ctx, uri, model);
+        if let (Some(info), Some(project)) = (info.as_mut(), project.as_deref()) {
+            info.column_types =
+                features::column_types::column_types(&snap.ctx, project, &info.model);
+        }
+        serde_json::to_string(&info).ok()
+    };
+    let revision = project.as_ref().map_or(0, |p| p.revision);
     let json = match super::super::schema_fingerprint(&snap.ctx, uri, model) {
         Some(fp) => derived.result(
             Arc::as_ptr(&snap.ctx) as usize,
             &format!("modelInfo:{uri}:{}", model.unwrap_or_default()),
-            fp,
+            format!("{fp}|types@{revision}"),
             compute,
         ),
         None => compute().map(|s| Arc::from(s.as_str())),

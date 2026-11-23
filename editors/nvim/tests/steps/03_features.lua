@@ -88,6 +88,19 @@ return function(ctx)
     vim.inspect(unresolved_result):sub(1, 200)
   )
 
+  local select_result = H.exec_cmd(client, bufnr, "dbt.select", {
+    uri = vim.uri_from_bufnr(bufnr),
+    selector = "tag:nightly",
+  }, "integration: dbt.select")
+  H.check(
+    type(select_result) == "table"
+      and type(select_result.nodes) == "table"
+      and select_result.count >= 1
+      and select_result.nodes[1].name == "customers",
+    "integration: dbt.select picks the nightly model",
+    vim.inspect(select_result):sub(1, 200)
+  )
+
   local cache_result = H.exec_cmd(client, bufnr, "dbt.cache", {
     uri = vim.uri_from_bufnr(bufnr),
     action = "stats",

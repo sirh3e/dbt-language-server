@@ -11,6 +11,7 @@ import * as vscode from "vscode";
 import type { CogitatorApi } from "../../extension";
 import {
   astGrepLabel,
+  breakingLines,
   captureColor,
   incrementalDiffText,
   incrementalityLabel,
@@ -18,6 +19,7 @@ import {
   nodeMarkdown,
   parseAstGrep,
   parseNode,
+  previewCteText,
   skippedLayers,
   unresolvedLabel,
   selectedLabel,
@@ -204,6 +206,18 @@ export async function run(): Promise<void> {
       identical: false,
     }) === "--- a\n+++ b\n",
     "vscode: incrementalDiffText shows the unified diff"
+  );
+  check(
+    previewCteText({
+      model: "m",
+      columns: ["id"],
+      rows: [[1]],
+      truncated: false,
+      sql: "select 1",
+      source: "compiled",
+      table: "| id |\n| --- |\n| 1 |\n",
+    }) === "| id |\n| --- |\n| 1 |\n",
+    "vscode: previewCteText is the server's table"
   );
   check(
     splitText({
@@ -397,6 +411,47 @@ export async function run(): Promise<void> {
     unresolvedResult
   );
 
+  check(
+    JSON.stringify(
+      breakingLines({
+        summary: "1 breaking change(s): customer_id removed",
+        diff: { removed: [{ name: "customer_id", possiblyRenamedTo: "customer_key" }] },
+        impacts: [
+          {
+            column: "customer_id",
+            change: "removed",
+            severity: "error",
+            tests: ["unique"],
+            downstream: [{ model: "customers", column: "customer_id", contracted: true }],
+          },
+        ],
+      })
+    ) ===
+      JSON.stringify([
+        "[error] customer_id removed (possibly renamed to customer_key) — tested: unique",
+        "  read by customers.customer_id (contracted)",
+      ]),
+    "vscode: a breaking change and its downstream reads are lines"
+  );
+  const breakingResult = (await exec("dbt.breakingChanges", {
+    uri: document.uri.toString(),
+  })) as { status?: string } | null;
+  check(
+    typeof breakingResult?.status === "string",
+    "vscode: dbt.breakingChanges answers a status",
+    breakingResult
+  );
+
+  const selectResult = (await exec("dbt.select", {
+    uri: document.uri.toString(),
+    selector: "tag:nightly",
+  })) as { count?: number; nodes?: Array<{ name: string }> } | null;
+  check(
+    typeof selectResult?.count === "number" && selectResult?.nodes?.[0]?.name === "customers",
+    "vscode: dbt.select picks the nightly model",
+    selectResult
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -406,12 +461,15 @@ export async function run(): Promise<void> {
       "cogitator.restart",
       "cogitator.splitPlan",
       "cogitator.incrementalDiff",
+      "cogitator.previewCte",
       "cogitator.incrementality",
       "cogitator.syntaxTree",
       "cogitator.highlight",
       "cogitator.astGrep",
       "cogitator.nodeInfo",
+      "cogitator.select",
       "cogitator.unresolved",
+      "cogitator.breakingChanges",
     ].every((c) =>
       commands.includes(c)
     ),

@@ -75,13 +75,15 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     },
     SectionSchema {
         name: "lint",
-        doc: "Opt-in style diagnostics; every check defaults to off.",
+        doc: "Style diagnostics default to off; the macro call and dispatch checks default to on.",
         keys: &[
             key("select_star", "Warn on SELECT * outside staging models.", "bool"),
             key("unaliased_columns", "Warn on bare columns in multi-relation FROM/JOINs.", "bool"),
             key("trailing_comma", "Warn on trailing commas the dialect rejects.", "bool"),
             key("undocumented_columns", "Hint on produced columns missing from the schema YAML.", "bool"),
             key("dead_models", "Hint on models nothing downstream uses.", "bool"),
+            key("macro_calls", "Warn on macro calls whose arguments the macro does not take (default on).", "bool"),
+            key("dispatch", "Warn on adapter.dispatch calls with no default__ nor active-adapter implementation (default on).", "bool"),
         ],
     },
     SectionSchema {
@@ -180,6 +182,14 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("incr.could_be_incremental", "A table that could be built incrementally.", RULE_SEVERITIES),
         ],
     },
+    SectionSchema {
+        name: "preview",
+        doc: "dbt.previewCte (the \"Preview rows\" lenses): how many rows a preview shows.",
+        keys: &[
+            key("rows", "Rows a preview shows when the call names no limit (default 20).", "rows"),
+            key("max_rows", "The most rows a preview may ask for; larger limits are capped (default 1000).", "rows"),
+        ],
+    },
 ];
 
 /// The `perf_rules` value set (one severity per entry).
@@ -193,6 +203,11 @@ pub mod lint_flags {
     pub const TRAILING_COMMA: u32 = 1 << 2;
     pub const UNDOCUMENTED_COLUMNS: u32 = 1 << 3;
     pub const DEAD_MODELS: u32 = 1 << 4;
+    pub const MACRO_CALLS: u32 = 1 << 5;
+    pub const DISPATCH: u32 = 1 << 6;
+    /// The checks that are on unless cogitator.yml turns them off: they
+    /// report what fails at compile or run time, not style.
+    pub const DEFAULT_ON: u32 = MACRO_CALLS | DISPATCH;
 }
 
 /// The section entry by name.

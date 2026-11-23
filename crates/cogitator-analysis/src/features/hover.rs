@@ -9,7 +9,8 @@ use crate::lineage::{self, ModelLineage};
 /// Hover (03 §9.1). Default: empty contents. Computes lineage; a server
 /// handler on the dispatcher path uses [`hover_with_lineage`].
 pub fn hover(ctx: &DbtContext, doc: &Document, pos: Position) -> String {
-    hover_inner(ctx, doc, pos, Lineage::Compute)
+    let text = hover_inner(ctx, doc, pos, Lineage::Compute);
+    super::dispatch::implementation::with_dispatch_line(ctx, doc, pos, text)
 }
 
 /// Hover with the lineage the caller already holds. `None` omits the
@@ -20,7 +21,8 @@ pub fn hover_with_lineage(
     pos: Position,
     lineage: Option<&ModelLineage>,
 ) -> String {
-    hover_inner(ctx, doc, pos, Lineage::Given(lineage))
+    let text = hover_inner(ctx, doc, pos, Lineage::Given(lineage));
+    super::dispatch::implementation::with_dispatch_line(ctx, doc, pos, text)
 }
 
 enum Lineage<'a> {

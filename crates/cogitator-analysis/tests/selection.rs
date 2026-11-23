@@ -2,12 +2,19 @@
 //! and jaffle_shop: every method, graph and set operator, globs,
 //! selectors.yml, --exclude, eager test inclusion, the refusals, and
 //! parse errors with their spans. Expected sets are what dbt answers by
-//! dbt-core's rules (graph/selector.py, selector_methods.py).
+//! dbt-core's rules (graph/selector.py, selector_methods.py); every
+//! vault_lake selection without `--exclude` but `tag:nightly` was checked against `dbt ls` of
+//! dbt-core 1.12.7 with oracles/selection.sh (2026-11-23). dbt ignores a
+//! model entry's top-level `tags:`, which vault_lake's dim_items uses and
+//! the engine reads (ENTRY_CONFIG_KEYS), so dbt lists no `tag:nightly`.
 
 use std::path::PathBuf;
 
-use cogitator_analysis::features::selection::{self, build_universe};
-use cogitator_analysis::{build_context, DbtContext};
+use cogitator_analysis::build_context;
+use cogitator_analysis::features::selectors_yml::{
+    select_nodes, vocabulary, SelectAnswer, SelectRequest,
+};
+use cogitator_analysis::selectors::{self, Definition, Universe};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -15,22 +22,30 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn project(name: &str) -> (DbtContext, selection::Universe) {
+/// The project's universe and its selectors.yml definitions.
+fn project(name: &str) -> (Vec<Definition>, Universe) {
     let root = fixture(name);
     let ctx = build_context(root.to_str().unwrap());
-    let manifest = std::fs::read_to_string(root.join("target/manifest.json"))
-        .ok()
-        .and_then(|t| {
-            cogitator_analysis::artifacts::manifest::parse(&t, &root.join("target/manifest.json"))
-                .ok()
-        });
-    let universe = build_universe(&ctx, manifest.as_ref());
-    (ctx, universe)
+    let read = |path: &std::path::Path| std::fs::read_to_string(path).ok();
+    let universe = selectors::universe(&ctx, &read);
+    (ctx.selectors.definitions.clone(), universe)
+}
+
+fn select(defs: &[Definition], u: &Universe, select: &str, exclude: Option<&str>) -> SelectAnswer {
+    select_nodes(
+        u,
+        defs,
+        &SelectRequest {
+            select,
+            exclude,
+            vocabulary: false,
+        },
+    )
 }
 
 /// `type:name` of what `text` selects, in the answer's order.
-fn picked(ctx: &DbtContext, u: &selection::Universe, text: &str) -> Vec<String> {
-    let result = selection::select(ctx, u, text, None);
+fn picked(defs: &[Definition], u: &Universe, text: &str) -> Vec<String> {
+    let result = select(defs, u, text, None);
     if let Some(e) = result.error {
         panic!("{text}: {} at {}..{}", e.message, e.start, e.end);
     }
@@ -74,7 +89,8 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 #[case("dim_items", with_dim_tests(&["model:dim_items"]))]
 #[case("dim", with_dim_tests(&["model:dim_items"]))]
 #[case("vault_lake.dim", with_dim_tests(&["model:dim_items"]))]
-#[case("raw_vault", v(&["model:hub_item", "model:sat_item_version"]))]
+// an exposure under a folder is in its fqn; a source is not (dbt ls, dbt-core 1.12)
+#[case("raw_vault", v(&["model:hub_item", "model:sat_item_version", "exposure:item_history_feed"]))]
 // graph operators
 #[case("+dim_items", with_dim_tests(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items"]))]
 #[case("1+dim_items", with_dim_tests(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:dim_items", "model:hub_item"]))]
@@ -131,17 +147,17 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 #[case("tag:lake --exclude resource_type:test", v(&["model:bv_item_transitions", "model:dim_items", "model:hub_item", "model:sat_item_version", "unit_test:test_dim_items_keeps_the_previous_state"]))]
 #[case("tag:lake --exclude dim_items", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:hub_item", "model:sat_item_version"]))]
 fn vault_lake_selects_as_dbt_does(#[case] text: &str, #[case] expected: Vec<String>) {
-    let (ctx, u) = project("vault_lake");
-    assert_eq!(sorted(picked(&ctx, &u, text)), sorted(expected), "{text}");
+    let (defs, u) = project("vault_lake");
+    assert_eq!(sorted(picked(&defs, &u, text)), sorted(expected), "{text}");
 }
 
 #[test]
 fn the_answer_is_ordered_by_resource_type_and_counted() {
-    let (ctx, u) = project("vault_lake");
-    let result = selection::select(&ctx, &u, "+dim_items", None);
+    let (defs, u) = project("vault_lake");
+    let result = select(&defs, &u, "+dim_items", None);
     let types: Vec<&str> = result.nodes.iter().map(|n| n.resource_type).collect();
     let mut expected = types.clone();
-    let order = ["model", "seed", "snapshot", "source", "test", "unit_test"];
+    let order = ["model", "seed", "snapshot", "test", "unit_test", "source"];
     expected.sort_by_key(|t| order.iter().position(|o| o == t));
     assert_eq!(types, expected);
     assert_eq!(result.counts.get("model"), Some(&4));
@@ -152,7 +168,7 @@ fn the_answer_is_ordered_by_resource_type_and_counted() {
         .find(|n| n.name == "bv_item_transitions")
         .unwrap();
     assert_eq!(bv.unique_id, "model.vault_lake.bv_item_transitions.v1");
-    assert_eq!(bv.listed_name(), "bv_item_transitions.v1");
+    assert_eq!(bv.label, "bv_item_transitions.v1");
     let dim = result.nodes.iter().find(|n| n.name == "dim_items").unwrap();
     assert_eq!(dim.unique_id, "model.vault_lake.dim_items");
     assert_eq!(dim.graph_id.as_deref(), Some("model:dim_items"));
@@ -166,27 +182,26 @@ fn the_answer_is_ordered_by_resource_type_and_counted() {
         .find(|n| n.name == "not_null_dim_items_item_version_id")
         .unwrap();
     assert!(
-        generic.range.is_some() && generic.graph_id.is_none(),
+        generic.range != Default::default() && generic.graph_id.is_none(),
         "a YAML test opens at its line"
     );
 }
 
 #[test]
 fn an_exclusion_may_come_on_its_own() {
-    let (ctx, u) = project("vault_lake");
-    let result = selection::select(&ctx, &u, "tag:raw", Some("hub_item"));
+    let (defs, u) = project("vault_lake");
+    let result = select(&defs, &u, "tag:raw", Some("hub_item"));
     let names: Vec<&str> = result.nodes.iter().map(|n| n.name.as_str()).collect();
     assert_eq!(names, vec!["sat_item_version"]);
 }
 
 #[rstest::rstest]
-#[case("tag:", None, 0, 4, "needs a value")]
+#[case("tag:", None, 0, 4, "no value")]
 #[case("tag:raw bogus:x", None, 8, 14, "no selection method")]
 #[case("state:modified+", None, 0, 15, "previous dbt run")]
 #[case("resource_type:modle", None, 0, 19, "no resource type")]
-#[case("config.schema:dim", None, 0, 17, "not known to the editor")]
 #[case("selector:nope", None, 0, 13, "has no selector")]
-#[case("tag:raw --exclude tag:", None, 18, 22, "needs a value")]
+#[case("tag:raw --exclude tag:", None, 18, 22, "no value")]
 #[case(
     "tag:raw --exclude resource_type:nope",
     None,
@@ -195,6 +210,7 @@ fn an_exclusion_may_come_on_its_own() {
     "no resource type"
 )]
 #[case("tag:raw", Some("x,,y"), 2, 3, "empty criterion")]
+#[case("tag:raw,", None, 7, 8, "empty criterion")]
 fn errors_say_what_and_where(
     #[case] text: &str,
     #[case] exclude: Option<&str>,
@@ -202,8 +218,8 @@ fn errors_say_what_and_where(
     #[case] end: usize,
     #[case] says: &str,
 ) {
-    let (ctx, u) = project("vault_lake");
-    let result = selection::select(&ctx, &u, text, exclude);
+    let (defs, u) = project("vault_lake");
+    let result = select(&defs, &u, text, exclude);
     let error = result.error.expect("an error");
     assert!(error.message.contains(says), "{}", error.message);
     assert_eq!((error.start, error.end), (start, end), "{}", error.message);
@@ -212,21 +228,21 @@ fn errors_say_what_and_where(
 
 #[test]
 fn jaffle_shops_selectors_and_tags() {
-    let (ctx, u) = project("jaffle_shop_duckdb");
-    let nightly = picked(&ctx, &u, "selector:nightly");
+    let (defs, u) = project("jaffle_shop_duckdb");
+    let nightly = picked(&defs, &u, "selector:nightly");
     assert!(
         nightly.contains(&"model:customers".to_string()),
         "{nightly:?}"
     );
     assert_eq!(
-        picked(&ctx, &u, "resource_type:seed"),
+        picked(&defs, &u, "resource_type:seed"),
         vec!["seed:raw_customers", "seed:raw_orders", "seed:raw_payments"]
     );
     assert_eq!(
-        picked(&ctx, &u, "resource_type:snapshot"),
+        picked(&defs, &u, "resource_type:snapshot"),
         vec!["snapshot:orders_snapshot"]
     );
-    let staging = picked(&ctx, &u, "staging,resource_type:model");
+    let staging = picked(&defs, &u, "staging,resource_type:model");
     assert!(
         staging
             .iter()
@@ -241,9 +257,12 @@ fn jaffle_shops_selectors_and_tags() {
 
 #[test]
 fn the_vocabulary_offers_what_the_project_has() {
-    let (ctx, u) = project("vault_lake");
-    let vocab = selection::vocabulary(&ctx, &u);
-    assert!(vocab.methods.contains(&"tag") && vocab.methods.contains(&"config.materialized"));
+    let (defs, u) = project("vault_lake");
+    let vocab = vocabulary(&u, &defs);
+    assert!(
+        vocab.methods.iter().any(|m| m == "tag")
+            && vocab.methods.iter().any(|m| m == "config.materialized")
+    );
     let tags = &vocab.values["tag"];
     for tag in [
         "history",
@@ -265,7 +284,7 @@ fn the_vocabulary_offers_what_the_project_has() {
 fn no_text_makes_it_panic() {
     // every string of up to 6 characters over the grammar's alphabet,
     // sampled: the parser and evaluator answer or refuse, never panic
-    let (ctx, u) = project("vault_lake");
+    let (defs, u) = project("vault_lake");
     let alphabet: Vec<char> = "@+1,: .*?[]!-xtag".chars().collect();
     let mut seed: u64 = 0x5eed;
     for _ in 0..20_000 {
@@ -276,8 +295,8 @@ fn no_text_makes_it_panic() {
         let text: String = (0..len)
             .map(|i| alphabet[((seed >> (i * 5)) as usize) % alphabet.len()])
             .collect();
-        let _ = selection::select(&ctx, &u, &text, None);
-        let _ = selection::select(&ctx, &u, &format!("tag:{text}"), Some(&text));
+        let _ = select(&defs, &u, &text, None);
+        let _ = select(&defs, &u, &format!("tag:{text}"), Some(&text));
     }
     for odd in [
         "--exclude",
@@ -293,6 +312,6 @@ fn no_text_makes_it_panic() {
         "--exclude --exclude",
         "é:ü+",
     ] {
-        let _ = selection::select(&ctx, &u, odd, None);
+        let _ = select(&defs, &u, odd, None);
     }
 }

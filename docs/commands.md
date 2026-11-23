@@ -109,6 +109,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit]
 - **Editors**: Neovim ✓ · Emacs — · VS Code ✓
 
+### `dbt.previewCte`
+
+- **Argument**: `{uri, cte?, position?, limit?}` — the model; the CTE to preview, else the CTE under `position`, else the final select; rows to show (default cogitator.yml `preview.rows`, 20, capped at `preview.max_rows`, 1000)
+- **Result**: `{model, cte, columns, rows, truncated, limit, sql, source, uri, table}` once dbt has answered (`source` is `compiled` when `target/compiled` is current, else `rendered` by the dbt.expandJinja renderer; `table` is the markdown); RequestFailed with a Guidance when the SQL is not one SELECT, has no such CTE, or dbt fails; RequestCancelled after `dbt.cancel`
+- **Side effects**: `dbt show --inline "<with … up to the CTE> select * from <cte> limit N+1" --limit N+1 --output json` as a job of the registry (active target and profiles, token in the `$/progress` title); the table lands in `target/.cogitator/preview/<model>.<cte|final>.md` and opens via showDocument. The "Preview rows" code lens on every CTE and on the final select runs it
+- **Editors**: Neovim ✓ (:DbtPreviewCte [limit], a split) · Emacs ✓ (`cogitator-preview-cte`, `*cogitator-preview*`) · VS Code ✓ (`dbt: Preview rows of the CTE under the cursor`)
+
 ### `dbt.parse`
 
 - **Argument**: `{uri}` — the document the command is about
@@ -163,7 +170,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.modelInfo`
 
 - **Argument**: `{uri?, model?}` — `model` wins
-- **Result**: `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri, coverage}` or `null` — `coverage` is `{columns, documented, tested, described}` from the YAML entry
+- **Result**: `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri, coverage, columnTypes?}` or `null` — `coverage` is `{columns, documented, tested, described}` from the YAML entry; `columnTypes` (once the project schema job has typed the saved model) is `{model, revision, columns: [{name, dataType, description, nullable, basis, provenance, feeds, why}]}`: `dataType` is the dialect's spelling and only set when the type is pinned exactly, `basis` is `proven`, `declared` (rests on an unenforced YAML `data_type`) or `unknown` (see [properties-yaml.md](properties-yaml.md#column-types))
 - **Side effects**: none
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
@@ -194,6 +201,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Result**: `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}`
 - **Side effects**: none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models)
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
+
+### `dbt.breakingChanges`
+
+- **Argument**: `{uri}` — a model's `.sql` buffer
+- **Result**: `{model, status, baseline?: {source, generatedAt?}, summary, diff: {removed: [{name, dataType?, possiblyRenamedTo?}], added: [{name, dataType?}], retyped: [{name, from, to}]}, impacts: [{column, change, severity, tests, downstream: [{model, column, tests, contracted, public}]}], exposures, public, truncated}`. `status` is `compared`, `noBaseline` (no `target/catalog.json` or `target/manifest.json` entry with columns: nothing is reported) or `unknownColumns` (an unexpanded `*`, unparseable SQL). The current columns come from the open buffer's typed lineage; the baseline is `target/catalog.json` (warehouse columns and types), else the manifest's documented columns. `possiblyRenamedTo` pairs a removed column with an added one of a similar name — a hint, never asserted. Type changes are reported only when both types are known (the current side's types are the inferred output-column types of the saved files, and only a proven type with an exact spelling counts; any other column is compared by name). `severity`: `error` for a removed column a test or a contracted downstream model relies on, `warning` when anything reads it (downstream columns, a public model, exposures), `information` otherwise
+- **Side effects**: none. On open and save the server also computes the saved file's report off the request path; its findings are `breaking-change` diagnostics (push and pull) and a lens `N breaking changes` that runs this command
+- **Editors**: Neovim ✓ (`:DbtBreakingChanges` quickfix, `:Dbt breaking`) · Emacs ✓ (`M-x cogitator-breaking-changes`) · VS Code ✓ (`dbt: Breaking changes against the last build`)
 
 ### `dbt.deadModels`
 
@@ -296,10 +310,10 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.select`
 
-- **Argument**: `{select, exclude?, vocabulary?}` — dbt's node-selection syntax as `--select` takes it (space a union, `,` an intersection, `[@][n+]method:value[+n]`); `select` may carry an inline `--exclude …`; `vocabulary: true` adds what completion offers
-- **Result**: `{nodes: [{uniqueId, resourceType, name, package, path, tags, uri, range, graphId}], counts, error, vocabulary?}` — the nodes `dbt ls --select … --exclude …` would list (models, seeds, snapshots, source tables, singular, generic and unit tests, analyses, exposures, metrics, semantic models), by resource type then name; tests directly on a selected node come with it (dbt's eager indirect selection). Methods: `fqn` (the default, also a folder or package), `tag`, `path`, `file`, `package`, `resource_type`, `config.materialized` / `config.tags` / `config.access` / `config.group`, `access`, `group`, `source`, `exposure`, `metric`, `semantic_model`, `test_type`, `test_name`, `unit_test`, `selector` (selectors.yml definitions, unions, intersections and exclusions). Folder `+tags` / `+materialized` of dbt_project.yml count; target/manifest.json's materialized wins where it has the node. `state:`, `result:`, `source_status:` and `saved_query:` are refused (they need a previous run's artifacts), as is `version:`. A text that is no selection answers `error: {message, start, end}` (byte offsets) and no nodes. Packages count (each installed package's models, seeds, tests and folder configs), YAML-defined snapshots, a version of a versioned model as dbt names it (`orders.v1`), and the refs of the macros a node calls; a macro that returns while dbt parses (`{% if not execute %}{{ return(…) }}`) refs nothing. **Read, not rendered**: refs on every branch of a Jinja `if` count where dbt counts only the branch its target renders, and `source('x', <a variable>)` is not followed. `oracles/selection.sh` diffs dbt.select with `dbt ls`: on six real projects (2026-11-23), 66 of 72 selections were identical, the rest these two cases
-- **Side effects**: none
-- **Editors**: Neovim ✓ (`:DbtSelect`, the navigator's `f` and `/`: live, `<Tab>` completes, `<C-a>` marks every match, `<C-r>` runs it through `dbt.runSelection` with `exclude`) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`, live)
+- **Argument**: `{select, exclude?, vocabulary?, uri?}` — dbt's node-selection syntax as `--select` takes it (space a union, `,` an intersection, `[@][n+]method:value[+n]`); `select` may carry an inline `--exclude …`, and `exclude` is one more; `selector` is accepted for `select` (the selectors.yml lenses send it); `selector:<name>` evaluates a selectors.yml definition (the open buffer's text when selectors.yml is open); `vocabulary: true` adds what completion offers
+- **Result**: `{selector, count, counts, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error, vocabulary?}` — what `dbt ls --select … --exclude …` would list (eager indirect selection brings tests along), by resource type then name; `name` is dbt's name (a source's table, a model without its version), `label` how `dbt ls --output name` prints it (`landing.items`, `orders.v1`), `graphId` the node's id in `dbt.projectGraph` where it has one, `counts` how many of each resource type. What dbt refuses — a text that does not parse, an empty criterion (`a,,b`), an unknown method, resource type or selector, `state:` / `result:` / `source_status:` (they need a previous run), a cycle between selectors — answers `error: {message, start, end}` (byte offsets into `select`, or into `exclude`) and no nodes; `issues` says what was not evaluated, in words. One engine serves it with every other selector feature: see [selectors.md](selectors.md). `oracles/selection.sh` diffs it with `dbt ls`: on testdata/vault_lake every selection of its tests without `--exclude` is what dbt-core 1.12.7 lists, but `tag:nightly` (dbt ignores a model entry's top-level `tags:`, which the engine reads)
+- **Side effects**: none (read-only; reads the project's files off the dispatcher). The "N nodes match" lens on each selectors.yml definition sends it with `selector:<name>`
+- **Editors**: Neovim ✓ (`:DbtSelect`, `:Dbt select`, `:DbtFind select`, the navigator's `f` and `/`: live, `<Tab>` completes, `<C-a>` marks every match, `<C-r>` runs it through `dbt.runSelection` with `exclude`) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`, live)
 
 ## Profiles, configuration and health
 

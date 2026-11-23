@@ -8,6 +8,7 @@ use std::path::Path;
 
 use cogitator_error::guidance::Guidance;
 
+pub use super::manifest_columns::ManifestColumn;
 pub use super::manifest_config::ManifestConfig;
 
 #[derive(Debug, Default)]
@@ -24,6 +25,8 @@ pub struct ManifestNode {
     /// The rendered, quoted relation; `None` for ephemeral models.
     pub relation_name: Option<String>,
     pub config: ManifestConfig,
+    /// Documented columns, sorted by name (the breaking-change baseline).
+    pub columns: Vec<ManifestColumn>,
 }
 
 #[derive(Debug)]
@@ -69,6 +72,10 @@ pub fn parse(text: &str, path: &Path) -> Result<ManifestIndex, Guidance> {
                         config: node
                             .config
                             .map(super::manifest_config::parse_config)
+                            .unwrap_or_default(),
+                        columns: node
+                            .columns
+                            .map(super::manifest_columns::parse_columns)
                             .unwrap_or_default(),
                     },
                 );

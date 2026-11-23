@@ -3,17 +3,23 @@
 //! (functional core / imperative shell, 05 §3).
 
 mod artifact_status;
+pub mod breaking;
 mod call_hierarchy;
 mod code_actions;
+pub mod column_types;
 mod compiled;
 mod compiled_map;
 mod completion;
+mod cte_preview;
 mod dead_models;
+mod declaration;
 mod definition;
 mod diagnostics;
+pub mod dispatch;
 mod document_links;
 mod env_vars;
 mod extract;
+mod file_ops;
 pub mod formatting;
 mod governance;
 mod graph_nav;
@@ -26,6 +32,7 @@ mod jinja_preview;
 mod lenses;
 mod linked_editing;
 pub mod lint;
+pub mod macro_calls;
 mod model_info;
 mod navigation;
 pub mod plan;
@@ -33,9 +40,11 @@ pub mod quality;
 mod references;
 mod relation;
 mod rename;
+mod rename_column;
+mod rename_local;
 mod rename_macro;
 mod rename_var;
-pub mod selection;
+pub mod selectors_yml;
 mod semantic_captures;
 mod signature;
 mod structure;
@@ -70,14 +79,23 @@ pub use compiled_map::{
     compiled_definition, compiled_hover, compiled_line_map, compiled_source_path, SourceLines,
 };
 pub use completion::{completion, resolve_completion_documentation};
+pub use cte_preview::{
+    choose_source, cte_at, cte_preview_lenses, parse_show, preview_file_name, preview_query,
+    render_markdown, CtePreview, PreviewSource, ShowTable,
+};
 pub use dead_models::{dead_models, is_dead, DeadModel};
+pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
 pub use diagnostics::{
     citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
 };
+pub use dispatch::implementation::implementation;
 pub use document_links::{document_links, document_links_at};
 pub use env_vars::env_var_diagnostics;
 pub use extract::{extract_model_yaml, ExtractEdit};
+pub use file_ops::{
+    delete_warning, deleted_with_dependents, touches_project, will_rename_files, DeletedModel,
+};
 pub use governance::{contract_diagnostics, private_ref_diagnostics};
 pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
@@ -97,13 +115,17 @@ pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
-pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
+pub use navigation::{
+    document_highlights, document_symbols, references, workspace_symbols, workspace_symbols_in,
+};
 pub use references::references_at;
 pub use relation::{
     relation_info, with_manifest_relation, RelationInfo, RelationKind, RelationOrigin,
     TargetRelation,
 };
 pub use rename::{prepare_rename, rename_model};
+pub use rename_column::{prepare_rename_column, rename_column_at};
+pub use rename_local::{local_highlights, local_references, prepare_rename_local, rename_local_at};
 pub use rename_macro::{prepare_rename_at, rename_at};
 pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};
 pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};

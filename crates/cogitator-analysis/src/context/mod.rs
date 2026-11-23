@@ -114,6 +114,8 @@ pub struct DbtContext {
     /// What `env_var()` sees: process environment, `.env`, profiles uses.
     pub env: env::EnvVars,
     pub selector_detail_map: HashMap<String, SelectorDetails>,
+    /// `<root>/selectors.yml` read as set expressions (selector engine).
+    pub selectors: crate::selectors::yaml::SelectorsFile,
     /// packages.yml/dependencies.yml declarations, by installable name.
     pub declared_packages: Vec<String>,
     pub exposure_detail_map: HashMap<String, exposures::CitizenDetails>,
@@ -229,7 +231,7 @@ impl ContextBuilder {
         // detection and navigation treat them as present (05 §5).
         graph.fill_model_uris(|name| models.get(name).map(|d| d.uri.clone()));
 
-        let selector_detail_map = load_selectors(&root);
+        let (selector_detail_map, selectors) = load_selectors(&root);
         let declared_packages = packages::declared_packages(&root);
         let env = env::load_env(&root, &self.profiles_dir, workspace_root);
 
@@ -276,6 +278,7 @@ impl ContextBuilder {
             var_reads: Some(var_reads),
             env,
             selector_detail_map,
+            selectors,
             declared_packages,
             exposure_detail_map,
             metric_detail_map,
@@ -287,44 +290,52 @@ impl ContextBuilder {
 }
 
 /// `<root>/selectors.yml` → name/description entries with positions
-/// (selector search; absent file → empty map).
-fn load_selectors(root: &Path) -> HashMap<String, SelectorDetails> {
-    use cogitator_schemas::yaml::{as_str, get, items, position_of};
+/// (selector search) and the definitions as set expressions (absent
+/// file → empty).
+fn load_selectors(
+    root: &Path,
+) -> (
+    HashMap<String, SelectorDetails>,
+    crate::selectors::yaml::SelectorsFile,
+) {
+    use cogitator_schemas::yaml::{get, items, to_json};
     use saphyr::{LoadableYamlNode, MarkedYaml};
 
     let path = root.join("selectors.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        return HashMap::new();
+        return Default::default();
     };
-    let Ok(docs) = MarkedYaml::load_from_str(&text) else {
-        return HashMap::new();
-    };
-    let Some(top) = docs.first() else {
-        return HashMap::new();
-    };
-    let mut out = HashMap::new();
-    for entry in get(top, "selectors").into_iter().flat_map(items) {
-        let Some(name) = get(entry, "name").and_then(as_str) else {
-            continue;
-        };
-        let position = get(entry, "name").map(position_of).unwrap_or_default();
-        out.insert(
-            name.to_string(),
-            SelectorDetails {
-                name: name.to_string(),
-                description: get(entry, "description")
-                    .and_then(as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                uri: path.clone(),
-                range: Range::zero_width(position),
-                definition_text: get(entry, "definition")
-                    .map(|d| cogitator_schemas::yaml::to_json(d).to_string())
-                    .unwrap_or_default(),
-            },
-        );
+    let file = crate::selectors::yaml::parse(&text);
+    // the definitions' JSON text, for dead-model detection's verbatim scan
+    let mut json = HashMap::new();
+    if let Some(top) = MarkedYaml::load_from_str(&text)
+        .ok()
+        .and_then(|d| d.into_iter().next())
+    {
+        for entry in get(&top, "selectors").into_iter().flat_map(items) {
+            let name = get(entry, "name").map(to_json);
+            if let (Some(serde_json::Value::String(name)), Some(def)) =
+                (name, get(entry, "definition"))
+            {
+                json.insert(name, to_json(def).to_string());
+            }
+        }
     }
-    out
+    let out = file
+        .definitions
+        .iter()
+        .map(|d| {
+            let details = SelectorDetails {
+                name: d.name.clone(),
+                description: d.description.clone(),
+                uri: path.clone(),
+                range: Range::zero_width(d.range.start),
+                definition_text: json.remove(&d.name).unwrap_or_default(),
+            };
+            (d.name.clone(), details)
+        })
+        .collect();
+    (out, file)
 }
 
 /// [`load_project_file`] for other modules: a package's dbt_project.yml.

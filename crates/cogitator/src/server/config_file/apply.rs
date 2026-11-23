@@ -27,6 +27,8 @@ pub enum Change {
     InlayVars(bool),
     InlayEnvVars(bool),
     InlayJinja(bool),
+    PreviewRows(u64),
+    PreviewMaxRows(u64),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -111,6 +113,16 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.inlay.jinja != new.inlay.jinja {
         out.push(Change::InlayJinja(new.inlay.jinja.unwrap_or(false)));
     }
+    if old.preview.rows != new.preview.rows {
+        out.push(Change::PreviewRows(
+            new.preview.rows.unwrap_or(baseline.preview_rows),
+        ));
+    }
+    if old.preview.max_rows != new.preview.max_rows {
+        out.push(Change::PreviewMaxRows(
+            new.preview.max_rows.unwrap_or(baseline.preview_max_rows),
+        ));
+    }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
         // cogitator.yml diagnostics flag the typo separately
@@ -147,7 +159,9 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::Vars(_)
             | Change::InlayVars(_)
             | Change::InlayEnvVars(_)
-            | Change::InlayJinja(_) => true,
+            | Change::InlayJinja(_)
+            | Change::PreviewRows(_)
+            | Change::PreviewMaxRows(_) => true,
         })
         .collect()
 }
@@ -163,6 +177,8 @@ pub struct Baseline {
     pub warehouse_columns: bool,
     pub client_log_level: u8,
     pub perf: PerfSettings,
+    pub preview_rows: u64,
+    pub preview_max_rows: u64,
 }
 
 /// Apply changes to the live state; returns the key names for the one
@@ -238,6 +254,14 @@ pub fn apply(
                 toggles.inlay_jinja.store(*on, Ordering::Relaxed);
                 applied.push("inlay.jinja");
             }
+            Change::PreviewRows(rows) => {
+                limits.preview_rows.store(*rows, Ordering::Relaxed);
+                applied.push("preview.rows");
+            }
+            Change::PreviewMaxRows(rows) => {
+                limits.preview_max_rows.store(*rows, Ordering::Relaxed);
+                applied.push("preview.max_rows");
+            }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc
                 *toggles.perf.write().expect("perf settings lock") =
@@ -266,6 +290,8 @@ mod tests {
             warehouse_columns: false,
             client_log_level: crate::client_log::level::INFO,
             perf: PerfSettings::default(),
+            preview_rows: 20,
+            preview_max_rows: 1000,
         }
     }
 

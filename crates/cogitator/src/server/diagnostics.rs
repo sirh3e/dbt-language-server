@@ -20,6 +20,12 @@ pub fn static_diagnostics(
     let items = if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) {
         // the server's own config file — never the dbt-properties pass
         cogitator_analysis::yaml_cogitator::cogitator_diagnostics(&doc.text)
+    } else if features::selectors_yml::is_selectors_file(uri) {
+        // how the selectors are written; the pull path adds what
+        // matches nothing (it needs the project's nodes)
+        let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
+        items.extend(features::selectors_yml::selectors_diagnostics(&doc.text));
+        items
     } else if is_yaml(uri) {
         let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
         items.extend(features::citizen_diagnostics(ctx, uri));
@@ -52,6 +58,56 @@ pub fn static_diagnostics(
         items
     };
     items
+}
+
+/// The push set (didOpen/didSave, and the breaking-change job's
+/// republish): the static diagnostics without lineage, plus what the
+/// caches already hold — the LAST loaded artifacts, a plan computed for
+/// this exact text, the last breaking-change report. Never touches the
+/// filesystem and never plans, so the dispatcher may call it inline.
+pub fn push_diagnostics(
+    ctx: &std::sync::Arc<DbtContext>,
+    doc: Option<&Document>,
+    uri: &str,
+    lints: features::lint::LintOptions,
+    derived: &crate::server::derived_cache::DerivedCache,
+    perf: &features::plan::diagnostics_config::PerfSettings,
+) -> Vec<Diagnostic> {
+    // push stays lineage-free; the pull path adds the lineage-backed checks
+    let mut items = static_diagnostics(ctx, doc, uri, lints, None);
+    if let Some(root) = ctx.project_root.as_deref() {
+        let set = derived.artifacts_cached(root);
+        items.extend(features::artifact_diagnostics(ctx, uri, &set));
+        if let (true, Some(doc)) = (perf.active(), doc) {
+            let key = crate::server::handlers::plan::plan_key(
+                ctx,
+                derived,
+                &set,
+                uri,
+                perf.catalog_stats,
+            );
+            items.extend(
+                derived
+                    .plan_cached(uri, doc.generation, key)
+                    .map(|plan| perf_diagnostics(doc, &plan, perf))
+                    .unwrap_or_default(),
+            );
+        }
+    }
+    items.extend(breaking_diagnostics(derived, uri));
+    items
+}
+
+/// The last breaking-change report's diagnostics for `uri` (computed on
+/// open/save; a cache read only).
+pub fn breaking_diagnostics(
+    derived: &crate::server::derived_cache::DerivedCache,
+    uri: &str,
+) -> Vec<Diagnostic> {
+    derived
+        .breaking_report(uri)
+        .map(|report| features::breaking::diagnostics(&report))
+        .unwrap_or_default()
 }
 
 /// One open model's plan findings as diagnostics, under the live perf

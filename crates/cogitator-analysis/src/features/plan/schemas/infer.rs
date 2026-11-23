@@ -18,6 +18,7 @@ use cogitator_sql_front::{build_hir, fold_schema_name, HirInput, SchemaEnv};
 use super::model_facts::{model_facts, ModelFacts};
 use super::reads::{model_reads, ModelReads};
 use crate::artifacts::manifest::ManifestIndex;
+use crate::features::column_types::{raw_columns, RawColumn};
 
 /// Whether a model's outputs are stored or computed for each consumer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +44,8 @@ pub(super) struct Inferred {
     /// Same, for whether the template declares itself ephemeral.
     pub(super) template_ephemeral: Option<bool>,
     pub(super) facts: ModelFacts,
+    /// Output columns with where their types come from (column_types).
+    pub(super) typed: Arc<[RawColumn]>,
 }
 
 pub(super) fn storage_of(raw: &str) -> Option<Storage> {
@@ -135,8 +138,10 @@ pub(super) fn infer(text: &str, dialect: &Dialect, env: &SchemaEnv) -> Option<In
     }
     let mut reads = model_reads(&mir);
     reads.unknown |= output_open(&hir, root);
+    let typed: Arc<[RawColumn]> = Arc::from(raw_columns(&mir));
     let facts = model_facts(&hir, &canonicalise(&hir, mir));
     Some(Inferred {
+        typed,
         columns,
         open,
         reads,

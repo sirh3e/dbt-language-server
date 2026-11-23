@@ -19,6 +19,7 @@ use cogitator_analysis::profiles::{load_inventory, ProfileScope, ProfilesInvento
 use serde::Serialize;
 
 mod artifacts;
+mod breaking;
 mod lineage;
 mod plan;
 mod schemas;
@@ -117,15 +118,9 @@ pub struct DerivedCache {
     /// Whole `dbt.highlight` answers, most recently used last.
     highlights: Mutex<Vec<(HighlightKey, Arc<cogitator_treesitter::Highlights>)>>,
     highlights_stats: Counters,
-    /// The nodes `dbt.select` evaluates over, for one context snapshot
-    /// and one manifest (the pointer identities of their Arcs).
-    selection: Mutex<Option<SelectionSlot>>,
+    /// The last breaking-change report per model uri (on open/save).
+    breaking: breaking::BreakingSlot,
 }
-
-type SelectionSlot = (
-    (usize, usize),
-    Arc<cogitator_analysis::features::selection::Universe>,
-);
 
 /// What a cached `dbt.highlight` answer is of: an open document at a
 /// generation, or a file at a stamp; with the language.
@@ -145,38 +140,6 @@ type AstGrepSlot = (
 );
 
 impl DerivedCache {
-    /// The universe of `dbt.select` for `ctx` with `manifest`: built once
-    /// per context refresh (it reads every model and properties file) and
-    /// again when target/manifest.json is read anew.
-    pub fn selection_universe(
-        &self,
-        ctx: &Arc<cogitator_analysis::DbtContext>,
-        manifest: Option<&Arc<cogitator_analysis::artifacts::manifest::ManifestIndex>>,
-    ) -> Arc<cogitator_analysis::features::selection::Universe> {
-        let key = (
-            Arc::as_ptr(ctx) as usize,
-            manifest.map_or(0, |m| Arc::as_ptr(m) as usize),
-        );
-        if let Some((k, universe)) = self
-            .selection
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .as_ref()
-        {
-            if *k == key {
-                self.results_stats.hit("selection");
-                return universe.clone();
-            }
-        }
-        self.results_stats.miss("selection");
-        let universe = Arc::new(cogitator_analysis::features::selection::build_universe(
-            ctx,
-            manifest.map(|m| m.as_ref()),
-        ));
-        *self.selection.lock().unwrap_or_else(|e| e.into_inner()) = Some((key, universe.clone()));
-        universe
-    }
-
     /// A `dbt.highlight` answer: the cached one for `key`, else `compute`'s
     /// (kept, the least recently used dropped past `HIGHLIGHTS_KEPT`).
     pub fn highlights(

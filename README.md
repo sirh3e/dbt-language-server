@@ -60,6 +60,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   hover, jump from a column to its schema-YAML entry
 - Structured **signature help** for macros (real parameter objects with
   defaults, active-parameter tracking)
+- **Dispatched macros**: go to implementation lists every
+  `<adapter>__x` / `default__x` in dbt's dispatch search order, and hover
+  names the one the active adapter picks; **macro call checks** warn on
+  wrong argument counts, unknown or duplicate keywords and dispatches
+  with no default (on by default; [docs/macros.md](docs/macros.md))
 - **Semantic tokens**, folding ranges, selection ranges, document
   highlights, workspace symbols, find references
 - **Diagnostics**: dangling `ref()` detection, dbt YAML schema validation
@@ -73,6 +78,13 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Model rename** (`textDocument/rename`): rewrites every dependent's
   `ref()`, updates the schema-YAML entry and renames the model file — one
   WorkspaceEdit over the project graph
+- **File operations** (`workspace.fileOperations`): renaming a model file
+  in the editor's tree rewrites its refs and YAML entry, deleting one
+  warns about its dependents, and created files join the context
+  ([docs/file-operations.md](docs/file-operations.md))
+- **Declaration** (`textDocument/declaration`): a model's properties-YAML
+  entry, beside definition's SQL; a YAML column's definition is the
+  select item producing it
 - **Code actions** (`textDocument/codeAction`): the executable lens set
   at the cursor as command-only actions, so every stock LSP editor —
   eglot, lsp-mode, Zed, plain Neovim — gets dbt workflows through its
@@ -134,6 +146,12 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `{{ config(tags=…) }}` plus `selectors.yml` entries are indexed;
   `workspace/symbol` understands `tag:x` and `selector:x` queries in any
   editor, and Neovim adds `:DbtTags` / `:DbtSelectors` pickers
+- **Node selection** ([docs/selectors.md](docs/selectors.md)): dbt's
+  selector language evaluated over the project — `dbt.select` lists what
+  `tag:nightly +orders --exclude resource_type:test` or `selector:nightly`
+  picks, and
+  selectors.yml gets completion, diagnostics, a hover and "N nodes match"
+  lenses
 - **Project DAG view — Neovim only**: `:DbtDag` renders the whole project
   dbt-docs style (layered left→right, box-drawn nodes with tags, edges),
   and docglow-style column information inside the nodes (`c`/`C` expand,
@@ -353,10 +371,17 @@ perf:
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off
+lint:                      # style checks default off; macro_calls and
+  select_star: false       # dispatch default on (docs/macros.md)
+  macro_calls: true
+  dispatch: true
 inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked
   jinja: false             # what short {{ … }} expressions render to
+preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
+  rows: 20                 # rows when the call names no limit
+  max_rows: 1000           # larger limits are capped
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
 ```

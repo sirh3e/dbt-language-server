@@ -3,6 +3,7 @@
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
 mod astgrep;
+mod breaking;
 mod cache_persist;
 mod client_link;
 mod commands;
@@ -21,8 +22,10 @@ mod jobs;
 mod multi_root;
 mod node_info;
 mod offload;
+mod preview_cte;
 mod refresh;
 mod reply;
+mod selectors;
 mod semantic_yaml;
 mod snapshot;
 mod status;
@@ -57,6 +60,10 @@ pub struct SharedLimits {
     pub refresh_debounce_ms: std::sync::atomic::AtomicU64,
     /// target/ artifact files past this are skipped (03 §10).
     pub artifact_cap_bytes: std::sync::atomic::AtomicU64,
+    /// dbt.previewCte rows when the call names none (`preview.rows`).
+    pub preview_rows: std::sync::atomic::AtomicU64,
+    /// The most rows a preview asks for (`preview.max_rows`).
+    pub preview_max_rows: std::sync::atomic::AtomicU64,
 }
 
 impl Default for SharedLimits {
@@ -65,6 +72,8 @@ impl Default for SharedLimits {
             compiled_cap_bytes: std::sync::atomic::AtomicU64::new(2 * 1024 * 1024),
             refresh_debounce_ms: std::sync::atomic::AtomicU64::new(200),
             artifact_cap_bytes: std::sync::atomic::AtomicU64::new(64 * 1024 * 1024),
+            preview_rows: std::sync::atomic::AtomicU64::new(20),
+            preview_max_rows: std::sync::atomic::AtomicU64::new(1000),
         }
     }
 }
@@ -253,6 +262,12 @@ pub async fn run(
             .artifact_cap_bytes
             .store(mib * 1024 * 1024, Ordering::Relaxed);
     }
+    if let Some(rows) = launch.preview.rows {
+        limits.preview_rows.store(rows, Ordering::Relaxed);
+    }
+    if let Some(rows) = launch.preview.max_rows {
+        limits.preview_max_rows.store(rows, Ordering::Relaxed);
+    }
     let jobs = Arc::new(jobs::DbtJobs::default());
     // multi-root: secondary project contexts + the primary root marker
     let extra_contexts = Arc::new(multi_root::ExtraContexts::default());
@@ -263,7 +278,12 @@ pub async fn run(
     let context_revision = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let refresh_revision = context_revision.clone();
     let toggles = Arc::new(SharedToggles::default());
-    toggles.lints.store(launch.lint.flags(0), Ordering::Relaxed);
+    toggles.lints.store(
+        launch
+            .lint
+            .flags(cogitator_analysis::config_schema::lint_flags::DEFAULT_ON),
+        Ordering::Relaxed,
+    );
     if let Some(on) = launch.warehouse.columns {
         toggles.warehouse_columns.store(on, Ordering::Relaxed);
     }

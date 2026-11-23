@@ -131,6 +131,46 @@ async function incrementalDiff(): Promise<void> {
   });
 }
 
+/** A dbt.previewCte answer: the rows of one CTE (or the final select). */
+export interface CtePreview {
+  model: string;
+  cte?: string | null;
+  columns: string[];
+  rows: unknown[][];
+  truncated: boolean;
+  sql: string;
+  source: "compiled" | "rendered";
+  uri?: string | null;
+  table: string;
+}
+
+/** The text shown for a preview: the server's markdown table. */
+export function previewCteText(result: CtePreview): string {
+  return result.table;
+}
+
+/** The rows of the CTE under the cursor; the server opens its markdown
+ *  file through window/showDocument, so a document is opened here only
+ *  when it could not write one. */
+async function previewCte(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const position = editor
+    ? { line: editor.selection.active.line, character: editor.selection.active.character }
+    : undefined;
+  const result = (await execDbt("dbt.previewCte", { position })) as CtePreview | null | undefined;
+  if (!result || result.uri) {
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "markdown",
+    content: previewCteText(result),
+  });
+  await vscode.window.showTextDocument(doc, {
+    preview: true,
+    viewColumn: vscode.ViewColumn.Beside,
+  });
+}
+
 /** One row of a dbt.incrementality report. */
 export interface IncrementalityRow {
   model: string;
@@ -788,6 +828,64 @@ async function unresolved(): Promise<void> {
   }
 }
 
+/** A dbt.breakingChanges answer, as far as the palette reads it. */
+export interface BreakingReport {
+  summary: string;
+  diff?: { removed?: { name: string; possiblyRenamedTo?: string }[] };
+  impacts?: {
+    column: string;
+    change: string;
+    severity: string;
+    tests?: string[];
+    downstream?: { model: string; column: string; contracted?: boolean; public?: boolean }[];
+  }[];
+}
+
+/** The lines of a dbt.breakingChanges answer: one per removed or retyped
+ * column, then one per downstream column that reads it. */
+export function breakingLines(report: BreakingReport): string[] {
+  const renamed = new Map(
+    (report.diff?.removed ?? []).map((r) => [r.name, r.possiblyRenamedTo] as const)
+  );
+  const lines: string[] = [];
+  for (const impact of report.impacts ?? []) {
+    const to = renamed.get(impact.column);
+    const tests = impact.tests ?? [];
+    lines.push(
+      `[${impact.severity}] ${impact.column} ${impact.change}` +
+        (to ? ` (possibly renamed to ${to})` : "") +
+        (tests.length > 0 ? ` — tested: ${tests.join(", ")}` : "")
+    );
+    for (const use of impact.downstream ?? []) {
+      const tags = [use.contracted ? "contracted" : "", use.public ? "public" : ""].filter(
+        (t) => t !== ""
+      );
+      lines.push(
+        `  read by ${use.model}.${use.column}` + (tags.length > 0 ? ` (${tags.join(", ")})` : "")
+      );
+    }
+  }
+  return lines;
+}
+
+/** This model against its last built schema (dbt.breakingChanges). */
+async function breakingChanges(): Promise<void> {
+  const report = (await execDbt("dbt.breakingChanges")) as BreakingReport | undefined;
+  if (!report) {
+    return;
+  }
+  const lines = breakingLines(report);
+  if (lines.length === 0) {
+    void vscode.window.showInformationMessage(`dbt: ${report.summary}`);
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "plaintext",
+    content: [report.summary, "", ...lines].join("\n"),
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -796,6 +894,7 @@ export async function activate(
     ["cogitator.test", () => execDbt("dbt.test")],
     ["cogitator.compile", () => execDbt("dbt.compile")],
     ["cogitator.preview", () => execDbt("dbt.preview")],
+    ["cogitator.previewCte", previewCte],
     ["cogitator.parse", () => execDbt("dbt.parse")],
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
@@ -807,6 +906,7 @@ export async function activate(
     ["cogitator.nodeInfo", nodeInfo],
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
+    ["cogitator.breakingChanges", breakingChanges],
     [
       "cogitator.status",
       async () => {

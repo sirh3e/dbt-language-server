@@ -1,0 +1,13 @@
+version: 2
+sources:
+  - name: shop
+    tables:
+      - name: orders
+        columns:
+          - name: id
+          - name: amount
+          - name: status
+      - name: legacy
+        columns:
+          - name: code
+            data_type: integer

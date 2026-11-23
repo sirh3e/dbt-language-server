@@ -479,6 +479,74 @@ function M.unresolved(opts)
   end)
 end
 
+--- The quickfix items of a dbt.breakingChanges answer (exposed for the
+--- test suite): one per removed or retyped column, then one per
+--- downstream column that reads it.
+---@param result table
+---@return table[]
+function M.breaking_items(result)
+  local items = {}
+  local renamed = {}
+  for _, r in ipairs((result.diff or {}).removed or {}) do
+    renamed[r.name] = r.possiblyRenamedTo
+  end
+  local kind = { error = "E", warning = "W", information = "I" }
+  for _, impact in ipairs(result.impacts or {}) do
+    local text = ("%s %s"):format(impact.column, impact.change)
+    local to = renamed[impact.column]
+    if to and to ~= vim.NIL then
+      text = text .. (" (possibly renamed to %s)"):format(to)
+    end
+    if impact.tests and #impact.tests > 0 then
+      text = text .. " — tested: " .. table.concat(impact.tests, ", ")
+    end
+    items[#items + 1] = { text = text, type = kind[impact.severity] or "W" }
+    for _, use in ipairs(impact.downstream or {}) do
+      local tags = {}
+      if use.contracted then
+        tags[#tags + 1] = "contracted"
+      end
+      if use.public then
+        tags[#tags + 1] = "public"
+      end
+      items[#items + 1] = {
+        text = ("  read by %s.%s%s"):format(
+          use.model,
+          use.column,
+          #tags > 0 and (" (" .. table.concat(tags, ", ") .. ")") or ""
+        ),
+      }
+    end
+  end
+  return items
+end
+
+--- :DbtBreakingChanges — this model's current columns against its last
+--- built schema (target/catalog.json or manifest.json): removed, renamed-
+--- looking and retyped columns, and what reads them downstream.
+function M.breaking_changes()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.breakingChanges",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.breakingChanges failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    vim.notify(result.summary, vim.log.levels.INFO)
+    local items = M.breaking_items(result)
+    if #items > 0 then
+      vim.fn.setqflist({}, " ", { title = "dbt breaking changes: " .. result.summary, items = items })
+      vim.cmd.copen()
+    end
+  end)
+end
+
 --- The lines of a dbt.splitPlan answer (exposed for the test suite): the
 --- plan as an S-expression, then the new model's file when there is one.
 ---@param plan table

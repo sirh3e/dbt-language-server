@@ -62,7 +62,7 @@ pub fn yaml_tests(text: &str) -> Vec<TestTarget> {
         }
     }
     for t in &mut out {
-        t.selector = t.names.join(" ");
+        t.selector = crate::selectors::union_of(&t.names);
     }
     for unit in get(root, "unit_tests").into_iter().flat_map(items) {
         if let Some(name_node) = get(unit, "name") {
