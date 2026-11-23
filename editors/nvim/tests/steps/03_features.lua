@@ -88,6 +88,19 @@ return function(ctx)
     vim.inspect(unresolved_result):sub(1, 200)
   )
 
+  local sync_result = H.exec_cmd(client, bufnr, "dbt.syncYaml", {
+    models = { "stg_customers" },
+  }, "integration: dbt.syncYaml")
+  H.check(
+    type(sync_result) == "table"
+      and sync_result.applied == false
+      and type(sync_result.files) == "table"
+      and sync_result.models[1].model == "stg_customers"
+      and sync_result.models[1].added[1] == "first_name",
+    "integration: dbt.syncYaml plans without applying",
+    vim.inspect(sync_result):sub(1, 300)
+  )
+
   local select_result = H.exec_cmd(client, bufnr, "dbt.select", {
     uri = vim.uri_from_bufnr(bufnr),
     selector = "tag:nightly",

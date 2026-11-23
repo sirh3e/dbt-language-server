@@ -428,6 +428,13 @@ function M.dead_models()
   end)
 end
 
+--- :DbtSyncYaml [model…] [%] [prune] [types] [reorder] [folder] — the
+--- schema-YAML sync (dbt.syncYaml): preview, then apply on confirm.
+---@param opts {fargs?: string[], args?: string}?
+function M.sync_yaml(opts)
+  require("cogitator.sync_yaml").run(opts)
+end
+
 --- The quickfix items of a dbt.unresolved answer (exposed for the test
 --- suite and the picker): one per unresolved name, at its place.
 ---@param result table

@@ -143,6 +143,7 @@ M.SUBCOMMANDS = {
   dead = { run = plain("dead_models"), desc = "models nothing uses" },
   unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
   select = { run = with_args("select"), desc = "the nodes a dbt selector picks" },
+  sync = { run = with_args("sync_yaml"), desc = "sync the schema YAML with the SQL [model…|%] [prune]" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
   incrementality = { run = plain("incrementality"), desc = "table models that could be incremental" },
   impact = {
@@ -270,6 +271,7 @@ M.GROUPS = {
       "cancel",
       "dead",
       "unresolved",
+      "sync",
       "incrementality",
       "tags",
       "selectors",
