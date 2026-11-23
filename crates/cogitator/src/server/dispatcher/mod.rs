@@ -65,6 +65,7 @@ mod commands_exec;
 mod compiled_nav;
 mod dbt_ops;
 mod diagnostics_req;
+mod dispatch_impl;
 mod file_ops;
 mod navigation;
 mod plan;
@@ -250,6 +251,7 @@ impl Dispatcher {
             "workspace/didCreateFiles"
             | "workspace/didRenameFiles"
             | "workspace/didDeleteFiles" => self.did_change_files(content, &method),
+            "textDocument/implementation" => self.implementation(content),
             "textDocument/completion" => self.completion(content),
             "completionItem/resolve" => self.resolve_completion(content),
             "textDocument/references" => self.references(content),

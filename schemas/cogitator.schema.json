@@ -43,12 +43,20 @@
       }
     },
     "lint": {
-      "description": "Opt-in style diagnostics; every check defaults to off.",
+      "description": "Style diagnostics default to off; the macro call and dispatch checks default to on.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "dead_models": {
           "description": "Hint on models nothing downstream uses. (bool)",
+          "type": "boolean"
+        },
+        "dispatch": {
+          "description": "Warn on adapter.dispatch calls with no default__ nor active-adapter implementation (default on). (bool)",
+          "type": "boolean"
+        },
+        "macro_calls": {
+          "description": "Warn on macro calls whose arguments the macro does not take (default on). (bool)",
           "type": "boolean"
         },
         "select_star": {

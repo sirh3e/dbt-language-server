@@ -80,6 +80,10 @@ pub struct LintSection {
     pub trailing_comma: Option<bool>,
     pub undocumented_columns: Option<bool>,
     pub dead_models: Option<bool>,
+    /// Default on: `false` turns the macro call checks off.
+    pub macro_calls: Option<bool>,
+    /// Default on: `false` turns the dispatch check off.
+    pub dispatch: Option<bool>,
 }
 
 pub use cogitator_analysis::config_schema::lint_flags;
@@ -99,6 +103,8 @@ impl LintSection {
         bit(self.trailing_comma, lint_flags::TRAILING_COMMA);
         bit(self.undocumented_columns, lint_flags::UNDOCUMENTED_COLUMNS);
         bit(self.dead_models, lint_flags::DEAD_MODELS);
+        bit(self.macro_calls, lint_flags::MACRO_CALLS);
+        bit(self.dispatch, lint_flags::DISPATCH);
         flags
     }
 }
@@ -224,6 +230,8 @@ const LINT_KEYS: &[&str] = &[
     "trailing_comma",
     "undocumented_columns",
     "dead_models",
+    "macro_calls",
+    "dispatch",
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];

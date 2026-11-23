@@ -263,7 +263,12 @@ pub async fn run(
     let context_revision = Arc::new(std::sync::atomic::AtomicU64::new(0));
     let refresh_revision = context_revision.clone();
     let toggles = Arc::new(SharedToggles::default());
-    toggles.lints.store(launch.lint.flags(0), Ordering::Relaxed);
+    toggles.lints.store(
+        launch
+            .lint
+            .flags(cogitator_analysis::config_schema::lint_flags::DEFAULT_ON),
+        Ordering::Relaxed,
+    );
     if let Some(on) = launch.warehouse.columns {
         toggles.warehouse_columns.store(on, Ordering::Relaxed);
     }

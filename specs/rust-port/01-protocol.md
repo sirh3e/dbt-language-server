@@ -261,6 +261,7 @@ optional in LSP and clients request fine without it.
 `inlayHintProvider: true`, `documentLinkProvider: { resolveProvider:
 false }`, `linkedEditingRangeProvider: true`,
 `documentFormattingProvider: true`, `declarationProvider: true`,
+`implementationProvider: true` (dispatched macros, docs/macros.md),
 `workspace.fileOperations` (`didCreate`, `willRename`, `didRename`,
 `willDelete`, `didDelete`, each filtered to
 `**/{models,macros,snapshots,seeds,tests,analyses}/**/*.{sql,py,yml,yaml,csv}`

@@ -69,6 +69,9 @@ pub struct ServerCapabilities {
     pub document_formatting_provider: bool,
     /// workspace.fileOperations: will/didRename, will/didDelete, didCreate.
     pub workspace: super::file_ops::WorkspaceServerCapabilities,
+    /// Dispatched macros: every `<adapter>__x` / `default__x`.
+    #[serde(rename = "implementationProvider")]
+    pub implementation_provider: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -256,6 +259,7 @@ pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeR
                 linked_editing_range_provider: true,
                 document_formatting_provider: true,
                 workspace: super::file_ops::workspace_capabilities(),
+                implementation_provider: true,
             },
             server_info: ServerInfo {
                 name: "cogitator",

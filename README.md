@@ -60,6 +60,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   hover, jump from a column to its schema-YAML entry
 - Structured **signature help** for macros (real parameter objects with
   defaults, active-parameter tracking)
+- **Dispatched macros**: go to implementation lists every
+  `<adapter>__x` / `default__x` in dbt's dispatch search order, and hover
+  names the one the active adapter picks; **macro call checks** warn on
+  wrong argument counts, unknown or duplicate keywords and dispatches
+  with no default (on by default; [docs/macros.md](docs/macros.md))
 - **Semantic tokens**, folding ranges, selection ranges, document
   highlights, workspace symbols, find references
 - **Diagnostics**: dangling `ref()` detection, dbt YAML schema validation
@@ -360,6 +365,10 @@ perf:
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off
+lint:                      # style checks default off; macro_calls and
+  select_star: false       # dispatch default on (docs/macros.md)
+  macro_calls: true
+  dispatch: true
 inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked

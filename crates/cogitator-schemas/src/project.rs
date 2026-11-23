@@ -36,6 +36,40 @@ pub struct ProjectFile {
     /// Range side-table for nested var maps: top-level key → (inner key →
     /// inner key range). Used for project- and package-scoped vars (03 §4).
     pub nested_var_ranges: HashMap<String, HashMap<String, Range>>,
+    /// `dispatch:` entries (dbt's macro dispatch search order).
+    pub dispatch: Vec<DispatchConfig>,
+}
+
+/// One `dispatch:` entry: where `adapter.dispatch(…, macro_namespace)`
+/// looks, in order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DispatchConfig {
+    pub macro_namespace: String,
+    pub search_order: Vec<String>,
+}
+
+/// `dispatch:` read leniently from the project JSON: an entry without a
+/// namespace or with a non-list search order is dropped.
+fn dispatch_of(value: &serde_json::Value) -> Vec<DispatchConfig> {
+    let Some(entries) = value.get("dispatch").and_then(|d| d.as_array()) else {
+        return Vec::new();
+    };
+    entries
+        .iter()
+        .filter_map(|e| {
+            let macro_namespace = e.get("macro_namespace")?.as_str()?.to_string();
+            let search_order = e
+                .get("search_order")?
+                .as_array()?
+                .iter()
+                .filter_map(|p| p.as_str().map(str::to_string))
+                .collect();
+            Some(DispatchConfig {
+                macro_namespace,
+                search_order,
+            })
+        })
+        .collect()
 }
 
 /// Parse `dbt_project.yml` text (already env_var-resolved, 03 §3.2).
@@ -45,6 +79,7 @@ pub struct ProjectFile {
 pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
     let marked = yaml::load_marked(text, path)?;
     let mut value = yaml::to_json(&marked);
+    let dispatch = dispatch_of(&value);
     // The server consumes only these keys (03 §3). Resource-config subtrees
     // (`models:`, `seeds:`, …) vary widely in the wild and the generated
     // unions are strict, so everything else is pruned before deserialization
@@ -80,6 +115,7 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         docs_paths: paths_of(project.docs_paths.as_ref()),
         docs_paths_explicit: project.docs_paths.is_some(),
         vars: project.vars.clone(),
+        dispatch,
         ..Default::default()
     };
 

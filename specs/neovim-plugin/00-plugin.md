@@ -77,6 +77,9 @@ writer wins).
   willDeleteFiles an empty edit plus one showMessage warning naming the
   dependents, the did* notifications refresh the context. Neovim 0.11
   sends none of these by itself; VS Code does.
+- `implementationProvider: true` — a dispatched macro's
+  `<adapter>__x` / `default__x` implementations in dispatch order
+  (from the dispatch call, a call of the macro, or its header)
 - `documentFormattingProvider: true` — sqlformat over Jinja-segmented
   SQL; full-line `{% %}` lines pass verbatim, `{{ }}` expressions are
   sentinel-masked, and ANY doubt (inline statements, sentinel
