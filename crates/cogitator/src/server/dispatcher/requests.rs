@@ -247,8 +247,9 @@ impl Dispatcher {
         self.respond_position(
             content,
             "textDocument/documentHighlight",
-            |_, doc, _, pos| {
-                doc.map(|d| features::document_highlights(d, pos))
+            |ctx, doc, uri, pos| {
+                features::local_highlights(ctx, doc, uri, pos)
+                    .or_else(|| doc.map(|d| features::document_highlights(d, pos)))
                     .unwrap_or_default()
             },
         );

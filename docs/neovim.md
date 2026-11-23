@@ -100,8 +100,9 @@ buffers inside a dbt project (a `dbt_project.yml` upward).
 
 Hover, completion, go to definition (`ref()`, `source()`, macros, columns),
 references (models, sources, macros, docs blocks, columns), rename (models,
-vars, columns — see [column-rename.md](column-rename.md) — and the
-project's own macros), the macro call hierarchy (incoming and
+file-local names — Jinja variables, macro parameters, CTEs and aliases, see
+[local-names.md](local-names.md) — vars, columns — see
+[column-rename.md](column-rename.md) — and the project's own macros), the macro call hierarchy (incoming and
 outgoing), document links, signature help, diagnostics, formatting and
 code actions are the standard LSP ones. On top:
 

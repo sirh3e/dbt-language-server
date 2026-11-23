@@ -9,7 +9,7 @@ The server currently implements exactly the original Go server's surface:
 | `textDocument/didOpen` / `didChange` / `didSave` | incremental sync (`textDocumentSync: 2`) |
 | `textDocument/hover` | refs, sources, vars, env vars, macros, dialect SQL functions, what a `{{ … }}` renders to |
 | `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), env vars (`.env` line, else profiles.yml), macros, in-file CTEs |
-| `textDocument/references` | models, vars |
+| `textDocument/references` | models, vars, sources, macros, docs, columns, file-local names (Jinja locals, macro parameters, CTEs, aliases) |
 | `textDocument/inlayHint` | relations, var values, env var values (secrets masked), macro parameters, opt-in Jinja renderings |
 | `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `{{` |
 | `workspace/executeCommand` → `dbt.goToSchema` | jump to the model's properties-YAML entry |
@@ -111,6 +111,15 @@ names what already exists in the codebase.
       cogitator.yml override): every call that resolves to the same
       definition and the keys that decide it, scope-aware
       (docs/variables.md, "Renaming a var").
+- [x] **File-local rename** (`textDocument/rename` + `prepareRename`,
+      references and document highlights; `features/rename_local/`):
+      Jinja `set` / block `set` / loop variables and `call(…)` arguments,
+      scoped as Jinja scopes them over minijinja's AST; macro parameters,
+      with the keyword arguments of the macro's calls project-wide; CTE
+      names and table aliases over the sql-front binder's HIR, refused when
+      a written occurrence is one the binder could not follow
+      (docs/local-names.md). Checked before the var rename, which still
+      wins on a `var('x')` call.
 - [x] **env_var() support**: the value inline (`inlay.env_vars`), hover
       with its source, definition into `.env` (else the profiles.yml
       use), an `env-var-unset` warning for a defaultless env_var() the
