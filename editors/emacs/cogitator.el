@@ -914,7 +914,8 @@ it is applied to every match after asking."
 ;; ---------------------------------------------------------------------------
 
 (defun cogitator--unresolved-line (item)
-  "One grep-style line for a dbt.unresolved ITEM: file:line:column: [kind] name — message."
+  "One grep-style line for a dbt.unresolved ITEM.
+The line reads file:line:column: [kind] name — message."
   (let ((start (plist-get (plist-get item :range) :start)))
     (format "%s:%d:%d: [%s] %s — %s"
             (cogitator--uri-to-file (plist-get item :uri))
@@ -1286,6 +1287,37 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
       :priority 1
       :server-id 'cogitator)))
   (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
+
+;; ---------------------------------------------------------------------------
+;; the lineage page (dbt.lineageSite)
+
+(defun cogitator--lineage-site-message (result)
+  "The message for a dbt.lineageSite RESULT written to disk, or nil."
+  (when-let* ((written (and (listp result) (plist-get result :written)))
+              (path (plist-get written :path)))
+    (let ((counts (plist-get result :counts)))
+      (format "cogitator: lineage page %s — %s of %s columns traced, %s undetermined, %s models declined"
+              path
+              (or (plist-get counts :columnsTraced) 0)
+              (or (plist-get counts :columns) 0)
+              (or (plist-get counts :columnsUndetermined) 0)
+              (or (plist-get counts :modelsDeclined) 0)))))
+
+;;;###autoload
+(defun cogitator-lineage-site ()
+  "Write the project's column-lineage page and open it in the browser.
+The server writes target/cogitator-lineage/index.html (`dbt.lineageSite'
+with write); the page works offline."
+  (interactive)
+  (cogitator--execute
+   "dbt.lineageSite"
+   (append (cogitator--command-argument) '(:write t))
+   (lambda (result)
+     (let ((text (cogitator--lineage-site-message result)))
+       (if (not text)
+           (message "cogitator: no dbt project is loaded, so there is no lineage page")
+         (message "%s" text)
+         (browse-url-of-file (plist-get (plist-get result :written) :path)))))))
 
 (provide 'cogitator)
 ;;; cogitator.el ends here
