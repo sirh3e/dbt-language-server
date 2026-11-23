@@ -220,8 +220,12 @@ impl Dispatcher {
             return;
         };
         let snap = self.snapshot_for(&uri);
-        let lints =
-            features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
+        let mut flags = self.toggles.lints.load(Ordering::Relaxed);
+        if self.fusion_enabled.load(Ordering::Relaxed) {
+            // Fusion's compile owns syntax errors (07 §3 precedence)
+            flags &= !cogitator_analysis::config_schema::lint_flags::SYNTAX;
+        }
+        let lints = features::lint::LintOptions::from_flags(flags);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         let perf = self.perf_settings();

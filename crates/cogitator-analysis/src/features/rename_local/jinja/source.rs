@@ -19,7 +19,7 @@ const BLANKED: &[&str] = &[
 ];
 
 /// The text to parse: same length and line breaks as `text`.
-pub(super) fn parseable(text: &str) -> Option<String> {
+pub(crate) fn parseable(text: &str) -> Option<String> {
     let mut tokens = Vec::new();
     for t in tokenize(text, false, SyntaxConfig::default()) {
         let (token, span) = t.ok()?;

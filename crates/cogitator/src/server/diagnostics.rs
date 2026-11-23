@@ -44,6 +44,16 @@ pub fn static_diagnostics(
         if lints.any() {
             items.extend(features::lint::lint(ctx, doc, uri, lints, lineage));
         }
+        if lints.syntax {
+            items.extend(features::syntax::syntax_diagnostics(
+                &doc.text,
+                uri,
+                &ctx.dialect,
+                features::syntax::SyntaxOptions {
+                    sql: !duckdb_parses(ctx),
+                },
+            ));
+        }
         items
     };
     // rebind so the base binding stays immutable in the default build
@@ -124,6 +134,13 @@ pub fn perf_diagnostics(
         &plan.suppressions,
         settings,
     )
+}
+
+/// Whether the DuckDB 2.0 parse check below already reports this
+/// document's SQL errors: then the sqlparser check stays out (the Jinja
+/// check still runs — DuckDB's masking declines on broken Jinja).
+fn duckdb_parses(ctx: &DbtContext) -> bool {
+    cfg!(feature = "duckdb-parser") && ctx.dialect.as_str() == "duckdb"
 }
 
 pub(super) fn is_yaml(uri: &str) -> bool {

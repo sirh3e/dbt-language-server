@@ -632,3 +632,39 @@ yaml-language-server at the file to validate cogitator.yml without
 the server running. value_hint drives the typing: `bool` → boolean,
 `MiB`/`ms` → integer ≥ 0, `[names]` → string array, `a|b|c` → closed
 string enum, anything else string.
+
+## Addendum: §10 syntax diagnostics
+
+`features/syntax/` reports Jinja and SQL syntax errors with no
+`dbt compile`, pure over a `.sql` buffer's text (compiled SQL under
+`target/compiled|run` excluded), at most one per file, Error severity,
+source `cogitator`, the message a Guidance with Reason and Solution:
+
+- **`jinja-syntax`**: minijinja's tokenizer, then its parser over the
+  template with dbt's block tags made parseable in place
+  (`rename_local::jinja::parseable`). Certain only: tokenizer errors
+  (unclosed `{{`/`{%`/`{#`/string/raw block, shown at the opener), a
+  closing tag no block opened (found by a tag-name block stack), and
+  parser errors starting with `unexpected` — an end-of-input error is
+  placed at the innermost unclosed opener. `unknown statement x`
+  (loop controls, extensions), reserved names and minijinja's limits
+  decline.
+- **`sql-syntax`**, only when the Jinja layer is clean: the template
+  masked by `cogitator_duckdb::mask_jinja` (07 §3.1) and parsed with
+  sqlparser in the project's dialect. The 07 §3.2 confidence rule
+  holds, widened: decline on control blocks other than config/set, on
+  block-form `set`, on an error inside or right after a masked region,
+  when any other sqlparser dialect accepts the SQL, on an error at or
+  after a listed warehouse extension sqlparser covers only in part
+  (`EXTENSIONS`: `asof`, `positional`, `anti`, `semi`, `lambda`,
+  `pivot`, …), on parser recursion limits, and past 512 KiB.
+
+The push set (didOpen/didChange/didSave) and pull diagnostics run it
+when cogitator.yml `lint.syntax` is on (default on; bit
+`lint_flags::SYNTAX`). Fusion owns syntax when enabled: the push path
+publishes nothing of its own and the pull path clears the bit. In a
+`duckdb-parser` build on a duckdb project, the SQL layer is left to
+DuckDB's parser (07 §3) and only the Jinja layer runs. The same set is
+what `cogitator lint` reports (04 §1.5). `selectors.yml` is
+syntax-checked only by `yaml_diagnostics`, never against the dbt
+properties schema.

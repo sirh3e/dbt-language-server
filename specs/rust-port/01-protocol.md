@@ -191,7 +191,10 @@ Ordering quirk: Go writes the initialize response *before* assigning
 - `didSave`: `state.save_document(uri)` → refresh dbt context only (document text is
   *not* re-read; the server trusts its didChange-maintained copy). Then `fusion_compile`.
 - `didChange`: apply all content changes in order to the stored text, then re-parse
-  the document (algorithm in 03 §2). No context refresh, no fusion.
+  the document (algorithm in 03 §2). No context refresh, no fusion. Then
+  the push diagnostics set (the fs-free static set, 03 §10 "syntax
+  diagnostics") is published for the URI, as on didOpen/didSave — unless
+  Fusion is enabled, which owns publishes (07 §3).
 
 ### 3.3 `shutdown` / `exit`
 
