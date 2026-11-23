@@ -70,6 +70,14 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Diagnostics**: dangling `ref()` detection, dbt YAML schema validation
   (typify-generated types from [dbt-jsonschema]), pull diagnostics
   (`textDocument/diagnostic`)
+- **Syntax errors as you type**, no `dbt compile` first: Jinja errors
+  (unclosed `{% if %}`, stray `{% endif %}`, unbalanced `{{ }}`) and SQL
+  errors in the masked SQL, declining whenever the Jinja makes the SQL
+  uncertain ([docs/lint-and-format.md](docs/lint-and-format.md))
+- **`cogitator lint`** and **`cogitator format`** for CI: every
+  editor-free diagnostic over the whole project (text, JSON or GitHub
+  annotations, exit 1 on errors), and the formatter in place or as
+  `--check` ([docs/lint-and-format.md](docs/lint-and-format.md))
 - dbt **YAML intelligence**: property-name completion and schema errors in
   `schema.yml` / `dbt_project.yml`
 
@@ -370,10 +378,11 @@ perf:
 perf_rules:                # per-rule severity or off; wins over the profile
   join.cartesian: warning  # off | hint | info | warning
   filter.non_sargable: off
-lint:                      # style checks default off; macro_calls and
-  select_star: false       # dispatch default on (docs/macros.md)
-  macro_calls: true
+lint:                      # style checks default off; macro_calls,
+  select_star: false       # dispatch (docs/macros.md) and syntax
+  macro_calls: true        # (docs/lint-and-format.md) default on
   dispatch: true
+  syntax: true
 inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked
