@@ -22,6 +22,7 @@ import {
   previewCteText,
   skippedLayers,
   unresolvedLabel,
+  selectLabel,
   spansByColor,
   splitText,
   syntaxLine,
@@ -416,6 +417,36 @@ export async function run(): Promise<void> {
     breakingResult
   );
 
+  check(
+    JSON.stringify(
+      selectLabel(
+        {
+          kind: "model",
+          name: "customers",
+          uri: "file:///p/models/customers.sql",
+          uniqueId: "model.p.customers",
+          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+        },
+        () => "models/customers.sql"
+      )
+    ) ===
+      JSON.stringify({
+        label: "[model] customers",
+        description: "models/customers.sql:1",
+        detail: "model.p.customers",
+      }),
+    "vscode: a selected node's quick-pick entry shows its kind and place"
+  );
+  const selectResult = (await exec("dbt.select", {
+    uri: document.uri.toString(),
+    selector: "tag:nightly",
+  })) as { count?: number; nodes?: Array<{ name: string }> } | null;
+  check(
+    typeof selectResult?.count === "number" && selectResult?.nodes?.[0]?.name === "customers",
+    "vscode: dbt.select picks the nightly model",
+    selectResult
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -431,6 +462,7 @@ export async function run(): Promise<void> {
       "cogitator.highlight",
       "cogitator.astGrep",
       "cogitator.nodeInfo",
+      "cogitator.select",
       "cogitator.unresolved",
       "cogitator.breakingChanges",
     ].every((c) =>

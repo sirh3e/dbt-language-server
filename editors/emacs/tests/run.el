@@ -361,6 +361,18 @@
   (check (stringp (plist-get found :status))
          "integration: dbt.breakingChanges answers a status" found))
 
+;; unit + integration: dbt.select
+(check (equal (cogitator--select-line
+               '(:kind "model" :name "customers" :uri "file:///p/models/customers.sql"
+                 :range (:start (:line 0 :character 0) :end (:line 0 :character 0))))
+              "/p/models/customers.sql:1:1: [model] customers")
+       "select: a node is a grep line")
+(let ((found (run--exec "dbt.select" (append (cogitator--command-argument)
+                                             (list :selector "tag:nightly")))))
+  (check (and (numberp (plist-get found :count))
+              (equal (plist-get (aref (plist-get found :nodes) 0) :name) "customers"))
+         "integration: dbt.select picks the nightly model" found))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")

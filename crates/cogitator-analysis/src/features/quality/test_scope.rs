@@ -21,6 +21,22 @@ pub struct Applied<'a, 'i> {
     /// `<source>_<table>`.
     pub target: String,
     pub is_source: bool,
+    /// The node the test attaches to, by its parts.
+    pub owner: Owner,
+}
+
+/// What a test entry is written under: a model, seed or snapshot (and,
+/// for a versioned model, the version), or a source table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Owner {
+    Node {
+        name: String,
+        version: Option<String>,
+    },
+    Source {
+        source: String,
+        table: String,
+    },
 }
 
 /// Every (test entry, node) pair of a properties YAML document.
@@ -36,7 +52,10 @@ pub fn applied_tests<'a, 'i>(root: &'a MarkedYaml<'i>, src: &Source<'_>) -> Vec<
                 node(
                     &mut out,
                     name.to_string(),
-                    false,
+                    Owner::Node {
+                        name: name.to_string(),
+                        version: None,
+                    },
                     tests_of(entry),
                     columns_of(entry),
                 );
@@ -60,7 +79,11 @@ pub fn applied_tests<'a, 'i>(root: &'a MarkedYaml<'i>, src: &Source<'_>) -> Vec<
                     .filter(|(name, _)| keep.includes(name))
                     .chain(columns_of(version))
                     .collect();
-                node(&mut out, format!("{name}_v{v}"), false, tests, columns);
+                let owner = Owner::Node {
+                    name: name.to_string(),
+                    version: Some(v.clone()),
+                };
+                node(&mut out, format!("{name}_v{v}"), owner, tests, columns);
             }
         }
     }
@@ -71,7 +94,11 @@ pub fn applied_tests<'a, 'i>(root: &'a MarkedYaml<'i>, src: &Source<'_>) -> Vec<
         for table in get(source, "tables").into_iter().flat_map(items) {
             if let Some(table_name) = get(table, "name").and_then(as_str) {
                 let target = format!("{source_name}_{table_name}");
-                node(&mut out, target, true, tests_of(table), columns_of(table));
+                let owner = Owner::Source {
+                    source: source_name.to_string(),
+                    table: table_name.to_string(),
+                };
+                node(&mut out, target, owner, tests_of(table), columns_of(table));
             }
         }
     }
@@ -83,7 +110,7 @@ type Column<'a, 'i> = (&'a str, Vec<&'a MarkedYaml<'i>>);
 fn node<'a, 'i>(
     out: &mut Vec<Applied<'a, 'i>>,
     target: String,
-    is_source: bool,
+    owner: Owner,
     tests: Vec<&'a MarkedYaml<'i>>,
     columns: Vec<Column<'a, 'i>>,
 ) {
@@ -96,7 +123,8 @@ fn node<'a, 'i>(
             item,
             column,
             target: target.clone(),
-            is_source,
+            is_source: matches!(owner, Owner::Source { .. }),
+            owner: owner.clone(),
         });
     }
 }

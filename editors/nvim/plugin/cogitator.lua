@@ -45,6 +45,12 @@ end, {
   end,
   desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
 })
+vim.api.nvim_create_user_command("DbtSelect", function(opts)
+  require("cogitator.commands").select(opts)
+end, {
+  nargs = "*",
+  desc = "the nodes a dbt selector picks (quickfix; selector:<name> for selectors.yml)",
+})
 vim.api.nvim_create_user_command("DbtFind", function(opts)
   require("cogitator.pick").find(opts.args)
 end, {

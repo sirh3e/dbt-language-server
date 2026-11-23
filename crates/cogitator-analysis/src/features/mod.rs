@@ -44,6 +44,7 @@ mod rename_column;
 mod rename_local;
 mod rename_macro;
 mod rename_var;
+pub mod selectors_yml;
 mod semantic_captures;
 mod signature;
 mod structure;
@@ -114,7 +115,9 @@ pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
-pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
+pub use navigation::{
+    document_highlights, document_symbols, references, workspace_symbols, workspace_symbols_in,
+};
 pub use references::references_at;
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
 pub use rename::{prepare_rename, rename_model};

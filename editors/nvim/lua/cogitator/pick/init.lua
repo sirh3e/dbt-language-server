@@ -105,6 +105,15 @@ function M.open_named(name, ctx)
     end)
     return
   end
+  if name == "select" and not ctx.query then
+    require("cogitator.picker").input({ prompt = "dbt selector: " }, function(query)
+      if query and query ~= "" then
+        ctx.query = query
+        M.open(sources.build(name, ctx))
+      end
+    end)
+    return
+  end
   M.open(sources.build(name, ctx))
 end
 

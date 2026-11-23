@@ -51,6 +51,9 @@ impl Dispatcher {
         if self.hover_jinja(content) {
             return;
         }
+        if self.selectors_hover(content) {
+            return;
+        }
         let derived = self.derived.clone();
         self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
@@ -190,6 +193,10 @@ impl Dispatcher {
     }
 
     pub(super) fn completion(&mut self, content: &[u8]) {
+        // selector methods/values and tag names: the selector engine
+        if self.selectors_completion(content) {
+            return;
+        }
         // properties YAML: schema-driven, offloaded (lineage + test files)
         if let Some((id, uri, pos)) = Self::position_request(content) {
             if cogitator_analysis::yaml_properties::is_properties_file(&uri) {
@@ -308,10 +315,16 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let open = features::selectors_yml::is_selectors_file(&uri).then(|| self.selectors_open());
         self.offload_blocking(id, "textDocument/codeLens", move || {
             let mut lenses = features::code_lenses(&snap.ctx, &uri);
             if let Some(doc) = snap.doc.as_deref() {
                 lenses.extend(features::cte_preview_lenses(&snap.ctx, doc, &uri));
+            }
+            if let (Some(open), Some(doc)) = (open, snap.doc.as_deref()) {
+                lenses.extend(crate::server::selectors::lenses(
+                    &snap.ctx, open, &uri, &doc.text,
+                ));
             }
             lenses.extend(quality_lenses(&snap, &derived, &uri, cap));
             // the last open/save report, never computed here
@@ -456,11 +469,13 @@ impl Dispatcher {
             .params
             .and_then(|p| p.query.map(|q| q.into_owned()))
             .unwrap_or_default();
+        // tag:/selector: go through the selector engine, whose universe
+        // reads files: offloaded
         let ctx = self.snapshot();
-        self.send(&ResultResponse::new(
-            req.id,
-            features::workspace_symbols(&ctx, &query),
-        ));
+        let open = self.selectors_open();
+        self.offload_blocking(req.id, "workspace/symbol", move || {
+            crate::server::selectors::workspace_symbols(&ctx, open, &query)
+        });
     }
 }
 

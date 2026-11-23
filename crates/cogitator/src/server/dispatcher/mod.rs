@@ -72,6 +72,7 @@ mod navigation;
 mod plan;
 mod preview_cte;
 mod requests;
+mod selectors;
 mod semantic;
 mod sync;
 mod yaml_props;
