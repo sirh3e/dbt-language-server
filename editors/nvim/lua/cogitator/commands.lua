@@ -665,7 +665,7 @@ function M.run_selection(opts)
       return
     end
     require("cogitator.pick").select({ "build", "run", "test" }, {
-      prompt = "dbt … --select " .. selector,
+      prompt = "dbt … --select " .. selector .. (opts.exclude and (" --exclude " .. opts.exclude) or ""),
       format_item = function(k)
         return ("dbt %s"):format(k)
       end,

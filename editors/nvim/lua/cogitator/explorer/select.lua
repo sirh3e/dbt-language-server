@@ -43,10 +43,13 @@ function M.mark_all(explorer, items, query)
   s.selection = selection.is_selection(query)
       and { select = select, exclude = exclude, keys = keys, count = #items }
     or nil
-  for _, item in ipairs(items) do
-    if item.value and item.value.in_graph ~= false and s.node_of[item.name] then
-      M.choose(explorer, item)
-      return
+  -- stay on the model in view when it is a match; else go to the first
+  if not (s.selected and keys[s.selected]) then
+    for _, item in ipairs(items) do
+      if item.value and item.value.in_graph ~= false and s.node_of[item.name] then
+        M.choose(explorer, item)
+        return
+      end
     end
   end
   require("cogitator.explorer.render").sides(s)
@@ -142,6 +145,9 @@ function M.keys(explorer)
   }
 end
 
+--- How much of the selection the centre title shows.
+M.TITLE_WIDTH = 32
+
 --- The centre title's word on the selection the marks came from.
 ---@param s cogitator.explorer.State
 ---@return string?
@@ -150,11 +156,11 @@ function M.title(s)
     return nil
   end
   local sel = s.selection
-  return ("dbt select %s%s (%d)"):format(
-    sel.select,
-    sel.exclude and (" --exclude " .. sel.exclude) or "",
-    sel.count
-  )
+  local text = sel.select .. (sel.exclude and (" --exclude " .. sel.exclude) or "")
+  if vim.fn.strchars(text) > M.TITLE_WIDTH then
+    text = vim.fn.strcharpart(text, 0, M.TITLE_WIDTH - 1) .. "…"
+  end
+  return ("dbt select %s (%d)"):format(text, sel.count)
 end
 
 return M

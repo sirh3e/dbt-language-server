@@ -390,6 +390,15 @@ function M.open(source, run, items)
     title = title(s),
   })
   vim.bo[s.bufs.prompt].modifiable = true
+  -- the prompt is a query, not text: no completion plugin's menu over the
+  -- list (blink.cmp reads vim.b.completion; nvim-cmp its buffer setup)
+  vim.b[s.bufs.prompt].completion = false
+  local has_cmp, cmp = pcall(require, "cmp")
+  if has_cmp and type(cmp) == "table" and cmp.setup and cmp.setup.buffer then
+    vim.api.nvim_buf_call(s.bufs.prompt, function()
+      pcall(cmp.setup.buffer, { enabled = false })
+    end)
+  end
   keymaps(s)
   vim.api.nvim_create_autocmd("TextChangedI", {
     buffer = s.bufs.prompt,

@@ -167,6 +167,10 @@ return function(ctx)
   H.check(#listed == 7 and not vim.iter(listed):any(function(t)
     return t:find("%[test%]") ~= nil
   end), "select: --exclude leaves the tests out", vim.inspect(listed))
+  H.check(
+    vim.b[builtin._state.bufs.prompt].completion == false,
+    "select: no completion plugin's menu in the prompt"
+  )
   local mark_all = builtin._state.source.keys[1]
   H.check(mark_all.lhs == "<C-a>", "select: the finder's <C-a> is the navigator's")
   builtin._all(mark_all.fn)
@@ -176,8 +180,9 @@ return function(ctx)
     return vim.inspect(s.marked)
   end)
   H.check(
-    render.center_title(s):find("dbt select +dim_items --exclude resource_type:test (7)", 1, true) ~= nil,
-    "select: the centre says which selection the marks are",
+    render.center_title(s):find("dbt select +dim_items --exclude resource_t… (7)", 1, true) ~= nil
+      and s.selected == "dim_items",
+    "select: the centre says which selection the marks are, on the model it was on",
     render.center_title(s)
   )
   local commands = require("cogitator.commands")
