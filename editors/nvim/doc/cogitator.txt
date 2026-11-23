@@ -122,6 +122,12 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  true, as a unified diff in a split (`q` closes)
   :DbtIncrementality
                  table models that could be incremental (quickfix)
+  :DbtBreakingChanges
+                 this model against its last built schema (target/
+                 catalog.json, else manifest.json): removed, possibly
+                 renamed and retyped columns and what reads them
+                 downstream (quickfix); also a lens and a diagnostic,
+                 refreshed on save
   :DbtUnresolved [kind…]
                  every unresolved ref, source, source_table, doc, macro
                  and var of the project (quickfix; `:DbtFind unresolved`

@@ -30,6 +30,7 @@ impl Dispatcher {
             let _ = self.config_poke_tx.send(());
         }
         self.publish_static_diagnostics(&uri);
+        self.spawn_breaking(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -54,6 +55,7 @@ impl Dispatcher {
             let _ = self.config_poke_tx.send(());
         }
         self.publish_static_diagnostics(&uri);
+        self.spawn_breaking(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -71,53 +73,15 @@ impl Dispatcher {
     pub(super) fn static_diagnostics(&self, uri: &str) -> Vec<Diagnostic> {
         let lints =
             features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
-        // push stays inline and lineage-free; the pull path adds the
-        // lineage-backed check
         let ctx = self.ctx_for(uri);
-        let mut items = crate::server::diagnostics::static_diagnostics(
+        crate::server::diagnostics::push_diagnostics(
             &ctx,
             self.documents.get(uri),
             uri,
             lints,
-            None,
-        );
-        // artifacts come from the LAST loaded set — no fs on this task
-        // (the offloaded lens/pull paths keep it warm)
-        if let Some(root) = ctx.project_root.as_deref() {
-            let set = self.derived.artifacts_cached(root);
-            items.extend(features::artifact_diagnostics(&ctx, uri, &set));
-            items.extend(self.perf_diagnostics_cached(&ctx, uri, &set));
-        }
-        items
-    }
-
-    /// Plan diagnostics from a plan the pull path or `dbt.queryPlan`
-    /// already computed for this exact text and schema. This path never
-    /// plans: no cached plan means none here.
-    fn perf_diagnostics_cached(
-        &self,
-        ctx: &Arc<cogitator_analysis::DbtContext>,
-        uri: &str,
-        artifacts: &cogitator_analysis::artifacts::ArtifactSet,
-    ) -> Vec<Diagnostic> {
-        let perf = self.perf_settings();
-        if !perf.active() {
-            return Vec::new();
-        }
-        let Some(doc) = self.documents.get(uri) else {
-            return Vec::new();
-        };
-        let key = crate::server::handlers::plan::plan_key(
-            ctx,
             &self.derived,
-            artifacts,
-            uri,
-            perf.catalog_stats,
-        );
-        self.derived
-            .plan_cached(uri, doc.generation, key)
-            .map(|plan| crate::server::diagnostics::perf_diagnostics(doc, &plan, &perf))
-            .unwrap_or_default()
+            &self.perf_settings(),
+        )
     }
 
     /// The live perf settings: a cheap Arc clone.

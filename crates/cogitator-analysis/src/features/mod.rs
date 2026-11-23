@@ -3,6 +3,7 @@
 //! (functional core / imperative shell, 05 §3).
 
 mod artifact_status;
+pub mod breaking;
 mod call_hierarchy;
 mod code_actions;
 pub mod column_types;

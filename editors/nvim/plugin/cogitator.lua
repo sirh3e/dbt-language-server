@@ -32,6 +32,7 @@ cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, a
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
+cmd("DbtBreakingChanges", "breaking_changes", "this model against its last built schema (quickfix)")
 vim.api.nvim_create_user_command("DbtUnresolved", function(opts)
   require("cogitator.commands").unresolved(opts)
 end, {

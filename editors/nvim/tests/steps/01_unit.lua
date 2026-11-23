@@ -170,6 +170,28 @@ return function(ctx)
     vim.inspect(unresolved)
   )
 
+  -- :DbtBreakingChanges quickfix items
+  local breaking = require("cogitator.commands").breaking_items({
+    diff = { removed = { { name = "customer_id", possiblyRenamedTo = "customer_key" } } },
+    impacts = {
+      {
+        column = "customer_id",
+        change = "removed",
+        severity = "error",
+        tests = { "unique" },
+        downstream = { { model = "customers", column = "customer_id", contracted = true, public = false } },
+      },
+    },
+  })
+  H.check(
+    #breaking == 2
+      and breaking[1].type == "E"
+      and breaking[1].text == "customer_id removed (possibly renamed to customer_key) — tested: unique"
+      and breaking[2].text == "  read by customers.customer_id (contracted)",
+    "commands: breaking_items name the change, the rename hint and the downstream reads",
+    vim.inspect(breaking)
+  )
+
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")

@@ -19,6 +19,7 @@ use cogitator_analysis::profiles::{load_inventory, ProfileScope, ProfilesInvento
 use serde::Serialize;
 
 mod artifacts;
+mod breaking;
 mod lineage;
 mod plan;
 mod schemas;
@@ -117,6 +118,8 @@ pub struct DerivedCache {
     /// Whole `dbt.highlight` answers, most recently used last.
     highlights: Mutex<Vec<(HighlightKey, Arc<cogitator_treesitter::Highlights>)>>,
     highlights_stats: Counters,
+    /// The last breaking-change report per model uri (on open/save).
+    breaking: breaking::BreakingSlot,
 }
 
 /// What a cached `dbt.highlight` answer is of: an open document at a

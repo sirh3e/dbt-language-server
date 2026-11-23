@@ -86,7 +86,11 @@ source's card from `dbt.nodeInfo`), inlay hints with the value of each
 `var()` (`editor.inlayHints.enabled`, docs/variables.md), `dbt:
 Unresolved references` (every unresolved `ref`, `source`, `doc`, macro
 and `var` of the project from `dbt.unresolved`, a quick pick that jumps
-to each), `dbt:
+to each), `dbt: Breaking changes against the last build` (this model's
+columns against `target/catalog.json` or the manifest's documented
+columns from `dbt.breakingChanges`: removed, possibly renamed and retyped
+columns and what reads them downstream; also a lens and a diagnostic,
+refreshed on save), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,

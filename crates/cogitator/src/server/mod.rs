@@ -3,6 +3,7 @@
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
 mod astgrep;
+mod breaking;
 mod cache_persist;
 mod client_link;
 mod commands;

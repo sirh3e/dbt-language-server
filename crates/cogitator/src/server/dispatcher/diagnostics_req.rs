@@ -279,6 +279,10 @@ impl Dispatcher {
                     items.extend(crate::server::astgrep::diagnostics(&rules, &uri, &doc.text));
                 }
             }
+            // computed on open/save (dispatcher/breaking.rs), read here
+            items.extend(crate::server::diagnostics::breaking_diagnostics(
+                &derived, &uri,
+            ));
             if perf.active() {
                 if let (Some(doc), Some(plan)) = (
                     snap.doc.as_deref(),

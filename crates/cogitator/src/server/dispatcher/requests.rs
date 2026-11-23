@@ -311,6 +311,12 @@ impl Dispatcher {
         self.offload_blocking(id, "textDocument/codeLens", move || {
             let mut lenses = features::code_lenses(&snap.ctx, &uri);
             lenses.extend(quality_lenses(&snap, &derived, &uri, cap));
+            // the last open/save report, never computed here
+            lenses.extend(
+                derived
+                    .breaking_report(&uri)
+                    .and_then(|r| features::breaking::lens(&r, &uri)),
+            );
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, cap);
                 lenses.extend(features::run_lens(&snap.ctx, &uri, &set));

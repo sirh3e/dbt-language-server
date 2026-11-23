@@ -259,6 +259,7 @@ M.COMMANDS = {
   ["dbt.cache"] = ":DbtCache",
   ["dbt.reloadConfig"] = ":DbtReloadConfig",
   ["dbt.impact"] = ":DbtImpact",
+  ["dbt.breakingChanges"] = ":DbtBreakingChanges, the lens",
   ["dbt.deadModels"] = ":DbtDeadModels",
   ["dbt.expandJinja"] = ":DbtExpandJinja",
   ["dbt.queryPlan"] = ":DbtPlan",

@@ -123,7 +123,11 @@ editor integrations live under `editors/`.
   false and true, and the unified diff; `show: true`, the lens on
   incremental models, opens it as a document), dbt.unresolved (every
   unresolved ref/source/doc/macro/var of the project;
-  `features/unresolved.rs`). Every command takes one argument object
+  `features/unresolved.rs`), dbt.breakingChanges (a model's columns
+  against target/catalog.json or the manifest's documented columns, and
+  what that breaks downstream; `features/breaking/`, the shell in
+  `server/breaking.rs`, computed on open/save for its diagnostics and
+  lens by `dispatcher/breaking.rs`). Every command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).
 - `textDocument/codeAction` serves the executable lens set as

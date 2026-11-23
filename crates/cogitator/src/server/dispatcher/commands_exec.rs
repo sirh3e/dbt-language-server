@@ -185,6 +185,10 @@ impl Dispatcher {
                 self.status_report(req.id);
                 return;
             }
+            "dbt.breakingChanges" => {
+                self.breaking_changes(req.id, uri);
+                return;
+            }
             "dbt.impact" => {
                 let model = arg
                     .get("model")
