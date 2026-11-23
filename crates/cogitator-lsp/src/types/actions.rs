@@ -54,9 +54,35 @@ pub struct CodeAction {
     /// that preserves results is ever set (specs/ir-pipeline/08).
     #[serde(rename = "isPreferred", skip_serializing_if = "Option::is_none")]
     pub is_preferred: Option<bool>,
+    /// Kept by the client and sent back on resolve. `{"cogitator":
+    /// {"atCursor": true}}` marks an action about what is under the
+    /// cursor, as opposed to one on the whole file, so a menu can put it
+    /// first; stock clients ignore it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 impl CodeAction {
+    /// Mark the action as about what is under the cursor (see `data`).
+    pub fn at_cursor(mut self) -> Self {
+        self.mark_at_cursor();
+        self
+    }
+
+    /// `at_cursor` in place.
+    pub fn mark_at_cursor(&mut self) {
+        self.data = Some(serde_json::json!({ "cogitator": { "atCursor": true } }));
+    }
+
+    /// Is the action marked as about what is under the cursor?
+    pub fn is_at_cursor(&self) -> bool {
+        self.data
+            .as_ref()
+            .and_then(|d| d.pointer("/cogitator/atCursor"))
+            .and_then(|v| v.as_bool())
+            == Some(true)
+    }
+
     /// The classic kind-less dbt action: a command, nothing else.
     pub fn command_only(title: String, command: Command) -> Self {
         CodeAction {
@@ -66,6 +92,7 @@ impl CodeAction {
             edit: None,
             command: Some(command),
             is_preferred: None,
+            data: None,
         }
     }
 
@@ -78,6 +105,7 @@ impl CodeAction {
             edit: Some(edit),
             command: None,
             is_preferred: None,
+            data: None,
         }
     }
 
@@ -96,6 +124,7 @@ impl CodeAction {
             edit: Some(edit),
             command: None,
             is_preferred: None,
+            data: None,
         }
     }
 

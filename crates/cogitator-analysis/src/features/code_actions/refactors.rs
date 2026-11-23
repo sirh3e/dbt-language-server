@@ -98,6 +98,7 @@ pub fn expand_star_action(
         }),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }
 
@@ -163,5 +164,6 @@ pub fn extract_yaml_action(model: &str, extract: &ExtractEdit) -> CodeAction {
         edit: Some(extract.workspace_edit()),
         command: None,
         is_preferred: None,
+        data: None,
     }
 }

@@ -31,21 +31,39 @@ impl ScopeIndex {
     }
 
     pub fn build(doc: &Document) -> Self {
-        Self::build_within(doc, 0, doc.parsed.tokens.len())
+        Self::scan(doc, 0, doc.parsed.tokens.len(), false)
     }
 
-    /// The relations read between token `lo` (inclusive) and `hi`
-    /// (exclusive): one query's FROM/JOIN, where `build` reads them all.
+    /// The relations one query reads between token `lo` (inclusive) and
+    /// `hi` (exclusive): its own FROM/JOIN only, not a subquery's inside
+    /// parentheses, where `build` reads every one of the document.
     pub fn build_within(doc: &Document, lo: usize, hi: usize) -> Self {
+        Self::scan(doc, lo, hi, true)
+    }
+
+    fn scan(doc: &Document, lo: usize, hi: usize, top_level: bool) -> Self {
         let tokens = &doc.parsed.tokens[..hi.min(doc.parsed.tokens.len())];
         let mut relations = Vec::new();
+        // the parenthesis depth at each token, relative to `lo`
+        let mut depth_at = vec![0i32; tokens.len()];
+        let mut depth = 0i32;
+        for (k, token) in tokens.iter().enumerate().skip(lo) {
+            if token.kind == TokenKind::Symbol(')') {
+                depth -= 1;
+            }
+            depth_at[k] = depth;
+            if token.kind == TokenKind::Symbol('(') {
+                depth += 1;
+            }
+        }
 
         let mut i = lo;
         while i < tokens.len() {
             if !matches!(
                 tokens[i].kind,
                 TokenKind::Word(Keyword::FROM) | TokenKind::Word(Keyword::JOIN)
-            ) {
+            ) || (top_level && depth_at[i] != 0)
+            {
                 i += 1;
                 continue;
             }

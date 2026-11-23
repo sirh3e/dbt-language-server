@@ -56,7 +56,7 @@ pub fn code_actions(
     } else {
         let mut actions = Vec::new();
         if let Some(doc) = doc {
-            actions.extend(ref_target_action(ctx, doc, range));
+            actions.extend(ref_target_action(ctx, doc, range).map(CodeAction::at_cursor));
         }
         actions.extend(
             model_commands(ctx, uri)
@@ -64,12 +64,20 @@ pub fn code_actions(
                 .map(|(title, command)| action(title, command, uri.to_string())),
         );
         if actions.is_empty() {
-            actions.extend(yaml_entry_actions(ctx, uri, range));
+            // the entry under the cursor, of the several a YAML file holds
+            actions.extend(
+                yaml_entry_actions(ctx, uri, range)
+                    .into_iter()
+                    .map(CodeAction::at_cursor),
+            );
         }
         actions
     };
     // quickfixes first: a fix beats a workflow command in every menu
-    let mut all = quickfix::quickfixes(uri, context_diagnostics);
+    let mut all: Vec<CodeAction> = quickfix::quickfixes(uri, context_diagnostics)
+        .into_iter()
+        .map(CodeAction::at_cursor)
+        .collect();
     all.extend(deps_action(ctx, uri, context_diagnostics));
     all.extend(quickfix::fix_all(uri, context_diagnostics, only));
     all.append(&mut actions);

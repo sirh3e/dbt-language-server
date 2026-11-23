@@ -160,6 +160,7 @@ fn yaml_action(title: String, schema: &Path, edits: Vec<TextEdit>) -> CodeAction
         }),
         command: None,
         is_preferred: None,
+        data: None,
     }
 }
 

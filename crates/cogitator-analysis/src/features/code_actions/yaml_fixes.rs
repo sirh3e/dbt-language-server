@@ -52,6 +52,7 @@ pub fn scaffold_tests_action(
         }),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }
 
@@ -96,6 +97,7 @@ pub fn inherit_description_actions(
             }),
             command: None,
             is_preferred: None,
+            data: None,
         });
     }
     out.truncate(5); // a menu, not a wall
