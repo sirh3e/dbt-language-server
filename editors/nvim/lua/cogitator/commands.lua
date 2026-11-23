@@ -510,7 +510,11 @@ function M.breaking_items(result)
         tags[#tags + 1] = "public"
       end
       items[#items + 1] = {
-        text = ("  read by %s.%s%s"):format(use.model, use.column, #tags > 0 and (" (" .. table.concat(tags, ", ") .. ")") or ""),
+        text = ("  read by %s.%s%s"):format(
+          use.model,
+          use.column,
+          #tags > 0 and (" (" .. table.concat(tags, ", ") .. ")") or ""
+        ),
       }
     end
   end
