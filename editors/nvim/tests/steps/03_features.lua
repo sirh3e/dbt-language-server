@@ -21,6 +21,19 @@ return function(ctx)
     vim.inspect(graph_result):sub(1, 200)
   )
 
+  local site_result = H.exec_cmd(client, bufnr, "dbt.lineageSite", {
+    uri = vim.uri_from_bufnr(bufnr),
+    write = true,
+  }, "integration: dbt.lineageSite")
+  H.check(
+    type(site_result) == "table"
+      and type(site_result.written) == "table"
+      and vim.uv.fs_stat(site_result.written.path) ~= nil
+      and site_result.counts.columnsTraced > 0,
+    "integration: dbt.lineageSite writes the page under target/",
+    vim.inspect(site_result):sub(1, 200)
+  )
+
   local relation_result = H.exec_cmd(client, bufnr, "dbt.relation", {
     uri = vim.uri_from_bufnr(bufnr),
   }, "integration: dbt.relation")
