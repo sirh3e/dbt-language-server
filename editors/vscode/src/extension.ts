@@ -10,6 +10,8 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+import { LineageAnswer, showLineageView } from "./lineageView";
+export { columnPosition, lineageFocus, lineageHtml } from "./lineageView";
 
 let client: LanguageClient | undefined;
 
@@ -827,6 +829,19 @@ async function select(): Promise<void> {
   }
 }
 
+/** dbt.lineageSite: the lineage view, fed by the server (lineageView.ts). */
+function lineageView(context: vscode.ExtensionContext): Promise<void> {
+  return showLineageView(context, async (uri, assets) => {
+    if (!client) {
+      return undefined;
+    }
+    return (await client.sendRequest("workspace/executeCommand", {
+      command: "dbt.lineageSite",
+      arguments: [{ uri: uri ?? "", assets }],
+    })) as LineageAnswer | null;
+  });
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -846,6 +861,7 @@ export async function activate(
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
     ["cogitator.select", select],
+    ["cogitator.lineageView", () => lineageView(context)],
     ["cogitator.unresolved", unresolved],
     ["cogitator.breakingChanges", breakingChanges],
     [

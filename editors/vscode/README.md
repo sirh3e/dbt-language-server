@@ -94,7 +94,11 @@ columns from `dbt.breakingChanges`: removed, possibly renamed and retyped
 columns and what reads them downstream; also a lens and a diagnostic,
 refreshed on save), `dbt: Select nodes` (the nodes a dbt selector picks, as `dbt
 ls` lists them, from `dbt.select` — `selector:<name>` evaluates a
-selectors.yml entry — a quick pick that jumps to each), `dbt:
+selectors.yml entry — a quick pick that jumps to each), `dbt: Show
+lineage view` (the project DAG and column-level lineage from
+`dbt.lineageSite` in a panel beside the editor — the same page as
+`cogitator lineage-site`; it follows the active model, refreshes on save,
+and clicking a file opens it at the column), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,
