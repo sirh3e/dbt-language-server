@@ -2,10 +2,11 @@
 --- level, and a preview of what is under the cursor — with a breadcrumb
 --- header and a key-hint footer. Walked with vim motions: j/k move,
 --- l (or <CR>) enters a group or chooses an item, h goes back up,
---- gg/G jump, / filters as you type, J/K scroll the preview, ? shows the
---- keys, q/<Esc> close. Every dialog of the plugin goes through here:
---- `select` is a drop-in for vim.ui.select, `input` for vim.ui.input,
---- and `open` takes a tree (the code-action menu, the :Dbt menu).
+--- gg/G jump, / filters as you type (fzf's syntax), J/K scroll the
+--- preview, ? shows the keys, q/<Esc> close. Every dialog of the plugin
+--- goes through here: `select` is a drop-in for vim.ui.select, `input`
+--- for vim.ui.input, and `open` takes a tree (the code-action menu,
+--- the :Dbt menu).
 ---
 --- Pure helpers (`format_line`, `matches`, `visible`) are exposed for
 --- the test suite; the rest is window plumbing.
@@ -68,24 +69,21 @@ local HINTS = {
   { "q", "quit" },
 }
 
---- Does an item (or, for a group, any of its leaves) match every word of
---- the filter? Case-insensitive substring per word.
+--- Does an item (or, for a group, any of its leaves) match the filter?
+--- The filter is fzf's syntax (cogitator.pick.query): `stg cust` (every
+--- term, letters in order), `'exact`, `^prefix`, `suffix$`, `!not`,
+--- `a | b` — matched against the label and the detail.
 ---@param item cogitator.picker.Item
 ---@param filter string
 ---@return boolean
 function M.matches(item, filter)
-  local words = vim.split(vim.trim(filter):lower(), "%s+", { trimempty = true })
-  if #words == 0 then
+  local query = require("cogitator.pick.query")
+  local groups = query.parse(filter)
+  if #groups == 0 then
     return true
   end
   local function hit(it)
-    local text = (it.label .. " " .. (it.detail or "")):lower()
-    for _, w in ipairs(words) do
-      if not text:find(w, 1, true) then
-        return false
-      end
-    end
-    return true
+    return query.match(groups, it.label .. " " .. (it.detail or "")) ~= nil
   end
   local function walk(it)
     if hit(it) then
@@ -349,9 +347,12 @@ function M.enter()
     return
   end
   if item.children then
-    local shown = M.visible(item.children, l.filter)
+    -- a group the filter kept by its own name opens whole; one kept by
+    -- its children opens on the children that matched
+    local filter = M.matches({ label = item.label, detail = item.detail }, l.filter) and "" or l.filter
+    local shown = M.visible(item.children, filter)
     s.stack[#s.stack + 1] =
-      { items = item.children, label = item.label, filter = l.filter, shown = shown, cursor = 1 }
+      { items = item.children, label = item.label, filter = filter, shown = shown, cursor = 1 }
     s.help = false
     M._render()
     return

@@ -141,6 +141,19 @@ M.SUBCOMMANDS = {
   plan = { run = plain("plan"), desc = "this model's query plan" },
   doctor = { run = plain("doctor"), desc = "the server's health report" },
   dead = { run = plain("dead_models"), desc = "models nothing uses" },
+  references = {
+    run = function(args)
+      require("cogitator.usages").references({ bang = args == "!" })
+    end,
+    desc = "where the thing under the cursor is used [! the file's model]",
+  },
+  macros = { run = module_call("cogitator.usages", "macros"), desc = "every macro, then its callers" },
+  rename = {
+    run = function(args)
+      require("cogitator.rename").rename({ args = args })
+    end,
+    desc = "rename the model or macro under the cursor [new_name]",
+  },
   unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
   select = { run = with_args("select"), desc = "the nodes a dbt selector picks" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
@@ -251,12 +264,14 @@ M.GROUPS = {
       "extract",
       "relation",
       "query",
+      "references",
+      "rename",
     },
   },
   {
     name = "Views",
     icon = "◈",
-    subs = { "find", "graph", "dag", "columns", "explorer", "node", "syntax", "highlight" },
+    subs = { "find", "macros", "graph", "dag", "columns", "explorer", "node", "syntax", "highlight" },
   },
   {
     name = "Project",

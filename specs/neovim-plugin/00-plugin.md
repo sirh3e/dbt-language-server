@@ -497,6 +497,9 @@ vim.lsp.enable("cogitator")
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
 | `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
+| `:DbtReferences[!]` | `textDocument/references` | every use of what the cursor names (`!`: the file's own model), in the yazi-style dialog, a group per file and a line per use with its preview; the first entry renames it — **Neovim only** |
+| `:DbtMacros` | `workspace/symbol`, `textDocument/references` | every macro in the yazi-style dialog; choosing one shows where it is called (asked at its header, which the server reads from disk when the file is not open) — **Neovim only** |
+| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |

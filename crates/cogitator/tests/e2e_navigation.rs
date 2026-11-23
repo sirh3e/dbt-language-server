@@ -224,3 +224,72 @@ fn yaml_document_links() {
     );
     lsp.shutdown();
 }
+
+/// A rename sent at the end of a model's own file names nothing local,
+/// so it renames the model: the editor dialogs use this position to
+/// rename the file's model wherever the cursor is.
+#[test]
+fn rename_past_the_last_line_renames_the_files_model() {
+    let project = jaffle();
+    let (mut lsp, customers_uri) = project.booted();
+    let customers = std::fs::read_to_string(project.root.join("models/customers.sql")).unwrap();
+    let end = customers.lines().count();
+    let edit = lsp.request(
+        "textDocument/rename",
+        serde_json::json!({"textDocument": {"uri": customers_uri},
+            "position": {"line": end, "character": 0}, "newName": "clients"}),
+    );
+    let changes = edit["result"]["documentChanges"]
+        .as_array()
+        .unwrap_or_else(|| panic!("documentChanges: {edit}"));
+    assert!(
+        changes.iter().any(|c| c["kind"] == "rename"
+            && c["newUri"]
+                .as_str()
+                .is_some_and(|u| u.ends_with("models/clients.sql"))),
+        "{edit}"
+    );
+    lsp.shutdown();
+}
+
+/// A macro's references and rename asked at its header in a file the
+/// editor never opened: the server reads the file from disk, so a dialog
+/// can list a macro's callers straight from the macro list.
+#[test]
+fn an_unopened_macro_file_answers_references_and_rename() {
+    let project = jaffle();
+    let (mut lsp, _) = project.booted();
+    let path = project.root.join("macros/jaffle_macros.sql");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&path);
+    let at = position_of(&text, "full_name", 1);
+
+    let refs = lsp.request(
+        "textDocument/references",
+        serde_json::json!({"textDocument": {"uri": uri}, "position": at,
+            "context": {"includeDeclaration": false}}),
+    );
+    let found = uris(&refs);
+    assert!(found.iter().any(|u| u.ends_with("customers.sql")), "{refs}");
+
+    let edit = lsp.request(
+        "textDocument/rename",
+        serde_json::json!({"textDocument": {"uri": uri}, "position": at,
+            "newName": "person_name"}),
+    );
+    let edited: Vec<&str> = edit["result"]["documentChanges"]
+        .as_array()
+        .unwrap_or_else(|| panic!("documentChanges: {edit}"))
+        .iter()
+        .filter_map(|c| c["textDocument"]["uri"].as_str())
+        .collect();
+    assert!(
+        edited.iter().any(|u| u.ends_with("jaffle_macros.sql")),
+        "{edit}"
+    );
+    assert!(
+        edited.iter().any(|u| u.ends_with("customers.sql")),
+        "{edit}"
+    );
+    lsp.shutdown();
+}
