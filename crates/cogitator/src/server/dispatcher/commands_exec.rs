@@ -428,6 +428,33 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.select" => {
+                let text = arg
+                    .get("select")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let exclude = arg
+                    .get("exclude")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                let vocabulary = arg
+                    .get("vocabulary")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.select", move || {
+                    crate::server::handlers::selection::select(
+                        &snap,
+                        &derived,
+                        &text,
+                        exclude.as_deref(),
+                        vocabulary,
+                    )
+                });
+                return;
+            }
             "dbt.relation" => {
                 let pos = arg_position(arg);
                 let snap = self.snapshot_for(&uri);

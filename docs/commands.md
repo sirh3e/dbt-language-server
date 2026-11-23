@@ -294,6 +294,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none
 - **Editors**: Neovim ✓ (`:DbtUnresolved` quickfix, `:DbtFind unresolved` picker) · Emacs ✓ (`M-x cogitator-unresolved`) · VS Code ✓ (`dbt: Unresolved references`)
 
+### `dbt.select`
+
+- **Argument**: `{select, exclude?, vocabulary?}` — dbt's node-selection syntax as `--select` takes it (space a union, `,` an intersection, `[@][n+]method:value[+n]`); `select` may carry an inline `--exclude …`; `vocabulary: true` adds what completion offers
+- **Result**: `{nodes: [{uniqueId, resourceType, name, package, path, tags, uri, range, graphId}], counts, error, vocabulary?}` — the nodes `dbt ls --select … --exclude …` would list (models, seeds, snapshots, source tables, singular, generic and unit tests, analyses, exposures, metrics, semantic models), by resource type then name; tests directly on a selected node come with it (dbt's eager indirect selection). Methods: `fqn` (the default, also a folder or package), `tag`, `path`, `file`, `package`, `resource_type`, `config.materialized` / `config.tags` / `config.access` / `config.group`, `access`, `group`, `source`, `exposure`, `metric`, `semantic_model`, `test_type`, `test_name`, `unit_test`, `selector` (selectors.yml definitions, unions, intersections and exclusions). Folder `+tags` / `+materialized` of dbt_project.yml count; target/manifest.json's materialized wins where it has the node. `state:`, `result:`, `source_status:` and `saved_query:` are refused (they need a previous run's artifacts), as is `version:`. A text that is no selection answers `error: {message, start, end}` (byte offsets) and no nodes
+- **Side effects**: none
+- **Editors**: Neovim ✓ (`:DbtSelect`, and the navigator's finder takes a selection as typed) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`)
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`

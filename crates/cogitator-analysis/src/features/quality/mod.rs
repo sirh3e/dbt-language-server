@@ -6,6 +6,7 @@ mod coverage_lenses;
 pub mod py_yaml;
 mod test_lenses;
 pub mod test_names;
+pub mod test_nodes;
 mod test_scope;
 
 pub use coverage::{model_coverage, project_coverage, ModelCoverage, ProjectCoverage};

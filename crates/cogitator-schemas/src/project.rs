@@ -36,6 +36,11 @@ pub struct ProjectFile {
     /// Range side-table for nested var maps: top-level key → (inner key →
     /// inner key range). Used for project- and package-scoped vars (03 §4).
     pub nested_var_ranges: HashMap<String, HashMap<String, Range>>,
+    /// The resource-config trees as written — `models:`, `seeds:`,
+    /// `snapshots:`, `tests:` — by key, for folder-level `+tags` and
+    /// `+materialized` (node selection). Kept raw: their shapes vary too
+    /// widely for the generated types.
+    pub resource_configs: HashMap<String, serde_json::Value>,
 }
 
 /// Parse `dbt_project.yml` text (already env_var-resolved, 03 §3.2).
@@ -62,7 +67,13 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         "docs-paths",
         "vars",
     ];
+    let mut resource_configs = HashMap::new();
     if let serde_json::Value::Object(map) = &mut value {
+        for key in ["models", "seeds", "snapshots", "tests"] {
+            if let Some(tree) = map.get(key) {
+                resource_configs.insert(key.to_string(), tree.clone());
+            }
+        }
         map.retain(|k, _| USED_KEYS.contains(&k.as_str()));
     }
     let project: DbtProject = serde_json::from_value(value)?;
@@ -80,6 +91,7 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         docs_paths: paths_of(project.docs_paths.as_ref()),
         docs_paths_explicit: project.docs_paths.is_some(),
         vars: project.vars.clone(),
+        resource_configs,
         ..Default::default()
     };
 

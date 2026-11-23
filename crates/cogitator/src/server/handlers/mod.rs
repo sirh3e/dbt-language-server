@@ -13,3 +13,4 @@ pub mod plan;
 mod plan_compiled;
 pub mod plan_hints;
 pub mod profiles;
+pub mod selection;

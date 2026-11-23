@@ -6,13 +6,22 @@ profile: vault_lake
 model-paths: ["models"]
 macro-paths: ["macros"]
 test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
 docs-paths: ["models"]
 
 models:
   vault_lake:
+    +tags: ["lake"]
     raw_vault:
       +materialized: incremental
+      +tags: ["raw"]
     business_vault:
       +materialized: table
     dim:
       +materialized: table
+      +tags: ["mart"]
+
+seeds:
+  vault_lake:
+    +tags: ["reference"]

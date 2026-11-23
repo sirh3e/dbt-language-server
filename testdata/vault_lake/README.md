@@ -12,7 +12,11 @@ does not have and real projects do.
   downstream holds tests beside models;
 - a project `generate_schema_name` puts each folder in its own schema, which only
   `target/manifest.json` knows (`"lake"."dim"."dim_items"`);
-- properties files per folder, named `_<layer>__models.yml`.
+- properties files per folder, named `_<layer>__models.yml`;
+- for node selection (`dbt.select`): folder `+tags` and `+materialized`, tags in
+  YAML and in a SQL `config()`, a seed and a snapshot nothing refs, an
+  exposure, generic and unit tests, and a `selectors.yml` with a union, an
+  exclusion and graph parents.
 
 Nothing here runs against a warehouse; `target/manifest.json` is written by hand
 with only the fields the server reads.

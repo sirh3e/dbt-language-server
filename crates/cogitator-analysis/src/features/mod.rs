@@ -35,6 +35,7 @@ mod relation;
 mod rename;
 mod rename_macro;
 mod rename_var;
+pub mod selection;
 mod semantic_captures;
 mod signature;
 mod structure;

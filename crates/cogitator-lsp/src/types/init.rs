@@ -195,6 +195,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.astGrep",
     "dbt.nodeInfo",
     "dbt.unresolved",
+    "dbt.select",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

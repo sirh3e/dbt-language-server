@@ -2,6 +2,7 @@ version: 2
 
 models:
   - name: dim_items
+    tags: [nightly]
     description: >
       The items as SCD type 2: one row per state of an item, valid from the
       version that saw it until the next one.
@@ -19,3 +20,17 @@ models:
         description: '{{ doc("item_state") }}'
       - name: previous_state
         description: The state before it.
+
+unit_tests:
+  - name: test_dim_items_keeps_the_previous_state
+    model: dim_items
+    given:
+      - input: ref('bv_item_transitions')
+        rows:
+          - {item_hk: a, version_number: 2, state: moved, previous_state: held}
+      - input: ref('hub_item')
+        rows:
+          - {item_hk: a, item_id: "730/2/1"}
+    expect:
+      rows:
+        - {item_id: "730/2/1", state: moved, previous_state: held}
