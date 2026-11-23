@@ -373,6 +373,35 @@
               (equal (plist-get (aref (plist-get found :nodes) 0) :name) "customers"))
          "integration: dbt.select picks the nightly model" found))
 
+;; unit + integration: dbt.syncYaml
+(check (equal (cogitator--sync-yaml-lines
+               '(:changes 2
+                 :files [(:uri "file:///p/models/a.yml"
+                          :diff "--- a/a.yml\n+++ b/a.yml\n+      - name: id\n")]
+                 :models [(:model "a" :createdEntry :json-false :added ["id"]
+                           :inherited [(:column "id" :from (:kind "source" :source "raw"
+                                                            :table "t" :column "id"))]
+                           :typed [] :stale ["old"] :pruned [] :reordered :json-false
+                           :skipped [(:column "x" :reason "written in flow style")])
+                          (:model "quiet" :added [] :inherited [] :typed [] :stale []
+                           :pruned [] :skipped [])]))
+              '("# dbt.syncYaml: 2 change(s) in 1 file(s)"
+                "# a"
+                "  + column id"
+                "  ~ id description from source raw.t.id"
+                "  ! stale column old (prune removes it)"
+                "  ? x: written in flow style"
+                ""
+                "--- a/a.yml"
+                "+++ b/a.yml"
+                "+      - name: id"))
+       "sync-yaml: the preview lists each model's changes, then the diffs")
+(let ((found (run--exec "dbt.syncYaml" (list :uri "" :models ["stg_customers"]))))
+  (check (and (eq (plist-get found :applied) :json-false)
+              (equal (plist-get (aref (plist-get found :models) 0) :model) "stg_customers")
+              (equal (aref (plist-get (aref (plist-get found :models) 0) :added) 0) "first_name"))
+         "integration: dbt.syncYaml plans without applying" found))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")
