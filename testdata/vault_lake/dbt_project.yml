@@ -1,0 +1,18 @@
+name: vault_lake
+version: "1.0.0"
+config-version: 2
+profile: vault_lake
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+docs-paths: ["models"]
+
+models:
+  vault_lake:
+    raw_vault:
+      +materialized: incremental
+    business_vault:
+      +materialized: table
+    dim:
+      +materialized: table

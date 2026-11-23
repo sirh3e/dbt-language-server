@@ -202,7 +202,11 @@ return function(ctx)
   local server = {
     fixture_actions[1],
     { title = "Add version 2 of 'm'", kind = "refactor.extract", edit = { changes = {} } },
-    { title = "Open schema of 'stg_orders'", command = { command = "dbt.openSchema", arguments = {} }, data = mark },
+    {
+      title = "Open schema of 'stg_orders'",
+      command = { command = "dbt.openSchema", arguments = {} },
+      data = mark,
+    },
     fixture_actions[2],
     { title = "Expand * to 2 column(s)", kind = "refactor.rewrite", edit = { changes = {} }, data = mark },
   }
@@ -277,13 +281,13 @@ return function(ctx)
         model_level = item.children
       end
     end
-    local details, labels = {}, {}
+    local details, model_labels = {}, {}
     for _, c in ipairs(model_level) do
       details[#details + 1] = c.detail or ""
-      labels[#labels + 1] = c.label
+      model_labels[#model_labels + 1] = c.label
     end
     H.check(
-      top.dbt == nil and top.Model == nil and top.Views ~= nil and vim.tbl_contains(labels, "dbt run"),
+      top.dbt == nil and top.Model == nil and top.Views ~= nil and vim.tbl_contains(model_labels, "dbt run"),
       "actions: the model's actions are one level, the plugin's views a group",
       vim.inspect(vim.tbl_keys(top))
     )
@@ -293,11 +297,7 @@ return function(ctx)
       vim.inspect(details)
     )
     local first = menu.stack[1].items[1]
-    H.check(
-      first.children == nil,
-      "actions: the menu opens on an action, not on a group",
-      first.label
-    )
+    H.check(first.children == nil, "actions: the menu opens on an action, not on a group", first.label)
     picker.close()
   end
   H.check(picker._state == nil, "actions: the menu closes")

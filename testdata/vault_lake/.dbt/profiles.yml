@@ -1,0 +1,9 @@
+vault_lake:
+  target: lake
+  outputs:
+    lake:
+      type: duckdb
+      path: ":memory:"
+      database: lake
+      schema: main
+      threads: 1

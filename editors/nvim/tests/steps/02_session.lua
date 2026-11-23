@@ -51,7 +51,11 @@ return function(ctx)
       return t:find(pattern) ~= nil
     end)
   end
-  H.check(has_title("downstream") and has_title("upstream"), "integration: downstream/upstream lenses", vim.inspect(titles))
+  H.check(
+    has_title("downstream") and has_title("upstream"),
+    "integration: downstream/upstream lenses",
+    vim.inspect(titles)
+  )
   H.check(has_title("dbt run"), "integration: dbt run lens present", vim.inspect(titles))
 
   local hover = H.request(client, bufnr, "textDocument/hover", ctx.doc, "integration: hover answers")
@@ -66,7 +70,9 @@ return function(ctx)
     position = { line = 0, character = 0 },
   }, "integration: dbt.goToSchema")
   H.check(
-    type(schema_result) == "table" and type(schema_result.uri) == "string" and schema_result.uri:find("%.yml$"),
+    type(schema_result) == "table"
+      and type(schema_result.uri) == "string"
+      and schema_result.uri:find("%.yml$"),
     "integration: dbt.goToSchema returns a schema-YAML Location",
     vim.inspect(schema_result)
   )

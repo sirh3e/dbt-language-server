@@ -1,0 +1,18 @@
+{
+  "metadata": {"dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json"},
+  "nodes": {
+    "model.vault_lake.hub_item": {"resource_type": "model", "name": "hub_item",
+      "original_file_path": "models/raw_vault/hub_item.sql",
+      "relation_name": "\"lake\".\"raw_vault\".\"hub_item\"", "config": {"materialized": "incremental"}},
+    "model.vault_lake.sat_item_version": {"resource_type": "model", "name": "sat_item_version",
+      "original_file_path": "models/raw_vault/sat_item_version.sql",
+      "relation_name": "\"lake\".\"raw_vault\".\"sat_item_version\"", "config": {"materialized": "incremental"}},
+    "model.vault_lake.bv_item_transitions": {"resource_type": "model", "name": "bv_item_transitions",
+      "original_file_path": "models/business_vault/bv_item_transitions.sql",
+      "relation_name": "\"lake\".\"business_vault\".\"bv_item_transitions\"", "config": {"materialized": "table"}},
+    "model.vault_lake.dim_items": {"resource_type": "model", "name": "dim_items",
+      "original_file_path": "models/dim/dim_items.sql",
+      "relation_name": "\"lake\".\"dim\".\"dim_items\"", "config": {"materialized": "incremental"}}
+  },
+  "sources": {}
+}

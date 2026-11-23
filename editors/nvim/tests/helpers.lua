@@ -65,13 +65,17 @@ end
 
 --- Copy the jaffle fixture (minus target/) into the sandbox; the suite
 --- runs ONLY on this copy, so probe files and target/ writes are free.
-function H.copy_fixture(repo_root)
-  local src = vim.fs.joinpath(repo_root, "testdata", "jaffle_shop_duckdb")
-  local dst = vim.fs.joinpath(H.tmp, "jaffle_shop_duckdb")
+---@param repo_root string
+---@param name string? the testdata/ project (default jaffle_shop_duckdb)
+---@param keep_target boolean? copy its target/ too (a hand-written manifest)
+function H.copy_fixture(repo_root, project, keep_target)
+  project = project or "jaffle_shop_duckdb"
+  local src = vim.fs.joinpath(repo_root, "testdata", project)
+  local dst = vim.fs.joinpath(H.tmp, project)
   local function copy(from, to)
     vim.fn.mkdir(to, "p")
     for name, kind in vim.fs.dir(from) do
-      if name ~= "target" then
+      if keep_target or name ~= "target" then
         local f, t = vim.fs.joinpath(from, name), vim.fs.joinpath(to, name)
         if kind == "directory" then
           copy(f, t)

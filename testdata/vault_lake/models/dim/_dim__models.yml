@@ -1,0 +1,21 @@
+version: 2
+
+models:
+  - name: dim_items
+    description: >
+      The items as SCD type 2: one row per state of an item, valid from the
+      version that saw it until the next one.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [item_id, item_version_id]
+    columns:
+      - name: item_version_id
+        description: The row's key.
+        data_tests: [unique, not_null]
+      - name: item_id
+        description: '{{ doc("item_id") }} The natural key.'
+      - name: state
+        description: '{{ doc("item_state") }}'
+      - name: previous_state
+        description: The state before it.

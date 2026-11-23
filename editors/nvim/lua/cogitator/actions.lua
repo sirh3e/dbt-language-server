@@ -13,7 +13,8 @@ function M.client_for(bufnr, silent)
   if not client and not silent then
     local cogitator = require("cogitator")
     local config = cogitator.config or require("cogitator.config").build({})
-    local why = require("cogitator.bootstrap").why_not_attached(bufnr, config, cogitator.server_found ~= false)
+    local why =
+      require("cogitator.bootstrap").why_not_attached(bufnr, config, cogitator.server_found ~= false)
     vim.notify("cogitator: " .. why, vim.log.levels.WARN)
   end
   return client

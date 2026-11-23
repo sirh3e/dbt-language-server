@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: bv_item_transitions
+    description: >
+      Each version of an item beside the state before it, for the items whose
+      versions landed since yesterday.
+    columns:
+      - name: item_hk
+        description: '{{ doc("item_hk") }}'
+      - name: version_number
+        description: The version's place, from 1.
+      - name: state
+        description: '{{ doc("item_state") }}'
+      - name: previous_state
+        description: The state before it; empty for the first.

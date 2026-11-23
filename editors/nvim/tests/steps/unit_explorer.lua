@@ -95,7 +95,11 @@ return function(ctx)
   for _, line in ipairs(ok and multi.lines or {}) do
     all_single = all_single and not line:find("\n", 1, true)
   end
-  H.check(all_single, "explorer: no card line holds a newline", ok and table.concat(multi.lines, "⏎") or multi)
+  H.check(
+    all_single,
+    "explorer: no card line holds a newline",
+    ok and table.concat(multi.lines, "⏎") or multi
+  )
   local buf = vim.api.nvim_create_buf(false, true)
   local set_ok = pcall(require("cogitator.ui").set_lines, buf, { "a\nb", "c" })
   H.check(
@@ -105,7 +109,6 @@ return function(ctx)
   vim.api.nvim_buf_delete(buf, { force = true })
 
   -- the side panes list what walking can select: models, unless `.`
-  local render = require("cogitator.explorer.render")
   local side = {
     selected = "dim_inventories",
     node_of = { dim_inventories = { name = "dim_inventories", kind = "model" } },
@@ -173,7 +176,10 @@ return function(ctx)
     "yaml: a quoted name, and a column named like another model is still a column",
     graph.yaml_entry(yml, 11)
   )
-  H.check(graph.yaml_entry({ "sources:", "  - name: raw" }, 2) == nil, "yaml: a source block is no node entry")
+  H.check(
+    graph.yaml_entry({ "sources:", "  - name: raw" }, 2) == nil,
+    "yaml: a source block is no node entry"
+  )
 
   -- the card says when the relation is only dbt's defaults
   s.relation = { relation = "jaffle.main.customers", origin = "defaults" }

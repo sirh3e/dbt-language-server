@@ -48,7 +48,11 @@ return function(ctx)
   H.check(why:find("not in a dbt project", 1, true) ~= nil, "bootstrap: outside a project, it says so", why)
   local lua_buf = buffer(vim.fs.joinpath(ctx.fixture, "notes.lua"), "lua")
   why = bootstrap.why_not_attached(lua_buf, config, true)
-  H.check(why:find("sql and yaml", 1, true) ~= nil, "bootstrap: in another filetype, it names the ones it serves", why)
+  H.check(
+    why:find("sql and yaml", 1, true) ~= nil,
+    "bootstrap: in another filetype, it names the ones it serves",
+    why
+  )
   local model = buffer(vim.fs.joinpath(ctx.fixture, "models", "probe_why.sql"), "sql")
   why = bootstrap.why_not_attached(model, config, false)
   H.check(
@@ -59,10 +63,7 @@ return function(ctx)
   for _, b in ipairs({ outside, lua_buf, model }) do
     vim.api.nvim_buf_delete(b, { force = true })
   end
-  H.check(
-    vim.fn.exists(":DbtInstall") == 2,
-    "bootstrap: :DbtInstall is defined"
-  )
+  H.check(vim.fn.exists(":DbtInstall") == 2, "bootstrap: :DbtInstall is defined")
   H.check(
     vim.uv.fs_stat(vim.fs.joinpath(bootstrap.repo_root(), "install.sh")) ~= nil,
     "bootstrap: the installer it runs is where it looks for it"
@@ -92,11 +93,15 @@ return function(ctx)
     "  clients = #vim.lsp.get_clients(), lines = #lines }) }, " .. vim.inspect(report) .. ")",
     "vim.cmd('qa!')",
   }, script)
-  local res = vim.system({ vim.v.progpath, "--headless", "--clean", "-l", script }, { text = true }):wait(30000)
+  local res = vim
+    .system({ vim.v.progpath, "--headless", "--clean", "-l", script }, { text = true })
+    :wait(30000)
   local ok_read, got = pcall(function()
     return vim.json.decode(table.concat(vim.fn.readfile(report), "\n"))
   end)
-  if not H.check(ok_read, "bootstrap: the child Neovim reports", (res.stderr or "") .. (res.stdout or "")) then
+  if
+    not H.check(ok_read, "bootstrap: the child Neovim reports", (res.stderr or "") .. (res.stdout or ""))
+  then
     return
   end
   local warnings = vim.tbl_filter(function(n)

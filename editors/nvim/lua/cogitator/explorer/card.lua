@@ -249,7 +249,11 @@ function M.view(s, width)
   heading("columns")
   if node and node.columns and #node.columns > 0 then
     for _, column in ipairs(node.columns) do
-      add("  • " .. column.name .. (present(column.description) and (" — " .. M.summary(column.description)) or ""))
+      add(
+        "  • "
+          .. column.name
+          .. (present(column.description) and (" — " .. M.summary(column.description)) or "")
+      )
     end
   else
     add("  · none documented ·")

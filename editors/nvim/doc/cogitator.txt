@@ -33,6 +33,16 @@ directory with `dbt_project.yml` upward from the file). Run
 `:checkhealth cogitator` to verify the binary, the project root and the
 profiles.yml resolution.
 
+                                                *cogitator-nvim-no-server*
+Without a server binary nothing can attach. When `cmd` is the default
+`cogitator` and it is not on Neovim's PATH, the plugin looks where
+install.sh puts it ($COGITATOR_BIN_DIR, then ~/.local/bin). Without
+one, the first SQL or YAML file of a dbt project you open says so once,
+and |:DbtInstall| installs it and starts it. The keymaps are set on
+such buffers either way, so `<leader>d…` never falls through to Vim's
+own `d`; a command that needs the server says why there is none (not a
+dbt project, no binary, still starting, exited).
+
 ==============================================================================
 2. Options                                           *cogitator-nvim-options*
 
@@ -326,16 +336,23 @@ cursor offers "Open model" and "Go to tests".
 
                                                 *cogitator-nvim-code-actions*
 `:DbtActions` (<leader>dA, and `gra` in dbt buffers; also on a visual
-selection) opens every action at the cursor in one menu: the server's
-code actions grouped by kind — Quick fixes, Refactor, Source, dbt — and
-the plugin's own commands — Model, Views, Project, Session — which the
-server cannot offer itself, since a stock client drops what they answer
-(the plan, the split, the graphs, the explorer...). A server command
-the plugin also has (dbt run, Go to schema) is listed once. The preview
-column shows what an action does: an edit as a diff of every file it
-touches (and the files it creates or renames), a command with what it
-runs. A preferred fix is starred. With `ui.picker = false` the keymaps
-fall back to |vim.lsp.buf.code_action|.
+selection) opens every action at the cursor in one menu. What is about
+the cursor comes first, each chosen with one key (<CR> or `l`): a fix
+of the diagnostic there (a preferred one starred), then the refactors
+and commands of what is under it — "Expand * to 18 column(s)" on a
+`select *`, "Extract CTE 'x' to a model" on a CTE's name, "Open schema
+of 'x'" on a `ref('x')`. The server says which actions those are (in
+the action's `data`). Below them "This model · <name>" holds the
+server's actions on the whole file (dbt run, Go to schema, Add version
+2…) beside the plugin's own model commands (the plan, the split,
+preview, impact…); with nothing at the cursor these are the top level
+themselves. Then Views, Project and Session: the plugin's commands,
+which the server cannot offer itself, since a stock client drops what
+they answer. A server command the plugin also has (dbt run, Go to
+schema) is listed once. The preview column shows what an action does:
+an edit as a diff of every file it touches (and the files it creates or
+renames), a command with what it runs. With `ui.picker = false` the
+keymaps fall back to |vim.lsp.buf.code_action|.
 
                                                       *cogitator-nvim-dialogs*
 Every dialog of the plugin — the code actions, `:Dbt` without

@@ -217,12 +217,12 @@ end
 
 --- The server's actions as leaves, fixes first, then refactors, source
 --- actions and commands; preferred first within each.
----@param actions table[]
+---@param list table[] the server's actions
 ---@param encoding string
 ---@return cogitator.picker.Item[]
 ---@return table<string, boolean> skip
-local function leaves(actions, encoding)
-  local groups, skip = M.server_items(actions, encoding)
+local function leaves(list, encoding)
+  local groups, skip = M.server_items(list, encoding)
   local out = {}
   for _, g in ipairs(groups) do
     vim.list_extend(out, g.children)

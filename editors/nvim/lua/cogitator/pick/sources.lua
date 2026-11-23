@@ -486,23 +486,29 @@ function M.unresolved(ctx)
     title = "unresolved",
     empty = "nothing unresolved — every ref, source, doc, macro and var resolves",
     items = function(done)
-      actions.exec_with(ctx.client, ctx.bufnr, "dbt.unresolved", { uri = vim.uri_from_bufnr(ctx.bufnr) }, function(err, result)
-        local items = {}
-        local rows = (not err and type(result) == "table")
-            and require("cogitator.commands").unresolved_items(result)
-          or {}
-        for _, row in ipairs(rows) do
-          items[#items + 1] = {
-            text = row.text,
-            name = row.user_data.name,
-            path = row.filename,
-            lnum = row.lnum,
-            end_lnum = row.lnum,
-            col = row.col - 1,
-          }
+      actions.exec_with(
+        ctx.client,
+        ctx.bufnr,
+        "dbt.unresolved",
+        { uri = vim.uri_from_bufnr(ctx.bufnr) },
+        function(err, result)
+          local items = {}
+          local rows = (not err and type(result) == "table")
+              and require("cogitator.commands").unresolved_items(result)
+            or {}
+          for _, row in ipairs(rows) do
+            items[#items + 1] = {
+              text = row.text,
+              name = row.user_data.name,
+              path = row.filename,
+              lnum = row.lnum,
+              end_lnum = row.lnum,
+              col = row.col - 1,
+            }
+          end
+          done(items)
         end
-        done(items)
-      end)
+      )
     end,
     preview = function(item, done)
       preview.file(item, nil, done)

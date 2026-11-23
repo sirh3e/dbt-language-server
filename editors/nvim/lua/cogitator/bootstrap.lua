@@ -83,9 +83,13 @@ function M.why_not_attached(bufnr, config, found)
   for _, client in ipairs(vim.lsp.get_clients({ name = "cogitator" })) do
     if client.root_dir == root then
       if client:is_stopped() then
-        return "the cogitator server for " .. vim.fn.fnamemodify(root, ":~") .. " has exited — see :LspLog, then :e to start it again"
+        return "the cogitator server for "
+          .. vim.fn.fnamemodify(root, ":~")
+          .. " has exited — see :LspLog, then :e to start it again"
       end
-      return "the cogitator server for " .. vim.fn.fnamemodify(root, ":~") .. " is still starting — try again in a moment"
+      return "the cogitator server for "
+        .. vim.fn.fnamemodify(root, ":~")
+        .. " is still starting — try again in a moment"
     end
   end
   return "the cogitator server has not started for this buffer — :e reloads it, :checkhealth cogitator says why"
@@ -132,7 +136,10 @@ function M.install(on_done)
   local windows = vim.fn.has("win32") == 1
   local script = vim.fs.joinpath(root, windows and "install.ps1" or "install.sh")
   if not vim.uv.fs_stat(script) then
-    vim.notify("cogitator: no installer at " .. script .. " — install the server by hand (see :h cogitator)", vim.log.levels.ERROR)
+    vim.notify(
+      "cogitator: no installer at " .. script .. " — install the server by hand (see :h cogitator)",
+      vim.log.levels.ERROR
+    )
     return on_done(false)
   end
   local argv = windows and { "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script }
@@ -142,7 +149,10 @@ function M.install(on_done)
     vim.schedule(function()
       if res.code ~= 0 then
         local tail = vim.trim((res.stderr ~= "" and res.stderr or res.stdout or ""):sub(-400))
-        vim.notify("cogitator: the installer failed (exit " .. res.code .. ")\n" .. tail, vim.log.levels.ERROR)
+        vim.notify(
+          "cogitator: the installer failed (exit " .. res.code .. ")\n" .. tail,
+          vim.log.levels.ERROR
+        )
         return on_done(false)
       end
       on_done(true)

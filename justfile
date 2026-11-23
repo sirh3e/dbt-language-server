@@ -187,6 +187,15 @@ nvim-test:
     cargo build -p cogitator
     nvim --headless -l editors/nvim/tests/run.lua
 
+# The plugin against a real dbt project of yours, read-only: every model
+# opened, its code actions asked where there is something to do, and the
+# navigator opened on it (editors/nvim/tests/real/run.lua). Not in CI:
+# your project is not in this repository.
+[group('editors')]
+nvim-real-test project:
+    cargo build -p cogitator
+    COGITATOR_REAL_PROJECT={{project}} nvim --headless -l editors/nvim/tests/real/run.lua
+
 # lazy.nvim installs the plugin from this checkout by name alone (the
 # root lazy.lua), then with editors/nvim/examples/lazy.lua; sandboxed, but
 # needs the network to clone lazy.nvim, so it is not part of nvim-test
