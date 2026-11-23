@@ -337,6 +337,8 @@ function M._toggle_all()
   local s = M._state
   s.show_all = not s.show_all
   s.nodes = listed(s)
+  s.sides_for = nil
+  erender.sides(s)
   vim.notify(s.show_all and "explorer: every kind of node" or "explorer: models only")
 end
 

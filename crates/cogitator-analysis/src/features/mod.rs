@@ -98,7 +98,10 @@ pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
 pub use navigation::{document_highlights, document_symbols, references, workspace_symbols};
 pub use references::references_at;
-pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
+pub use relation::{
+    relation_info, with_manifest_relation, RelationInfo, RelationKind, RelationOrigin,
+    TargetRelation,
+};
 pub use rename::{prepare_rename, rename_model};
 pub use rename_macro::{prepare_rename_at, rename_at};
 pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};

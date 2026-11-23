@@ -258,6 +258,17 @@ pub fn relation(
 ) -> Reply {
     let target = active_target_relation(snap, derived);
     let result = features::relation_info(&snap.ctx, snap.doc.as_deref(), uri, pos, target.as_ref());
+    // what dbt rendered beats the defaults, where target/ has it (the
+    // artifacts the last refresh read: no filesystem here)
+    let manifest = snap
+        .ctx
+        .project_root
+        .as_deref()
+        .and_then(|root| derived.artifacts_cached(root).manifest);
+    let result = match (result, manifest) {
+        (Some(info), Some(manifest)) => Some(features::with_manifest_relation(info, &manifest)),
+        (result, _) => result,
+    };
     Reply::result(&result)
 }
 

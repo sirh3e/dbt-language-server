@@ -55,11 +55,69 @@ vim.api.nvim_set_hl(0, "CogitatorExplorerHeading", { default = true, link = "Tit
 --- marked entries flagged. Side cursors survive a refresh of the same
 --- model and reset otherwise.
 ---@param s cogitator.explorer.State
+--- The kinds a side pane leaves out until `.`: tests check a model, they
+--- are not its lineage, and the card lists them already.
+M.CHECK_KINDS = { test = true, generic_test = true, unit_test = true }
+
+--- A side pane's entries: every neighbour while `.` shows every kind,
+--- else the lineage — models, sources, seeds… — with the tests counted.
+---@param s cogitator.explorer.State
+---@param pane "left"|"right"
+---@return cogitator.GraphEntry[] shown
+---@return table<string, integer> hidden kind → count
+function M.side_entries(s, pane)
+  local info = s.info
+  local all = info and (pane == "left" and info.upstream or info.downstream) or {}
+  local selected = s.selected and s.node_of and s.node_of[s.selected]
+  -- a macro's or a test's neighbours are what it is about: all of them
+  if s.show_all or (selected and selected.kind and selected.kind ~= "model") then
+    return all, {}
+  end
+  local shown, hidden = {}, {}
+  for _, e in ipairs(all) do
+    local kind = e.kind or "model"
+    if M.CHECK_KINDS[kind] then
+      hidden[kind] = (hidden[kind] or 0) + 1
+    else
+      shown[#shown + 1] = e
+    end
+  end
+  return shown, hidden
+end
+
+--- " (1 · +2 tests)": what a side pane lists, and what `.` would add.
+---@param count integer
+---@param hidden table<string, integer>
+---@return string
+function M.side_count(count, hidden)
+  local kinds = vim.tbl_keys(hidden)
+  table.sort(kinds)
+  local extra = {}
+  for _, kind in ipairs(kinds) do
+    local n = hidden[kind]
+    local word = kind:gsub("_", " ")
+    extra[#extra + 1] = ("+%d %s%s"):format(n, word, n == 1 and "" or "s")
+  end
+  if #extra == 0 then
+    return ("(%d)"):format(count)
+  end
+  return ("(%d · %s)"):format(count, table.concat(extra, ", "))
+end
+
 function M.sides(s)
   local same_model = s.sides_for == s.selected
   local info = s.info
-  local panes = { left = info and info.upstream, right = info and info.downstream }
-  for pane, entries in pairs(panes) do
+  local panes = {}
+  local hidden_of = {}
+  for _, pane in ipairs({ "left", "right" }) do
+    if info then
+      panes[pane], hidden_of[pane] = M.side_entries(s, pane)
+    else
+      hidden_of[pane] = {}
+    end
+  end
+  for _, pane in ipairs({ "left", "right" }) do
+    local entries = panes[pane]
     local win, buf = s.wins[pane], s.bufs[pane]
     if win and vim.api.nvim_win_is_valid(win) then
       local row = same_model and vim.api.nvim_win_get_cursor(win)[1] or 1
@@ -75,7 +133,7 @@ function M.sides(s)
       end
       vim.api.nvim_win_set_cursor(win, { math.min(row, vim.api.nvim_buf_line_count(buf)), 0 })
       local arrow = pane == "left" and "upstream ⯇" or "⯈ downstream"
-      ui.retitle(win, (" %s (%d) "):format(arrow, entries and #entries or 0))
+      ui.retitle(win, (" %s %s "):format(arrow, M.side_count(entries and #entries or 0, hidden_of[pane])))
     end
   end
   s.sides_for = s.selected

@@ -228,6 +228,10 @@ function M.view(s, width)
     add("relation: · loading ·")
   elseif r == false or not r.relation then
     add("relation: · unresolved ·")
+  elseif r.origin == "defaults" then
+    -- a project's own generate_schema_name is not evaluated: say so
+    -- rather than show a schema the model may not be built in
+    add("relation: " .. r.relation .. "  (dbt's defaults; dbt compile renders the real one)")
   else
     add("relation: " .. r.relation)
   end

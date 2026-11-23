@@ -30,8 +30,11 @@ end
 ---@return cogitator.GraphEntry?
 local function side_entry(explorer, pane)
   local s = explorer._state
-  local entries = s.info and (pane == "left" and s.info.upstream or s.info.downstream)
-  return entries and entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
+  if not s.info then
+    return nil
+  end
+  local entries = require("cogitator.explorer.render").side_entries(s, pane)
+  return entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
 end
 
 --- Make a side-pane entry the selection (recording the history).
