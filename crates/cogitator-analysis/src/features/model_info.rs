@@ -31,6 +31,11 @@ pub struct ModelInfo {
     pub compiled_uri: Option<String>,
     /// Column documentation/test coverage from the YAML entry.
     pub coverage: super::quality::ModelCoverage,
+    /// The output columns' inferred types (`features::column_types`),
+    /// filled by the shell from the project schema snapshot; omitted
+    /// before the first schema job or when the model was not inferable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column_types: Option<super::column_types::ModelColumnTypes>,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,6 +97,7 @@ pub fn model_info(ctx: &DbtContext, uri: &str, model_arg: Option<&str>) -> Optio
             ctx.model_detail_map.get(&base).unwrap_or(details),
             None,
         ),
+        column_types: None,
         model: name,
     })
 }

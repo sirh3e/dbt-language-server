@@ -5,6 +5,7 @@
 mod artifact_status;
 mod call_hierarchy;
 mod code_actions;
+pub mod column_types;
 mod compiled;
 mod compiled_map;
 mod completion;

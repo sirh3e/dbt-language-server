@@ -73,6 +73,7 @@ mod requests;
 mod semantic;
 mod sync;
 mod yaml_props;
+mod yaml_types;
 
 impl Dispatcher {
     // constructed exactly once, in server::run — the shared handles are

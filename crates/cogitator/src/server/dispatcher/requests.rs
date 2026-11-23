@@ -63,11 +63,16 @@ impl Dispatcher {
                         } else {
                             // dispatcher path: a cache probe, never a compute
                             let lineage = derived.lineage_cached(uri, d.generation);
-                            features::hover_with_lineage(
+                            let text = features::hover_with_lineage(
                                 ctx,
                                 d,
                                 pos,
                                 lineage.as_deref().and_then(Option::as_ref),
+                            );
+                            // the column's inferred type, from the published snapshot
+                            with_type_line(
+                                text,
+                                super::yaml_types::hover(ctx, &derived, d, uri, pos),
                             )
                         }
                     })
@@ -478,4 +483,13 @@ fn quality_lenses(
         text.as_deref(),
         lineage.as_ref().and_then(|l| (**l).as_ref()),
     )
+}
+
+/// Appends a column-type hover line after whatever the hover says.
+fn with_type_line(text: String, line: Option<String>) -> String {
+    match line {
+        None => text,
+        Some(line) if text.is_empty() => line,
+        Some(line) => format!("{text}\n\n{line}"),
+    }
 }

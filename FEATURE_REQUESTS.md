@@ -246,6 +246,16 @@ names what already exists in the codebase.
       - [x] `yaml-unproduced-column`: tests on a column the model does not
             produce (lineage-certain only), rename/remove quickfixes
       - [x] "Add missing columns" offered from the model's YAML entry too
+      - [x] output-column types (`features/column_types/`): each output
+            column's type off the schema job's cached MIR, with provenance
+            (cast, literal, function, aggregate, upstream column, union) and
+            a basis (proven only over inferred, catalog or contracted
+            upstream types); `column-type-mismatch` on a `data_type:` of
+            another type family (Error under an enforced contract) with
+            "Set data_type to …", "Fill data_type from the inferred types",
+            `unit-test-value-type` hints on impossible unit-test row values,
+            the type on hover (YAML column, SQL output column), and
+            `columnTypes` in dbt.modelInfo
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
 - [x] **Inline plan hints** (specs/ir-pipeline/06): each CTE's row count as
