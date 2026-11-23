@@ -7,6 +7,7 @@
 | [variables.md](variables.md) | Project variables: where a value comes from (scopes, packages, overrides), the value inline after each `var()`, definition, references, the quick fix |
 | [highlighting.md](highlighting.md) | Colours from the server for models, macros, tests, compiled SQL and YAML property files: the layers, dbt-aware captures, options per editor, theming; macros and tests in the explorer |
 | [ast-grep.md](ast-grep.md) | Structural search and rewrite with ast-grep over tree-sitter-dbt, your ast-grep rules as diagnostics, the ast-grep CLI for CI, and the server's highlighting |
+| [column-rename.md](column-rename.md) | Renaming a model's output column across the project: what changes at every depth, where the walk stops, and when it is refused |
 | [properties-yaml.md](properties-yaml.md) | Properties files (`schema.yml`…): schema-driven completion of keys, values, tests and columns, the unproduced-column warning, adding missing columns |
 | [file-operations.md](file-operations.md) | Renaming, moving, deleting and creating model files from the editor's file tree, and declaration vs definition (YAML entry vs SQL) |
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |

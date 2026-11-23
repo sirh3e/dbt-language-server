@@ -38,6 +38,7 @@ pub mod quality;
 mod references;
 mod relation;
 mod rename;
+mod rename_column;
 mod rename_macro;
 mod rename_var;
 mod semantic_captures;
@@ -110,6 +111,7 @@ pub use navigation::{document_highlights, document_symbols, references, workspac
 pub use references::references_at;
 pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
 pub use rename::{prepare_rename, rename_model};
+pub use rename_column::{prepare_rename_column, rename_column_at};
 pub use rename_macro::{prepare_rename_at, rename_at};
 pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};
 pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};

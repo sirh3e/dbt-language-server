@@ -63,8 +63,8 @@ names what already exists in the codebase.
       macros (call sites resolved as dbt resolves them — bare and
       `pkg.macro`, in models, tests, analyses and macro files), docs
       blocks (`doc()` uses from a use or the `{% docs %}` header) and
-      documented columns (the YAML entry, the model's SQL, and direct
-      dependents whose column lineage reads it). `includeDeclaration` adds
+      columns (the YAML entry and every consumer at any depth that keeps
+      the name — the column rename's walk). `includeDeclaration` adds
       the definition; the model `ref()` references gain the model file.
 - [x] **Macro rename**: prepareRename accepts a macro call, its
       `{% macro %}` header or a `macros:` YAML entry; the edit renames the
@@ -89,6 +89,16 @@ names what already exists in the codebase.
       the model's SQL that produces it (the last `as col` / `[q.]col,`
       item, else its first mention). Sources, macros, vars and docs:
       declaration = definition.
+- [x] **Column rename** (`textDocument/rename` + `prepareRename`) on a
+      model's output column (the SQL alias or bare column, or its YAML
+      entry), transitive: the model's item, its YAML entry, constraints,
+      `primary_key`/`combination_of_columns`, unit-test row keys, and every
+      consumer while the name is kept — downstream models (renamed in turn
+      when they output it under the same name), snapshots, analyses,
+      singular tests, `relationships` fields and semantic-model `expr`s; a
+      re-alias stops the walk. Refused as a whole (`RequestFailed`, file and
+      reason) when any affected file's lineage is unclear or the new name
+      collides (`features/rename_column/`, docs/column-rename.md).
 - [x] **Macro call hierarchy, both ways**: prepare from a call site or a
       definition header; incomingCalls lists models, tests, analyses and
       calling macros; outgoingCalls lists the macros a macro's body (or a
