@@ -121,6 +121,16 @@ return function(ctx)
     vim.inspect(same)
   )
 
+  -- :DbtPreviewCte rendering: the server's markdown table, line by line
+  local preview = require("cogitator.preview_cte").lines({
+    table = "# customers · CTE `orders`\n\n| id |\n| --- |\n| 1 |\n",
+  })
+  H.check(
+    preview[1] == "# customers · CTE `orders`" and preview[#preview] == "| 1 |",
+    "preview_cte: lines are the server's table",
+    vim.inspect(preview)
+  )
+
   -- :DbtIncrementality quickfix items
   local items = require("cogitator.commands").incrementality_items({
     incremental = 1,

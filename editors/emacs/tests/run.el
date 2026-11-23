@@ -179,6 +179,13 @@
   (check (and (member "dbt run" titles) (member "Go to schema" titles))
          "integration: code actions offer the dbt command set" titles))
 
+;; unit: the preview table is the server's markdown
+(check (equal (cogitator--preview-cte-render '(:model "m" :table "| id |\n| --- |\n| 1 |\n"))
+              "| id |\n| --- |\n| 1 |\n")
+       "preview-cte: renders the server's table")
+(check (equal (cogitator--preview-cte-render '(:model "m")) "")
+       "preview-cte: no table renders empty")
+
 ;; unit: split plan and incrementality rendering
 (let ((text (cogitator--split-render
              '(:model "m" :sexp "(split m (model m__c))"

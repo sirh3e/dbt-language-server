@@ -242,6 +242,7 @@ M.COMMANDS = {
   ["dbt.runSelection"] = ":DbtRunSelection",
   ["dbt.cancel"] = ":DbtCancel",
   ["dbt.preview"] = ":DbtPreview",
+  ["dbt.previewCte"] = ":DbtPreviewCte, the 'Preview rows' lenses",
   ["dbt.columnLineage"] = "the column-lineage graph (:DbtColumnLineage, L)",
   ["dbt.showLineage"] = ":DbtLineage",
   ["dbt.goToSchema"] = ":DbtSchema",

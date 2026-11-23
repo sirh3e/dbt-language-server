@@ -37,7 +37,7 @@ pub struct DbtInvocation {
 
 /// The dbt CLI argument list for one invocation — pure, so the exact
 /// command line is provable without spawning dbt.
-fn dbt_args(
+pub(super) fn dbt_args(
     kind: &str,
     selector: Option<&str>,
     target: Option<&str>,
@@ -258,7 +258,7 @@ async fn capture_output(link: &ClientLink, path: &Path, stdout: &[u8]) {
 
 /// Write-then-rename so a concurrent reader (an editor reopening the
 /// capture, a test polling for it) never sees a half-written file.
-async fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(super) async fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     tokio::fs::write(&tmp, bytes).await?;
     match tokio::fs::rename(&tmp, path).await {
@@ -294,7 +294,7 @@ fn open_compiled(link: &ClientLink, root: &Path, project: &str, model_path: &Pat
     }
 }
 
-fn tail(text: &str, max: usize) -> String {
+pub(super) fn tail(text: &str, max: usize) -> String {
     let trimmed = text.trim();
     if trimmed.len() <= max {
         return trimmed.to_string();

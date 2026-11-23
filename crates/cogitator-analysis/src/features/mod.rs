@@ -10,6 +10,7 @@ pub mod column_types;
 mod compiled;
 mod compiled_map;
 mod completion;
+mod cte_preview;
 mod dead_models;
 mod declaration;
 mod definition;
@@ -77,6 +78,10 @@ pub use compiled_map::{
     compiled_definition, compiled_hover, compiled_line_map, compiled_source_path, SourceLines,
 };
 pub use completion::{completion, resolve_completion_documentation};
+pub use cte_preview::{
+    choose_source, cte_at, cte_preview_lenses, parse_show, preview_file_name, preview_query,
+    render_markdown, CtePreview, PreviewSource, ShowTable,
+};
 pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};

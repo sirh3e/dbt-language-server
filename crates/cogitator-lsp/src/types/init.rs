@@ -204,6 +204,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.nodeInfo",
     "dbt.unresolved",
     "dbt.breakingChanges",
+    "dbt.previewCte",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

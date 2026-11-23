@@ -370,6 +370,21 @@
         }
       }
     },
+    "preview": {
+      "description": "dbt.previewCte (the \"Preview rows\" lenses): how many rows a preview shows.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_rows": {
+          "description": "The most rows a preview may ask for; larger limits are capped (default 1000). (rows)",
+          "type": "string"
+        },
+        "rows": {
+          "description": "Rows a preview shows when the call names no limit (default 20). (rows)",
+          "type": "string"
+        }
+      }
+    },
     "profiles": {
       "description": "dbt profiles overrides — hot: editing these re-resolves the active profile/target.",
       "type": "object",

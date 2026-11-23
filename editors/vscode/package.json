@@ -63,6 +63,10 @@
         "title": "dbt: Preview current model (dbt show)"
       },
       {
+        "command": "cogitator.previewCte",
+        "title": "dbt: Preview rows of the CTE under the cursor"
+      },
+      {
         "command": "cogitator.parse",
         "title": "dbt: Parse project (refresh context)"
       },

@@ -131,6 +131,46 @@ async function incrementalDiff(): Promise<void> {
   });
 }
 
+/** A dbt.previewCte answer: the rows of one CTE (or the final select). */
+export interface CtePreview {
+  model: string;
+  cte?: string | null;
+  columns: string[];
+  rows: unknown[][];
+  truncated: boolean;
+  sql: string;
+  source: "compiled" | "rendered";
+  uri?: string | null;
+  table: string;
+}
+
+/** The text shown for a preview: the server's markdown table. */
+export function previewCteText(result: CtePreview): string {
+  return result.table;
+}
+
+/** The rows of the CTE under the cursor; the server opens its markdown
+ *  file through window/showDocument, so a document is opened here only
+ *  when it could not write one. */
+async function previewCte(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const position = editor
+    ? { line: editor.selection.active.line, character: editor.selection.active.character }
+    : undefined;
+  const result = (await execDbt("dbt.previewCte", { position })) as CtePreview | null | undefined;
+  if (!result || result.uri) {
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "markdown",
+    content: previewCteText(result),
+  });
+  await vscode.window.showTextDocument(doc, {
+    preview: true,
+    viewColumn: vscode.ViewColumn.Beside,
+  });
+}
+
 /** One row of a dbt.incrementality report. */
 export interface IncrementalityRow {
   model: string;
@@ -739,6 +779,7 @@ export async function activate(
     ["cogitator.test", () => execDbt("dbt.test")],
     ["cogitator.compile", () => execDbt("dbt.compile")],
     ["cogitator.preview", () => execDbt("dbt.preview")],
+    ["cogitator.previewCte", previewCte],
     ["cogitator.parse", () => execDbt("dbt.parse")],
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],

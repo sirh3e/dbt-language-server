@@ -182,6 +182,14 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("incr.could_be_incremental", "A table that could be built incrementally.", RULE_SEVERITIES),
         ],
     },
+    SectionSchema {
+        name: "preview",
+        doc: "dbt.previewCte (the \"Preview rows\" lenses): how many rows a preview shows.",
+        keys: &[
+            key("rows", "Rows a preview shows when the call names no limit (default 20).", "rows"),
+            key("max_rows", "The most rows a preview may ask for; larger limits are capped (default 1000).", "rows"),
+        ],
+    },
 ];
 
 /// The `perf_rules` value set (one severity per entry).

@@ -381,6 +381,36 @@ and the SQL when `is_incremental()' changes nothing."
          (pop-to-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
+;; the rows of a CTE (dbt.previewCte)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--preview-cte-render (result)
+  "The text of a dbt.previewCte RESULT: the server's markdown table."
+  (let ((table (plist-get result :table)))
+    (if (stringp table) table "")))
+
+;;;###autoload
+(defun cogitator-preview-cte (&optional limit)
+  "The rows of the CTE at point (or the final select past every CTE).
+The model runs up to that CTE through `dbt show --inline'; with a prefix
+argument LIMIT, that many rows (default: cogitator.yml preview.rows)."
+  (interactive "P")
+  (let ((argument (cogitator--command-argument t)))
+    (when limit
+      (setq argument (plist-put argument :limit (prefix-numeric-value limit))))
+    (cogitator--execute
+     "dbt.previewCte" argument
+     (lambda (result)
+       (let ((buf (get-buffer-create "*cogitator-preview*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (cogitator--preview-cte-render result))
+             (goto-char (point-min)))
+           (special-mode))
+         (pop-to-buffer buf))))))
+
+;; ---------------------------------------------------------------------------
 ;; incrementality: the split plan and the project-wide list
 ;; (specs/ir-pipeline/10 §6)
 ;; ---------------------------------------------------------------------------
