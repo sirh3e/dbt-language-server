@@ -65,6 +65,7 @@ mod commands_exec;
 mod compiled_nav;
 mod dbt_ops;
 mod diagnostics_req;
+mod file_ops;
 mod navigation;
 mod plan;
 mod requests;
@@ -243,6 +244,12 @@ impl Dispatcher {
             "textDocument/didClose" => self.did_close(content),
             "textDocument/hover" => self.hover(content),
             "textDocument/definition" => self.definition(content),
+            "textDocument/declaration" => self.declaration(content),
+            "workspace/willRenameFiles" => self.will_rename_files(content),
+            "workspace/willDeleteFiles" => self.will_delete_files(content),
+            "workspace/didCreateFiles"
+            | "workspace/didRenameFiles"
+            | "workspace/didDeleteFiles" => self.did_change_files(content, &method),
             "textDocument/completion" => self.completion(content),
             "completionItem/resolve" => self.resolve_completion(content),
             "textDocument/references" => self.references(content),

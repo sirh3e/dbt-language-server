@@ -150,6 +150,10 @@ impl Dispatcher {
             self.compiled_definition(id, uri, pos, snap);
             return;
         }
+        // a properties-YAML column: where its model's SQL produces it
+        if self.yaml_column_definition(id, &uri, pos, &snap) {
+            return;
+        }
         let function = snap
             .doc
             .as_deref()

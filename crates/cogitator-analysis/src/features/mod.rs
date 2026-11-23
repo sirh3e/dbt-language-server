@@ -9,11 +9,13 @@ mod compiled;
 mod compiled_map;
 mod completion;
 mod dead_models;
+mod declaration;
 mod definition;
 mod diagnostics;
 mod document_links;
 mod env_vars;
 mod extract;
+mod file_ops;
 pub mod formatting;
 mod governance;
 mod graph_nav;
@@ -70,6 +72,7 @@ pub use compiled_map::{
 };
 pub use completion::{completion, resolve_completion_documentation};
 pub use dead_models::{dead_models, is_dead, DeadModel};
+pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
 pub use diagnostics::{
     citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
@@ -77,6 +80,9 @@ pub use diagnostics::{
 pub use document_links::{document_links, document_links_at};
 pub use env_vars::env_var_diagnostics;
 pub use extract::{extract_model_yaml, ExtractEdit};
+pub use file_ops::{
+    delete_warning, deleted_with_dependents, touches_project, will_rename_files, DeletedModel,
+};
 pub use governance::{contract_diagnostics, private_ref_diagnostics};
 pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
