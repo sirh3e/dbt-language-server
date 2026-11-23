@@ -274,6 +274,17 @@ names what already exists in the codebase.
 ## P4 — not planned / needs a Jinja renderer or major new scope
 
 Implemented from this bucket (they turned out cheap on the existing data):
+- [x] `textDocument/implementation` for dispatched macros: every
+      `<adapter>__x` / `default__x` in dbt's dispatch search order (the
+      `dispatch:` config, the root project, the namespace), asked from an
+      `adapter.dispatch` call, a call of the dispatching macro or its
+      header; hover names the implementation the active adapter picks
+      (`features/dispatch/`, docs/macros.md)
+- [x] Macro call checks: `macro-arg-count`, `macro-unknown-kwarg`
+      (did-you-mean quickfix), `macro-duplicate-kwarg` and
+      `dispatch-no-default`, arguments read by minijinja's parser, lenient
+      for bodies reading `varargs`/`kwargs`; on by default, `lint:
+      {macro_calls, dispatch}` turns them off (`features/macro_calls/`)
 - [x] `textDocument/documentHighlight` (same literal + kind occurrences)
 - [x] `workspace/symbol` (models, sources, macros)
 
@@ -284,8 +295,9 @@ Still open, with reasons:
 - `textDocument/codeAction`, `prepareRename`,
   `inlineValue`,
   `documentColor`
-- `textDocument/typeDefinition` / `implementation`
-  (little meaning for dbt sources; `declaration` is implemented above)
+- `textDocument/typeDefinition`
+  (little meaning for dbt sources; `declaration` and `implementation`
+  are implemented above)
 - Call/type hierarchy (could model macro call chains someday)
 - workspace folders / multi-root (only the deprecated
   `rootPath` is read), `workspace/didChangeConfiguration`,

@@ -8,6 +8,7 @@ pub(crate) mod call_words;
 pub(crate) mod calls;
 pub mod jinja_scan;
 pub mod jinja_spans;
+pub mod macro_body;
 pub mod pipeline;
 pub(crate) mod refine;
 pub mod sql_lex;

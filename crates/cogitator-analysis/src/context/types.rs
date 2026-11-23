@@ -86,6 +86,8 @@ pub struct MacroDetails {
     pub description: String,
     /// Structured parameters (06 §2.2 enrichment) for signature help.
     pub params: Vec<cogitator_parser::jinja_scan::MacroParam>,
+    /// Body facts: varargs/kwargs reads and the dispatch it makes.
+    pub body: cogitator_parser::macro_body::MacroBody,
     pub uri: PathBuf,
     pub range: Range,
 }
