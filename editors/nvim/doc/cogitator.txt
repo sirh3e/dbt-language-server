@@ -133,6 +133,11 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  every unresolved ref, source, source_table, doc, macro
                  and var of the project (quickfix; `:DbtFind unresolved`
                  is the same list in the picker)
+  :DbtSelect {selector}
+                 the nodes a dbt selector picks, as `dbt ls` lists
+                 them (`selector:<name>` evaluates a selectors.yml
+                 entry), into quickfix; `:DbtFind select` is the same
+                 list in the picker
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtReloadConfig  re-read cogitator.yml now

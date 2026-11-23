@@ -8,6 +8,7 @@ pub mod features;
 pub mod graph;
 pub mod lineage;
 pub mod profiles;
+pub mod selectors;
 pub mod util;
 pub mod yaml_cogitator;
 pub mod yaml_features;

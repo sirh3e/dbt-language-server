@@ -924,6 +924,42 @@ it is applied to every match after asking."
             (plist-get item :name)
             (or (plist-get item :message) ""))))
 
+;; the nodes a selector picks (dbt.select)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--select-line (node)
+  "One grep-style line for a dbt.select NODE: file:line:column: [kind] name."
+  (let ((start (plist-get (plist-get node :range) :start))
+        (uri (plist-get node :uri)))
+    (format "%s:%d:%d: [%s] %s"
+            (if (and uri (not (string-empty-p uri))) (cogitator--uri-to-file uri) "")
+            (1+ (or (plist-get start :line) 0))
+            (1+ (or (plist-get start :character) 0))
+            (plist-get node :kind)
+            (plist-get node :name))))
+
+;;;###autoload
+(defun cogitator-select (selector)
+  "The nodes the dbt SELECTOR picks, as `dbt ls' lists them (dbt.select).
+`selector:NAME' evaluates a selectors.yml entry.  The nodes land in a
+grep buffer, one per line, at their definition."
+  (interactive (list (read-string "dbt selector: ")))
+  (cogitator--execute
+   "dbt.select" (list :uri "" :selector selector)
+   (lambda (result)
+     (let ((nodes (append (plist-get result :nodes) nil))
+           (issues (append (plist-get result :issues) nil))
+           (buf (get-buffer-create "*cogitator-select*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt select %s: %d -*-\n\n" selector (plist-get result :count)))
+           (dolist (issue issues) (insert (format "; %s\n" issue)))
+           (insert (mapconcat #'cogitator--select-line nodes "\n") "\n"))
+         (require 'grep)
+         (grep-mode))
+       (display-buffer buf)))))
+
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)
   "Every unresolved ref, source, doc, macro and var (dbt.unresolved).

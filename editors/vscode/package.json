@@ -111,6 +111,10 @@
         "title": "dbt: Breaking changes against the last build"
       },
       {
+        "command": "cogitator.select",
+        "title": "dbt: Select nodes"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },

@@ -25,6 +25,7 @@ mod offload;
 mod preview_cte;
 mod refresh;
 mod reply;
+mod selectors;
 mod semantic_yaml;
 mod snapshot;
 mod status;

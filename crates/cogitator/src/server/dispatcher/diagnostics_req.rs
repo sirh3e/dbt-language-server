@@ -230,6 +230,8 @@ impl Dispatcher {
         } else {
             Vec::new()
         };
+        let selectors_open = cogitator_analysis::features::selectors_yml::is_selectors_file(&uri)
+            .then(|| self.selectors_open());
         self.offload_blocking(id, "textDocument/diagnostic", move || {
             // the pull path affords lineage (cached per generation), so
             // the undocumented-columns and contract checks run here, not
@@ -249,6 +251,11 @@ impl Dispatcher {
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
             );
+            if let (Some(open), Some(doc)) = (selectors_open, snap.doc.as_deref()) {
+                items.extend(crate::server::selectors::unmatched(
+                    &snap.ctx, open, &doc.text,
+                ));
+            }
             if let Some(doc) = snap.doc.as_deref().filter(|_| !entry_models.is_empty()) {
                 // tests on columns the model never produces (pull only:
                 // it takes each entry's lineage)

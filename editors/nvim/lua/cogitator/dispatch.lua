@@ -142,6 +142,7 @@ M.SUBCOMMANDS = {
   doctor = { run = plain("doctor"), desc = "the server's health report" },
   dead = { run = plain("dead_models"), desc = "models nothing uses" },
   unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
+  select = { run = with_args("select"), desc = "the nodes a dbt selector picks" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
   incrementality = { run = plain("incrementality"), desc = "table models that could be incremental" },
   impact = {
@@ -265,6 +266,7 @@ M.GROUPS = {
       "deps",
       "freshness",
       "selection",
+      "select",
       "cancel",
       "dead",
       "unresolved",

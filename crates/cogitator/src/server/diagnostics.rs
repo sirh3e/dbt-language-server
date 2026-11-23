@@ -20,6 +20,12 @@ pub fn static_diagnostics(
     let items = if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) {
         // the server's own config file — never the dbt-properties pass
         cogitator_analysis::yaml_cogitator::cogitator_diagnostics(&doc.text)
+    } else if features::selectors_yml::is_selectors_file(uri) {
+        // how the selectors are written; the pull path adds what
+        // matches nothing (it needs the project's nodes)
+        let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
+        items.extend(features::selectors_yml::selectors_diagnostics(&doc.text));
+        items
     } else if is_yaml(uri) {
         let mut items = yaml_features::yaml_diagnostics(uri, &doc.text);
         items.extend(features::citizen_diagnostics(ctx, uri));

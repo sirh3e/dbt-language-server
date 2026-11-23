@@ -771,6 +771,62 @@ async function breakingChanges(): Promise<void> {
   await vscode.window.showTextDocument(doc, { preview: true });
 }
 
+/** One node of a dbt.select answer. */
+export interface SelectedNode {
+  kind: string;
+  name: string;
+  uri: string;
+  uniqueId: string;
+  range: HighlightSpan["range"];
+}
+
+/** A selected node as a quick-pick entry: what, and where. */
+export function selectLabel(
+  node: SelectedNode,
+  relative: (uri: string) => string
+): { label: string; description: string; detail: string } {
+  return {
+    label: `[${node.kind}] ${node.name}`,
+    description: node.uri ? `${relative(node.uri)}:${node.range.start.line + 1}` : "",
+    detail: node.uniqueId,
+  };
+}
+
+/** The nodes a dbt selector picks, as `dbt ls` lists them (dbt.select). */
+async function select(): Promise<void> {
+  const selector = await vscode.window.showInputBox({
+    prompt: "dbt selector (selector:<name> evaluates a selectors.yml entry)",
+    placeHolder: "tag:nightly +orders",
+  });
+  if (!selector) {
+    return;
+  }
+  const result = (await execDbt("dbt.select", { uri: "", selector })) as
+    | { nodes: SelectedNode[]; count: number; issues: string[] }
+    | undefined;
+  if (!result) {
+    return;
+  }
+  for (const issue of result.issues) {
+    void vscode.window.showWarningMessage(`dbt: ${issue}`);
+  }
+  if (result.count === 0) {
+    void vscode.window.showInformationMessage(`dbt: ${selector} selects no node`);
+    return;
+  }
+  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
+  const pick = await vscode.window.showQuickPick(
+    result.nodes.map((n) => ({ ...selectLabel(n, relative), node: n })),
+    { matchOnDescription: true, placeHolder: `${result.count} nodes match ${selector}` }
+  );
+  if (pick && pick.node.uri) {
+    const r = pick.node.range;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.node.uri), {
+      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
+    });
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -789,6 +845,7 @@ export async function activate(
     ["cogitator.highlight", highlight],
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
+    ["cogitator.select", select],
     ["cogitator.unresolved", unresolved],
     ["cogitator.breakingChanges", breakingChanges],
     [

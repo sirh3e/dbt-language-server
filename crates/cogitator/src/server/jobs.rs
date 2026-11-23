@@ -115,6 +115,10 @@ pub fn validate_selector(selector: &str) -> Result<(), Guidance> {
             "the character '{bad}' is not part of selector syntax."
         ));
     }
+    // the selector engine's own reading: what dbt would refuse to parse
+    if let Err(err) = cogitator_analysis::selectors::parse(selector) {
+        return reject(format!("{}.", err.message));
+    }
     Ok(())
 }
 
@@ -130,6 +134,9 @@ mod tests {
         assert!(validate_selector("").is_err());
         assert!(validate_selector("-rf").is_err());
         assert!(validate_selector("x; rm").is_err());
+        // the engine's syntax: `@` with a parents `+`, a method with no value
+        assert!(validate_selector("@+orders").is_err());
+        assert!(validate_selector("tag:").is_err());
         let err = validate_selector("--vars '{}'").unwrap_err().to_message();
         assert!(err.contains("flag"), "{err}");
     }

@@ -146,6 +146,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `{{ config(tags=…) }}` plus `selectors.yml` entries are indexed;
   `workspace/symbol` understands `tag:x` and `selector:x` queries in any
   editor, and Neovim adds `:DbtTags` / `:DbtSelectors` pickers
+- **Node selection** ([docs/selectors.md](docs/selectors.md)): dbt's
+  selector language evaluated over the project — `dbt.select {selector}`
+  lists what `tag:nightly +orders` or `selector:nightly` picks, and
+  selectors.yml gets completion, diagnostics, a hover and "N nodes match"
+  lenses
 - **Project DAG view — Neovim only**: `:DbtDag` renders the whole project
   dbt-docs style (layered left→right, box-drawn nodes with tags, edges),
   and docglow-style column information inside the nodes (`c`/`C` expand,

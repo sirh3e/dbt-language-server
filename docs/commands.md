@@ -308,6 +308,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none
 - **Editors**: Neovim ✓ (`:DbtUnresolved` quickfix, `:DbtFind unresolved` picker) · Emacs ✓ (`M-x cogitator-unresolved`) · VS Code ✓ (`dbt: Unresolved references`)
 
+### `dbt.select`
+
+- **Argument**: `{selector, uri?}` — a dbt node selector as `--select` takes it (`tag:nightly +orders`, `config.materialized:table,path:models/marts`); `selector:<name>` evaluates a selectors.yml definition (the open buffer's text when selectors.yml is open)
+- **Result**: `{selector, count, nodes: [{uri, name, kind, uniqueId, range}], issues: [string]}` — what `dbt ls --select` would list (eager indirect selection brings tests along), by resource type then name; `name` is `source.table` for a source table and `model.v2` for a model version; `issues` says what was not evaluated (an unknown method or selector, a cycle, `state:`/`result:`/`source_status:`). A selector that does not parse is InvalidParams. See [selectors.md](selectors.md)
+- **Side effects**: none (read-only; reads the project's files off the dispatcher). The "N nodes match" lens on each selectors.yml definition sends it with `selector:<name>`
+- **Editors**: Neovim ✓ (`:DbtSelect` quickfix, `:DbtFind select` picker) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes`)
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`

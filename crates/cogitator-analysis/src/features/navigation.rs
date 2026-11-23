@@ -90,27 +90,52 @@ pub fn document_symbols(doc: &Document, uri: &str) -> Vec<SymbolInformation> {
     symbols
 }
 
-/// workspace/symbol: models, sources and macros matching `query`.
+/// workspace/symbol: models, sources and macros matching `query`. The
+/// `tag:` and `selector:` prefixes go through the selector engine over a
+/// universe built from the context alone (no file reads); the server
+/// uses [`workspace_symbols_in`] with the project's full universe.
 pub fn workspace_symbols(ctx: &DbtContext, query: &str) -> Vec<SymbolInformation> {
+    let universe = crate::selectors::universe(ctx, &|_| None);
+    workspace_symbols_in(ctx, &universe, query)
+}
+
+/// [`workspace_symbols`] over a given selector universe.
+pub fn workspace_symbols_in(
+    ctx: &DbtContext,
+    universe: &crate::selectors::Universe,
+    query: &str,
+) -> Vec<SymbolInformation> {
+    use crate::selectors::{self, glob, Indirect, ResourceType};
+    let raw = query;
     let query = query.to_lowercase();
 
-    // `tag:x` → models carrying tag x; `selector:x` → selectors.yml
-    // entries. A bare prefix lists everything of that kind.
-    if let Some(tag) = query.strip_prefix("tag:") {
+    // `tag:x` → nodes carrying a tag that contains x (a glob as written);
+    // `selector:x` → selectors.yml entries. A bare prefix lists
+    // everything of that kind.
+    if let Some(tag) = raw.strip_prefix("tag:") {
+        // tags compare as dbt does: case-sensitive
         let tag = tag.trim();
-        let mut out: Vec<SymbolInformation> = ctx
-            .model_detail_map
-            .iter()
-            .filter(|(_, m)| {
-                tag.is_empty() || m.tags.iter().any(|t| t.to_lowercase().contains(tag))
-            })
-            .filter(|(_, m)| !m.tags.is_empty())
-            .map(|(name, m)| SymbolInformation {
-                name: name.clone(),
-                kind: symbol_kind::CLASS,
+        let pattern = if glob::is_glob(tag) {
+            tag.to_string()
+        } else {
+            format!("*{tag}*")
+        };
+        let Ok(eval) = selectors::select(universe, &[], &format!("tag:{pattern}"), Indirect::Empty)
+        else {
+            return Vec::new();
+        };
+        let mut out: Vec<SymbolInformation> = selectors::sorted(universe, &eval)
+            .into_iter()
+            .map(|n| SymbolInformation {
+                name: n.display_name(),
+                kind: match n.resource_type {
+                    ResourceType::Source => symbol_kind::INTERFACE,
+                    ResourceType::Test | ResourceType::UnitTest => symbol_kind::FUNCTION,
+                    _ => symbol_kind::CLASS,
+                },
                 location: Location {
-                    uri: file_uri(&m.uri),
-                    range: Range::default(),
+                    uri: file_uri(&n.uri),
+                    range: n.range,
                 },
             })
             .collect();
@@ -120,11 +145,13 @@ pub fn workspace_symbols(ctx: &DbtContext, query: &str) -> Vec<SymbolInformation
     if let Some(selector) = query.strip_prefix("selector:") {
         let selector = selector.trim();
         let mut out: Vec<SymbolInformation> = ctx
-            .selector_detail_map
+            .selectors
+            .definitions
             .iter()
-            .filter(|(name, _)| selector.is_empty() || name.to_lowercase().contains(selector))
-            .map(|(name, s)| SymbolInformation {
-                name: name.clone(),
+            .filter(|d| selector.is_empty() || d.name.to_lowercase().contains(selector))
+            .filter_map(|d| ctx.selector_detail_map.get(&d.name))
+            .map(|s| SymbolInformation {
+                name: s.name.clone(),
                 kind: symbol_kind::KEY,
                 location: Location {
                     uri: file_uri(&s.uri),
@@ -133,6 +160,7 @@ pub fn workspace_symbols(ctx: &DbtContext, query: &str) -> Vec<SymbolInformation
             })
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
+        out.dedup_by(|a, b| a.name == b.name);
         return out;
     }
 

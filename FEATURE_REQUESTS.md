@@ -223,6 +223,27 @@ names what already exists in the codebase.
       Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
       VS Code "dbt: Breaking changes against the last build". No git
       baseline (the model at `origin/main`) yet.
+- [x] **dbt node selection** (`selectors/`, docs/selectors.md): one pure
+      engine for dbt's selector language — methods (`fqn`, `tag`, `path`,
+      `file`, `package`, `config.<key>`, `resource_type`, `source`,
+      `exposure`, `metric`, `semantic_model`, `unit_test`, `test_type`,
+      `test_name`, `group`, `access`, `version`, `wildcard`; `state:`,
+      `result:` and `source_status:` reported as needing state), the graph
+      operators (`+x`, `x+`, `N+x`, `x+N`, `@x`), unions and
+      intersections, selectors.yml definitions (`union`, `intersection`,
+      `exclude`, `method`/`value` with `parents`, `children`, depths,
+      `childrens_parents`, `indirect_selection`, `selector:` references)
+      and dbt's eager/cautious/buildable/empty indirect selection of tests.
+      `workspace/symbol`'s `tag:`, the run lenses' selectors and
+      `dbt.runSelection`'s validation share it. In selectors.yml:
+      completion of methods and values (tags, paths, packages, node names,
+      config keys and values, selectors), diagnostics (unknown method or
+      key, unknown selector, cycles, a selector that matches nothing, state
+      methods), "N nodes match" lenses and a hover with the first names;
+      tag names complete in `tags:`/`+tags:` of dbt_project.yml and
+      properties files. `dbt.select {selector}` lists the nodes: Neovim
+      `:DbtSelect` (quickfix) and `:DbtFind select` (picker), Emacs
+      `cogitator-select`, VS Code "dbt: Select nodes".
 - [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
       `target/run/…`, hover shows the Jinja source lines a compiled line came
       from (a link to them) above the SQL hover, and definition jumps there

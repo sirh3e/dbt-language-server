@@ -290,6 +290,15 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.select" => {
+                let ctx = self.snapshot_for(&uri).ctx;
+                let open = crate::server::selectors::Open::of(self.documents.texts());
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.select", move || {
+                    crate::server::selectors::select_reply(&ctx, open, &arg)
+                });
+                return;
+            }
             "dbt.unresolved" => {
                 let ctx = self.snapshot_for(&uri).ctx;
                 let open = self.documents.texts();
