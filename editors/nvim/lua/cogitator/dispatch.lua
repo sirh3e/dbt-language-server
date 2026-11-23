@@ -208,6 +208,15 @@ M.SUBCOMMANDS = {
     end,
     desc = "fuzzy-find models, definitions, columns, lineage… [source]",
   },
+  select = {
+    run = function(args)
+      require("cogitator.explorer").open({ select = args ~= "" and args or nil })
+    end,
+    complete = function(lead)
+      return require("cogitator.commands").select_completion(lead)
+    end,
+    desc = "dbt node selection in the navigator: tag:x +m a,b --exclude x",
+  },
   dag = { run = module_call("cogitator.dag", "open"), desc = "the project DAG" },
   graph = { run = module_call("cogitator.graph", "open"), desc = "the three-pane model graph" },
   explorer = { run = module_call("cogitator.explorer", "open"), desc = "the project explorer" },
@@ -253,7 +262,7 @@ M.GROUPS = {
   {
     name = "Views",
     icon = "◈",
-    subs = { "find", "graph", "dag", "columns", "explorer", "node", "syntax", "highlight" },
+    subs = { "find", "select", "graph", "dag", "columns", "explorer", "node", "syntax", "highlight" },
   },
   {
     name = "Project",

@@ -74,3 +74,45 @@ fn dbt_select_answers_a_selection_over_the_wire() {
     assert_eq!(wrong["error"]["end"], 18, "{wrong}");
     assert!(wrong["nodes"].as_array().unwrap().is_empty());
 }
+
+/// What dbt.select listed is what dbt runs: dbt.runSelection passes the
+/// selection's exclusion on as dbt's own `--exclude`, and refuses one
+/// that is argument-shaped as it refuses such a selector.
+#[cfg(feature = "e2e")]
+#[test]
+fn a_selection_runs_with_its_exclusion() {
+    let project = jaffle();
+    let fake = harness::fake::install(harness::fake::FakeDbt::printing("ok\n"));
+    let envs = fake.envs();
+    let env_refs: Vec<(&str, &str)> = envs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let (mut lsp, uri) = project.booted_with(&env_refs, serde_json::json!({}));
+
+    let started = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.runSelection", "arguments": [{
+            "uri": uri, "selector": "+customers", "exclude": "resource_type:test", "kind": "build"}]}),
+    );
+    assert!(started["result"]["token"].as_u64().is_some(), "{started}");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let argv = loop {
+        let argv = fake.logged_args();
+        if !argv.is_empty() || std::time::Instant::now() > deadline {
+            break argv;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    assert!(
+        argv.iter()
+            .any(|line| line.starts_with("build --select +customers")
+                && line.contains("--exclude resource_type:test")),
+        "{argv:?}"
+    );
+
+    let bad = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.runSelection", "arguments": [{
+            "uri": uri, "selector": "tag:a", "exclude": "--vars oops"}]}),
+    );
+    assert_eq!(bad["error"]["code"], -32602, "{bad}");
+    lsp.shutdown();
+}

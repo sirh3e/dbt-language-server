@@ -42,6 +42,7 @@ local M = {}
 ---@field show_all boolean the picker and walks take every kind of node, not only models
 ---@field macros table[]? the project's macros, as nodes (workspace/symbol)
 ---@field compiled_jumps table<integer, string>? compiled pane lines → a caller to re-centre on
+---@field selection {select: string, exclude: string?, keys: table<string, boolean>, count: integer}? what <C-a> marked from
 ---@type cogitator.explorer.State?
 M._state = nil
 
@@ -342,9 +343,11 @@ function M._toggle_all()
   vim.notify(s.show_all and "explorer: every kind of node" or "explorer: models only")
 end
 
---- `f` and `/`: the models picker; the choice becomes the selection.
+--- `f` and `/`: the models picker; the choice becomes the selection. A
+--- dbt selection typed there lists what dbt would select (explorer.select).
 ---@param on_cancel fun()?
-function M._find(on_cancel)
+---@param query string? typed in already (:DbtSelect)
+function M._find(on_cancel, query)
   local s = M._state
   local sources = require("cogitator.pick.sources")
   local source = sources.build(s.show_all and "all" or "models", { client = s.client, bufnr = s.src_buf })
@@ -360,9 +363,13 @@ function M._find(on_cancel)
       end)
     end
   end
+  local select = require("cogitator.explorer.select")
+  require("cogitator.pick.select_source").with_selection(source, { client = s.client, bufnr = s.src_buf })
+  source.keys = select.keys(M)
+  source.query = query
   source.choose = function(items)
     if M._state == s and items[1] then
-      M.focus(items[1].name, { record = true })
+      select.choose(M, items[1])
     end
   end
   source.on_cancel = on_cancel
@@ -392,8 +399,9 @@ function M._card_enter()
 end
 
 --- Open the explorer on `opts.focus` (a name), else on the current
---- buffer's model, else ask with the models picker.
----@param opts {focus?: string, focus_buffer?: boolean}?
+--- buffer's model, else ask with the models picker. `opts.select` opens
+--- the finder with that dbt selection typed in (:DbtSelect).
+---@param opts {focus?: string, focus_buffer?: boolean, select?: string}?
 function M.open(opts)
   opts = opts or {}
   local src_buf = vim.api.nvim_get_current_buf()
@@ -465,7 +473,7 @@ function M.open(opts)
       local here = require("cogitator.pick.graph").node_of_buffer(result, src_buf)
       focus = here and here.name
     end
-    if focus and M.focus(focus) then
+    if focus and M.focus(focus) and not opts.select then
       return
     end
     render_all(s)
@@ -474,7 +482,7 @@ function M.open(opts)
       if M._state == s and not s.selected then
         M.close()
       end
-    end)
+    end, opts.select)
   end)
 end
 

@@ -86,7 +86,10 @@ source's card from `dbt.nodeInfo`), inlay hints with the value of each
 `var()` (`editor.inlayHints.enabled`, docs/variables.md), `dbt:
 Unresolved references` (every unresolved `ref`, `source`, `doc`, macro
 and `var` of the project from `dbt.unresolved`, a quick pick that jumps
-to each), `dbt:
+to each), `dbt: Select nodes…` (dbt's selection syntax — `tag:nightly`,
+`+dim_items`, `a,b`, `stg_*`, `… --exclude resource_type:test` — evaluated
+as you type by `dbt.select`, the counts in the title; choosing a node
+opens it), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,

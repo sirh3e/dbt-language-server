@@ -76,6 +76,7 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-highlight-buffer` | colour this buffer as the server highlights it (`dbt.highlight`): Jinja, the SQL between the tags, YAML with dbt-aware captures (models, columns, tests; `.unresolved` references as warnings); `C-u` takes the colours off. `cogitator-highlight-on-open` (default `t`) turns on `cogitator-highlight-mode`, which keeps them up to date, in the project's SQL and YAML buffers |
 | inlay hints | with `eglot-inlay-hints-mode` (or lsp-mode's): the relation after `ref()`, the value of each `var()` (`= 'jaffle'`, see docs/variables.md), macro parameter names |
 | `M-x cogitator-node-info` | a node's card (`dbt.nodeInfo`): `[kind:]name` — a macro's signature, callers and calls; a test's refs; a generic test's places in YAML |
+| `M-x cogitator-select` | the nodes a dbt selection picks (`dbt.select`), as `dbt ls --select` answers it: `tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `… --exclude resource_type:test`; models, seeds, snapshots, sources, tests and exposures; choose one to visit it |
 | `M-x cogitator-unresolved` | every unresolved `ref`, `source`, source table, `doc`, macro and `var` of the project (`dbt.unresolved`) in a grep buffer; with `C-u`, only the kinds you name |
 | `M-x cogitator-ast-grep` | structural search with ast-grep (`dbt.astGrep`): `{{ ref($M) }}` over the project's dbt files, `sql:select $$$C from $T` over the compiled SQL; matches in a grep buffer; `pattern => rewrite` rewrites every match after asking |
 

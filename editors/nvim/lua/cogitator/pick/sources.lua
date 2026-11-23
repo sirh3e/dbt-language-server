@@ -458,6 +458,7 @@ M.ORDER = {
   "tests",
   "tags",
   "selectors",
+  "select",
   "astgrep",
   "unresolved",
 }
@@ -476,6 +477,7 @@ M.DESCRIPTIONS = {
   tests = "the tests of this model",
   tags = "tags, then the nodes carrying one",
   selectors = "selectors.yml entries",
+  select = "dbt node selection: tag:nightly, +dim_items, resource_type:test, a,b, … --exclude x",
   unresolved = "every unresolved ref, source, doc, macro and var of the project",
   astgrep = "ast-grep: a structural pattern ({{ ref($M) }}, sql:select $$$C from $T), its matches",
 }
@@ -514,6 +516,11 @@ function M.unresolved(ctx)
       preview.file(item, nil, done)
     end,
   }
+end
+
+--- dbt's node selection (`:DbtSelect`): every node, and dbt selections.
+function M.select(ctx)
+  return require("cogitator.pick.select_source").source(ctx)
 end
 
 --- The matches of an ast-grep pattern (ctx.query, asked for first).

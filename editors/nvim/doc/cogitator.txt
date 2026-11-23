@@ -117,6 +117,8 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtDag        project DAG, dbt-docs style         <leader>dD
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
+  :DbtSelect [expr] dbt node selection in the navigator
+                 (|cogitator-nvim-select|; `:DbtFind select` too)
   :DbtFind [src] fuzzy-find: models, sources, all,       <leader>dF
                  definitions, macros, columns, upstream,
                  downstream, lineage, refs, tests, tags,
@@ -225,6 +227,45 @@ with the matched letters highlighted and a preview. The query is fzf's:
 
 Every other choice (:Dbt, :DbtTests, :DbtTags, :DbtCancel, targets,
 projects) uses the same picker.
+
+SELECTIONS                                            *cogitator-nvim-select*
+
+The navigator's finder (`f`, `/`), `:DbtSelect [expr]` and `:DbtFind
+select` take dbt's own selection syntax as well as fzf's words, and tell
+them apart as you type: a `method:` word, a graph operator (`+m`, `m+`,
+`2+m+1`, `@m`), a `,`, a `*` or `--exclude` make it a selection; fzf's
+`'x ^x x$ !x a | b` keep it fuzzy. A selection is evaluated by the server
+(`dbt.select`) as `dbt ls --select … --exclude …` would answer it, and
+the list is its answer, models, seeds, snapshots, sources, tests, unit
+tests and exposures alike, with the counts in the prompt
+(`dbt select · 7 · 3 models, 2 seeds, 2 tests`) or the error, underlined
+where it is.
+
+  tag:nightly           tag:a,resource_type:model    (both)
+  +dim_items            tag:a tag:b                  (either)
+  2+fct_x+1             path:models/dim   stg_*
+  @dim_items            config.materialized:incremental
+  selector:nightly      test_type:generic   source:raw.items
+  +fct_x --exclude resource_type:test
+
+Tests come along as `dbt ls` brings them: a test whose parents are all
+selected is selected. Packages, versions (`orders.v1`), YAML snapshots
+and `selectors.yml` count; `state:`, `result:` and `source_status:` need
+a previous run's artifacts and are refused. What dbt decides by rendering
+Jinja (a ref inside `{% if target.name == … %}`) counts on every branch.
+
+  <Tab>     complete the method or value under the cursor
+  <C-a>     mark every match (the navigator's marks), focus the first
+  <C-r>     run the selection with dbt: build, run or test, as typed,
+            `--exclude` and all
+  <CR>      centre the node (every kind of node then shows), or open a
+            test or seed the graph has no node of, at its line
+
+Back in the navigator, while the marks are what <C-a> marked, `r` runs
+the selection itself rather than the names; the centre title says which
+(`dbt select +dim_items --exclude resource_type:test (7)`). The finder
+is the built-in picker while it evaluates selections, whatever `picker`
+is set to: fzf-lua, snacks and telescope take a fixed list.
 
 EXPLORER                                                 *cogitator-navigator*
 

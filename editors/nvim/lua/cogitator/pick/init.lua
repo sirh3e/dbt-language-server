@@ -24,12 +24,22 @@ local M = {}
 ---@field choose? fun(items: cogitator.pick.Item[], action: string)
 ---@field on_cancel? fun()
 ---@field empty? string what to say when there is nothing to pick
+---@field is_live? fun(query: string): boolean the query is the source's to evaluate
+---@field live? fun(query: string, done: fun(a: {items: cogitator.pick.Item[], status: string?, error: {message: string, start: integer, end: integer}?}))
+---@field live_title? string the prompt's title while live
+---@field complete? fun(query: string, col: integer, done: fun(c: {query: string, cursor: integer, candidates: string[]}?))
+---@field keys? {lhs: string, desc: string, fn: fun(items: cogitator.pick.Item[], query: string)}[]
 
 --- Show `source` in the configured picker.
 ---@param source cogitator.pick.Source
 ---@param opts {backend?: string}?
 function M.open(source, opts)
   local backend = backends.resolve((opts and opts.backend) or M.backend_name())
+  -- a source that evaluates its own queries (dbt selections) needs a
+  -- picker that asks it per keystroke: the built-in one
+  if source.live and not backend.live then
+    backend = backends.get("builtin")
+  end
   if backend.name == "builtin" then
     backend.open(source, function(action, items)
       actions.run(source, action, items)

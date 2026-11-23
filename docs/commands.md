@@ -132,7 +132,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.runSelection`
 
-- **Argument**: `{uri, selector, kind?}` — any dbt selector; `kind` is `run` (default), `test`, `build` or `compile`
+- **Argument**: `{uri, selector, exclude?, kind?}` — any dbt selector, and what to leave out of it (dbt's `--exclude`, checked the same way); `kind` is `run` (default), `test`, `build` or `compile`
 - **Result**: `{token}` or InvalidParams
 - **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name (a test on a versioned model's base entry is one test per version, so its lens sends their names as a space-separated union)
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
@@ -299,7 +299,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Argument**: `{select, exclude?, vocabulary?}` — dbt's node-selection syntax as `--select` takes it (space a union, `,` an intersection, `[@][n+]method:value[+n]`); `select` may carry an inline `--exclude …`; `vocabulary: true` adds what completion offers
 - **Result**: `{nodes: [{uniqueId, resourceType, name, package, path, tags, uri, range, graphId}], counts, error, vocabulary?}` — the nodes `dbt ls --select … --exclude …` would list (models, seeds, snapshots, source tables, singular, generic and unit tests, analyses, exposures, metrics, semantic models), by resource type then name; tests directly on a selected node come with it (dbt's eager indirect selection). Methods: `fqn` (the default, also a folder or package), `tag`, `path`, `file`, `package`, `resource_type`, `config.materialized` / `config.tags` / `config.access` / `config.group`, `access`, `group`, `source`, `exposure`, `metric`, `semantic_model`, `test_type`, `test_name`, `unit_test`, `selector` (selectors.yml definitions, unions, intersections and exclusions). Folder `+tags` / `+materialized` of dbt_project.yml count; target/manifest.json's materialized wins where it has the node. `state:`, `result:`, `source_status:` and `saved_query:` are refused (they need a previous run's artifacts), as is `version:`. A text that is no selection answers `error: {message, start, end}` (byte offsets) and no nodes. Packages count (each installed package's models, seeds, tests and folder configs), YAML-defined snapshots, a version of a versioned model as dbt names it (`orders.v1`), and the refs of the macros a node calls; a macro that returns while dbt parses (`{% if not execute %}{{ return(…) }}`) refs nothing. **Read, not rendered**: refs on every branch of a Jinja `if` count where dbt counts only the branch its target renders, and `source('x', <a variable>)` is not followed. `oracles/selection.sh` diffs dbt.select with `dbt ls`: on six real projects (2026-11-23), 66 of 72 selections were identical, the rest these two cases
 - **Side effects**: none
-- **Editors**: Neovim ✓ (`:DbtSelect`, and the navigator's finder takes a selection as typed) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`)
+- **Editors**: Neovim ✓ (`:DbtSelect`, the navigator's `f` and `/`: live, `<Tab>` completes, `<C-a>` marks every match, `<C-r>` runs it through `dbt.runSelection` with `exclude`) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`, live)
 
 ## Profiles, configuration and health
 

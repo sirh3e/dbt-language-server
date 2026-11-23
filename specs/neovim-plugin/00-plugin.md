@@ -161,7 +161,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.cache` | `{profiles, lineage, results, artifacts, plans, highlights}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 | `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
 | `dbt.sourceFreshness` | `{token}` (immediately) | async `dbt source freshness` (project-wide); the refreshed sources.json feeds the freshness lenses on source YAML entries |
-| `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`) |
+| `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, exclude?, kind?: run\|test\|build\|compile}`; `exclude` becomes `--exclude`) |
 | `dbt.cancel` | `{token, label}` or InvalidParams | aborts the running invocation (the child process is killed) + confirmation message |
 | `dbt.deadModels` | `{models: [{name, uri, reasons}]}` | none (conservative: seeds/package models never flagged; selector mentions keep a model alive) |
 | `dbt.impact` | `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}` | none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models) |

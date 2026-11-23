@@ -328,6 +328,21 @@
   (check (= (length (plist-get found :matches)) 4)
          "integration: dbt.astGrep finds the model's refs" (length (plist-get found :matches))))
 
+;; unit + integration: node selection
+(check (equal (cogitator--select-line
+               '(:name "orders" :version "1" :resourceType "model" :tags ["nightly"]))
+              "orders.v1  [model]  #nightly")
+       "select: a version is listed as dbt names it")
+(check (equal (cogitator--select-line
+               '(:name "items" :resourceType "source" :graphId "source:raw" :tags []))
+              "raw.items  [source]")
+       "select: a source table is source.table")
+(let ((found (run--exec "dbt.select" (append (cogitator--command-argument)
+                                              (list :select "+customers")))))
+  (check (and (> (length (plist-get found :nodes)) 3)
+              (plist-get (plist-get found :counts) :model))
+         "integration: dbt.select answers +customers" found))
+
 ;; unit + integration: unresolved names
 (check (equal (cogitator--unresolved-line
                '(:kind "ref" :name "ghost" :uri "file:///p/models/a.sql"

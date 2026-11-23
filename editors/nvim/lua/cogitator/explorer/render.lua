@@ -147,7 +147,10 @@ function M.center_title(s)
   local node = s.selected and s.node_of[s.selected]
   local title = node and node.kind or "model"
   local marked = vim.tbl_count(s.marked or {})
-  if marked > 0 then
+  local selection = require("cogitator.explorer.select").title(s)
+  if selection then
+    title = title .. " · " .. selection
+  elseif marked > 0 then
     title = title .. (" · %d marked"):format(marked)
   end
   local trail = {}

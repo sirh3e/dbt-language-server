@@ -108,7 +108,10 @@ binary, the project root and the profiles.yml resolution.
 model, `:DbtFind` for fuzzy pickers (models, definitions, columns,
 lineage… in fzf-lua, snacks.picker or telescope when installed, else a
 built-in one), `:DbtBrowse` for the model explorer (upstream | model | downstream over
-its dbt SQL | compiled SQL), `:DbtGraph`
+its dbt SQL | compiled SQL; its `f` and `/` also take dbt selections,
+`tag:nightly`, `+dim_items`, `a,b`, `… --exclude x`, evaluated as `dbt ls`
+would, with `<C-a>` to mark them all and `<C-r>` to run them —
+`:DbtSelect [expr]` opens it there), `:DbtGraph`
 and `:DbtDag` for the graph browsers, `:DbtSchema`,
 `:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more. `gra` (or
 `<leader>dA`) opens every code action at the cursor in a yazi-style menu

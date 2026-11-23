@@ -20,6 +20,8 @@ import {
   parseNode,
   skippedLayers,
   unresolvedLabel,
+  selectedLabel,
+  selectionSummary,
   spansByColor,
   splitText,
   syntaxLine,
@@ -321,6 +323,30 @@ export async function run(): Promise<void> {
       parseAstGrep("sql: select $$$C from $T")?.language === "sql" &&
       parseAstGrep("  ") === undefined,
     "vscode: an ast-grep query reads [sql:]pattern [=> rewrite]"
+  );
+  check(
+    JSON.stringify(
+      selectedLabel({
+        uniqueId: "model.p.orders.v1",
+        resourceType: "model",
+        name: "orders",
+        version: "1",
+        tags: ["nightly"],
+      })
+    ) === JSON.stringify({ label: "orders.v1", description: "[model]  #nightly" }),
+    "vscode: a selected version is listed as dbt names it"
+  );
+  check(
+    selectionSummary({ model: 3, test: 2, unit_test: 1 }) === "6 · 3 models, 2 tests, 1 unit test",
+    "vscode: a selection's counts read kind by kind"
+  );
+  const selected = (await exec("dbt.select", {
+    uri: document.uri.toString(),
+    select: "+customers",
+  })) as { nodes: unknown[]; counts: Record<string, number> } | undefined;
+  check(
+    !!selected && selected.nodes.length > 3 && (selected.counts.model ?? 0) > 0,
+    "vscode: dbt.select answers +customers"
   );
   check(
     JSON.stringify(
