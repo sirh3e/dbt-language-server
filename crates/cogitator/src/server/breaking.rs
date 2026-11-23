@@ -20,12 +20,29 @@ pub enum Source {
     Disk,
 }
 
-/// The TYPE HOOK: the type of an output column of the model at `uri`,
-/// or `None` to compare names only. Inferred output-column types plug
-/// in here (`breaking::current_columns` takes this closure); until then
-/// every type is unknown and type changes are never reported.
-fn column_type_of<'a>(_snap: &'a Snapshot, _uri: &'a str) -> impl Fn(&str) -> Option<String> + 'a {
-    |_column| None
+/// The type of an output column of the model at `uri`, from the inferred
+/// output-column types (`features::column_types`) of the published
+/// project schema snapshot, which the saved files typed: only a proven
+/// type with an exact spelling in the project's dialect counts, every
+/// other column is `None` and is compared by name only. Never runs the
+/// schema job.
+fn column_type_of<'a>(
+    snap: &'a Snapshot,
+    derived: &'a DerivedCache,
+    uri: &'a str,
+) -> impl Fn(&str) -> Option<String> + 'a {
+    let types = features::model_name_from_uri(uri).and_then(|model| {
+        let root = snap.ctx.project_root.as_deref()?;
+        let schemas = derived.project_schemas(root)?;
+        features::column_types::column_types(&snap.ctx, &schemas, &model)
+    });
+    move |column| {
+        let column = types.as_ref()?.column(column)?;
+        if !column.is_proven() {
+            return None;
+        }
+        features::column_types::render(&column.sql_type, &snap.ctx.dialect)
+    }
 }
 
 /// The report for the model at `uri`; `None` when `uri` is no model of
@@ -61,7 +78,7 @@ pub fn report(
         (Source::Buffer, Some(doc)) => (*typed.for_open_document(doc, uri)).clone(),
         _ => typed.for_saved_file(uri),
     };
-    let type_of = column_type_of(snap, uri);
+    let type_of = column_type_of(snap, derived, uri);
     let Some(current) = lineage
         .as_ref()
         .and_then(|l| breaking::current_columns(l, &type_of))

@@ -212,8 +212,8 @@ names what already exists in the codebase.
       the documented columns of `target/manifest.json` — as removed, added,
       "possibly renamed" (a removed and an added column with similar names,
       never asserted) and retyped columns (only when both types are known;
-      the current side's types come through a hook, names-only until
-      inferred types land); for each removed or retyped column its own
+      the current side's are the proven inferred output-column types of
+      `features::column_types`, of the saved files); for each removed or retyped column its own
       tests and the downstream columns whose lineage reads it, with their
       tests, contracts and `access: public`, plus the model's exposures.
       Computed on open and save, off the request path: `breaking-change`

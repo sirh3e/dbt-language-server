@@ -17,7 +17,11 @@ another type) compared with its **last built schema**, and who reads them.
   under `breaking_changes`.
 
 Types are compared only when both sides know them. The current side's
-types are not inferred yet, so today the comparison is by column name.
+types are the inferred output-column types (see the "Column types" section
+of [properties-yaml.md](properties-yaml.md)) of the files as saved, and
+only a proven type with an exact spelling in the project's dialect counts:
+`count(*)` (an integer of unproven width) or a column typed only by an
+unenforced YAML `data_type` is compared by name alone.
 
 ## What it reports
 

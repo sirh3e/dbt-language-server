@@ -156,3 +156,46 @@ fn no_baseline_is_silence() {
         "{status}"
     );
 }
+
+/// The inferred output-column types feed the preview: a saved cast of
+/// `customer_id` to text against the catalog's INTEGER is a type change.
+/// The types come from the project schema snapshot, which the refresh
+/// after boot publishes, so the command is asked until it has them.
+#[test]
+fn an_inferred_type_change_is_reported() {
+    let project = jaffle();
+    let root = project.root.clone();
+    std::fs::create_dir_all(root.join("target")).unwrap();
+    std::fs::write(root.join("target/catalog.json"), CATALOG).unwrap();
+    let model = root.join("models/staging/stg_customers.sql");
+    let original = std::fs::read_to_string(&model).unwrap();
+    let edited = original.replace("id as customer_id", "cast(id as varchar) as customer_id");
+    assert_ne!(
+        edited, original,
+        "the fixture still selects id as customer_id"
+    );
+    std::fs::write(&model, &edited).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&model);
+
+    let (mut lsp, _) = project.booted();
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": edited}}),
+    );
+    let report = lsp.wait_until("the cast of customer_id is a type change", |lsp| {
+        let reply = lsp.request(
+            "workspace/executeCommand",
+            json!({"command": "dbt.breakingChanges", "arguments": [{"uri": uri}]}),
+        );
+        let retyped = reply["result"]["diff"]["retyped"].as_array()?;
+        (!retyped.is_empty()).then(|| reply["result"].clone())
+    });
+    let change = &report["diff"]["retyped"][0];
+    assert_eq!(change["name"], "customer_id", "{report}");
+    assert_eq!(change["from"], "INTEGER", "{report}");
+    assert_eq!(change["to"], "varchar", "{report}");
+    assert!(
+        report["diff"]["removed"].as_array().unwrap().is_empty(),
+        "{report}"
+    );
+}
