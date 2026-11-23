@@ -92,11 +92,14 @@ pub fn yaml_test_nodes(text: &str) -> Vec<YamlTest> {
 }
 
 /// `ref('x')` / `source('a', 'b')` inside an argument's text.
-fn referenced(text: &str) -> Vec<TestParent> {
+pub(crate) fn referenced(text: &str) -> Vec<TestParent> {
     let mut out = Vec::new();
+    // the positional arguments: `v=1`, `version=2` are keywords
     let quoted = |s: &str| -> Vec<String> {
         s.split(',')
-            .map(|p| p.trim().trim_matches(|c| c == '\'' || c == '"').to_string())
+            .map(str::trim)
+            .filter(|p| !p.contains('='))
+            .map(|p| p.trim_matches(|c| c == '\'' || c == '"').to_string())
             .filter(|p| !p.is_empty())
             .collect()
     };
@@ -124,6 +127,18 @@ fn referenced(text: &str) -> Vec<TestParent> {
 mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
+
+    #[test]
+    fn a_versioned_cross_project_ref_names_its_model() {
+        assert_eq!(
+            referenced("ref('cs2_lake', 'hub_item_description', v=1)"),
+            vec![TestParent::Node("hub_item_description".into())]
+        );
+        assert_eq!(
+            referenced("ref('orders', version=2)"),
+            vec![TestParent::Node("orders".into())]
+        );
+    }
 
     #[test]
     fn generic_tests_name_their_parents_and_unit_tests_their_model() {

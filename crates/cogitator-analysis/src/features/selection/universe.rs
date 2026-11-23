@@ -1,24 +1,19 @@
-//! Every node a selection can pick, as dbt's manifest has them: models,
-//! seeds, snapshots, source tables, singular, generic and unit tests,
-//! analyses, exposures, metrics and semantic models, each with what the
-//! selection methods read and its parents. Built once per context (the
-//! server caches it): it reads each model's file for its `config()` and
-//! the source tables it reads, and each properties file for its tests.
+//! Every node a selection can pick, as dbt's manifest has them: models
+//! (a node per version of a versioned one), seeds, snapshots (from
+//! `{% snapshot %}` blocks and from YAML), source tables, singular,
+//! generic and unit tests, analyses, exposures, metrics and semantic
+//! models, each with what the selection methods read and its parents.
+//! Built once per context (the server caches it): it reads each model's
+//! file for its `config()` and what it refs, and each properties file
+//! for its tests, versions and snapshots.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-use cogitator_dialects::Dialect;
 use cogitator_lsp::Range;
-use cogitator_parser::{DocumentParser, JinjaSqlParser, TokenKind};
 use serde::Serialize;
 
-use super::folder_config;
 use crate::artifacts::manifest::ManifestIndex;
-use crate::context::exposures::RefTarget;
-use crate::context::ModelKind;
-use crate::features::quality::test_nodes::{yaml_test_nodes, TestParent};
-use crate::graph::NodeKind;
 use crate::DbtContext;
 
 /// One selectable node. What goes on the wire is what a client lists and
@@ -26,10 +21,12 @@ use crate::DbtContext;
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
-    /// dbt's unique_id: `model.<package>.<name>`, `source.<package>.<source>.<table>`…
+    /// dbt's unique_id: `model.<package>.<name>[.v<N>]`, `source.<package>.<source>.<table>`…
     pub unique_id: String,
     pub resource_type: &'static str,
     pub name: String,
+    /// A versioned model's version (`1` of `orders.v1`).
+    pub version: Option<String>,
     pub package: String,
     /// The file it is defined in, relative to its project, `/`-separated.
     pub path: String,
@@ -63,6 +60,47 @@ pub struct Node {
     pub parents: Vec<usize>,
 }
 
+impl Node {
+    /// A node with what every node has; the builders fill in the rest.
+    pub(super) fn new(
+        resource_type: &'static str,
+        name: &str,
+        package: &str,
+        path: String,
+    ) -> Node {
+        Node {
+            unique_id: format!("{resource_type}.{package}.{name}"),
+            resource_type,
+            name: name.to_string(),
+            version: None,
+            package: package.to_string(),
+            path,
+            tags: Vec::new(),
+            uri: None,
+            range: None,
+            graph_id: None,
+            fqn: Vec::new(),
+            materialized: None,
+            access: None,
+            group: None,
+            test_type: None,
+            test_name: None,
+            source: None,
+            patch_path: None,
+            parents: Vec::new(),
+        }
+    }
+
+    /// The name `dbt ls --output name` prints: `orders.v1`, `raw.items`.
+    pub fn listed_name(&self) -> String {
+        match (&self.version, &self.source) {
+            (Some(v), _) => format!("{}.v{v}", self.name),
+            (None, Some(source)) => format!("{source}.{}", self.name),
+            _ => self.name.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Universe {
     pub nodes: Vec<Node>,
@@ -80,33 +118,53 @@ impl Universe {
 }
 
 /// What a node depends on, before indices are known.
-enum Dep {
+#[derive(Clone)]
+pub(super) enum Dep {
+    /// A ref: a model, seed or snapshot by name, or a version as
+    /// `<model>_v<N>` (how a test of one names it).
     Model(String),
     Source(String, String),
+    /// `<source>_<table>` as a source test's YAML names it.
     SourceTarget(String),
+    /// A macro it calls: what that macro refs counts as its own.
+    Macro(String),
 }
 
-struct Draft {
-    node: Node,
-    deps: Vec<Dep>,
+pub(super) struct Draft {
+    pub node: Node,
+    pub deps: Vec<Dep>,
+    /// Further names a ref may reach this node by (a version's file stem).
+    pub aliases: Vec<String>,
 }
 
 /// Build the universe of `ctx`, with the manifest's configs where
 /// target/ has them.
 pub fn build(ctx: &DbtContext, manifest: Option<&ManifestIndex>) -> Universe {
+    use super::{deps, projects, universe_nodes as nodes, yaml_nodes};
     let Some(root) = ctx.project_root.as_deref() else {
         return Universe::default();
     };
+    let projects = projects::projects(ctx, root);
+    let yaml = projects::read_yaml(&projects);
+    let versions = yaml_nodes::versions(&yaml);
     let mut drafts = Vec::new();
-    model_like(ctx, root, manifest, &mut drafts);
-    sources(ctx, root, &mut drafts);
-    files_of_graph(ctx, root, &mut drafts);
-    citizens(ctx, root, &mut drafts);
-    yaml_tests(ctx, root, &mut drafts);
+    nodes::model_like(ctx, &projects, manifest, &versions, &mut drafts);
+    yaml_nodes::yaml_snapshots(ctx, &projects, &yaml, &mut drafts);
+    nodes::sources(ctx, root, &mut drafts);
+    nodes::files_of_graph(ctx, &projects, &mut drafts);
+    nodes::citizens(ctx, root, &mut drafts);
+    yaml_nodes::yaml_tests(&projects, &yaml, &versions, &mut drafts);
+    nodes::package_seeds(ctx, &projects, &mut drafts);
+    let macros = deps::macros(ctx, &projects);
+    for draft in &mut drafts {
+        expand_macros(&mut draft.deps, &macros);
+    }
     link(drafts)
 }
 
-fn relative(root: &Path, file: &Path, install_path: &str) -> String {
+/// `file` relative to its project: the root's, or a package's own
+/// (`dbt_packages/<package>/models/x.sql` → `models/x.sql`).
+pub(super) fn relative(root: &Path, file: &Path, install_path: &str) -> String {
     let rel = file.strip_prefix(root).unwrap_or(file);
     let parts: Vec<String> = rel
         .iter()
@@ -117,7 +175,6 @@ fn relative(root: &Path, file: &Path, install_path: &str) -> String {
     } else {
         install_path
     };
-    // a package's file: its path inside the package
     let parts = if parts.first().map(String::as_str) == Some(install) && parts.len() > 2 {
         parts[2..].to_vec()
     } else {
@@ -127,313 +184,44 @@ fn relative(root: &Path, file: &Path, install_path: &str) -> String {
 }
 
 /// The folders between the resource path (`models/`) and the file.
-fn folders(path: &str, resource_paths: &[String]) -> Vec<String> {
+pub(super) fn folders(path: &str, resource_paths: &[String]) -> Vec<String> {
     let mut parts: Vec<&str> = path.split('/').collect();
     parts.pop();
     let skip = resource_paths
         .iter()
-        .map(|p| p.trim_end_matches('/').split('/').count())
-        .find(|&n| {
-            let prefix = parts.iter().take(n).copied().collect::<Vec<_>>().join("/");
-            resource_paths
-                .iter()
-                .any(|p| p.trim_end_matches('/') == prefix)
+        .map(|p| p.trim_end_matches('/'))
+        .filter(|p| {
+            let n = p.split('/').count();
+            parts.iter().take(n).copied().collect::<Vec<_>>().join("/") == *p
         })
+        .map(|p| p.split('/').count())
+        .max()
         .unwrap_or(1.min(parts.len()));
     parts.into_iter().skip(skip).map(str::to_string).collect()
 }
 
-fn uri(path: &Path) -> Option<String> {
+pub(super) fn uri(path: &Path) -> Option<String> {
     (!path.as_os_str().is_empty()).then(|| cogitator_lsp::fs_path_to_uri(path))
 }
 
-fn model_like(
-    ctx: &DbtContext,
-    root: &Path,
-    manifest: Option<&ManifestIndex>,
-    out: &mut Vec<Draft>,
-) {
-    let p = &ctx.project;
-    for (name, d) in &ctx.model_detail_map {
-        let (resource_type, paths, tree_key, default) = match d.kind {
-            ModelKind::Model => ("model", &p.model_paths, "models", "view"),
-            ModelKind::Seed => ("seed", &p.seed_paths, "seeds", "seed"),
-            ModelKind::Snapshot => ("snapshot", &p.snapshot_paths, "snapshots", "snapshot"),
-        };
-        let package = if d.project_name.is_empty() {
-            p.name.clone()
-        } else {
-            d.project_name.clone()
-        };
-        let path = relative(root, &d.uri, &p.packages_install_path);
-        let dirs = folders(&path, paths);
-        let dir_refs: Vec<&str> = dirs.iter().map(String::as_str).collect();
-        let folder = folder_config::resolve(p.resource_configs.get(tree_key), &package, &dir_refs);
-        let text = std::fs::read_to_string(&d.uri).unwrap_or_default();
-        let mut tags = d.tags.clone();
-        let own = if resource_type == "seed" {
-            Vec::new()
-        } else {
-            crate::util::config_tags(&text)
-        };
-        for tag in own.into_iter().chain(folder.tags) {
-            if !tags.contains(&tag) {
-                tags.push(tag);
-            }
-        }
-        let materialized = manifest
-            .and_then(|m| m.models.get(name))
-            .and_then(|n| n.config.materialized.clone())
-            .or_else(|| {
-                (resource_type == "model")
-                    .then(|| crate::features::config_materialized(&text))
-                    .flatten()
-            })
-            .or(folder.materialized)
-            .or_else(|| Some(default.to_string()));
-        let mut fqn = vec![package.clone()];
-        fqn.extend(dirs);
-        fqn.push(name.clone());
-        let deps = if text.is_empty() {
-            Vec::new()
-        } else {
-            dependencies(&text, &ctx.dialect)
-        };
-        out.push(Draft {
-            node: Node {
-                unique_id: format!("{resource_type}.{package}.{name}"),
-                resource_type,
-                name: name.clone(),
-                package,
-                path,
-                tags,
-                uri: uri(&d.uri),
-                range: None,
-                graph_id: Some(format!("model:{name}")),
-                fqn,
-                materialized,
-                access: d.access.clone(),
-                group: d.group.clone(),
-                test_type: None,
-                test_name: None,
-                source: None,
-                patch_path: d
-                    .schema_uri
-                    .as_deref()
-                    .map(|yml| relative(root, yml, &p.packages_install_path)),
-                parents: Vec::new(),
-            },
-            deps,
-        });
-    }
-}
-
-/// The models and source tables a SQL text reads.
-fn dependencies(text: &str, dialect: &Dialect) -> Vec<Dep> {
-    let Ok(doc) = JinjaSqlParser.parse(text, dialect) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    let mut source: Option<String> = None;
-    for token in &doc.tokens {
-        match token.kind {
-            TokenKind::Ref => out.push(Dep::Model(doc.literal(token).to_string())),
-            TokenKind::SourceName => source = Some(doc.literal(token).to_string()),
-            TokenKind::SourceTable => {
-                if let Some(src) = source.take() {
-                    out.push(Dep::Source(src, doc.literal(token).to_string()));
+/// Replace the macros a node calls with what they ref, through the
+/// macros they call in turn.
+fn expand_macros(deps: &mut Vec<Dep>, macros: &HashMap<String, Vec<Dep>>) {
+    let mut seen = std::collections::HashSet::new();
+    let mut i = 0;
+    while i < deps.len() {
+        if let Dep::Macro(name) = &deps[i] {
+            let name = name.clone();
+            deps.swap_remove(i);
+            if seen.insert(name.clone()) {
+                if let Some(body) = macros.get(&name) {
+                    deps.extend(body.iter().cloned());
                 }
             }
-            _ => {}
-        }
-    }
-    out
-}
-
-fn sources(ctx: &DbtContext, root: &Path, out: &mut Vec<Draft>) {
-    let p = &ctx.project;
-    for (source_name, src) in &ctx.source_detail_map {
-        for (table, t) in &src.tables {
-            let path = relative(root, &t.uri, &p.packages_install_path);
-            let mut fqn = vec![p.name.clone()];
-            fqn.extend(folders(&path, &p.model_paths));
-            fqn.push(source_name.clone());
-            fqn.push(table.clone());
-            out.push(Draft {
-                node: Node {
-                    unique_id: format!("source.{}.{source_name}.{table}", p.name),
-                    resource_type: "source",
-                    name: table.clone(),
-                    package: p.name.clone(),
-                    path,
-                    tags: Vec::new(),
-                    uri: uri(&t.uri),
-                    range: Some(t.range),
-                    graph_id: Some(format!("source:{source_name}")),
-                    fqn,
-                    materialized: None,
-                    access: None,
-                    group: None,
-                    test_type: None,
-                    test_name: None,
-                    source: Some(source_name.clone()),
-                    patch_path: None,
-                    parents: Vec::new(),
-                },
-                deps: Vec::new(),
-            });
-        }
-    }
-}
-
-/// Singular tests and analyses: graph nodes with files of their own.
-fn files_of_graph(ctx: &DbtContext, root: &Path, out: &mut Vec<Draft>) {
-    let p = &ctx.project;
-    for node in ctx.graph.nodes() {
-        let (resource_type, paths) = match node.kind {
-            NodeKind::Test => ("test", &p.test_paths),
-            NodeKind::Analysis => ("analysis", &p.analysis_paths),
-            _ => continue,
-        };
-        let path = relative(root, &node.uri, &p.packages_install_path);
-        let mut fqn = vec![p.name.clone()];
-        fqn.extend(folders(&path, paths));
-        fqn.push(node.name.clone());
-        let text = std::fs::read_to_string(&node.uri).unwrap_or_default();
-        out.push(Draft {
-            node: Node {
-                unique_id: format!("{resource_type}.{}.{}", p.name, node.name),
-                resource_type,
-                name: node.name.clone(),
-                package: p.name.clone(),
-                path,
-                tags: crate::util::config_tags(&text),
-                uri: uri(&node.uri),
-                range: None,
-                graph_id: Some(format!("{}:{}", node.kind.as_str(), node.name)),
-                fqn,
-                materialized: (resource_type == "test").then(|| "test".to_string()),
-                access: None,
-                group: None,
-                test_type: (resource_type == "test").then_some("singular"),
-                test_name: None,
-                source: None,
-                patch_path: None,
-                parents: Vec::new(),
-            },
-            deps: dependencies(&text, &ctx.dialect),
-        });
-    }
-}
-
-fn citizens(ctx: &DbtContext, root: &Path, out: &mut Vec<Draft>) {
-    let p = &ctx.project;
-    for (resource_type, map) in [
-        ("exposure", &ctx.exposure_detail_map),
-        ("metric", &ctx.metric_detail_map),
-        ("semantic_model", &ctx.semantic_model_detail_map),
-    ] {
-        for (name, c) in map {
-            let path = relative(root, &c.uri, &p.packages_install_path);
-            let mut fqn = vec![p.name.clone()];
-            fqn.extend(folders(&path, &p.model_paths));
-            fqn.push(name.clone());
-            let deps = c
-                .depends
-                .iter()
-                .map(|d| match d {
-                    RefTarget::Model(m) => Dep::Model(m.clone()),
-                    RefTarget::Source(s, t) => Dep::Source(s.clone(), t.clone()),
-                })
-                .collect();
-            out.push(Draft {
-                node: Node {
-                    unique_id: format!("{resource_type}.{}.{name}", p.name),
-                    resource_type,
-                    name: name.clone(),
-                    package: p.name.clone(),
-                    path,
-                    tags: Vec::new(),
-                    uri: uri(&c.uri),
-                    range: Some(c.range),
-                    graph_id: Some(format!("{resource_type}:{name}")),
-                    fqn,
-                    materialized: None,
-                    access: None,
-                    group: None,
-                    test_type: None,
-                    test_name: None,
-                    source: None,
-                    patch_path: None,
-                    parents: Vec::new(),
-                },
-                deps,
-            });
-        }
-    }
-}
-
-/// Generic and unit tests of the project's properties files.
-fn yaml_tests(ctx: &DbtContext, root: &Path, out: &mut Vec<Draft>) {
-    let p = &ctx.project;
-    for file in crate::features::references::files::yaml_files(ctx) {
-        let Ok(text) = std::fs::read_to_string(&file) else {
             continue;
-        };
-        let path = relative(root, &file, &p.packages_install_path);
-        for test in yaml_test_nodes(&text) {
-            let resource_type = if test.unit { "unit_test" } else { "test" };
-            let mut fqn = vec![p.name.clone()];
-            fqn.extend(folders(&path, &p.model_paths));
-            fqn.push(test.name.clone());
-            let deps = test
-                .parents
-                .iter()
-                .map(|parent| match parent {
-                    TestParent::Node(m) => Dep::Model(strip_version(ctx, m)),
-                    TestParent::Source(s, t) => Dep::Source(s.clone(), t.clone()),
-                    TestParent::SourceTarget(target) => Dep::SourceTarget(target.clone()),
-                })
-                .collect();
-            let first_parent = test.parents.first().and_then(|parent| match parent {
-                TestParent::Node(m) => Some(strip_version(ctx, m)),
-                _ => None,
-            });
-            out.push(Draft {
-                node: Node {
-                    unique_id: match (&first_parent, test.unit) {
-                        (Some(model), true) => {
-                            format!("unit_test.{}.{model}.{}", p.name, test.name)
-                        }
-                        _ => format!("test.{}.{}", p.name, test.name),
-                    },
-                    resource_type,
-                    name: test.name.clone(),
-                    package: p.name.clone(),
-                    path: path.clone(),
-                    tags: Vec::new(),
-                    uri: uri(&file),
-                    range: Some(test.range),
-                    graph_id: None,
-                    fqn,
-                    materialized: (!test.unit).then(|| "test".to_string()),
-                    access: None,
-                    group: None,
-                    test_type: Some(if test.unit { "unit" } else { "generic" }),
-                    test_name: (!test.unit).then(|| test.test.clone()),
-                    source: None,
-                    patch_path: None,
-                    parents: Vec::new(),
-                },
-                deps,
-            });
         }
+        i += 1;
     }
-}
-
-/// `orders_v2` → `orders` where only the base is a node.
-fn strip_version(ctx: &DbtContext, name: &str) -> String {
-    crate::features::tests_nav::resolve_model_name(ctx, name).unwrap_or_else(|| name.to_string())
 }
 
 /// Indices for the dependencies, and the reverse edges.
@@ -443,6 +231,9 @@ fn link(drafts: Vec<Draft>) -> Universe {
     for (i, d) in drafts.iter().enumerate() {
         match d.node.resource_type {
             "model" | "seed" | "snapshot" => {
+                for alias in &d.aliases {
+                    by_model.insert(alias.clone(), i);
+                }
                 by_model.entry(d.node.name.clone()).or_insert(i);
             }
             "source" => {
@@ -457,12 +248,21 @@ fn link(drafts: Vec<Draft>) -> Universe {
         let mut node = d.node;
         for dep in d.deps {
             let at = match dep {
-                Dep::Model(m) => by_model.get(&m).copied(),
+                Dep::Model(m) => by_model.get(&m).copied().or_else(|| {
+                    // `orders_v2` where the version is no file of its own
+                    let (base, v) = m.rsplit_once("_v")?;
+                    if v.chars().all(|c| c.is_ascii_digit()) {
+                        by_model.get(base).copied()
+                    } else {
+                        None
+                    }
+                }),
                 Dep::Source(s, t) => by_source.get(&(s, t)).copied(),
                 Dep::SourceTarget(target) => by_source
                     .iter()
                     .find(|((s, t), _)| format!("{s}_{t}") == target)
                     .map(|(_, &i)| i),
+                Dep::Macro(_) => None,
             };
             if let Some(at) = at {
                 if !node.parents.contains(&at) {
@@ -479,4 +279,22 @@ fn link(drafts: Vec<Draft>) -> Universe {
         }
     }
     Universe { nodes, children }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn folders_are_below_the_resource_path() {
+        let paths = vec!["models".to_string()];
+        assert_eq!(
+            folders("models/dim/inventory/x.sql", &paths),
+            vec!["dim", "inventory"]
+        );
+        assert_eq!(folders("models/x.sql", &paths), Vec::<String>::new());
+        assert_eq!(folders("other/a/x.sql", &paths), vec!["a"]);
+        let nested = vec!["src/models".to_string()];
+        assert_eq!(folders("src/models/dim/x.sql", &nested), vec!["dim"]);
+    }
 }

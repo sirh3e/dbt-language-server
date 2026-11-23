@@ -4,11 +4,17 @@
 //! of nodes and the evaluator are pure; the universe is built from the
 //! context once and cached by the server.
 
+mod deps;
 mod eval;
 mod folder_config;
 mod glob;
+mod methods;
 pub mod parse;
+mod projects;
 pub mod universe;
+mod universe_nodes;
+mod universe_yaml;
+mod yaml_nodes;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -74,7 +80,7 @@ pub fn select(
         .map(|i| universe.nodes[i].clone())
         .collect();
     let order = |t: &str| {
-        eval::RESOURCE_TYPES
+        methods::RESOURCE_TYPES
             .iter()
             .position(|r| *r == t)
             .unwrap_or(usize::MAX)

@@ -41,6 +41,9 @@ fn picked(ctx: &DbtContext, u: &selection::Universe, text: &str) -> Vec<String> 
         .collect()
 }
 
+/// bv_item_transitions.v1's one test.
+const BV_TEST: &str = "test:state_is_known_bv_item_transitions_v1_state";
+
 /// dim_items' tests: eager indirect selection takes them in with it.
 const DIM_TESTS: &[&str] = &[
     "test:assert_items_have_one_current_state",
@@ -73,30 +76,38 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 #[case("vault_lake.dim", with_dim_tests(&["model:dim_items"]))]
 #[case("raw_vault", v(&["model:hub_item", "model:sat_item_version"]))]
 // graph operators
-#[case("+dim_items", with_dim_tests(&["model:bv_item_transitions", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items"]))]
-#[case("1+dim_items", with_dim_tests(&["model:bv_item_transitions", "model:dim_items", "model:hub_item"]))]
-#[case("sat_item_version+1", v(&["model:bv_item_transitions", "model:sat_item_version", "exposure:item_history_feed"]))]
-#[case("@sat_item_version", with_dim_tests(&["model:bv_item_transitions", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items", "exposure:item_history_feed"]))]
+#[case("+dim_items", with_dim_tests(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items"]))]
+#[case("1+dim_items", with_dim_tests(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:dim_items", "model:hub_item"]))]
+#[case("sat_item_version+1", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:sat_item_version", "exposure:item_history_feed"]))]
+#[case("@sat_item_version", with_dim_tests(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items", "exposure:item_history_feed"]))]
 // tags: folder +tags, YAML tags, SQL config(tags=), a seed's, a snapshot's
 #[case("tag:raw", v(&["model:hub_item", "model:sat_item_version"]))]
 #[case("tag:nightly", with_dim_tests(&["model:dim_items"]))]
-#[case("tag:hourly", v(&["model:bv_item_transitions"]))]
+#[case("tag:hourly", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state"]))]
 #[case("tag:reference", v(&["seed:item_states"]))]
-#[case("tag:history", v(&["snapshot:items_snapshot"]))]
-#[case("tag:hou*", v(&["model:bv_item_transitions"]))]
+#[case("tag:history", v(&["snapshot:item_versions_snapshot", "snapshot:items_snapshot", "test:not_null_item_versions_snapshot_item_id"]))]
+#[case("tag:hou*", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state"]))]
 // resource types: unreferenced seeds and snapshots are nodes too
 #[case("resource_type:seed", v(&["seed:item_states"]))]
-#[case("resource_type:snapshot", v(&["snapshot:items_snapshot"]))]
+#[case("resource_type:snapshot", v(&["snapshot:item_versions_snapshot", "snapshot:items_snapshot", "test:not_null_item_versions_snapshot_item_id"]))]
 #[case("resource_type:exposure", v(&["exposure:item_history_feed"]))]
 #[case("resource_type:unit_test", v(&["unit_test:test_dim_items_keeps_the_previous_state"]))]
-#[case("resource_type:test", DIM_TESTS[..5].iter().map(|s| s.to_string()).collect())]
+#[case("resource_type:test", DIM_TESTS[..5].iter().copied().chain([BV_TEST, "test:not_null_item_versions_snapshot_item_id"]).map(str::to_string).collect())]
+// versions: the model by its name, and as dbt names a version
+#[case("bv_item_transitions_v1", v(&["model:bv_item_transitions", BV_TEST]))]
+#[case("bv_item_transitions.v1", v(&["model:bv_item_transitions", BV_TEST]))]
+#[case("bv_item_transitions_v2", v(&[]))]
+// a snapshot defined in YAML reads its relation
+#[case("+item_versions_snapshot", v(&["snapshot:item_versions_snapshot", "source:item_versions", "test:not_null_item_versions_snapshot_item_id"]))]
+// a generic test's definition (tests/generic/) is no test
+#[case("state_is_known", v(&[]))]
 // paths and files: a properties file's sources and exposures live under it
 #[case("models/raw_vault", v(&["model:hub_item", "model:sat_item_version", "source:item_versions", "source:items", "exposure:item_history_feed"]))]
 #[case("path:models/dim/*.sql", with_dim_tests(&["model:dim_items"]))]
 #[case("dim_items.sql", with_dim_tests(&["model:dim_items"]))]
 #[case("file:hub_item", v(&["model:hub_item"]))]
 // configs: the manifest's materialized wins, then config(), then the folder
-#[case("config.materialized:table", v(&["model:bv_item_transitions"]))]
+#[case("config.materialized:table", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state"]))]
 #[case("config.materialized:incremental", with_dim_tests(&["model:dim_items", "model:hub_item", "model:sat_item_version"]))]
 #[case("config.materialized:seed", v(&["seed:item_states"]))]
 // sources, exposures, tests
@@ -105,19 +116,20 @@ fn sorted(mut v: Vec<String>) -> Vec<String> {
 #[case("+exposure:item_history_feed", v(&["model:sat_item_version", "source:item_versions", "exposure:item_history_feed"]))]
 #[case("test_type:singular", DIM_TESTS[..2].iter().map(|s| s.to_string()).collect())]
 #[case("test_type:unit", v(&["unit_test:test_dim_items_keeps_the_previous_state"]))]
-#[case("test_name:not_null", v(&["test:not_null_dim_items_item_version_id"]))]
+#[case("test_name:not_null", v(&["test:not_null_dim_items_item_version_id", "test:not_null_item_versions_snapshot_item_id"]))]
+#[case("test_name:state_is_known", v(&[BV_TEST]))]
 #[case("test_name:unique_combination_of_columns", v(&["test:dbt_utils_unique_combination_of_columns_dim_items_item_id__item_version_id"]))]
 // selectors.yml: a string, a union with an exclusion, parents
 #[case("selector:raw_layer", v(&["model:hub_item", "model:sat_item_version"]))]
 #[case("selector:marts_without_tests", v(&["model:dim_items"]))]
-#[case("selector:what_dim_items_reads", with_dim_tests(&["model:bv_item_transitions", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items"]))]
+#[case("selector:what_dim_items_reads", with_dim_tests(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:dim_items", "model:hub_item", "model:sat_item_version", "source:item_versions", "source:items"]))]
 // set operators
-#[case("tag:raw tag:hourly", v(&["model:bv_item_transitions", "model:hub_item", "model:sat_item_version"]))]
-#[case("tag:lake,config.materialized:table", v(&["model:bv_item_transitions"]))]
+#[case("tag:raw tag:hourly", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:hub_item", "model:sat_item_version"]))]
+#[case("tag:lake,config.materialized:table", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state"]))]
 #[case("tag:lake,tag:mart", with_dim_tests(&["model:dim_items"]))]
 #[case("package:this,resource_type:source", v(&["source:item_versions", "source:items"]))]
 #[case("tag:lake --exclude resource_type:test", v(&["model:bv_item_transitions", "model:dim_items", "model:hub_item", "model:sat_item_version", "unit_test:test_dim_items_keeps_the_previous_state"]))]
-#[case("tag:lake --exclude dim_items", v(&["model:bv_item_transitions", "model:hub_item", "model:sat_item_version"]))]
+#[case("tag:lake --exclude dim_items", v(&["model:bv_item_transitions", "test:state_is_known_bv_item_transitions_v1_state", "model:hub_item", "model:sat_item_version"]))]
 fn vault_lake_selects_as_dbt_does(#[case] text: &str, #[case] expected: Vec<String>) {
     let (ctx, u) = project("vault_lake");
     assert_eq!(sorted(picked(&ctx, &u, text)), sorted(expected), "{text}");
@@ -133,7 +145,14 @@ fn the_answer_is_ordered_by_resource_type_and_counted() {
     expected.sort_by_key(|t| order.iter().position(|o| o == t));
     assert_eq!(types, expected);
     assert_eq!(result.counts.get("model"), Some(&4));
-    assert_eq!(result.counts.get("test"), Some(&5));
+    assert_eq!(result.counts.get("test"), Some(&6));
+    let bv = result
+        .nodes
+        .iter()
+        .find(|n| n.name == "bv_item_transitions")
+        .unwrap();
+    assert_eq!(bv.unique_id, "model.vault_lake.bv_item_transitions.v1");
+    assert_eq!(bv.listed_name(), "bv_item_transitions.v1");
     let dim = result.nodes.iter().find(|n| n.name == "dim_items").unwrap();
     assert_eq!(dim.unique_id, "model.vault_lake.dim_items");
     assert_eq!(dim.graph_id.as_deref(), Some("model:dim_items"));
