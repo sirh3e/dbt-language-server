@@ -163,7 +163,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.modelInfo`
 
 - **Argument**: `{uri?, model?}` — `model` wins
-- **Result**: `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri, coverage}` or `null` — `coverage` is `{columns, documented, tested, described}` from the YAML entry
+- **Result**: `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri, coverage, columnTypes?}` or `null` — `coverage` is `{columns, documented, tested, described}` from the YAML entry; `columnTypes` (once the project schema job has typed the saved model) is `{model, revision, columns: [{name, dataType, description, nullable, basis, provenance, feeds, why}]}`: `dataType` is the dialect's spelling and only set when the type is pinned exactly, `basis` is `proven`, `declared` (rests on an unenforced YAML `data_type`) or `unknown` (see [properties-yaml.md](properties-yaml.md#column-types))
 - **Side effects**: none
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 

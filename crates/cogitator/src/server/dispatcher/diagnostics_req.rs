@@ -166,6 +166,9 @@ impl Dispatcher {
                             &doc.text,
                             artifact_cap,
                         ));
+                        extra.extend(super::yaml_types::fill_action(
+                            &snap.ctx, &derived, &doc.text, &uri, range,
+                        ));
                     }
                 } else {
                     let target =
@@ -255,6 +258,17 @@ impl Dispatcher {
                     &entry_models,
                     &derived,
                     artifact_cap,
+                ));
+            }
+            if let Some(doc) = snap
+                .doc
+                .as_deref()
+                .filter(|_| crate::server::diagnostics::is_yaml(&uri))
+            {
+                // data_type and unit-test rows against the inferred
+                // column types (read off the published snapshot)
+                items.extend(super::yaml_types::diagnostics(
+                    &snap.ctx, &derived, &doc.text,
                 ));
             }
             if let Some(root) = snap.ctx.project_root.as_deref() {
