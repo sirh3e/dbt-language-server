@@ -93,6 +93,7 @@ impl Facts {
                     original_file_path: None,
                     relation_name: None,
                     config,
+                    columns: Vec::new(),
                 },
             );
         self

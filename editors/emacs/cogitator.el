@@ -381,6 +381,36 @@ and the SQL when `is_incremental()' changes nothing."
          (pop-to-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
+;; the rows of a CTE (dbt.previewCte)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--preview-cte-render (result)
+  "The text of a dbt.previewCte RESULT: the server's markdown table."
+  (let ((table (plist-get result :table)))
+    (if (stringp table) table "")))
+
+;;;###autoload
+(defun cogitator-preview-cte (&optional limit)
+  "The rows of the CTE at point (or the final select past every CTE).
+The model runs up to that CTE through `dbt show --inline'; with a prefix
+argument LIMIT, that many rows (default: cogitator.yml preview.rows)."
+  (interactive "P")
+  (let ((argument (cogitator--command-argument t)))
+    (when limit
+      (setq argument (plist-put argument :limit (prefix-numeric-value limit))))
+    (cogitator--execute
+     "dbt.previewCte" argument
+     (lambda (result)
+       (let ((buf (get-buffer-create "*cogitator-preview*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (cogitator--preview-cte-render result))
+             (goto-char (point-min)))
+           (special-mode))
+         (pop-to-buffer buf))))))
+
+;; ---------------------------------------------------------------------------
 ;; incrementality: the split plan and the project-wide list
 ;; (specs/ir-pipeline/10 §6)
 ;; ---------------------------------------------------------------------------
@@ -894,6 +924,42 @@ it is applied to every match after asking."
             (plist-get item :name)
             (or (plist-get item :message) ""))))
 
+;; the nodes a selector picks (dbt.select)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--select-line (node)
+  "One grep-style line for a dbt.select NODE: file:line:column: [kind] name."
+  (let ((start (plist-get (plist-get node :range) :start))
+        (uri (plist-get node :uri)))
+    (format "%s:%d:%d: [%s] %s"
+            (if (and uri (not (string-empty-p uri))) (cogitator--uri-to-file uri) "")
+            (1+ (or (plist-get start :line) 0))
+            (1+ (or (plist-get start :character) 0))
+            (plist-get node :kind)
+            (plist-get node :name))))
+
+;;;###autoload
+(defun cogitator-select (selector)
+  "The nodes the dbt SELECTOR picks, as `dbt ls' lists them (dbt.select).
+`selector:NAME' evaluates a selectors.yml entry.  The nodes land in a
+grep buffer, one per line, at their definition."
+  (interactive (list (read-string "dbt selector: ")))
+  (cogitator--execute
+   "dbt.select" (list :uri "" :selector selector)
+   (lambda (result)
+     (let ((nodes (append (plist-get result :nodes) nil))
+           (issues (append (plist-get result :issues) nil))
+           (buf (get-buffer-create "*cogitator-select*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt select %s: %d -*-\n\n" selector (plist-get result :count)))
+           (dolist (issue issues) (insert (format "; %s\n" issue)))
+           (insert (mapconcat #'cogitator--select-line nodes "\n") "\n"))
+         (require 'grep)
+         (grep-mode))
+       (display-buffer buf)))))
+
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)
   "Every unresolved ref, source, doc, macro and var (dbt.unresolved).
@@ -918,6 +984,51 @@ grep buffer, one per line, at their place."
            (require 'grep)
            (grep-mode))
          (display-buffer buf))))))
+
+;; breaking changes (dbt.breakingChanges)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--breaking-lines (result)
+  "The lines of a dbt.breakingChanges RESULT: one per removed or retyped
+column, then one per downstream column that reads it."
+  (let ((renamed (make-hash-table :test #'equal))
+        lines)
+    (dolist (removed (append (plist-get (plist-get result :diff) :removed) nil))
+      (when (stringp (plist-get removed :possiblyRenamedTo))
+        (puthash (plist-get removed :name) (plist-get removed :possiblyRenamedTo) renamed)))
+    (dolist (impact (append (plist-get result :impacts) nil))
+      (let* ((column (plist-get impact :column))
+             (to (gethash column renamed))
+             (tests (append (plist-get impact :tests) nil)))
+        (push (concat (format "[%s] %s %s" (plist-get impact :severity) column
+                              (plist-get impact :change))
+                      (if to (format " (possibly renamed to %s)" to) "")
+                      (if tests (concat " — tested: " (string-join tests ", ")) ""))
+              lines)
+        (dolist (use (append (plist-get impact :downstream) nil))
+          (push (format "  read by %s.%s%s" (plist-get use :model) (plist-get use :column)
+                        (if (eq (plist-get use :contracted) t) " (contracted)" ""))
+                lines))))
+    (nreverse lines)))
+
+;;;###autoload
+(defun cogitator-breaking-changes ()
+  "This model against its last built schema (dbt.breakingChanges).
+Compares the columns the SQL produces with target/catalog.json (else
+the documented columns of target/manifest.json) and lists the removed,
+possibly renamed and retyped columns and what reads them downstream."
+  (interactive)
+  (cogitator--execute
+   "dbt.breakingChanges" (cogitator--command-argument)
+   (lambda (result)
+     (let ((buf (get-buffer-create "*cogitator-breaking-changes*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt breaking changes: %s -*-\n\n" (plist-get result :summary)))
+           (insert (mapconcat #'identity (cogitator--breaking-lines result) "\n") "\n"))
+         (special-mode))
+       (display-buffer buf)))))
 
 ;;;###autoload
 (defun cogitator-doctor ()

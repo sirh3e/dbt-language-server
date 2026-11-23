@@ -63,6 +63,10 @@
         "title": "dbt: Preview current model (dbt show)"
       },
       {
+        "command": "cogitator.previewCte",
+        "title": "dbt: Preview rows of the CTE under the cursor"
+      },
+      {
         "command": "cogitator.parse",
         "title": "dbt: Parse project (refresh context)"
       },
@@ -101,6 +105,14 @@
       {
         "command": "cogitator.unresolved",
         "title": "dbt: Unresolved references"
+      },
+      {
+        "command": "cogitator.breakingChanges",
+        "title": "dbt: Breaking changes against the last build"
+      },
+      {
+        "command": "cogitator.select",
+        "title": "dbt: Select nodes"
       },
       {
         "command": "cogitator.status",

@@ -22,6 +22,9 @@ pub struct RawMacro {
     /// 0-based (line, column) of the signature start/end.
     pub start: (u32, u32),
     pub end: (u32, u32),
+    /// Body facts for the call checks and dispatch (cache format 5).
+    #[serde(default)]
+    pub body: crate::macro_body::MacroBody,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -144,6 +147,7 @@ fn extract_macros_from_tokens(text: &str, tokens: &JinjaTokens<'_>) -> Vec<RawMa
                     signature,
                     start: table.line_col(sig_start as u32),
                     end: table.line_col(sig_end as u32),
+                    body: crate::macro_body::body_facts(tokens, j + 1),
                 });
                 i = j;
             }
@@ -278,6 +282,7 @@ fn extract_macros_regex(text: &str) -> Vec<RawMacro> {
                 signature: signature.to_string(),
                 start: table.line_col(m.start() as u32),
                 end: table.line_col(m.end() as u32),
+                body: Default::default(),
             })
         })
         .collect()

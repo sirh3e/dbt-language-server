@@ -211,7 +211,7 @@ impl Dispatcher {
         } else {
             "configured (validating or invalid)"
         };
-        let report = crate::server::status::status_report(
+        let mut report = crate::server::status::status_report(
             &info,
             &cfg,
             &ctx,
@@ -225,6 +225,10 @@ impl Dispatcher {
             self.extra.roots(),
             crate::server::status::PerfStatus::of(&self.perf_settings()),
         );
+        if let Some(root) = ctx.project_root.as_deref() {
+            report.breaking_changes =
+                crate::server::status::BreakingStatus::of(self.derived.breaking_baseline(root));
+        }
         self.send(&ResultResponse::new(id, report));
     }
 

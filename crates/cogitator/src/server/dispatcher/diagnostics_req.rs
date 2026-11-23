@@ -171,6 +171,9 @@ impl Dispatcher {
                             &doc.text,
                             artifact_cap,
                         ));
+                        extra.extend(super::yaml_types::fill_action(
+                            &snap.ctx, &derived, &doc.text, &uri, range,
+                        ));
                     }
                     extra[entry_start..]
                         .iter_mut()
@@ -247,6 +250,8 @@ impl Dispatcher {
         } else {
             Vec::new()
         };
+        let selectors_open = cogitator_analysis::features::selectors_yml::is_selectors_file(&uri)
+            .then(|| self.selectors_open());
         self.offload_blocking(id, "textDocument/diagnostic", move || {
             // the pull path affords lineage (cached per generation), so
             // the undocumented-columns and contract checks run here, not
@@ -266,6 +271,11 @@ impl Dispatcher {
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
             );
+            if let (Some(open), Some(doc)) = (selectors_open, snap.doc.as_deref()) {
+                items.extend(crate::server::selectors::unmatched(
+                    &snap.ctx, open, &doc.text,
+                ));
+            }
             if let Some(doc) = snap.doc.as_deref().filter(|_| !entry_models.is_empty()) {
                 // tests on columns the model never produces (pull only:
                 // it takes each entry's lineage)
@@ -277,6 +287,17 @@ impl Dispatcher {
                     artifact_cap,
                 ));
             }
+            if let Some(doc) = snap
+                .doc
+                .as_deref()
+                .filter(|_| crate::server::diagnostics::is_yaml(&uri))
+            {
+                // data_type and unit-test rows against the inferred
+                // column types (read off the published snapshot)
+                items.extend(super::yaml_types::diagnostics(
+                    &snap.ctx, &derived, &doc.text,
+                ));
+            }
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, artifact_cap);
                 items.extend(features::artifact_diagnostics(&snap.ctx, &uri, &set));
@@ -285,6 +306,10 @@ impl Dispatcher {
                     items.extend(crate::server::astgrep::diagnostics(&rules, &uri, &doc.text));
                 }
             }
+            // computed on open/save (dispatcher/breaking.rs), read here
+            items.extend(crate::server::diagnostics::breaking_diagnostics(
+                &derived, &uri,
+            ));
             if perf.active() {
                 if let (Some(doc), Some(plan)) = (
                     snap.doc.as_deref(),

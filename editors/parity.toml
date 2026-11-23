@@ -53,6 +53,9 @@
 "dbt.astGrep" = { kind = "user" }
 "dbt.nodeInfo" = { kind = "user" }
 "dbt.unresolved" = { kind = "user" }
+"dbt.breakingChanges" = { kind = "user" }
+"dbt.previewCte" = { kind = "user" }
+"dbt.select" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

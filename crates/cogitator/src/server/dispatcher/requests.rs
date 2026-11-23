@@ -51,6 +51,9 @@ impl Dispatcher {
         if self.hover_jinja(content) {
             return;
         }
+        if self.selectors_hover(content) {
+            return;
+        }
         let derived = self.derived.clone();
         self.respond_position(content, "textDocument/hover", |ctx, doc, uri, pos| {
             HoverResult {
@@ -63,11 +66,16 @@ impl Dispatcher {
                         } else {
                             // dispatcher path: a cache probe, never a compute
                             let lineage = derived.lineage_cached(uri, d.generation);
-                            features::hover_with_lineage(
+                            let text = features::hover_with_lineage(
                                 ctx,
                                 d,
                                 pos,
                                 lineage.as_deref().and_then(Option::as_ref),
+                            );
+                            // the column's inferred type, from the published snapshot
+                            with_type_line(
+                                text,
+                                super::yaml_types::hover(ctx, &derived, d, uri, pos),
                             )
                         }
                     })
@@ -150,6 +158,10 @@ impl Dispatcher {
             self.compiled_definition(id, uri, pos, snap);
             return;
         }
+        // a properties-YAML column: where its model's SQL produces it
+        if self.yaml_column_definition(id, &uri, pos, &snap) {
+            return;
+        }
         let function = snap
             .doc
             .as_deref()
@@ -181,6 +193,10 @@ impl Dispatcher {
     }
 
     pub(super) fn completion(&mut self, content: &[u8]) {
+        // selector methods/values and tag names: the selector engine
+        if self.selectors_completion(content) {
+            return;
+        }
         // properties YAML: schema-driven, offloaded (lineage + test files)
         if let Some((id, uri, pos)) = Self::position_request(content) {
             if cogitator_analysis::yaml_properties::is_properties_file(&uri) {
@@ -238,8 +254,9 @@ impl Dispatcher {
         self.respond_position(
             content,
             "textDocument/documentHighlight",
-            |_, doc, _, pos| {
-                doc.map(|d| features::document_highlights(d, pos))
+            |ctx, doc, uri, pos| {
+                features::local_highlights(ctx, doc, uri, pos)
+                    .or_else(|| doc.map(|d| features::document_highlights(d, pos)))
                     .unwrap_or_default()
             },
         );
@@ -298,9 +315,24 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let open = features::selectors_yml::is_selectors_file(&uri).then(|| self.selectors_open());
         self.offload_blocking(id, "textDocument/codeLens", move || {
             let mut lenses = features::code_lenses(&snap.ctx, &uri);
+            if let Some(doc) = snap.doc.as_deref() {
+                lenses.extend(features::cte_preview_lenses(&snap.ctx, doc, &uri));
+            }
+            if let (Some(open), Some(doc)) = (open, snap.doc.as_deref()) {
+                lenses.extend(crate::server::selectors::lenses(
+                    &snap.ctx, open, &uri, &doc.text,
+                ));
+            }
             lenses.extend(quality_lenses(&snap, &derived, &uri, cap));
+            // the last open/save report, never computed here
+            lenses.extend(
+                derived
+                    .breaking_report(&uri)
+                    .and_then(|r| features::breaking::lens(&r, &uri)),
+            );
             if let Some(root) = snap.ctx.project_root.as_deref() {
                 let set = derived.artifacts(root, cap);
                 lenses.extend(features::run_lens(&snap.ctx, &uri, &set));
@@ -437,11 +469,13 @@ impl Dispatcher {
             .params
             .and_then(|p| p.query.map(|q| q.into_owned()))
             .unwrap_or_default();
+        // tag:/selector: go through the selector engine, whose universe
+        // reads files: offloaded
         let ctx = self.snapshot();
-        self.send(&ResultResponse::new(
-            req.id,
-            features::workspace_symbols(&ctx, &query),
-        ));
+        let open = self.selectors_open();
+        self.offload_blocking(req.id, "workspace/symbol", move || {
+            crate::server::selectors::workspace_symbols(&ctx, open, &query)
+        });
     }
 }
 
@@ -474,4 +508,13 @@ fn quality_lenses(
         text.as_deref(),
         lineage.as_ref().and_then(|l| (**l).as_ref()),
     )
+}
+
+/// Appends a column-type hover line after whatever the hover says.
+fn with_type_line(text: String, line: Option<String>) -> String {
+    match line {
+        None => text,
+        Some(line) if text.is_empty() => line,
+        Some(line) => format!("{text}\n\n{line}"),
+    }
 }

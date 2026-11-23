@@ -126,7 +126,11 @@ pub fn run_schema_job(input: &JobInput<'_>, state: &mut JobState) -> Option<Arc<
         Arc::from(generated_at),
         shared,
     );
-    Some(publish(state, walk.schemas, index, walk.report))
+    let outputs = inferred
+        .iter()
+        .filter_map(|(name, i)| Some((name.clone(), i.as_ref()?.typed.clone())))
+        .collect();
+    Some(publish(state, walk.schemas, index, walk.report, outputs))
 }
 
 /// The cached or rebuilt inference for one model, with its degradations.
@@ -269,6 +273,7 @@ fn publish(
     mut schemas: ProjectSchemas,
     dag: DagIndex,
     report: JobReport,
+    outputs: HashMap<Arc<str>, Arc<[crate::features::column_types::RawColumn]>>,
 ) -> Arc<SchemaSnapshot> {
     let content = content_hash(&schemas, &dag);
     let previous = state.previous.as_ref();
@@ -284,6 +289,7 @@ fn publish(
         schemas: Arc::new(schemas),
         dag,
         report,
+        outputs,
         content,
     });
     state.previous = Some(snapshot.clone());

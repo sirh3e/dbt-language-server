@@ -5,6 +5,7 @@
 mod actions;
 mod core;
 mod diagnostics;
+mod file_ops;
 mod formatting;
 mod init;
 mod inlay;
@@ -19,6 +20,7 @@ mod workspace_diag;
 pub use actions::*;
 pub use core::*;
 pub use diagnostics::*;
+pub use file_ops::*;
 pub use formatting::*;
 pub use init::*;
 pub use inlay::*;

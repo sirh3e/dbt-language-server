@@ -260,8 +260,13 @@ optional in LSP and clients request fine without it.
 
 `inlayHintProvider: true`, `documentLinkProvider: { resolveProvider:
 false }`, `linkedEditingRangeProvider: true`,
-`documentFormattingProvider: true`, and `diagnosticProvider.
-workspaceDiagnostics: true`. **`interFileDependencies` stays `false`**:
+`documentFormattingProvider: true`, `declarationProvider: true`,
+`implementationProvider: true` (dispatched macros, docs/macros.md),
+`workspace.fileOperations` (`didCreate`, `willRename`, `didRename`,
+`willDelete`, `didDelete`, each filtered to
+`**/{models,macros,snapshots,seeds,tests,analyses}/**/*.{sql,py,yml,yaml,csv}`
+and, but for `didCreate`, the folders below those directories), and
+`diagnosticProvider.workspaceDiagnostics: true`. **`interFileDependencies` stays `false`**:
 setting it true invites clients to re-pull every open document on every
 change; cross-file truth travels through `workspace/diagnostic`.
 

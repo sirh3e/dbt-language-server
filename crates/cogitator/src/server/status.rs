@@ -21,6 +21,32 @@ pub struct StatusReport {
     pub config: ConfigStatus,
     /// The active perf diagnostics configuration (also in dbt.doctor).
     pub perf: PerfStatus,
+    /// What the breaking-change preview compares against.
+    pub breaking_changes: BreakingStatus,
+}
+
+/// The breaking-change preview's baseline: `catalog` / `manifest`
+/// (target/ artifacts), `none` (the preview is silent), `notReadYet`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakingStatus {
+    pub baseline: &'static str,
+    pub note: &'static str,
+}
+
+impl BreakingStatus {
+    pub fn of(baseline: &'static str) -> Self {
+        let note = match baseline {
+            "catalog" => "comparing with target/catalog.json (warehouse columns and types)",
+            "manifest" => "comparing with the documented columns of target/manifest.json",
+            "none" => {
+                "no target/catalog.json or target/manifest.json: the preview stays silent \
+                       until `dbt docs generate` or `dbt build`"
+            }
+            _ => "no target/ artifacts read yet",
+        };
+        BreakingStatus { baseline, note }
+    }
 }
 
 /// The perf diagnostics summary shared by dbt.status and dbt.doctor.
@@ -162,5 +188,6 @@ pub fn status_report(
         caches,
         config,
         perf,
+        breaking_changes: BreakingStatus::of("notReadYet"),
     }
 }

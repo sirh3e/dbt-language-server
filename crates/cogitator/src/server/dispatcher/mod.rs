@@ -61,16 +61,22 @@ pub struct Dispatcher {
     primary_root: Arc<std::sync::Mutex<String>>,
 }
 
+mod breaking;
 mod commands_exec;
 mod compiled_nav;
 mod dbt_ops;
 mod diagnostics_req;
+mod dispatch_impl;
+mod file_ops;
 mod navigation;
 mod plan;
+mod preview_cte;
 mod requests;
+mod selectors;
 mod semantic;
 mod sync;
 mod yaml_props;
+mod yaml_types;
 
 impl Dispatcher {
     // constructed exactly once, in server::run — the shared handles are
@@ -243,6 +249,13 @@ impl Dispatcher {
             "textDocument/didClose" => self.did_close(content),
             "textDocument/hover" => self.hover(content),
             "textDocument/definition" => self.definition(content),
+            "textDocument/declaration" => self.declaration(content),
+            "workspace/willRenameFiles" => self.will_rename_files(content),
+            "workspace/willDeleteFiles" => self.will_delete_files(content),
+            "workspace/didCreateFiles"
+            | "workspace/didRenameFiles"
+            | "workspace/didDeleteFiles" => self.did_change_files(content, &method),
+            "textDocument/implementation" => self.implementation(content),
             "textDocument/completion" => self.completion(content),
             "completionItem/resolve" => self.resolve_completion(content),
             "textDocument/references" => self.references(content),

@@ -88,6 +88,7 @@ impl Dispatcher {
                 self.preview(req.id, &uri, limit);
                 return;
             }
+            "dbt.previewCte" => return self.preview_cte(req.id, uri, arg),
             "dbt.cancel" => {
                 let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
                 match self.jobs.cancel(token) {
@@ -183,6 +184,10 @@ impl Dispatcher {
             }
             "dbt.status" => {
                 self.status_report(req.id);
+                return;
+            }
+            "dbt.breakingChanges" => {
+                self.breaking_changes(req.id, uri);
                 return;
             }
             "dbt.impact" => {
@@ -282,6 +287,15 @@ impl Dispatcher {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.nodeInfo", move || {
                     crate::server::node_info::reply(&ctx, &kind, &name, quiet)
+                });
+                return;
+            }
+            "dbt.select" => {
+                let ctx = self.snapshot_for(&uri).ctx;
+                let open = crate::server::selectors::Open::of(self.documents.texts());
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.select", move || {
+                    crate::server::selectors::select_reply(&ctx, open, &arg)
                 });
                 return;
             }

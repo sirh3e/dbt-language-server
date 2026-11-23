@@ -181,6 +181,8 @@ fn enabled_lints(flags: u32) -> Vec<&'static str> {
         (lint_flags::TRAILING_COMMA, "trailing_comma"),
         (lint_flags::UNDOCUMENTED_COLUMNS, "undocumented_columns"),
         (lint_flags::DEAD_MODELS, "dead_models"),
+        (lint_flags::MACRO_CALLS, "macro_calls"),
+        (lint_flags::DISPATCH, "dispatch"),
     ]
     .into_iter()
     .filter(|(bit, _)| flags & bit != 0)

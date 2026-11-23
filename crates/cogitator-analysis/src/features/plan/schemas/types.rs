@@ -12,6 +12,7 @@ use super::infer::Inferred;
 use crate::artifacts::catalog::CatalogIndex;
 use crate::artifacts::manifest::ManifestIndex;
 use crate::context::types::{ModelDetails, SourceDetails};
+use crate::features::column_types::RawColumn;
 use crate::graph::ProjectGraph;
 
 /// Saved file access, injected so the core stays pure.
@@ -87,6 +88,9 @@ pub struct SchemaSnapshot {
     pub schemas: Arc<ProjectSchemas>,
     pub dag: DagIndex,
     pub report: JobReport,
+    /// Each model's SQL-inferred output columns with their provenance,
+    /// before YAML or catalog fill-in (`features::column_types`).
+    pub outputs: HashMap<Arc<str>, Arc<[RawColumn]>>,
     pub(super) content: u64,
 }
 

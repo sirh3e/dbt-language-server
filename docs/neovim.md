@@ -99,8 +99,10 @@ buffers inside a dbt project (a `dbt_project.yml` upward).
 ## Everyday use
 
 Hover, completion, go to definition (`ref()`, `source()`, macros, columns),
-references (models, sources, macros, docs blocks, columns), rename (models
-and the project's own macros), the macro call hierarchy (incoming and
+references (models, sources, macros, docs blocks, columns), rename (models,
+file-local names — Jinja variables, macro parameters, CTEs and aliases, see
+[local-names.md](local-names.md) — vars, columns — see
+[column-rename.md](column-rename.md) — and the project's own macros), the macro call hierarchy (incoming and
 outgoing), document links, signature help, diagnostics, formatting and
 code actions are the standard LSP ones. On top:
 
@@ -109,6 +111,7 @@ code actions are the standard LSP ones. On top:
 | `<leader>dr` / `dt` / `dc` | `:DbtRun` / `:DbtTest` / `:DbtCompile` | dbt on the current model (compile opens the compiled SQL) |
 | | `:DbtPreview [n]` | `dbt show`: the model's first rows |
 | | `:DbtRunSelection [sel]`, `:DbtCancel` | dbt with any selector; cancel a job |
+| | `:DbtSelect [sel]` | the nodes a selector picks, without running dbt (quickfix; `:DbtFind select` in the picker) |
 | `<leader>ds` / `dq` | `:DbtSchema` / `:DbtTests` | the model's YAML entry; one of its tests |
 | `<leader>dy` | `:DbtExtract` | scaffold the model's YAML, or add a version |
 | `<leader>dR` / `dx` | `:DbtRelation` / `:DbtQuery` | yank `db.schema.table`; a bounded `select *` on it |

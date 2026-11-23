@@ -36,6 +36,8 @@ pub struct FileConfig {
     pub perf_rules: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub inlay: InlaySection,
+    #[serde(default)]
+    pub preview: PreviewSection,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -71,6 +73,15 @@ pub struct LimitsSection {
     pub artifact_mib: Option<u64>,
 }
 
+/// dbt.previewCte row counts.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct PreviewSection {
+    /// Rows when the call names none (default 20).
+    pub rows: Option<u64>,
+    /// The most rows a call may ask for (default 1000).
+    pub max_rows: Option<u64>,
+}
+
 /// Opt-in style checks (03 §10); absent keys fall back to the launch
 /// baseline, so the changed-keys-only semantics hold per flag.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -80,6 +91,10 @@ pub struct LintSection {
     pub trailing_comma: Option<bool>,
     pub undocumented_columns: Option<bool>,
     pub dead_models: Option<bool>,
+    /// Default on: `false` turns the macro call checks off.
+    pub macro_calls: Option<bool>,
+    /// Default on: `false` turns the dispatch check off.
+    pub dispatch: Option<bool>,
 }
 
 pub use cogitator_analysis::config_schema::lint_flags;
@@ -99,6 +114,8 @@ impl LintSection {
         bit(self.trailing_comma, lint_flags::TRAILING_COMMA);
         bit(self.undocumented_columns, lint_flags::UNDOCUMENTED_COLUMNS);
         bit(self.dead_models, lint_flags::DEAD_MODELS);
+        bit(self.macro_calls, lint_flags::MACRO_CALLS);
+        bit(self.dispatch, lint_flags::DISPATCH);
         flags
     }
 }
@@ -213,6 +230,7 @@ const ROOT_KEYS: &[&str] = &[
     "inlay",
     "vars",
     "perf_rules",
+    "preview",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
 const LIMITS_KEYS: &[&str] = &["compiled_sql_mib", "artifact_mib"];
@@ -224,11 +242,14 @@ const LINT_KEYS: &[&str] = &[
     "trailing_comma",
     "undocumented_columns",
     "dead_models",
+    "macro_calls",
+    "dispatch",
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
 const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
+const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
     "join.left_nullified",
@@ -297,6 +318,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("perf", PERF_KEYS),
         ("perf_rules", PERF_RULE_KEYS),
         ("inlay", INLAY_KEYS),
+        ("preview", PREVIEW_KEYS),
     ] {
         if let Some(node) = get(root, section) {
             for (key, _) in entries(node) {
@@ -332,6 +354,7 @@ mod tests {
             (PERF_KEYS, "perf"),
             (PERF_RULE_KEYS, "perf_rules"),
             (INLAY_KEYS, "inlay"),
+            (PREVIEW_KEYS, "preview"),
         ] {
             let schema: Vec<&str> = section(name)
                 .expect(name)

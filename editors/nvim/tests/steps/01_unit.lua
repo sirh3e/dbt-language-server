@@ -121,6 +121,16 @@ return function(ctx)
     vim.inspect(same)
   )
 
+  -- :DbtPreviewCte rendering: the server's markdown table, line by line
+  local preview = require("cogitator.preview_cte").lines({
+    table = "# customers · CTE `orders`\n\n| id |\n| --- |\n| 1 |\n",
+  })
+  H.check(
+    preview[1] == "# customers · CTE `orders`" and preview[#preview] == "| 1 |",
+    "preview_cte: lines are the server's table",
+    vim.inspect(preview)
+  )
+
   -- :DbtIncrementality quickfix items
   local items = require("cogitator.commands").incrementality_items({
     incremental = 1,
@@ -168,6 +178,54 @@ return function(ctx)
       and unresolved[1].text == "[ref] ghost — model 'ghost' not found in the project",
     "commands: unresolved_items place each name at its line and column",
     vim.inspect(unresolved)
+  )
+
+  -- :DbtBreakingChanges quickfix items
+  local breaking = require("cogitator.commands").breaking_items({
+    diff = { removed = { { name = "customer_id", possiblyRenamedTo = "customer_key" } } },
+    impacts = {
+      {
+        column = "customer_id",
+        change = "removed",
+        severity = "error",
+        tests = { "unique" },
+        downstream = { { model = "customers", column = "customer_id", contracted = true, public = false } },
+      },
+    },
+  })
+  H.check(
+    #breaking == 2
+      and breaking[1].type == "E"
+      and breaking[1].text == "customer_id removed (possibly renamed to customer_key) — tested: unique"
+      and breaking[2].text == "  read by customers.customer_id (contracted)",
+    "commands: breaking_items name the change, the rename hint and the downstream reads",
+    vim.inspect(breaking)
+  )
+
+  -- :DbtSelect quickfix items
+  local selected = require("cogitator.commands").select_items({
+    count = 2,
+    nodes = {
+      {
+        kind = "model",
+        name = "customers",
+        uniqueId = "model.p.customers",
+        uri = "file:///p/models/customers.sql",
+        range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+      },
+      { kind = "source", name = "raw.orders", uri = "", range = { start = { line = 4, character = 8 } } },
+    },
+  })
+  H.check(
+    #selected == 2
+      and selected[1].filename == "/p/models/customers.sql"
+      and selected[1].lnum == 1
+      and selected[1].text == "[model] customers"
+      and selected[2].filename == ""
+      and selected[2].lnum == 5
+      and selected[2].col == 9,
+    "commands: select_items place each node at its definition",
+    vim.inspect(selected)
   )
 
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)

@@ -43,12 +43,20 @@
       }
     },
     "lint": {
-      "description": "Opt-in style diagnostics; every check defaults to off.",
+      "description": "Style diagnostics default to off; the macro call and dispatch checks default to on.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "dead_models": {
           "description": "Hint on models nothing downstream uses. (bool)",
+          "type": "boolean"
+        },
+        "dispatch": {
+          "description": "Warn on adapter.dispatch calls with no default__ nor active-adapter implementation (default on). (bool)",
+          "type": "boolean"
+        },
+        "macro_calls": {
+          "description": "Warn on macro calls whose arguments the macro does not take (default on). (bool)",
           "type": "boolean"
         },
         "select_star": {
@@ -359,6 +367,21 @@
             "info",
             "warning"
           ]
+        }
+      }
+    },
+    "preview": {
+      "description": "dbt.previewCte (the \"Preview rows\" lenses): how many rows a preview shows.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_rows": {
+          "description": "The most rows a preview may ask for; larger limits are capped (default 1000). (rows)",
+          "type": "string"
+        },
+        "rows": {
+          "description": "Rows a preview shows when the call names no limit (default 20). (rows)",
+          "type": "string"
         }
       }
     },

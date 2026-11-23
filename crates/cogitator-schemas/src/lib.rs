@@ -12,7 +12,7 @@ pub mod properties;
 pub mod schema_walk;
 pub mod yaml;
 
-pub use project::{parse_dbt_project, ProjectFile};
+pub use project::{parse_dbt_project, DispatchConfig, ProjectFile};
 pub use properties::{
     parse_properties, ColumnEntry, ModelEntry, PropertiesFile, SourceEntry, TableEntry,
 };

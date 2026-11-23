@@ -1,5 +1,7 @@
-//! Opt-in style diagnostics (03 §10): every check defaults OFF and is
-//! enabled per project through cogitator.yml `lint:`. Each check is a
+//! Style diagnostics (03 §10): every style check defaults OFF and is
+//! enabled per project through cogitator.yml `lint:`. The macro call
+//! and dispatch checks are the exception — they default ON (they report
+//! what fails at compile or run time) and `lint:` turns them off. Each check is a
 //! small pure module over the token stream; nothing here reads files.
 
 mod select_star;
@@ -21,6 +23,8 @@ pub struct LintOptions {
     pub trailing_comma: bool,
     pub undocumented_columns: bool,
     pub dead_models: bool,
+    pub macro_calls: bool,
+    pub dispatch: bool,
 }
 
 impl LintOptions {
@@ -31,6 +35,8 @@ impl LintOptions {
             trailing_comma: flags & lint_flags::TRAILING_COMMA != 0,
             undocumented_columns: flags & lint_flags::UNDOCUMENTED_COLUMNS != 0,
             dead_models: flags & lint_flags::DEAD_MODELS != 0,
+            macro_calls: flags & lint_flags::MACRO_CALLS != 0,
+            dispatch: flags & lint_flags::DISPATCH != 0,
         }
     }
 
@@ -40,6 +46,8 @@ impl LintOptions {
             || self.trailing_comma
             || self.undocumented_columns
             || self.dead_models
+            || self.macro_calls
+            || self.dispatch
     }
 }
 
@@ -70,6 +78,12 @@ pub fn lint(
     }
     if opts.dead_models {
         out.extend(dead_model_hint(ctx, uri));
+    }
+    if opts.macro_calls {
+        out.extend(super::macro_calls::check(ctx, doc));
+    }
+    if opts.dispatch {
+        out.extend(super::dispatch::no_default::check(ctx, doc));
     }
     out
 }

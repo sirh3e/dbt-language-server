@@ -1,0 +1,41 @@
+version: 2
+models:
+  - name: stg_orders
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: order_id
+        data_type: varchar
+      - name: amount
+        data_type: numeric(10,2)
+      - name: status
+        data_type: varchar
+      - name: ordered_on
+      - name: channel
+        data_type: varchar
+  - name: order_stats
+    columns:
+      - name: order_id
+        data_type: bigint
+      - name: order_count
+        data_type: text
+      - name: code
+        data_type: varchar
+  - name: legacy_codes
+  - name: unioned
+    columns:
+      - name: label
+        data_type: integer
+unit_tests:
+  - name: stats_count
+    model: order_stats
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 'abc', channel: web}
+          - {order_id: '7', channel: web}
+    expect:
+      rows:
+        - {order_id: 1, order_count: 'many'}
+        - {order_id: 2, order_count: 3}
