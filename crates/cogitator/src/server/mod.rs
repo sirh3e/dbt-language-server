@@ -31,6 +31,7 @@ mod snapshot;
 mod status;
 mod test_hooks;
 mod unresolved;
+pub(crate) mod yaml_sync;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

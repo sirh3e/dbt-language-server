@@ -169,6 +169,13 @@ impl Dispatcher {
                         extra.extend(super::yaml_types::fill_action(
                             &snap.ctx, &derived, &doc.text, &uri, range,
                         ));
+                        extra.extend(crate::server::yaml_sync::code_action(
+                            &snap,
+                            &derived,
+                            artifact_cap,
+                            &uri,
+                            model,
+                        ));
                     }
                 } else {
                     let target =
@@ -188,6 +195,17 @@ impl Dispatcher {
                     extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
                     extra.extend(features::extract_cte_action(&snap.ctx, doc, &uri, range));
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
+                    if let Some(model) = features::model_name_from_uri(&uri)
+                        .filter(|m| snap.ctx.model_detail_map.contains_key(m))
+                    {
+                        extra.extend(crate::server::yaml_sync::code_action(
+                            &snap,
+                            &derived,
+                            artifact_cap,
+                            &uri,
+                            &model,
+                        ));
+                    }
                     extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
                     extra.extend(
                         crate::server::handlers::plan::split_plan_of(

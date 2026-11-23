@@ -206,6 +206,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.breakingChanges",
     "dbt.previewCte",
     "dbt.select",
+    "dbt.syncYaml",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

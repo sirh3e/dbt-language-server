@@ -290,6 +290,10 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.syncYaml" => {
+                self.sync_yaml(req.id, uri, arg);
+                return;
+            }
             "dbt.select" => {
                 let ctx = self.snapshot_for(&uri).ctx;
                 let open = crate::server::selectors::Open::of(self.documents.texts());

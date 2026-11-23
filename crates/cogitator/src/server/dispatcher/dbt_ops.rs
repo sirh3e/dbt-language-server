@@ -190,6 +190,30 @@ impl Dispatcher {
         });
     }
 
+    /// `dbt.syncYaml`: the project's (or the uri's models') schema-YAML
+    /// sync plan, applied with `apply: true`.
+    pub(super) fn sync_yaml(
+        &mut self,
+        id: i64,
+        uri: String,
+        arg: &serde_json::Map<String, serde_json::Value>,
+    ) {
+        let snap = if uri.is_empty() {
+            self.snapshot_for("")
+        } else {
+            self.snapshot_for(&uri)
+        };
+        let derived = self.derived.clone();
+        let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let open = crate::server::yaml_sync::open_texts(self.documents.texts());
+        let options = crate::server::yaml_sync::options_of(&snap, &uri, arg);
+        let apply = arg.get("apply").and_then(|v| v.as_bool()) == Some(true);
+        self.offload_blocking(id, "dbt.syncYaml", move || {
+            let plan = crate::server::yaml_sync::plan(&snap, &derived, cap, &open, &uri, &options);
+            crate::server::yaml_sync::sync_yaml(&snap, &derived, &plan, apply)
+        });
+    }
+
     pub(super) fn go_to_tests(&mut self, id: i64, uri: &str) {
         let snap = self.snapshot_for(uri);
         let uri = uri.to_string();

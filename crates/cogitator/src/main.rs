@@ -2,6 +2,7 @@
 //! bootstrap (05 §6.2).
 
 mod client_log;
+mod cmd_yaml_sync;
 mod metrics;
 mod observability;
 mod server;
@@ -61,10 +62,18 @@ enum Command {
     Upgrade,
     /// Print the cogitator.yml JSON Schema (draft-07) to stdout and exit
     Schema,
+    /// Sync the models' schema YAML with their SQL (columns, inherited
+    /// descriptions); --check for CI
+    YamlSync(cmd_yaml_sync::Args),
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if let Some(Command::YamlSync(args)) = &cli.command {
+        let code = cmd_yaml_sync::run(args, cli.profiles_dir.as_deref(), cli.target.as_deref());
+        std::process::exit(code);
+    }
 
     if matches!(cli.command, Some(Command::Schema)) {
         let schema = cogitator_analysis::config_schema::json::config_json_schema();
