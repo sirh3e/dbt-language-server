@@ -116,15 +116,21 @@ pub fn select(
 }
 
 /// A path as the user reads it: relative to the working directory
-/// when below it, absolute otherwise.
+/// when below it (`/`-separated), absolute otherwise.
 pub fn shown(path: &Path) -> String {
     let cwd = std::env::current_dir()
         .ok()
         .and_then(|d| d.canonicalize().ok());
-    cwd.and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf))
-        .unwrap_or_else(|| path.to_path_buf())
-        .display()
-        .to_string()
+    match cwd.and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf)) {
+        // `/`-separated on every OS: what GitHub annotations and the
+        // other output formats name a file by
+        Some(rel) => rel
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/"),
+        None => path.display().to_string(),
+    }
 }
 
 /// Print a Guidance to stderr and hand back the usage exit code.
