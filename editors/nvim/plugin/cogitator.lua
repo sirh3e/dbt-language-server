@@ -127,6 +127,10 @@ end, {
   desc = "show the dbt profiles resolution, or switch the profiles directory",
 })
 
+vim.api.nvim_create_user_command("DbtInstall", function()
+  require("cogitator").install()
+end, { desc = "install (or update) the cogitator language server, then start it" })
+
 vim.api.nvim_create_user_command("DbtDeps", function()
   require("cogitator.dispatch").deps()
 end, { desc = "dbt deps for the project (cancellable with :DbtCancel)" })

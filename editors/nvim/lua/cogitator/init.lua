@@ -22,6 +22,13 @@ local function capabilities()
 end
 
 local function keymaps(bufnr, config)
+  -- once per buffer: installed when a project buffer opens (so the keys
+  -- never fall through to Vim's own `d…` while the server starts) and
+  -- again on attach
+  if vim.b[bufnr].cogitator_keymaps then
+    return
+  end
+  vim.b[bufnr].cogitator_keymaps = true
   local function map(lhs, rhs, desc)
     vim.keymap.set("n", lhs, rhs, { buffer = bufnr, desc = desc })
   end
@@ -163,6 +170,32 @@ end
 
 --- (Re-)register the server definition; assignment form replaces any
 --- previous definition outright, which :DbtProfiles relies on.
+--- :DbtInstall: install the server, then start it on the open buffers.
+function M.install()
+  local config = M.config or require("cogitator.config").build({})
+  require("cogitator.bootstrap").install(function(ok)
+    if not ok then
+      return
+    end
+    local bootstrap = require("cogitator.bootstrap")
+    -- the installers write to a fixed place, which PATH may not hold
+    local bare = vim.deepcopy(config.cmd)
+    bare[1] = vim.fs.basename(bare[1])
+    config.cmd, M.server_found = bootstrap.resolve_cmd(bare)
+    if not M.server_found then
+      vim.notify(
+        "cogitator: installed, but no binary found in " .. table.concat(bootstrap.install_dirs(), " or "),
+        vim.log.levels.ERROR
+      )
+      return
+    end
+    M.register(config)
+    vim.lsp.enable("cogitator", false)
+    vim.lsp.enable("cogitator")
+    vim.notify("cogitator: installed " .. config.cmd[1] .. " and started it", vim.log.levels.INFO)
+  end)
+end
+
 function M.register(config)
   local server = {
     cmd = config.cmd,
@@ -219,10 +252,35 @@ function M.setup(opts)
     return
   end
 
+  local bootstrap = require("cogitator.bootstrap")
+  config.cmd, M.server_found = bootstrap.resolve_cmd(config.cmd)
+
   require("cogitator.highlight").setup()
   require("cogitator.health").prefetch_versions(config)
   M.register(config)
-  vim.lsp.enable("cogitator")
+  -- a server Neovim cannot spawn is reported only to :LspLog; enable it
+  -- once there is a binary (setup, or :DbtInstall)
+  if M.server_found then
+    vim.lsp.enable("cogitator")
+  end
+
+  vim.api.nvim_create_autocmd("FileType", {
+    group = vim.api.nvim_create_augroup("CogitatorBuffers", { clear = true }),
+    pattern = config.filetypes,
+    callback = function(args)
+      local in_project = config.attach_outside_project
+        or bootstrap.project_root(args.buf, config.root_markers) ~= nil
+      if not in_project then
+        return
+      end
+      if config.keymaps then
+        keymaps(args.buf, config)
+      end
+      if not M.server_found then
+        bootstrap.warn_missing_once(args.buf, config)
+      end
+    end,
+  })
 
   -- when the server finishes a piece of work it reports (a project
   -- refresh, a dbt job), what :checkhealth shows is fetched again

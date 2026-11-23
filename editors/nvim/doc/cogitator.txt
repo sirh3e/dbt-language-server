@@ -128,6 +128,11 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  is the same list in the picker)
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
+  :DbtInstall    install or update the language server from this
+                 repository's releases (checksum-verified install.sh),
+                 then start it; the plugin also finds a server in
+                 $COGITATOR_BIN_DIR or ~/.local/bin when it is not on
+                 PATH
   :DbtReloadConfig  re-read cogitator.yml now
   :DbtSyntaxTree the tree-sitter-dbt tree in a split (toggle)
   :DbtHighlight[!] [auto|always|off]
