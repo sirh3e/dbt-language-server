@@ -206,6 +206,76 @@ do
   pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
 end
 
+-- dbt selections in the navigator's finder, typed as a person types them
+local slowest = { 0, "" }
+if files[1] then
+  vim.cmd.edit(vim.fn.fnameescape(files[1]))
+  local bufnr = vim.api.nvim_get_current_buf()
+  local model = vim.fn.fnamemodify(files[1], ":t:r")
+  vim.wait(20000, function()
+    return #vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" }) == 1
+  end, 50)
+  local builtin = require("cogitator.pick.backends.builtin")
+  local ok, err = pcall(explorer.open)
+  local s = explorer._state
+  if not (ok and vim.wait(20000, function()
+    return s and s.selected ~= nil
+  end, 50)) then
+    failed("real: the navigator opens for selections", err)
+  else
+    explorer._find()
+    vim.wait(10000, function()
+      return builtin._state ~= nil and builtin._state.items ~= nil
+    end, 50)
+    local tag
+    for _, query in ipairs({
+      "resource_type:model",
+      "resource_type:test",
+      "resource_type:seed resource_type:snapshot resource_type:source",
+      "+" .. model,
+      model .. "+",
+      "@" .. model,
+      "+" .. model .. " --exclude resource_type:test",
+      "TAG",
+    }) do
+      if query == "TAG" then
+        local vocab = require("cogitator.pick.select_source")._vocab
+        for _, v in pairs(vocab) do
+          tag = type(v) == "table" and v.values and v.values.tag and v.values.tag[1] or tag
+        end
+        query = tag and ("tag:" .. tag) or nil
+      end
+      if query then
+        local asked = vim.uv.hrtime()
+        builtin._set_query(query)
+        local b = builtin._state
+        local answered = vim.wait(30000, function()
+          return b == builtin._state and b.base ~= nil and b.live_status ~= "…" and b.query == query
+        end, 20)
+        local ms = (vim.uv.hrtime() - asked) / 1e6
+          - require("cogitator.pick.backends.builtin_live").DEBOUNCE_MS
+        if ms > slowest[1] then
+          slowest = { ms, query }
+        end
+        if not answered then
+          failed("real: the selection " .. query .. " is answered")
+        elseif b.live_error then
+          failed("real: the selection " .. query .. " is no error", b.live_error.message)
+        elseif #b.items == 0 and not query:find("seed") then
+          failed("real: the selection " .. query .. " selects something")
+        else
+          print(("real: %-60s %s"):format(query, b.live_status))
+        end
+      end
+    end
+    builtin.close(true)
+    explorer.close()
+  end
+  callback_errors("real: selections")
+  pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+end
+print(("real: the slowest selection answered in %.0f ms (%s)"):format(slowest[1], slowest[2]))
+
 local seconds = (vim.uv.hrtime() - started) / 1e9
 vim.fn.delete(tmp, "rf")
 if #errors == 0 then
