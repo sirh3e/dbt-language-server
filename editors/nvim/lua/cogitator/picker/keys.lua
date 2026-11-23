@@ -9,10 +9,7 @@ local M = {}
 local function scroll_preview(lines)
   local win = require("cogitator.picker")._state.wins.preview
   if valid(win) then
-    local key = vim.keycode(lines > 0 and "<C-e>" or "<C-y>")
-    vim.api.nvim_win_call(win, function()
-      vim.cmd.normal({ args = { math.abs(lines) .. key }, bang = true })
-    end)
+    require("cogitator.motion").scroll(win, lines)
   end
 end
 
