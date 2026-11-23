@@ -206,6 +206,23 @@ names what already exists in the codebase.
       provide; unsaved buffers count. Neovim `:DbtUnresolved` (quickfix) and
       `:DbtFind unresolved` (picker), Emacs `cogitator-unresolved`, VS Code
       "dbt: Unresolved references".
+- [x] **Breaking-change preview** (`dbt.breakingChanges`,
+      `features/breaking/`): the columns a model's SQL produces now (typed
+      lineage) against its last built schema — `target/catalog.json`, else
+      the documented columns of `target/manifest.json` — as removed, added,
+      "possibly renamed" (a removed and an added column with similar names,
+      never asserted) and retyped columns (only when both types are known;
+      the current side's types come through a hook, names-only until
+      inferred types land); for each removed or retyped column its own
+      tests and the downstream columns whose lineage reads it, with their
+      tests, contracts and `access: public`, plus the model's exposures.
+      Computed on open and save, off the request path: `breaking-change`
+      diagnostics (error only for a removed column a test or a contracted
+      downstream relies on) and an "N breaking changes" lens; silent without
+      target/ artifacts (`dbt.status` says so under `breaking_changes`).
+      Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
+      VS Code "dbt: Breaking changes against the last build". No git
+      baseline (the model at `origin/main`) yet.
 - [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
       `target/run/…`, hover shows the Jinja source lines a compiled line came
       from (a link to them) above the SQL hover, and definition jumps there

@@ -41,7 +41,8 @@
       "type": "string"
      },
      "relation_name": {},
-     "config": {}
+     "config": {},
+     "columns": {}
     }
    }
   }

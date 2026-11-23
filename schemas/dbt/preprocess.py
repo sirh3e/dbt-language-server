@@ -236,7 +236,7 @@ def walk(node, root, artifact: bool) -> None:
 PROJECTION_NODE_FIELDS = ["resource_type", "name", "original_file_path", "attached_node", "patch_path"]
 PROJECTION_META_FIELDS = ["dbt_schema_version", "dbt_version", "generated_at"]
 # any-valued node fields: the adapter reads them from a serde_json::Value
-PROJECTION_NODE_ANY_FIELDS = ["relation_name", "config"]
+PROJECTION_NODE_ANY_FIELDS = ["relation_name", "config", "columns"]
 # config keys the adapter reads that the pristine schema names; partition_by,
 # cluster_by and indexes are adapter-specific, so upstream never declares them
 PROJECTION_CONFIG_KEYS = ["materialized", "unique_key", "incremental_strategy"]

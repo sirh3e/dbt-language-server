@@ -61,6 +61,7 @@ pub struct Dispatcher {
     primary_root: Arc<std::sync::Mutex<String>>,
 }
 
+mod breaking;
 mod commands_exec;
 mod compiled_nav;
 mod dbt_ops;

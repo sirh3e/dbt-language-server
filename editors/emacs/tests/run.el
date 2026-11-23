@@ -340,6 +340,20 @@
               (= (plist-get found :count) (length (plist-get found :items))))
          "integration: dbt.unresolved lists the project's unresolved names" found))
 
+;; unit + integration: breaking changes
+(check (equal (cogitator--breaking-lines
+               '(:diff (:removed [(:name "customer_id" :possiblyRenamedTo "customer_key")])
+                 :impacts [(:column "customer_id" :change "removed" :severity "error"
+                            :tests ["unique"]
+                            :downstream [(:model "customers" :column "customer_id"
+                                          :contracted t)])]))
+              '("[error] customer_id removed (possibly renamed to customer_key) — tested: unique"
+                "  read by customers.customer_id (contracted)"))
+       "breaking: a change and its downstream reads are lines")
+(let ((found (run--exec "dbt.breakingChanges" (cogitator--command-argument))))
+  (check (stringp (plist-get found :status))
+         "integration: dbt.breakingChanges answers a status" found))
+
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))
               "unique on id (v2)")
