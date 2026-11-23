@@ -11,6 +11,7 @@
 | [column-rename.md](column-rename.md) | Renaming a model's output column across the project: what changes at every depth, where the walk stops, and when it is refused |
 | [selectors.md](selectors.md) | dbt's node-selection language in cogitator: `dbt.select`, selectors.yml completion, diagnostics, hover and lenses, what is supported and what is not |
 | [properties-yaml.md](properties-yaml.md) | Properties files (`schema.yml`…): schema-driven completion of keys, values, tests and columns, the unproduced-column warning, adding missing columns |
+| [yaml-sync.md](yaml-sync.md) | Syncing schema YAML with the SQL project-wide (`dbt.syncYaml`, `cogitator yaml-sync`): missing entries and columns, descriptions inherited down the column lineage, stale columns, the CI check |
 | [file-operations.md](file-operations.md) | Renaming, moving, deleting and creating model files from the editor's file tree, and declaration vs definition (YAML entry vs SQL) |
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |
 | [breaking-changes.md](breaking-changes.md) | The breaking-change preview: a model's columns against its last built schema, and what that breaks downstream |

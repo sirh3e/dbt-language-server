@@ -136,6 +136,17 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   `<model>.yml` with the model's real columns (from lineage) when no entry
   exists, or adds the next `versions:` entry (and bumps `latest_version`)
   when one does — applied in the editor via workspace/applyEdit
+- **Sync schema YAML** (`dbt.syncYaml`, `cogitator yaml-sync`): the
+  project-wide version of the YAML quickfixes, what dbt-osmosis's `yaml
+  refactor` does — models without an entry get one, missing columns are
+  added in output order, undocumented columns inherit the description of
+  the column they pass through unchanged (through CTEs and `select *`, from
+  the nearest documented model or source column; never across a rename or
+  an expression), stale columns are reported (`--prune` removes them),
+  optionally proven `data_type`s are filled and columns reordered. Edits
+  keep the YAML's formatting and comments; models whose lineage is unclear
+  are skipped with the reason. `cogitator yaml-sync --check` exits 1 when
+  anything would change, for CI ([docs/yaml-sync.md](docs/yaml-sync.md))
 - **Go to tests** (`dbt.modelTests` / `dbt.goToTests`): jump to every
   `data_tests`/`tests` entry defined for a model — model-level, per
   column, and per version (a `<model>_v2.sql` buffer resolves to its base)

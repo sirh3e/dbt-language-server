@@ -632,3 +632,57 @@ yaml-language-server at the file to validate cogitator.yml without
 the server running. value_hint drives the typing: `bool` → boolean,
 `MiB`/`ms` → integer ≥ 0, `[names]` → string array, `a|b|c` → closed
 string enum, anything else string.
+
+## Addendum: §10 schema-YAML sync (dbt.syncYaml, `cogitator yaml-sync`)
+
+`features::yaml_sync::plan_sync(inputs, options) -> SyncPlan` is pure:
+the shell passes typed column lineage per model, the inferred column
+types (`column_types`) and a `read` closure over file text (an open
+editor buffer wins over the disk). Per selected model of the root
+project (`ModelKind::Model`, `.sql`, own project; a `<base>_v<N>` file
+of a documented base is a version and skipped, as is an entry with
+`versions:`):
+
+1. no entry → one, in `<model>.yml` beside the SQL (`NewEntries::PerModel`,
+   `dbt.extractModelYaml`'s place) or the folder's `_<folder>__models.yml`
+   (`PerFolder`), appended to the file's top-level `models:` list;
+2. produced columns missing from the entry are appended in output order
+   (`append_to_list`);
+3. a column with an empty description (`""`, `''`, `~`, `null`, absent)
+   inherits from the nearest documented ancestor along
+   `ColumnLineage::direct` columns — one source, same name, through
+   models; a seed or snapshot ends the walk; a model whose lineage is
+   `None` stops it with a reason (`Walk::Unclear`). Written descriptions
+   are never replaced. `inherit_types` fills an absent `data_type` from a
+   `Basis::Proven` spelled type;
+4. stale columns (documented, not produced) are reported when the
+   produced list is complete (no `*` left), and removed only with `prune`;
+5. `reorder` moves whole column items into output order.
+
+Each phase edits the text line-wise (`code_actions::yaml_text`, never a
+serializer) and re-parses the entry (`parse_properties`) before the next;
+the file's final edits are line hunks from a `similar` line diff of the
+before/after texts, plus a unified diff for previews. A flow-style item,
+an inline `columns:`/`models:` value or an empty block-scalar description
+is skipped with its reason. Idempotent: a second sync over the applied
+result plans `changes: 0`.
+
+Column lineage gains `ColumnLineage::direct` (`#[serde(skip)]`, not on
+the `dbt.columnLineage` wire): a bare column reference under its own name
+at every hop (CTEs, derived tables, single-input stars, Base model/source
+leaves); expressions, renames, positional CTE column lists, `REPLACE`,
+set operations, joins' ambiguous stars and undefined relations are not.
+The typed route now expands a star over an **open** input whose known
+columns are listed (a CTE with a `{{ macro() }}` select item, an `Open`
+schema): the known columns become rows and a trailing `*` row, excluding
+them, stands for the rest — so consumers still see an incomplete list
+(`*` present) and nothing that needs the whole list (contract drift,
+stale/prune) runs on it.
+
+The shell is `server/yaml_sync.rs`: `dbt.syncYaml` (offloaded; `apply`
+sends `Effect::ApplyEdit`), the single-model code action "Sync schema
+YAML of 'm' (N changes)" (`refactor.rewrite`, on the model's SQL and its
+YAML entry) and `offline_plan` for the CLI, which builds the context,
+runs the schema job on its thread (`DerivedCache::publish_schemas_now`)
+and plans over the disk. `cogitator yaml-sync --check` exits 1 when the
+plan has changes, 0 when in sync, 2 when the project cannot be read.

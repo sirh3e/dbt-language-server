@@ -119,7 +119,7 @@ writer wins).
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
-  `dbt.previewCte`, `dbt.select`
+  `dbt.previewCte`, `dbt.select`, `dbt.syncYaml`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -189,6 +189,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.breakingChanges` | `{model, status, baseline, summary, diff: {removed, added, retyped}, impacts: [{column, change, severity, tests, downstream}], exposures, public, truncated}` — the buffer's columns against `target/catalog.json`, else the manifest's documented columns | none (read-only): `{uri}`; `status: "noBaseline"` without target/ artifacts; also `breaking-change` diagnostics and an `N breaking changes` lens, computed on open/save |
 | `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
 | `dbt.select` | `{selector, count, nodes: [{uri, name, kind, uniqueId, range}], issues}` or InvalidParams for a selector that does not parse | none (read-only): `{selector}` — dbt's selector language (docs/selectors.md), `selector:<name>` for a selectors.yml entry; what `dbt ls --select` lists, tests by eager indirect selection — :DbtSelect |
+| `dbt.syncYaml` | `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` | `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?: "model"\|"folder", apply?}`: the schema-YAML sync plan (docs/yaml-sync.md); with `apply: true` the server sends it as workspace/applyEdit (label "Sync schema YAML") — :DbtSyncYaml |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -509,6 +510,7 @@ vim.lsp.enable("cogitator")
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
 | `:DbtBreakingChanges` | `dbt.breakingChanges` | this model's removed, possibly renamed and retyped columns against its last built schema, and what reads them downstream, into quickfix |
 | `:DbtSelect {selector}` | `dbt.select` | the nodes a dbt selector picks into quickfix (asks for the selector when none is given); `:DbtFind select` shows them in the picker |
+| `:DbtSyncYaml [model…] [%] [prune] [types] [reorder] [folder]` | `dbt.syncYaml` | the plan (each model's changes, then every file's diff) in a split, then applied on confirm through `apply: true`; `%` narrows to this buffer's model or entries; nothing to change is a message |
 | `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
 | `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |

@@ -244,6 +244,19 @@ names what already exists in the codebase.
       properties files. `dbt.select {selector}` lists the nodes: Neovim
       `:DbtSelect` (quickfix) and `:DbtFind select` (picker), Emacs
       `cogitator-select`, VS Code "dbt: Select nodes".
+- [x] **Schema-YAML sync, project-wide** (dbt-osmosis's `yaml refactor`):
+      `dbt.syncYaml {uri?, models?, prune?, inheritTypes?, reorder?,
+      newEntries?, apply?}` plans (and with `apply` applies) for every root
+      model: a missing entry created where `dbt.extractModelYaml` would put
+      it (or `_<folder>__models.yml`), missing columns added in output
+      order, empty descriptions inherited down pass-through column lineage
+      (`ColumnLineage::direct`) from the nearest documented model or source
+      column, stale columns reported or pruned, proven `data_type`s and SQL
+      order optional. Line-wise edits, re-read per phase; unclear lineage is
+      skipped with a reason. The code action "Sync schema YAML of 'm' (N
+      changes)", `cogitator yaml-sync [--check]` for CI, Neovim
+      `:DbtSyncYaml`, Emacs `cogitator-sync-yaml`, VS Code "dbt: Sync schema
+      YAML" (docs/yaml-sync.md).
 - [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
       `target/run/…`, hover shows the Jinja source lines a compiled line came
       from (a link to them) above the SQL hover, and definition jumps there

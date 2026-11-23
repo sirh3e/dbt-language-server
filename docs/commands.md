@@ -223,6 +223,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: workspace/applyEdit (CreateFile scaffold, or version TextEdits) + showDocument
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code —
 
+### `dbt.syncYaml`
+
+- **Argument**: `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?, apply?}` — `models` names the models to sync; without it a `.sql` `uri` narrows to its model and a properties-file `uri` to the models of its entries, and no `uri` is every SQL model of the root project. `prune` removes documented columns no longer produced, `inheritTypes` fills `data_type` from proven inferred types, `reorder` orders column items as the SQL outputs them, `newEntries: "folder"` puts new entries in `_<folder>__models.yml` (default `<model>.yml`, as `dbt.extractModelYaml`), `apply: true` applies the plan
+- **Result**: `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from: SourceRef, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` — `from` is the documented upstream column (`{kind: "model", name, column}` or `{kind: "source", source, table, column}`), `via` the undocumented models walked through; `edits` are line hunks against the file as read (the whole content for a created file), `diff` a unified diff for previews. `changes: 0` means the YAML is in sync. See [yaml-sync.md](yaml-sync.md)
+- **Side effects**: with `apply: true` and something to change, workspace/applyEdit (CreateFile + TextEdits, label "Sync schema YAML"); a summary message; a warning while the project's schemas are not computed yet. The code action "Sync schema YAML of 'm' (N changes)" on a model's SQL and its YAML entry carries the same edit for one model
+- **Editors**: Neovim ✓ (`:DbtSyncYaml`, preview split then confirm) · Emacs ✓ (`M-x cogitator-sync-yaml`) · VS Code ✓ (`dbt: Sync schema YAML`); the CLI `cogitator yaml-sync` plans the same
+
 ## Analysis
 
 ### `dbt.queryPlan`
