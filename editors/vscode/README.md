@@ -94,7 +94,11 @@ columns from `dbt.breakingChanges`: removed, possibly renamed and retyped
 columns and what reads them downstream; also a lens and a diagnostic,
 refreshed on save), `dbt: Select nodes` (the nodes a dbt selector picks, as `dbt
 ls` lists them, from `dbt.select` — `selector:<name>` evaluates a
-selectors.yml entry — a quick pick that jumps to each), `dbt:
+selectors.yml entry — a quick pick that jumps to each), `dbt: Sync
+schema YAML` (the project's or this model's schema YAML brought in line
+with its SQL by `dbt.syncYaml` — missing entries and columns added,
+descriptions inherited down the column lineage; a summary, the plan as a
+diff on request, then applied on confirm), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,

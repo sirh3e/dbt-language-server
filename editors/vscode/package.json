@@ -115,6 +115,10 @@
         "title": "dbt: Select nodes"
       },
       {
+        "command": "cogitator.syncYaml",
+        "title": "dbt: Sync schema YAML"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },
