@@ -69,7 +69,9 @@ included.
 
 ## Palette commands
 
-`dbt: Run/Test/Compile/Preview current model`, `dbt: Parse project`,
+`dbt: Run/Test/Compile/Preview current model`, `dbt: Preview rows of
+the CTE under the cursor` (the model run up to that CTE; the table opens
+beside it, as do the "Preview rows" lenses), `dbt: Parse project`,
 `dbt: Show column lineage`, `dbt: Split model at its incrementality
 frontier` (the plan as an S-expression beside the model, with an
 "Apply split" button), `dbt: Compare incremental / full refresh` (the

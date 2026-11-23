@@ -313,6 +313,17 @@ names what already exists in the codebase.
       models carry the "Compare incremental / full refresh" lens
       (`features/incremental_diff.rs`; :DbtIncrementalDiff,
       `cogitator-incremental-diff`, the VS Code palette).
+- [x] **Preview the rows of a CTE**: a "Preview rows" lens on every CTE of a
+      model and on its final select runs `dbt.previewCte {uri, cte?,
+      position?, limit?}` — the compiled SQL (or the dbt.expandJinja
+      rendering while no current compiled file exists) cut at the CTE with
+      sqlparser, refused unless it is one SELECT, run as `dbt show --inline
+      … --output json` through the job registry (cancellable, `$/progress`,
+      the active target); the answer carries columns, rows, `truncated` and
+      the SQL, and the markdown table opens from
+      `target/.cogitator/preview/` (`features/cte_preview/`,
+      `server/preview_cte.rs`; cogitator.yml `preview.rows`/`max_rows`;
+      :DbtPreviewCte, `cogitator-preview-cte`, the VS Code palette).
 - [ ] **AST-driven features for duckdb projects** (spec 07 §4,
       `json_serialize_sql` AST): column-name completion, AST-based graph
       edges, better CTE information.

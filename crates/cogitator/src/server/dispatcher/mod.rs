@@ -70,6 +70,7 @@ mod dispatch_impl;
 mod file_ops;
 mod navigation;
 mod plan;
+mod preview_cte;
 mod requests;
 mod semantic;
 mod sync;

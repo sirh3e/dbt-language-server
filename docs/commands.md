@@ -109,6 +109,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: `dbt show --select <model> --limit N` (N from `limit`, default 50) through the job registry; on success the result table lands in `target/.cogitator/preview/<model>.txt` and opens via showDocument — :DbtPreview [limit]
 - **Editors**: Neovim ✓ · Emacs — · VS Code ✓
 
+### `dbt.previewCte`
+
+- **Argument**: `{uri, cte?, position?, limit?}` — the model; the CTE to preview, else the CTE under `position`, else the final select; rows to show (default cogitator.yml `preview.rows`, 20, capped at `preview.max_rows`, 1000)
+- **Result**: `{model, cte, columns, rows, truncated, limit, sql, source, uri, table}` once dbt has answered (`source` is `compiled` when `target/compiled` is current, else `rendered` by the dbt.expandJinja renderer; `table` is the markdown); RequestFailed with a Guidance when the SQL is not one SELECT, has no such CTE, or dbt fails; RequestCancelled after `dbt.cancel`
+- **Side effects**: `dbt show --inline "<with … up to the CTE> select * from <cte> limit N+1" --limit N+1 --output json` as a job of the registry (active target and profiles, token in the `$/progress` title); the table lands in `target/.cogitator/preview/<model>.<cte|final>.md` and opens via showDocument. The "Preview rows" code lens on every CTE and on the final select runs it
+- **Editors**: Neovim ✓ (:DbtPreviewCte [limit], a split) · Emacs ✓ (`cogitator-preview-cte`, `*cogitator-preview*`) · VS Code ✓ (`dbt: Preview rows of the CTE under the cursor`)
+
 ### `dbt.parse`
 
 - **Argument**: `{uri}` — the document the command is about

@@ -88,6 +88,7 @@ impl Dispatcher {
                 self.preview(req.id, &uri, limit);
                 return;
             }
+            "dbt.previewCte" => return self.preview_cte(req.id, uri, arg),
             "dbt.cancel" => {
                 let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
                 match self.jobs.cancel(token) {

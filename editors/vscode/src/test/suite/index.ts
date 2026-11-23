@@ -19,6 +19,7 @@ import {
   nodeMarkdown,
   parseAstGrep,
   parseNode,
+  previewCteText,
   skippedLayers,
   unresolvedLabel,
   spansByColor,
@@ -203,6 +204,18 @@ export async function run(): Promise<void> {
       identical: false,
     }) === "--- a\n+++ b\n",
     "vscode: incrementalDiffText shows the unified diff"
+  );
+  check(
+    previewCteText({
+      model: "m",
+      columns: ["id"],
+      rows: [[1]],
+      truncated: false,
+      sql: "select 1",
+      source: "compiled",
+      table: "| id |\n| --- |\n| 1 |\n",
+    }) === "| id |\n| --- |\n| 1 |\n",
+    "vscode: previewCteText is the server's table"
   );
   check(
     splitText({
@@ -412,6 +425,7 @@ export async function run(): Promise<void> {
       "cogitator.restart",
       "cogitator.splitPlan",
       "cogitator.incrementalDiff",
+      "cogitator.previewCte",
       "cogitator.incrementality",
       "cogitator.syntaxTree",
       "cogitator.highlight",

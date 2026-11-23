@@ -310,6 +310,9 @@ impl Dispatcher {
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         self.offload_blocking(id, "textDocument/codeLens", move || {
             let mut lenses = features::code_lenses(&snap.ctx, &uri);
+            if let Some(doc) = snap.doc.as_deref() {
+                lenses.extend(features::cte_preview_lenses(&snap.ctx, doc, &uri));
+            }
             lenses.extend(quality_lenses(&snap, &derived, &uri, cap));
             // the last open/save report, never computed here
             lenses.extend(

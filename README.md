@@ -373,6 +373,9 @@ inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked
   jinja: false             # what short {{ … }} expressions render to
+preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
+  rows: 20                 # rows when the call names no limit
+  max_rows: 1000           # larger limits are capped
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
 ```

@@ -36,6 +36,8 @@ pub struct FileConfig {
     pub perf_rules: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub inlay: InlaySection,
+    #[serde(default)]
+    pub preview: PreviewSection,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -69,6 +71,15 @@ pub struct LimitsSection {
     pub compiled_sql_mib: Option<u64>,
     /// target/ artifact files past this size are skipped.
     pub artifact_mib: Option<u64>,
+}
+
+/// dbt.previewCte row counts.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct PreviewSection {
+    /// Rows when the call names none (default 20).
+    pub rows: Option<u64>,
+    /// The most rows a call may ask for (default 1000).
+    pub max_rows: Option<u64>,
 }
 
 /// Opt-in style checks (03 §10); absent keys fall back to the launch
@@ -219,6 +230,7 @@ const ROOT_KEYS: &[&str] = &[
     "inlay",
     "vars",
     "perf_rules",
+    "preview",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
 const LIMITS_KEYS: &[&str] = &["compiled_sql_mib", "artifact_mib"];
@@ -237,6 +249,7 @@ const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
 const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
+const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
     "join.left_nullified",
@@ -305,6 +318,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("perf", PERF_KEYS),
         ("perf_rules", PERF_RULE_KEYS),
         ("inlay", INLAY_KEYS),
+        ("preview", PREVIEW_KEYS),
     ] {
         if let Some(node) = get(root, section) {
             for (key, _) in entries(node) {
@@ -340,6 +354,7 @@ mod tests {
             (PERF_KEYS, "perf"),
             (PERF_RULE_KEYS, "perf_rules"),
             (INLAY_KEYS, "inlay"),
+            (PREVIEW_KEYS, "preview"),
         ] {
             let schema: Vec<&str> = section(name)
                 .expect(name)
