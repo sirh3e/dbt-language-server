@@ -66,8 +66,7 @@ end
 --- A UTF-16 (or the client's encoding) position as a byte column.
 local function byte_col(buf, pos)
   local text = vim.api.nvim_buf_get_lines(buf, pos.line, pos.line + 1, false)[1] or ""
-  local ok, col = pcall(vim.str_byteindex, text, encoding(), pos.character, false)
-  return ok and col or #text
+  return require("cogitator.positions").byte_col(text, pos.character, encoding())
 end
 
 local function render(result)

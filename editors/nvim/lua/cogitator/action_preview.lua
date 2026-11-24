@@ -42,9 +42,7 @@ local function lines_of(fname)
   return {}
 end
 
-local function relative(uri)
-  return vim.fn.fnamemodify(vim.uri_to_fname(uri), ":~:.")
-end
+local relative = require("cogitator.paths").relative_uri
 
 --- A unified diff of what text edits do to one file.
 ---@param uri string

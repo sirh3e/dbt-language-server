@@ -45,6 +45,22 @@ end, {
   end,
   desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
 })
+vim.api.nvim_create_user_command("DbtReferences", function(opts)
+  require("cogitator.usages").references({ bang = opts.bang })
+end, {
+  bang = true,
+  desc = "where the model, macro or source under the cursor is used (yazi dialog); ! the file's model",
+})
+vim.api.nvim_create_user_command("DbtMacros", function()
+  require("cogitator.usages").macros()
+end, { desc = "every macro, then where the chosen one is called (yazi dialog)" })
+vim.api.nvim_create_user_command("DbtRename", function(opts)
+  require("cogitator.rename").rename({ bang = opts.bang, args = opts.args })
+end, {
+  bang = true,
+  nargs = "?",
+  desc = "rename the model or macro under the cursor project-wide, after a preview; ! the file's model",
+})
 vim.api.nvim_create_user_command("DbtFind", function(opts)
   require("cogitator.pick").find(opts.args)
 end, {

@@ -74,6 +74,24 @@ local function keymaps(bufnr, config)
   map("<leader>dn", function()
     require("cogitator.explorer").open({ focus_buffer = true })
   end, "dbt: the yazi-style navigator, at this model")
+  map("<leader>dw", function()
+    require("cogitator.usages").references()
+  end, "dbt: where is this used (references in a dialog)")
+  map("<leader>dm", function()
+    require("cogitator.usages").macros()
+  end, "dbt: every macro, then where it is called")
+  map("<leader>de", function()
+    require("cogitator.rename").rename()
+  end, "dbt: rename this model or macro (previewed)")
+  if config.ui.picker then
+    -- Neovim's defaults, taken over like `gra`: the dialogs above
+    map("grr", function()
+      require("cogitator.usages").references()
+    end, "dbt: references in a dialog")
+    map("grn", function()
+      require("cogitator.rename").rename()
+    end, "dbt: rename, previewed")
+  end
   -- the code-action menu: the server's actions and the plugin's own in
   -- the yazi-style picker; it takes over Neovim's default `gra` here
   local function code_actions()

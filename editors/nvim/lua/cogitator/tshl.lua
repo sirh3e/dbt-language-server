@@ -62,9 +62,10 @@ function M.language_of(path)
 end
 
 --- UTF-16 column → byte column of `line`.
+local to_byte_col = require("cogitator.positions").byte_col
+
 local function byte_col(line, character)
-  local ok, col = pcall(vim.str_byteindex, line, "utf-16", character, false)
-  return ok and col or math.min(character, #line)
+  return to_byte_col(line, character, "utf-16")
 end
 
 --- Clear what apply() painted (every layer, or the given ones).

@@ -49,6 +49,34 @@ fn references_finds_dependents_via_graph() {
     assert!(refs.iter().any(|l| l.uri.ends_with(".sql")));
 }
 
+/// Each reference of a model is its `ref('…')` call site, not the whole
+/// dependent file: the range covers the model's name in that file.
+#[test]
+fn references_land_on_each_ref_call() {
+    let ctx = ctx();
+    let refs = features::references(
+        &ctx,
+        None,
+        "file:///w/models/staging/stg_orders.sql",
+        Position::default(),
+    );
+    assert!(!refs.is_empty(), "stg_orders has dependents");
+    for loc in &refs {
+        let path = cogitator_lsp::uri_to_fs_path(&loc.uri).expect("a file uri");
+        let text = std::fs::read_to_string(&path).expect("readable");
+        let line = text
+            .lines()
+            .nth(loc.range.start.line as usize)
+            .expect("line");
+        let named: String = line
+            .chars()
+            .skip(loc.range.start.character as usize)
+            .take((loc.range.end.character - loc.range.start.character) as usize)
+            .collect();
+        assert_eq!(named, "stg_orders", "{} at {:?}", loc.uri, loc.range);
+    }
+}
+
 #[test]
 fn dangling_refs_flagged_known_refs_clean() {
     let ctx = ctx();

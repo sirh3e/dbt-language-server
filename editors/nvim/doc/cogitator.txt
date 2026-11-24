@@ -165,6 +165,16 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   (code lens)    run the code lens on this line      <leader>dL
   (selection)    expand along selectionRange         <leader>dv
   :DbtActions    code actions, yazi-style menu       <leader>dA, gra
+  :DbtReferences[!]
+                 where the model, macro, source or column under the
+                 cursor is used, in a dialog (`!`: the file's own
+                 model)                              <leader>dw, grr
+  :DbtMacros     every macro, then where the chosen one is called
+                                                     <leader>dm
+  :DbtRename[!] [name]
+                 rename the model or macro under the cursor (else the
+                 file's model; `!` always it) across the project, after
+                 showing the edit                    <leader>de, grn
                  shrink back (visual mode)           <leader>dV
 
 Every command is also a subcommand of *:Dbt* with completion, e.g.
@@ -402,6 +412,30 @@ an edit as a diff of every file it touches (and the files it creates or
 renames), a command with what it runs. With `ui.picker = false` the
 keymaps fall back to |vim.lsp.buf.code_action|.
 
+                                                   *cogitator-nvim-references*
+`:DbtReferences` (<leader>dw, and `grr` in dbt buffers) asks the server
+where whatever the cursor names is used — a `ref()`'d model, a macro, a
+source, a docs block, a column — and shows every use in a dialog, a
+group per file with each use's line; the preview shows the lines around
+it, the use marked. `:DbtReferences!` lists the uses of the file's own
+model wherever the cursor is. `/` filters the files and their lines at
+once (`'customers.sql`, `^models/marts`), `l` on a use opens it at its
+line. The dialog's first entry renames what it lists.
+
+`:DbtMacros` (<leader>dm) lists every macro of the project and its
+packages, filtered with `/` like any dialog; choosing one shows where it
+is called, in the same dialog.
+
+`:DbtRename [name]` (<leader>de, and `grn` in dbt buffers) renames what
+the cursor names — a model through its `ref()`, a macro at a call or its
+header, a var, a column, a CTE — or else the file's own model;
+`:DbtRename!` always renames the file's model. It asks for the new name,
+then shows the whole edit before anything changes: "apply" with the
+diff of every file, "cancel", and the changes one file at a time. A
+model rename also renames its file; a macro of an installed package is
+refused with the reason. The edited buffers are left unsaved (`:wall`).
+With `ui.picker = false`, `grr` and `grn` stay Neovim's own.
+
                                                       *cogitator-nvim-dialogs*
 Every dialog of the plugin — the code actions, `:Dbt` without
 arguments, target and project pickers, tests, tags, selectors, jobs —
@@ -416,8 +450,11 @@ one-line float with a title.
   gg  G         first / last item
   <C-d>  <C-u>  half a page down / up
   J  K          scroll the preview
-  /             filter as you type; a group stays while a child matches,
-                and the filter follows you into it (<Esc> clears it)
+  /             filter as you type, in fzf's syntax: `stg cust` (each
+                term, its letters in order), `'exact`, `^prefix`,
+                `suffix$`, `!not`, `a | b`; a group stays while a child
+                matches, and the filter follows you into it unless the
+                group matched by its own name (<Esc> clears it)
   ?             the keys, in the preview column
   q  <Esc>      close
 

@@ -39,6 +39,25 @@ pub struct Document {
     pub generation: u64,
 }
 
+impl Document {
+    /// A file the editor has not opened, read and parsed from disk (no
+    /// last-good fallback: a file that does not parse gives its text and
+    /// no tokens). Offloaded requests use it to resolve a position in an
+    /// unopened file — the references or rename of a macro picked from a
+    /// list. `None` when the uri is no readable file.
+    pub fn from_disk(uri: &str, dialect: &Dialect) -> Option<Document> {
+        let path = cogitator_lsp::uri_to_fs_path(uri)?;
+        let text = std::fs::read_to_string(path).ok()?;
+        let parsed = JinjaSqlParser.parse(&text, dialect).unwrap_or_default();
+        Some(Document {
+            uri: Arc::from(uri),
+            text: Arc::from(text.as_str()),
+            parsed,
+            generation: 0,
+        })
+    }
+}
+
 /// Open-document store owned by the dispatcher (05 §6.2 — single owner, no
 /// lock). The tokenization backend is injected through the `DocumentParser`
 /// seam (06 §3.5): phase-1 `JinjaSqlParser` by default, the tree-sitter

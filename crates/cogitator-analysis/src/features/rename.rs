@@ -77,21 +77,16 @@ pub fn rename_model(
     Some(WorkspaceEdit { document_changes })
 }
 
-/// The text half of a model rename: every `ref('old')` (SQL, YAML
-/// Jinja, plain YAML scalars) and the properties-YAML `name:`, as one
-/// edit per file, in path order. Files come through `read`.
-pub(crate) fn model_ref_edits(
+/// Every `ref('model')` of the project: in the model's dependents (SQL
+/// and YAML Jinja) and plain-YAML scalars project-wide, by file in path
+/// order. Shared by the rename and by textDocument/references, so the two
+/// always agree on where a model is used.
+pub(crate) fn model_ref_sites(
     ctx: &DbtContext,
     model: &str,
-    new_name: &str,
     read: &dyn Fn(&std::path::Path) -> Option<String>,
-) -> Vec<DocumentChange> {
-    let Some(details) = ctx.model_detail_map.get(model) else {
-        return Vec::new();
-    };
-    let mut edits: BTreeMap<PathBuf, Vec<Range>> = BTreeMap::new();
-
-    // 1. ref('old') in every dependent, and plain-YAML refs project-wide
+) -> BTreeMap<PathBuf, Vec<Range>> {
+    let mut sites: BTreeMap<PathBuf, Vec<Range>> = BTreeMap::new();
     let mut files = node_files(ctx.graph.downstream_of(model));
     files.extend(yaml_files(ctx));
     files.sort();
@@ -118,9 +113,28 @@ pub(crate) fn model_ref_edits(
             );
         }
         if !ranges.is_empty() {
-            edits.entry(path).or_default().extend(ranges);
+            ranges.sort_by_key(|r| (r.start.line, r.start.character));
+            ranges.dedup();
+            sites.entry(path).or_default().extend(ranges);
         }
     }
+    sites
+}
+
+/// The text half of a model rename: every `ref('old')` (SQL, YAML
+/// Jinja, plain YAML scalars) and the properties-YAML `name:`, as one
+/// edit per file, in path order. Files come through `read`.
+pub(crate) fn model_ref_edits(
+    ctx: &DbtContext,
+    model: &str,
+    new_name: &str,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+) -> Vec<DocumentChange> {
+    let Some(details) = ctx.model_detail_map.get(model) else {
+        return Vec::new();
+    };
+    // 1. ref('old') in every dependent, and plain-YAML refs project-wide
+    let mut edits = model_ref_sites(ctx, model, read);
 
     // 2. the properties-YAML name entry (quotes kept)
     if let Some(schema_uri) = details

@@ -381,7 +381,13 @@ cogitator.nvim/
 ├── lua/cogitator/
 │   ├── init.lua                  -- setup(opts), vim.lsp.config registration
 │   ├── config.lua                -- defaults + validation
-│   ├── commands.lua              -- :Dbt* user commands → executeCommand
+│   ├── commands/                 -- :Dbt* user commands → executeCommand: a module
+│   │                             --   per concern (jobs, lists, analysis, views, node,
+│   │                             --   split, navigation), gathered by init.lua
+│   ├── picker/                   -- the yazi-style dialogs: match, view, window, keys,
+│   │                             --   dialogs (select/input), init (state, open)
+│   ├── pick/sources/             -- what :DbtFind lists, a module per origin
+│   ├── paths.lua, positions.lua  -- shared display paths and LSP → byte columns
 │   ├── lens.lua                  -- codelens refresh autocmds
 │   └── health.lua                -- :checkhealth cogitator
 └── doc/cogitator.txt
@@ -497,6 +503,9 @@ vim.lsp.enable("cogitator")
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
 | `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
+| `:DbtReferences[!]` | `textDocument/references` | every use of what the cursor names (`!`: the file's own model), in the yazi-style dialog, a group per file and a line per use with its preview; the first entry renames it — **Neovim only** |
+| `:DbtMacros` | `workspace/symbol`, `textDocument/references` | every macro in the yazi-style dialog; choosing one shows where it is called (asked at its header, which the server reads from disk when the file is not open) — **Neovim only** |
+| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
@@ -508,7 +517,6 @@ vim.lsp.enable("cogitator")
 | `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
 | `:DbtBreakingChanges` | `dbt.breakingChanges` | this model's removed, possibly renamed and retyped columns against its last built schema, and what reads them downstream, into quickfix |
-| `:DbtSelect {selector}` | `dbt.select` | the nodes a dbt selector picks into quickfix (asks for the selector when none is given); `:DbtFind select` shows them in the picker |
 | `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
 | `:DbtSelect [selection]` | `dbt.select` | the navigator's finder over a dbt selection (`tag:x`, `+model`, `resource_type:test`, `a,b`, `--exclude …`), live as it is typed; completion of methods and values |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
