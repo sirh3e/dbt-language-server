@@ -14,12 +14,7 @@ local M = {}
 --- Lines either side of a reference in its preview.
 M.CONTEXT = { before = 6, after = 14 }
 
-local function relative(path, root)
-  if root and root ~= "" and path:sub(1, #root + 1) == root .. "/" then
-    return path:sub(#root + 2)
-  end
-  return vim.fn.fnamemodify(path, ":~:.")
-end
+local relative = require("cogitator.paths").relative
 
 local function syntax_of(path)
   if path:match("%.ya?ml$") then
@@ -42,14 +37,7 @@ function M.preview_lines(lines, lnum)
   return out
 end
 
---- A byte column from an LSP character offset on `line`.
-local function byte_col(line, character, encoding)
-  if not line or character == 0 then
-    return character
-  end
-  local ok, col = pcall(vim.str_byteindex, line, encoding or "utf-16", character, false)
-  return ok and col or character
-end
+local byte_col = require("cogitator.positions").byte_col
 
 --- Picker items of LSP locations: a group per file (in path order), a
 --- line per use in it. `read(path)` gives a file's lines (nil when it

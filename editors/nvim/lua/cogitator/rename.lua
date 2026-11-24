@@ -12,9 +12,7 @@ local actions = require("cogitator.actions")
 
 local M = {}
 
-local function relative(uri)
-  return vim.fn.fnamemodify(vim.uri_to_fname(uri), ":~:.")
-end
+local relative = require("cogitator.paths").relative_uri
 
 --- What an edit does: how many files it edits, and its file renames.
 ---@param edit table WorkspaceEdit

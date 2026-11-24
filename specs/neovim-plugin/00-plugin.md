@@ -381,7 +381,13 @@ cogitator.nvim/
 ├── lua/cogitator/
 │   ├── init.lua                  -- setup(opts), vim.lsp.config registration
 │   ├── config.lua                -- defaults + validation
-│   ├── commands.lua              -- :Dbt* user commands → executeCommand
+│   ├── commands/                 -- :Dbt* user commands → executeCommand: a module
+│   │                             --   per concern (jobs, lists, analysis, views, node,
+│   │                             --   split, navigation), gathered by init.lua
+│   ├── picker/                   -- the yazi-style dialogs: match, view, window, keys,
+│   │                             --   dialogs (select/input), init (state, open)
+│   ├── pick/sources/             -- what :DbtFind lists, a module per origin
+│   ├── paths.lua, positions.lua  -- shared display paths and LSP → byte columns
 │   ├── lens.lua                  -- codelens refresh autocmds
 │   └── health.lua                -- :checkhealth cogitator
 └── doc/cogitator.txt

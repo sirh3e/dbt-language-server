@@ -270,7 +270,7 @@ fn consumers(root: &Path) -> Vec<Consumer> {
         Consumer {
             name: "nvim",
             files: nvim,
-            add_to: "editors/nvim (lua/cogitator/commands.lua, a :Dbt* in plugin/cogitator.lua, doc/cogitator.txt)",
+            add_to: "editors/nvim (a module of lua/cogitator/commands/, a :Dbt* in plugin/cogitator.lua, doc/cogitator.txt)",
         },
         Consumer {
             name: "emacs",
