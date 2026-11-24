@@ -2,6 +2,7 @@
 --- (workspace/symbol), and this file's refs, CTEs and macros.
 
 local actions = require("cogitator.actions")
+local paint = require("cogitator.pick.paint")
 local preview = require("cogitator.pick.preview")
 
 local M = {}
@@ -30,8 +31,8 @@ local function symbols(ctx, title, keep, query)
               local loc = sym.location or {}
               local start = loc.range and loc.range.start
               local stop = loc.range and loc.range["end"]
+              local kind = SYMBOL_KINDS[sym.kind] or "symbol"
               items[#items + 1] = {
-                text = sym.name .. "  [" .. (SYMBOL_KINDS[sym.kind] or "symbol") .. "]",
                 name = sym.name,
                 uri = loc.uri,
                 lnum = start and (start.line + 1) or nil,
@@ -40,6 +41,16 @@ local function symbols(ctx, title, keep, query)
                 col = start and start.character or nil,
                 value = sym,
               }
+              paint.paint(items[#items], paint.node_parts(sym.name, kind, nil, loc.uri))
+              local file = loc.uri and vim.fn.fnamemodify(vim.uri_to_fname(loc.uri), ":~:.")
+              if file then
+                local item = items[#items]
+                local more_text, more = paint.line({ { "  " }, { file, "DbtPickPath" } })
+                for _, span in ipairs(more) do
+                  item.hls[#item.hls + 1] = { span[1] + #item.text, span[2] + #item.text, span[3] }
+                end
+                item.text = item.text .. more_text
+              end
             end
           end
           done(items)

@@ -160,12 +160,23 @@ local function render_list(s)
     for k = 1, math.min(#s.matches, SHOWN) do
       local m = s.matches[k]
       local text = s.texts[m.index]
+      -- the item's own colours (cogitator.pick.paint), under the matches
+      local item = s.items[m.index]
+      for _, span in ipairs(item and item.hls or {}) do
+        vim.api.nvim_buf_set_extmark(s.bufs.list, NS, k - 1, span[1] + 2, {
+          end_col = span[2] + 2,
+          hl_group = span[3],
+          priority = 100,
+          strict = false,
+        })
+      end
       for _, pos in ipairs(m.positions) do
         local start = vim.str_byteindex(text, "utf-32", pos, false)
         local stop = vim.str_byteindex(text, "utf-32", pos + 1, false)
         vim.api.nvim_buf_set_extmark(s.bufs.list, NS, k - 1, start + 2, {
           end_col = stop + 2,
           hl_group = "CogitatorPickMatch",
+          priority = 150,
           strict = false,
         })
       end

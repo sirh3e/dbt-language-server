@@ -2,6 +2,7 @@
 --- a source of the graph's nodes of some kinds.
 
 local graph_lib = require("cogitator.pick.graph")
+local paint = require("cogitator.pick.paint")
 local preview = require("cogitator.pick.preview")
 
 local M = {}
@@ -16,15 +17,22 @@ local KIND_TAG = {
   analysis = "analysis",
 }
 
---- A graph node as a picker item.
-function M.node_item(node, label)
-  local tags = (node.tags and #node.tags > 0) and ("  #" .. table.concat(node.tags, " #")) or ""
-  return {
-    text = (label or node.name) .. "  [" .. (KIND_TAG[node.kind] or node.kind) .. "]" .. tags,
+--- A graph node as a picker item: its name in its kind's colour, the
+--- kind, its tags. `prefix` parts (an arrow and a depth) go before it.
+---@param node table
+---@param label string?
+---@param prefix {[1]: string, [2]: string?}[]?
+function M.node_item(node, label, prefix)
+  local uri = node.uri ~= vim.NIL and node.uri or nil
+  local parts = vim.list_extend(
+    vim.deepcopy(prefix or {}),
+    paint.node_parts(label or node.name, node.kind, node.tags, uri, KIND_TAG[node.kind])
+  )
+  return paint.paint({
     name = node.name,
-    uri = node.uri ~= vim.NIL and node.uri or nil,
+    uri = uri,
     value = node,
-  }
+  }, parts)
 end
 
 --- A node's file, under a header saying what it is.

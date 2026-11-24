@@ -51,7 +51,11 @@ local function keymaps(bufnr, config)
   map("<leader>dy", commands.extract, "dbt: extract model into schema YAML / add version")
   map("<leader>dq", commands.tests, "dbt: jump to a test of this model")
   map("<leader>dS", commands.status, "dbt: language-server status")
-  map("<leader>dR", commands.relation, "dbt: yank the relation name under the cursor")
+  map(
+    "<leader>dR",
+    commands.relation_menu,
+    "dbt: yank the relation under the cursor (ref, source, select, quoted…)"
+  )
   map("<leader>dx", commands.query, "dbt: bounded SELECT on the relation under the cursor")
   map("<leader>dD", function()
     require("cogitator.dag").open()
@@ -219,6 +223,8 @@ function M.register(config)
     cmd = config.cmd,
     filetypes = config.filetypes,
     capabilities = capabilities(),
+    -- the compiled SQL a dbt compile leaves is asked about, not opened
+    handlers = { ["window/showDocument"] = require("cogitator.show_document").handler },
   }
   if config.profiles_dir then
     server.init_options = { profilesDir = vim.fn.expand(config.profiles_dir) }

@@ -58,8 +58,118 @@ function M.relation()
   end)
 end
 
+--- :DbtLineage — where each column of this model comes from, in the
+--- picker (dbt.columnLineage, kept by the server per edit); when the
+--- server has none, dbt.showLineage's message says why.
+--- What can be yanked of a dbt.relation answer, most used first: the
+--- relation, quoted, the Jinja that names it, a query of it (pure;
+--- exposed for the suite).
+---@param r {kind: string, name: string, source?: string, database?: string, schema?: string, identifier: string, relation: string}
+---@param limit integer
+---@return {label: string, detail: string, text: string}[]
+function M.relation_forms(r, limit)
+  local function present(v)
+    return v ~= nil and v ~= vim.NIL and v ~= ""
+  end
+  local quoted = {}
+  local parts = { r.database, r.schema, r.identifier }
+  for i = 1, 3 do -- not ipairs: a source may have no database
+    local part = parts[i]
+    if present(part) then
+      quoted[#quoted + 1] = '"' .. tostring(part):gsub('"', '""') .. '"'
+    end
+  end
+  local jinja
+  if r.kind == "source" and present(r.source) then
+    jinja = ("{{ source('%s', '%s') }}"):format(r.source, r.name)
+  else
+    jinja = ("{{ ref('%s') }}"):format(r.name)
+  end
+  return {
+    { label = r.relation, detail = "the relation, as the warehouse names it", text = r.relation },
+    {
+      label = table.concat(quoted, "."),
+      detail = "quoted, for names with capitals or spaces",
+      text = table.concat(quoted, "."),
+    },
+    {
+      label = jinja,
+      detail = r.kind == "source" and "the source() that names it" or "the ref() that names it",
+      text = jinja,
+    },
+    {
+      label = "select * from " .. jinja,
+      detail = "a query of it, for a model or an analysis",
+      text = "select * from " .. jinja,
+    },
+    {
+      label = ("select * from %s limit %d"):format(r.relation, limit),
+      detail = "a query of it, for the warehouse's own client",
+      text = ("select * from %s limit %d"):format(r.relation, limit),
+    },
+  }
+end
+
+--- <leader>dR: the relation under the cursor (a ref(), a source(), else
+--- the file's model) and the forms of it to yank, in the picker.
+function M.relation_menu()
+  local cfg = require("cogitator").config
+  local limit = (cfg and cfg.query_limit) or 100
+  exec("dbt.relation", true, function(err, result)
+    if err then
+      vim.notify("dbt.relation failed: " .. err.message, vim.log.levels.ERROR)
+      return
+    end
+    if not result or result == vim.NIL then
+      vim.notify("no relation here — not a dbt model, ref() or source()", vim.log.levels.WARN)
+      return
+    end
+    local group = require("cogitator.pick.paint").kind_group(result.kind) or "DbtPickerSource"
+    local items = {}
+    for _, form in ipairs(M.relation_forms(result, limit)) do
+      items[#items + 1] = {
+        label = form.label,
+        icon = "⎘",
+        icon_hl = group,
+        detail = form.detail,
+        value = form,
+        preview = function()
+          return {
+            "  " .. form.text,
+            "",
+            "  " .. form.detail,
+            "",
+            "  <CR> yanks it (also into the + register)",
+          }
+        end,
+      }
+    end
+    require("cogitator.picker").open({
+      title = ("yank · %s %s"):format(result.kind, result.name),
+      items = items,
+      on_choose = function(item)
+        vim.fn.setreg('"', item.value.text)
+        pcall(vim.fn.setreg, "+", item.value.text)
+        vim.notify(item.value.text .. " (yanked)")
+      end,
+    })
+  end)
+end
+
 function M.lineage()
-  exec("dbt.showLineage", false) -- result arrives as a window/showMessage
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local pick = require("cogitator.pick")
+  pick.open(require("cogitator.pick.sources").build("column_lineage", {
+    client = client,
+    bufnr = bufnr,
+    on_none = function()
+      exec("dbt.showLineage", false) -- the reason arrives as a window/showMessage
+    end,
+  }))
 end
 
 function M.schema()

@@ -256,6 +256,63 @@ pub(crate) fn config_kwargs(inner: &str) -> Vec<(String, Raw)> {
         .collect()
 }
 
+/// A constant argument of a `config(...)` call, as written.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConfigValue {
+    Str(String),
+    Bool(bool),
+    /// A number as minijinja prints it (`3`, `0.5`).
+    Number(String),
+    List(Vec<ConfigValue>),
+    Map(Vec<(String, ConfigValue)>),
+}
+
+/// `(keyword, value)` pairs of a `config(...)` expression (the text
+/// inside `{{ }}`), in source order. An argument that is not constant
+/// all the way down (a macro call, a variable) is left out: its value is
+/// not knowable here, and half of it would be wrong.
+pub fn config_values(inner: &str) -> Vec<(String, ConfigValue)> {
+    let Ok(Expr::Call(call)) = parse_expr(inner) else {
+        return Vec::new();
+    };
+    call.args
+        .iter()
+        .filter_map(|arg| match arg {
+            CallArg::Kwarg(name, e) => Some((name.to_string(), to_value(e, 0)?)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn to_value(expr: &Expr<'_>, depth: usize) -> Option<ConfigValue> {
+    use minijinja::value::ValueKind;
+    if depth > 16 {
+        return None;
+    }
+    match expr {
+        Expr::Const(c) => match c.value.kind() {
+            ValueKind::String => c.value.as_str().map(|s| ConfigValue::Str(s.to_string())),
+            ValueKind::Bool => Some(ConfigValue::Bool(c.value.is_true())),
+            ValueKind::Number => Some(ConfigValue::Number(c.value.to_string())),
+            _ => None,
+        },
+        Expr::List(list) => list
+            .items
+            .iter()
+            .map(|i| to_value(i, depth + 1))
+            .collect::<Option<Vec<_>>>()
+            .map(ConfigValue::List),
+        Expr::Map(map) => map
+            .keys
+            .iter()
+            .zip(map.values.iter())
+            .map(|(k, v)| Some((const_str(k)?, to_value(v, depth + 1)?)))
+            .collect::<Option<Vec<_>>>()
+            .map(ConfigValue::Map),
+        _ => None,
+    }
+}
+
 fn to_raw(expr: &Expr<'_>, depth: usize) -> Raw {
     if depth > 16 {
         return Raw::Other;

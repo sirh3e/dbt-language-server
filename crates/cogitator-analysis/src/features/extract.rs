@@ -89,6 +89,8 @@ pub fn extract_model_yaml(
             }
             let mut content =
                 format!("version: 2\n\nmodels:\n  - name: {model}\n    description: \"\"\n");
+            let sql = std::fs::read_to_string(&details.uri).unwrap_or_default();
+            content.push_str(&config_yaml(&sql, "    "));
             let columns = column_names(ctx, &model, lineage);
             if !columns.is_empty() {
                 content.push_str("    columns:\n");
@@ -109,6 +111,104 @@ pub fn extract_model_yaml(
                 next: edits.1,
             })
         }
+    }
+}
+
+/// The constant arguments of the model's `{{ config(...) }}` calls as a
+/// `config:` block at `indent` (later calls win per key, as in dbt), or
+/// nothing when there are none. What is not constant stays in the SQL
+/// alone; what is copied keeps working there, as the SQL's config wins
+/// over the YAML's.
+pub fn config_yaml(sql: &str, indent: &str) -> String {
+    use cogitator_sql_front::config_values;
+    let mut merged: Vec<(String, cogitator_sql_front::ConfigValue)> = Vec::new();
+    for call in crate::util::config_calls(sql) {
+        for (key, value) in config_values(&call) {
+            match merged.iter_mut().find(|(k, _)| *k == key) {
+                Some(slot) => slot.1 = value,
+                None => merged.push((key, value)),
+            }
+        }
+    }
+    if merged.is_empty() {
+        return String::new();
+    }
+    let mut out = format!("{indent}config:\n");
+    let inner = format!("{indent}  ");
+    for (key, value) in &merged {
+        yaml_entry(&mut out, &inner, key, value);
+    }
+    out
+}
+
+fn yaml_entry(out: &mut String, indent: &str, key: &str, value: &cogitator_sql_front::ConfigValue) {
+    use cogitator_sql_front::ConfigValue;
+    let key = yaml_scalar(key);
+    match value {
+        ConfigValue::Map(entries) if !entries.is_empty() => {
+            out.push_str(&format!("{indent}{key}:\n"));
+            let inner = format!("{indent}  ");
+            for (k, v) in entries {
+                yaml_entry(out, &inner, k, v);
+            }
+        }
+        ConfigValue::List(items)
+            if items
+                .iter()
+                .any(|i| matches!(i, ConfigValue::Map(_) | ConfigValue::List(_))) =>
+        {
+            // a list of indexes, of grants…: an item a line, each in flow
+            out.push_str(&format!("{indent}{key}:\n"));
+            for item in items {
+                out.push_str(&format!("{indent}  - {}\n", flow(item)));
+            }
+        }
+        other => out.push_str(&format!("{indent}{key}: {}\n", flow(other))),
+    }
+}
+
+/// A value on one line: scalars plain where YAML reads them back as the
+/// same string, lists and maps in flow style.
+fn flow(value: &cogitator_sql_front::ConfigValue) -> String {
+    use cogitator_sql_front::ConfigValue;
+    match value {
+        ConfigValue::Str(s) => yaml_scalar(s),
+        ConfigValue::Bool(b) => b.to_string(),
+        ConfigValue::Number(n) => n.clone(),
+        ConfigValue::List(items) => {
+            format!(
+                "[{}]",
+                items.iter().map(flow).collect::<Vec<_>>().join(", ")
+            )
+        }
+        ConfigValue::Map(entries) => format!(
+            "{{{}}}",
+            entries
+                .iter()
+                .map(|(k, v)| format!("{}: {}", yaml_scalar(k), flow(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
+}
+
+/// A string plain when it is a bare word YAML would not read as anything
+/// else, else double-quoted (JSON's quoting is YAML's).
+fn yaml_scalar(s: &str) -> String {
+    const KEYWORDS: &[&str] = &[
+        "true", "false", "yes", "no", "on", "off", "null", "y", "n", "~",
+    ];
+    let bare = !s.is_empty()
+        && s.chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '/'))
+        && !KEYWORDS.contains(&s.to_ascii_lowercase().as_str());
+    if bare {
+        s.to_string()
+    } else {
+        serde_json::to_string(s).unwrap_or_else(|_| format!("\"{s}\""))
     }
 }
 
@@ -179,5 +279,63 @@ fn version_edits(text: &str, model: &str) -> Option<(Vec<(Range, String)>, i64)>
             }
             Some((edits, next))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::config_yaml;
+    use pretty_assertions::assert_eq;
+    use rstest::rstest;
+    use saphyr::{LoadableYamlNode, MarkedYaml};
+
+    #[rstest]
+    #[case::none("select 1", "")]
+    #[case::materialized(
+        "{{ config(materialized='incremental') }}\nselect 1",
+        "    config:\n      materialized: incremental\n"
+    )]
+    #[case::lists_and_maps(
+        "{{ config(unique_key=['id', 'day'], contract={'enforced': true}, tags='nightly') }}",
+        "    config:\n      unique_key: [id, day]\n      contract:\n        enforced: true\n      tags: nightly\n"
+    )]
+    #[case::numbers_and_keywords(
+        "{{ config(batch_size=500, on_schema_change='yes', alias='a b') }}",
+        "    config:\n      batch_size: 500\n      on_schema_change: \"yes\"\n      alias: \"a b\"\n"
+    )]
+    #[case::later_call_wins(
+        "{{ config(materialized='view') }}\n{{ config(materialized='table', schema='mart') }}",
+        "    config:\n      materialized: table\n      schema: mart\n"
+    )]
+    #[case::not_constant_stays_in_the_sql(
+        "{{ config(materialized='table', schema=var('s'), tags=['a', var('t')]) }}",
+        "    config:\n      materialized: table\n"
+    )]
+    #[case::commented_out("{# {{ config(materialized='table') }} #}\nselect 1", "")]
+    #[case::list_of_maps(
+        "{{ config(indexes=[{'columns': ['id'], 'unique': true}]) }}",
+        "    config:\n      indexes:\n        - {columns: [id], unique: true}\n"
+    )]
+    fn the_config_block(#[case] sql: &str, #[case] expected: &str) {
+        assert_eq!(config_yaml(sql, "    "), expected);
+    }
+
+    /// What is written reads back as YAML holding the same values.
+    #[test]
+    fn the_config_block_is_yaml() {
+        let sql = "{{ config(materialized='incremental', unique_key=['id', 'day'], \
+                   contract={'enforced': true}, on_schema_change='off', alias='x: y', \
+                   indexes=[{'columns': ['id'], 'unique': true}]) }}";
+        let text = format!("models:\n  - name: m\n{}", config_yaml(sql, "    "));
+        let docs = MarkedYaml::load_from_str(&text).expect("valid YAML");
+        let json = cogitator_schemas::yaml::to_json(&docs[0]);
+        let config = &json["models"][0]["config"];
+        assert_eq!(config["materialized"], "incremental");
+        assert_eq!(config["unique_key"], serde_json::json!(["id", "day"]));
+        assert_eq!(config["contract"]["enforced"], true);
+        assert_eq!(config["on_schema_change"], "off");
+        assert_eq!(config["alias"], "x: y");
+        assert_eq!(config["indexes"][0]["columns"], serde_json::json!(["id"]));
+        assert_eq!(config["indexes"][0]["unique"], true);
     }
 }

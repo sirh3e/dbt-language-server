@@ -200,6 +200,31 @@ return function(ctx)
     vim.inspect(shown and shown.code)
   )
 
+  -- every example of the pattern menu is a pattern the server takes
+  local astgrep = require("cogitator.astgrep")
+  for _, example in ipairs(astgrep.EXAMPLES) do
+    local query = astgrep.parse(example.pattern)
+    local answer = H.exec_cmd(client, bufnr, "dbt.astGrep", {
+      uri = "",
+      pattern = query.pattern,
+      rewrite = query.rewrite,
+      language = query.language,
+    }, "astgrep: example " .. example.pattern)
+    H.check(
+      type(answer) == "table" and type(answer.matches) == "table",
+      "astgrep: the example " .. example.pattern .. " is a pattern the server takes",
+      vim.inspect(answer)
+    )
+  end
+  local menu = astgrep.example_items()
+  H.check(
+    #menu == 3 and #menu[2].children + #menu[3].children == #astgrep.EXAMPLES,
+    "astgrep: the example menu offers typing, then the dbt and the SQL examples",
+    vim.inspect(vim.tbl_map(function(i)
+      return i.label
+    end, menu))
+  )
+
   -- highlight on open (specs/highlighting §7.1): a YAML property file
   local tshl = require("cogitator.tshl")
   local schema = vim.fs.joinpath(ctx.fixture, "models", "schema.yml")
