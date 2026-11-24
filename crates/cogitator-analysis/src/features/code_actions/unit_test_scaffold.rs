@@ -215,6 +215,7 @@ pub fn unit_test_scaffold_action(
         }),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }
 

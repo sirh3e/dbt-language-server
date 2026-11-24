@@ -38,8 +38,18 @@ end
 ---@param buf integer
 ---@param lines string[]
 function M.set_lines(buf, lines)
+  -- a line that holds a newline (text from YAML, a doc block, the
+  -- server) becomes several: nvim_buf_set_lines refuses it outright
+  local split = {}
+  for _, line in ipairs(lines) do
+    if line:find("[\r\n]") then
+      vim.list_extend(split, vim.split(line:gsub("\r\n?", "\n"), "\n", { plain = true }))
+    else
+      split[#split + 1] = line
+    end
+  end
   vim.bo[buf].modifiable = true
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, split)
   vim.bo[buf].modifiable = false
 end
 

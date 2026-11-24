@@ -83,35 +83,10 @@ function M.unresolved(ctx)
   }
 end
 
---- The nodes a dbt selector picks (ctx.query, asked for first; dbt.select).
+--- dbt's node selection (`:DbtFind select`): every node, and dbt
+--- selections, evaluated as typed (cogitator.pick.select_source).
 function M.select(ctx)
-  return {
-    title = "select " .. (ctx.query or ""),
-    empty = "the selector picks no node",
-    items = function(done)
-      local arg = { uri = vim.uri_from_bufnr(ctx.bufnr), selector = ctx.query or "" }
-      actions.exec_with(ctx.client, ctx.bufnr, "dbt.select", arg, function(err, result)
-        local items = {}
-        local rows = (not err and type(result) == "table")
-            and require("cogitator.commands").select_items(result)
-          or {}
-        for _, row in ipairs(rows) do
-          items[#items + 1] = {
-            text = row.text,
-            name = row.user_data.name,
-            path = row.filename,
-            lnum = row.lnum,
-            end_lnum = row.lnum,
-            col = row.col - 1,
-          }
-        end
-        done(items)
-      end)
-    end,
-    preview = function(item, done)
-      preview.file(item, nil, done)
-    end,
-  }
+  return require("cogitator.pick.select_source").source(ctx)
 end
 
 --- The matches of an ast-grep pattern (ctx.query, asked for first).

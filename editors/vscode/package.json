@@ -112,7 +112,7 @@
       },
       {
         "command": "cogitator.select",
-        "title": "dbt: Select nodes"
+        "title": "dbt: Select nodes…"
       },
       {
         "command": "cogitator.status",

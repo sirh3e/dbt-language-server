@@ -218,6 +218,29 @@ fn doc_blocks_land_on_the_context_with_positions() {
 }
 
 #[test]
+fn column_descriptions_expand_their_doc_blocks_like_model_descriptions() {
+    // what the navigator, hover and completion show of a column: the doc
+    // block's text, never the `{{ doc("…") }}` call that names it
+    let ctx = ctx();
+    let orders = ctx.model_detail_map.get("orders").expect("orders model");
+    let status = orders
+        .columns
+        .iter()
+        .find(|c| c.name == "status")
+        .expect("orders.status");
+    assert!(
+        !status.description.contains("doc("),
+        "{}",
+        status.description
+    );
+    assert!(
+        status.description.contains("placed"),
+        "{}",
+        status.description
+    );
+}
+
+#[test]
 fn hover_and_definition_on_a_doc_reference() {
     let ctx = ctx();
     let schema_path = fixture_root().join("models/schema.yml");

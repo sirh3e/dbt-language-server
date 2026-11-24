@@ -17,9 +17,9 @@ M.ORDER = {
   "tests",
   "tags",
   "selectors",
+  "select",
   "astgrep",
   "unresolved",
-  "select",
 }
 
 M.DESCRIPTIONS = {
@@ -36,8 +36,8 @@ M.DESCRIPTIONS = {
   tests = "the tests of this model",
   tags = "tags, then the nodes carrying one",
   selectors = "selectors.yml entries",
+  select = "dbt node selection: tag:nightly, +dim_items, resource_type:test, a,b, … --exclude x",
   unresolved = "every unresolved ref, source, doc, macro and var of the project",
-  select = "the nodes a dbt selector picks (asked for first)",
   astgrep = "ast-grep: a structural pattern ({{ ref($M) }}, sql:select $$$C from $T), its matches",
 }
 

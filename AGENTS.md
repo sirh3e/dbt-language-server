@@ -28,7 +28,9 @@ editor integrations live under `editors/`.
 - **Editor suites** (self-sandboxing, per-run fixture COPIES):
   `just system-test` (the Rust orchestrator driving nvim + emacs +
   the VS Code extension host; what CI runs), `just nvim-test`
-  (Neovim ≥ 0.11 headless), `just emacs-test` (Emacs ≥ 29 batch/eglot),
+  (Neovim ≥ 0.11 headless, over jaffle_shop and testdata/vault_lake, a
+  made-up project in a real one's shape), `just nvim-real-test <dir>`
+  (the plugin read-only over every model of a real dbt project; not in CI), `just emacs-test` (Emacs ≥ 29 batch/eglot),
   `just vscode-test` (extension host via @vscode/test-electron, VS Code
   cached under editors/vscode/.vscode-test), `just zed-build`
   (wasm32-wasip1 compile check)

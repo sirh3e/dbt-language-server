@@ -335,6 +335,21 @@
   (check (= (length (plist-get found :matches)) 4)
          "integration: dbt.astGrep finds the model's refs" (length (plist-get found :matches))))
 
+;; unit + integration: node selection
+(check (equal (cogitator--select-line
+               '(:name "orders" :version "1" :resourceType "model" :tags ["nightly"]))
+              "orders.v1  [model]  #nightly")
+       "select: a version is listed as dbt names it")
+(check (equal (cogitator--select-line
+               '(:name "items" :resourceType "source" :graphId "source:raw" :tags []))
+              "raw.items  [source]")
+       "select: a source table is source.table")
+(let ((found (run--exec "dbt.select" (append (cogitator--command-argument)
+                                              (list :select "+customers")))))
+  (check (and (> (length (plist-get found :nodes)) 3)
+              (plist-get (plist-get found :counts) :model))
+         "integration: dbt.select answers +customers" found))
+
 ;; unit + integration: unresolved names
 (check (equal (cogitator--unresolved-line
                '(:kind "ref" :name "ghost" :uri "file:///p/models/a.sql"
@@ -361,12 +376,7 @@
   (check (stringp (plist-get found :status))
          "integration: dbt.breakingChanges answers a status" found))
 
-;; unit + integration: dbt.select
-(check (equal (cogitator--select-line
-               '(:kind "model" :name "customers" :uri "file:///p/models/customers.sql"
-                 :range (:start (:line 0 :character 0) :end (:line 0 :character 0))))
-              "/p/models/customers.sql:1:1: [model] customers")
-       "select: a node is a grep line")
+;; integration: dbt.select with a selector, as the lenses send it
 (let ((found (run--exec "dbt.select" (append (cogitator--command-argument)
                                              (list :selector "tag:nightly")))))
   (check (and (numberp (plist-get found :count))

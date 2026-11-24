@@ -111,7 +111,7 @@ code actions are the standard LSP ones. On top:
 | `<leader>dr` / `dt` / `dc` | `:DbtRun` / `:DbtTest` / `:DbtCompile` | dbt on the current model (compile opens the compiled SQL) |
 | | `:DbtPreview [n]` | `dbt show`: the model's first rows |
 | | `:DbtRunSelection [sel]`, `:DbtCancel` | dbt with any selector; cancel a job |
-| | `:DbtSelect [sel]` | the nodes a selector picks, without running dbt (quickfix; `:DbtFind select` in the picker) |
+| | `:DbtSelect [sel]` | dbt node selection in the navigator, without running dbt: `tag:x`, `+m`, `a,b`, `--exclude x` (`:DbtFind select` too) |
 | `<leader>ds` / `dq` | `:DbtSchema` / `:DbtTests` | the model's YAML entry; one of its tests |
 | `<leader>dy` | `:DbtExtract` | scaffold the model's YAML, or add a version |
 | `<leader>dR` / `dx` | `:DbtRelation` / `:DbtQuery` | yank `db.schema.table`; a bounded `select *` on it |

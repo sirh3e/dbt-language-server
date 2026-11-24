@@ -155,7 +155,6 @@ M.SUBCOMMANDS = {
     desc = "rename the model or macro under the cursor [new_name]",
   },
   unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
-  select = { run = with_args("select"), desc = "the nodes a dbt selector picks" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
   incrementality = { run = plain("incrementality"), desc = "table models that could be incremental" },
   impact = {
@@ -223,6 +222,15 @@ M.SUBCOMMANDS = {
     end,
     desc = "fuzzy-find models, definitions, columns, lineage… [source]",
   },
+  select = {
+    run = function(args)
+      require("cogitator.explorer").open({ select = args ~= "" and args or nil })
+    end,
+    complete = function(lead)
+      return require("cogitator.commands").select_completion(lead)
+    end,
+    desc = "dbt node selection in the navigator: tag:x +m a,b --exclude x",
+  },
   dag = { run = module_call("cogitator.dag", "open"), desc = "the project DAG" },
   graph = { run = module_call("cogitator.graph", "open"), desc = "the three-pane model graph" },
   explorer = { run = module_call("cogitator.explorer", "open"), desc = "the project explorer" },
@@ -271,7 +279,18 @@ M.GROUPS = {
   {
     name = "Views",
     icon = "◈",
-    subs = { "find", "macros", "graph", "dag", "columns", "explorer", "node", "syntax", "highlight" },
+    subs = {
+      "find",
+      "select",
+      "macros",
+      "graph",
+      "dag",
+      "columns",
+      "explorer",
+      "node",
+      "syntax",
+      "highlight",
+    },
   },
   {
     name = "Project",
@@ -281,7 +300,6 @@ M.GROUPS = {
       "deps",
       "freshness",
       "selection",
-      "select",
       "cancel",
       "dead",
       "unresolved",

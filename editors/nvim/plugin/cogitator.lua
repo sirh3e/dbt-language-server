@@ -45,12 +45,6 @@ end, {
   end,
   desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
 })
-vim.api.nvim_create_user_command("DbtSelect", function(opts)
-  require("cogitator.commands").select(opts)
-end, {
-  nargs = "*",
-  desc = "the nodes a dbt selector picks (quickfix; selector:<name> for selectors.yml)",
-})
 vim.api.nvim_create_user_command("DbtReferences", function(opts)
   require("cogitator.usages").references({ bang = opts.bang })
 end, {
@@ -75,6 +69,15 @@ end, {
     return require("cogitator.pick.sources").ORDER
   end,
   desc = "fuzzy-find models, definitions, columns, lineage… (fzf-lua/snacks/telescope or built-in)",
+})
+vim.api.nvim_create_user_command("DbtSelect", function(opts)
+  require("cogitator.explorer").open({ select = opts.args ~= "" and opts.args or nil })
+end, {
+  nargs = "*",
+  complete = function(lead)
+    return require("cogitator.commands").select_completion(lead)
+  end,
+  desc = "dbt node selection in the navigator: tag:x +m @m a,b stg_* --exclude x (dbt.select)",
 })
 cmd("DbtSplit", "split", "split this table model at its incrementality frontier (dbt.splitPlan)")
 cmd("DbtIncrementality", "incrementality", "table models that could be incremental (quickfix)")
@@ -152,6 +155,10 @@ end, {
   complete = "dir",
   desc = "show the dbt profiles resolution, or switch the profiles directory",
 })
+
+vim.api.nvim_create_user_command("DbtInstall", function()
+  require("cogitator").install()
+end, { desc = "install (or update) the cogitator language server, then start it" })
 
 vim.api.nvim_create_user_command("DbtDeps", function()
   require("cogitator.dispatch").deps()

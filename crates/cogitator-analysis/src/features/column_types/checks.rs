@@ -160,6 +160,7 @@ pub fn fill_data_types_action(
         }),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }
 

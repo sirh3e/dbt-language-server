@@ -40,7 +40,16 @@ fn methods_on_the_fixture() {
                 "raw_payments",
             ],
         ),
-        ("staging", &[]),
+        // a folder without its package, as dbt-core's node_is_match
+        (
+            "staging",
+            &[
+                "stg_customers",
+                "stg_orders",
+                "stg_payments",
+                "stg_stripe_payments",
+            ],
+        ),
         (
             "jaffle_shop.staging",
             &[

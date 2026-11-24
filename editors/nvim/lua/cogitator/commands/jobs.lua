@@ -48,34 +48,84 @@ end
 M._jobs = {}
 
 --- :DbtRunSelection — run dbt with an arbitrary selector (tag:nightly,
---- state:modified+, …); the returned token feeds :DbtCancel.
+--- state:modified+, …); the returned token feeds :DbtCancel. `opts`:
+--- `args` (the selector; asked for when empty), `exclude` (dbt's
+--- --exclude), `kind` (run, test, build or compile; run by default) or
+--- `ask_kind` (choose build, run or test in the dialog), `bufnr`.
+---@param opts {args?: string, exclude?: string, kind?: string, ask_kind?: boolean, bufnr?: integer}?
 function M.run_selection(opts)
-  local bufnr = vim.api.nvim_get_current_buf()
+  opts = opts or {}
+  local bufnr = opts.bufnr or vim.api.nvim_get_current_buf()
   local client = client_for(bufnr)
   if not client then
     return
   end
-  local function start(selector)
+  local function start(selector, kind)
     if not selector or selector == "" then
       return
     end
+    local label = ("dbt %s: %s%s"):format(
+      kind or "run",
+      selector,
+      opts.exclude and (" --exclude " .. opts.exclude) or ""
+    )
     client:exec_cmd({
       command = "dbt.runSelection",
-      arguments = { { uri = vim.uri_from_bufnr(bufnr), selector = selector } },
+      arguments = {
+        { uri = vim.uri_from_bufnr(bufnr), selector = selector, exclude = opts.exclude, kind = kind },
+      },
     }, { bufnr = bufnr }, function(err, result)
       if err then
         vim.notify(err.message, vim.log.levels.ERROR)
       elseif type(result) == "table" and result.token then
-        M._jobs[result.token] = "dbt run: " .. selector
-        vim.notify(("dbt job %d started (%s)"):format(result.token, selector), vim.log.levels.INFO)
+        M._jobs[result.token] = label
+        vim.notify(("dbt job %d started (%s)"):format(result.token, label), vim.log.levels.INFO)
       end
     end)
   end
-  if opts and opts.args and opts.args ~= "" then
-    start(opts.args)
-  else
-    require("cogitator.picker").input({ prompt = "dbt selector: " }, start)
+  local function with_kind(selector)
+    if not opts.ask_kind then
+      start(selector, opts.kind)
+      return
+    end
+    require("cogitator.pick").select({ "build", "run", "test" }, {
+      prompt = "dbt … --select " .. selector .. (opts.exclude and (" --exclude " .. opts.exclude) or ""),
+      format_item = function(k)
+        return ("dbt %s"):format(k)
+      end,
+    }, function(kind)
+      if kind then
+        start(selector, kind)
+      end
+    end)
   end
+  if opts.args and opts.args ~= "" then
+    with_kind(opts.args)
+  else
+    require("cogitator.picker").input({ prompt = "dbt selector: " }, with_kind)
+  end
+end
+
+--- :DbtSelect's completion: the word being typed, from the vocabulary
+--- the server last answered (asked for in the background when none).
+---@param lead string
+---@return string[]
+function M.select_completion(lead)
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = require("cogitator.actions").client_for(bufnr, true)
+  local selection = require("cogitator.pick.selection")
+  local vocab = client
+    and require("cogitator.pick.select_source").vocabulary({ client = client, bufnr = bufnr })
+  if not vocab then
+    local methods = vim.tbl_filter(function(m)
+      return not vim.tbl_contains(
+        { "state", "result", "source_status", "saved_query", "config", "version" },
+        m
+      )
+    end, selection.METHODS)
+    vocab = { methods = vim.list_extend(methods, { "config.materialized", "config.tags" }), values = {} }
+  end
+  return selection.candidates(lead, vocab)
 end
 
 --- :DbtCancel — pick a running job this session started and cancel it.

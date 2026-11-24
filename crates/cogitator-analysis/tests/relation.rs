@@ -92,3 +92,34 @@ fn unknown_file_yields_none() {
     let ctx = ctx();
     assert!(relation_info(&ctx, None, "file:///tmp/nope.sql", None, None).is_none());
 }
+
+#[test]
+fn a_manifests_relation_wins_over_the_defaults_for_a_model() {
+    // cs2_schema renders dim_inventories into "lake"."dim" through its
+    // own generate_schema_name, which the defaults cannot know
+    use cogitator_analysis::features::{with_manifest_relation, RelationOrigin};
+    let ctx = ctx();
+    let uri = cogitator_lsp::fs_path_to_uri(&fixture_root().join("models/customers.sql"));
+    let defaults = relation_info(&ctx, None, &uri, None, Some(&duckdb_target())).unwrap();
+    assert_eq!(defaults.origin, RelationOrigin::Defaults);
+    let manifest = cogitator_analysis::artifacts::manifest::parse(
+        r#"{"nodes": {"model.jaffle_shop.customers": {"resource_type": "model",
+            "name": "customers", "relation_name": "\"lake\".\"marts\".\"customers_v2\""}},
+            "sources": {}, "metadata": {}}"#,
+        std::path::Path::new("manifest.json"),
+    )
+    .unwrap();
+    let info = with_manifest_relation(defaults, &manifest);
+    assert_eq!(info.origin, RelationOrigin::Manifest);
+    assert_eq!(info.database.as_deref(), Some("lake"));
+    assert_eq!(info.schema.as_deref(), Some("marts"));
+    assert_eq!(info.identifier, "customers_v2");
+    assert_eq!(info.relation, "lake.marts.customers_v2");
+
+    // a model the manifest does not know (stale target/) keeps the defaults
+    let uri = cogitator_lsp::fs_path_to_uri(&fixture_root().join("models/orders.sql"));
+    let orders = relation_info(&ctx, None, &uri, None, Some(&duckdb_target())).unwrap();
+    let kept = with_manifest_relation(orders, &manifest);
+    assert_eq!(kept.origin, RelationOrigin::Defaults);
+    assert_eq!(kept.relation, "jaffle_shop.main.orders");
+}

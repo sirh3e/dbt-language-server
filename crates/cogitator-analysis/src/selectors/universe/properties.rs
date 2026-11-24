@@ -29,6 +29,12 @@ pub struct Entry {
     pub latest_version: Option<String>,
     /// (v, defined_in) per version.
     pub versions: Vec<(String, Option<String>)>,
+    /// `models`, `seeds` or `snapshots`.
+    pub section: &'static str,
+    /// A YAML snapshot's `relation:` (dbt 1.9), as written.
+    pub relation: Option<String>,
+    /// Where its `name:` is.
+    pub range: Range,
 }
 
 #[derive(Debug)]
@@ -69,7 +75,10 @@ pub fn read(text: &str) -> Properties {
     let mut out = Properties::default();
     for key in ["models", "seeds", "snapshots"] {
         for entry in get(root, key).into_iter().flat_map(items) {
-            let Some(name) = get(entry, "name").and_then(as_str) else {
+            let Some(name_node) = get(entry, "name") else {
+                continue;
+            };
+            let Some(name) = as_str(name_node) else {
                 continue;
             };
             let versions = get(entry, "versions")
@@ -86,6 +95,9 @@ pub fn read(text: &str) -> Properties {
                 config: config_of(entry),
                 latest_version: get(entry, "latest_version").and_then(scalar_text),
                 versions,
+                section: key,
+                relation: get(entry, "relation").and_then(as_str).map(str::to_string),
+                range: Range::zero_width(position_of(name_node)),
             });
         }
     }
@@ -175,11 +187,21 @@ fn scalar_text(node: &MarkedYaml<'_>) -> Option<String> {
 }
 
 /// `ref('x')` / `ref("x")` / `ref('pkg', 'x')` → `x`.
-fn ref_name(text: &str) -> Option<String> {
+pub(super) fn ref_name(text: &str) -> Option<String> {
     let inner = text.trim().strip_prefix("ref(")?.strip_suffix(')')?;
     let last = inner.rsplit(',').next()?.trim();
     let name = last.trim_matches(|c| c == '\'' || c == '"');
     (!name.is_empty()).then(|| name.to_string())
+}
+
+/// `source('s', 't')` → (`s`, `t`).
+pub(super) fn source_name(text: &str) -> Option<(String, String)> {
+    let inner = text.trim().strip_prefix("source(")?.strip_suffix(')')?;
+    let mut parts = inner
+        .split(',')
+        .map(|p| p.trim().trim_matches(|c| c == '\'' || c == '"').to_string());
+    let (source, table) = (parts.next()?, parts.next()?);
+    (!source.is_empty() && !table.is_empty() && parts.next().is_none()).then_some((source, table))
 }
 
 #[cfg(test)]

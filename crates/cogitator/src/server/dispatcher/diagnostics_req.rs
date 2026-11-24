@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 
 use cogitator_analysis::features;
 
-use cogitator_lsp::{Envelope, FullDocumentDiagnosticReport};
+use cogitator_lsp::{CodeAction, Envelope, FullDocumentDiagnosticReport};
 
 use super::Dispatcher;
 
@@ -127,9 +127,14 @@ impl Dispatcher {
                 let read = |path: &std::path::Path| std::fs::read_to_string(path).ok();
                 if uri.ends_with(".yml") || uri.ends_with(".yaml") {
                     // doc('x') lives mostly in descriptions
-                    extra.extend(features::declare_missing_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
+                    extra.extend(
+                        features::declare_missing_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
+                    // a YAML file documents many models: what follows is
+                    // about the entry under the cursor
+                    let entry_start = extra.len();
                     if let Some((model, details)) = features::model_entry_at(&snap.ctx, &uri, range)
                     {
                         let model_uri = cogitator_lsp::fs_path_to_uri(&details.uri);
@@ -170,23 +175,38 @@ impl Dispatcher {
                             &snap.ctx, &derived, &doc.text, &uri, range,
                         ));
                     }
+                    extra[entry_start..]
+                        .iter_mut()
+                        .for_each(CodeAction::mark_at_cursor);
                 } else {
                     let target =
                         crate::server::handlers::profiles::active_target_relation(&snap, &derived);
                     let catalog = features::RelationCatalog::build(&snap.ctx, target.as_ref());
                     extra.extend(features::convert_literal_relations(doc, &uri, &catalog));
-                    extra.extend(features::define_missing_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
+                    extra.extend(
+                        features::define_missing_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
                     extra.extend(column_actions(&snap, &derived, &uri, artifact_cap));
-                    extra.extend(features::declare_missing_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
-                    extra.extend(features::private_ref_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
-                    extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
-                    extra.extend(features::extract_cte_action(&snap.ctx, doc, &uri, range));
+                    extra.extend(
+                        features::declare_missing_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        features::private_ref_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        features::expand_star_action(&snap.ctx, doc, &uri, range)
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        features::extract_cte_action(&snap.ctx, doc, &uri, range)
+                            .map(CodeAction::at_cursor),
+                    );
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
                     extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
                     extra.extend(
