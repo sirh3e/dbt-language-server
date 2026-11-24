@@ -107,7 +107,10 @@ model, `:DbtFind` for fuzzy pickers (models, definitions, columns,
 lineage… in fzf-lua, snacks.picker or telescope when installed, else a
 built-in one), `:DbtBrowse` for the model explorer (upstream | model | downstream over
 its dbt SQL | compiled SQL), `:DbtGraph`
-and `:DbtDag` for the graph browsers, `:DbtSchema`,
+and `:DbtDag` for the graph browsers, `:DbtReferences` (`grr`) for
+where a model or macro is used and `:DbtMacros` for every macro's
+callers, `:DbtRename` (`grn`) to rename a model or macro after a preview
+of the edit, `:DbtSchema`,
 `:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more. `gra` (or
 `<leader>dA`) opens every code action at the cursor — the server's fixes
 and refactors with a diff preview, and the plugin's own commands — in a

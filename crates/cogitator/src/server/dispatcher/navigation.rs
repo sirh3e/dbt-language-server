@@ -4,11 +4,21 @@
 //! the call hierarchy's prepare and outgoing calls. File-reading work is
 //! offloaded (05 §6.1).
 
-use cogitator_analysis::features;
+use cogitator_analysis::{features, Document};
 use cogitator_lsp::{error_codes, Envelope, ErrorResponse, ResultResponse};
 
 use super::Dispatcher;
 use crate::server::reply::Reply;
+
+/// The file behind `uri` parsed from disk when the editor has not opened
+/// it, so a position in an unopened file (a macro picked from a list)
+/// still names what is there. Offloaded handlers only: it reads a file.
+fn on_disk(snap: &crate::server::snapshot::Snapshot, uri: &str) -> Option<Document> {
+    if snap.doc.is_some() {
+        return None;
+    }
+    Document::from_disk(uri, &snap.ctx.dialect)
+}
 
 impl Dispatcher {
     pub(super) fn references(&mut self, content: &[u8]) {
@@ -26,7 +36,8 @@ impl Dispatcher {
         let include_declaration = params.context.include_declaration;
         let snap = self.snapshot_for(&uri);
         self.offload_blocking(req.id, "textDocument/references", move || {
-            let doc = snap.doc.as_deref();
+            let disk = on_disk(&snap, &uri);
+            let doc = snap.doc.as_deref().or(disk.as_ref());
             // a name local to the file first, then every dbt kind
             let locations =
                 features::local_references(&snap.ctx, doc, &uri, position, include_declaration)
@@ -52,7 +63,8 @@ impl Dispatcher {
         let position = params.position;
         let snap = self.snapshot_for(&uri);
         self.offload_blocking(req.id, "textDocument/rename", move || {
-            let doc = snap.doc.as_deref();
+            let disk = on_disk(&snap, &uri);
+            let doc = snap.doc.as_deref().or(disk.as_ref());
             let read = |p: &std::path::Path| std::fs::read_to_string(p).ok();
             // local name → var → column → macro → model: the first that names the cursor
             let answer = None
