@@ -24,17 +24,42 @@ message with a Reason and a Solution. A file has at most one: the first
 Jinja error, else the first SQL error. Compiled SQL under
 `target/compiled` and `target/run` is not checked.
 
+### Incremental models, loops and macros: checked as dbt renders them
+
+A model whose Jinja is only `{{ … }}` is checked with the Jinja masked,
+at the exact place. A model with control flow — `{% if is_incremental()
+%}`, `{% for %}`, any other `{% if %}`, a `{% set x %}…{% endset %}`
+block — or with an error right next to a `{{ … }}`, is **rendered the
+way dbt renders it** and the result checked: the project's macros,
+`ref()` and `source()` (relations with `.identifier`, `.schema`,
+`.database`; `ref('m', v=2)` too), `this`, `var()`, `env_var()`,
+`config()`, `target`, `execute` (true, as while dbt compiles),
+`invocation_id` and `run_started_at`.
+
+- An incremental model is rendered **twice**, `is_incremental()` false
+  (a full refresh, the first run) and true (every later run), and each
+  rendering is checked; the message says which one fails.
+- The error is pointed at the model's own text where the rendered text
+  around it is found there (a loop body, a `set` block), else at the
+  model's first line, and the message quotes the rendered line.
+- What needs a warehouse is not rendered, so not checked: `run_query`,
+  `adapter.*`, `return(…)` from a macro, a package's namespace
+  (`dbt_utils.…`) that is not among the macros read, a var with no value.
+- In an editor, the first pull of diagnostics (`textDocument/diagnostic`)
+  reads the project's macro files once per project state and builds the
+  renderer; from then on every push (didOpen/didChange/didSave) reuses it,
+  so a model with control flow is checked as you type. Before that first
+  pull such a model's SQL is not checked. `cogitator lint` renders always.
+- `RUST_LOG=cogitator::syntax=trace cogitator lint` says per file what the
+  check did and why it declined.
+
 ### When it says nothing
 
 A false syntax error is worse than a missed one, so the SQL layer
 **declines** whenever it cannot be sure (the confidence rule of
 `specs/rust-port/07` §3.2):
 
-- the template has control blocks (`{% if %}`, `{% for %}`, `{% call %}`…)
-  other than `config` and `set`: the SQL's shape depends on them;
-- it has a `{% set x %}…{% endset %}` block, whose body is not SQL;
-- the error sits inside, or right after, a masked `{{ … }}` — a macro can
-  render anything, not just the identifier that stands in for it;
+- a model with control flow that cannot be rendered (above);
 - any other dialect sqlparser knows accepts the SQL;
 - the error is at or right after a warehouse extension sqlparser parses
   only in part (`ASOF LEFT JOIN`, `POSITIONAL JOIN`, `ANTI`/`SEMI` joins,

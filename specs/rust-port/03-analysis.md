@@ -652,8 +652,23 @@ source `cogitator`, the message a Guidance with Reason and Solution:
 - **`sql-syntax`**, only when the Jinja layer is clean: the template
   masked by `cogitator_duckdb::mask_jinja` (07 §3.1) and parsed with
   sqlparser in the project's dialect. The 07 §3.2 confidence rule
-  holds, widened: decline on control blocks other than config/set, on
-  block-form `set`, on an error inside or right after a masked region,
+  holds, widened. A template with control blocks other than
+  config/set, a block-form `set`, or an error inside or right after a
+  masked region is checked **rendered** instead (`syntax/render.rs`,
+  `SyntaxRenderer`): dbt.expandJinja's environment made strict
+  (UndefinedBehavior::Strict, fuel `RENDER_FUEL`), the project's macro
+  files made parseable and concatenated ahead, `ref`/`source`/`this` as
+  relation objects (`.database`, `.schema`, `.identifier`), `ref(…, v=)`,
+  `execute` true, `invocation_id`, `run_started_at`; rendered with
+  `is_incremental()` false and true, each distinct rendering parsed, an
+  error mapped back to the template by the rendered text around it
+  (unique match, shortened from the left; else the first line) and its
+  rendered line quoted. A render error (an undefined name — `run_query`,
+  `adapter`, `return`, a package namespace —, fuel) declines. The shell
+  builds the renderer once per context snapshot (`DerivedCache::
+  syntax_renderer`, on the pull path, which reads the macro files);
+  the push path uses it only once built (`syntax_renderer_cached`) and
+  so stays fs-free; `cogitator lint` builds one per run. Declines also
   when any other sqlparser dialect accepts the SQL, on an error at or
   after a listed warehouse extension sqlparser covers only in part
   (`EXTENSIONS`: `asof`, `positional`, `anti`, `semi`, `lambda`,

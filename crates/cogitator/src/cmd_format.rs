@@ -39,6 +39,7 @@ enum Outcome {
 }
 
 pub fn run(args: &FormatArgs, profiles_dir: Option<&str>, target: Option<&str>) -> i32 {
+    cmd_common::init_logs();
     let project = match cmd_common::load_project(&args.project_dir, profiles_dir, target) {
         Ok(project) => project,
         Err(guidance) => return cmd_common::fail(&guidance),

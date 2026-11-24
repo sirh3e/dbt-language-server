@@ -138,3 +138,16 @@ pub fn fail(guidance: &Guidance) -> i32 {
     eprintln!("cogitator: {}", guidance.to_message());
     USAGE
 }
+
+/// `RUST_LOG=cogitator::syntax=trace cogitator lint`: the CLI's own logs
+/// on stderr (why a check declined a file), only when asked for.
+pub fn init_logs() {
+    if std::env::var_os("RUST_LOG").is_none() {
+        return;
+    }
+    let _ = tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_ansi(false)
+        .try_init();
+}

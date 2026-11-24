@@ -124,3 +124,28 @@ fn format_check_then_format_then_clean() {
         "a declined file stays byte-identical"
     );
 }
+
+#[test]
+fn lint_checks_incremental_models_and_loops() {
+    let project = jaffle();
+    let good = project.root.join("models/incremental_ok.sql");
+    std::fs::write(
+        &good,
+        "{{ config(materialized='incremental') }}\nselect customer_id from {{ ref('stg_customers') }}\n{% if is_incremental() %}where customer_id > (select max(customer_id) from {{ this }}){% endif %}\n",
+    )
+    .unwrap();
+    let clean = cogitator(&project, &["lint"]);
+    assert_eq!(clean.status.code(), Some(0), "{}", stdout(&clean));
+
+    let looped = project.root.join("models/looped.sql");
+    std::fs::write(
+        &looped,
+        "select\n{% for c in ['customer_id', 'first_name'] %}max({{ c }}) as {{ c }} {% endfor %}\nfrom {{ ref('stg_customers') }}\n",
+    )
+    .unwrap();
+    let found = cogitator(&project, &["lint"]);
+    assert_eq!(found.status.code(), Some(1), "{}", stdout(&found));
+    let out = stdout(&found);
+    assert!(out.contains("models/looped.sql:2:"), "{out}");
+    assert!(out.contains("as dbt renders it"), "{out}");
+}

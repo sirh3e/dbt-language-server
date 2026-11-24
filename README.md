@@ -72,8 +72,10 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   (`textDocument/diagnostic`)
 - **Syntax errors as you type**, no `dbt compile` first: Jinja errors
   (unclosed `{% if %}`, stray `{% endif %}`, unbalanced `{{ }}`) and SQL
-  errors in the masked SQL, declining whenever the Jinja makes the SQL
-  uncertain ([docs/lint-and-format.md](docs/lint-and-format.md))
+  errors in the masked SQL — and incremental models, `{% for %}` loops and
+  macros checked as dbt renders them (`is_incremental()` both ways),
+  declining only what needs a warehouse
+  ([docs/lint-and-format.md](docs/lint-and-format.md))
 - **`cogitator lint`** and **`cogitator format`** for CI: every
   editor-free diagnostic over the whole project (text, JSON or GitHub
   annotations, exit 1 on errors), and the formatter in place or as

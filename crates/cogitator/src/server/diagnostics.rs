@@ -13,6 +13,7 @@ pub fn static_diagnostics(
     uri: &str,
     lints: features::lint::LintOptions,
     lineage: Option<&cogitator_analysis::lineage::ModelLineage>,
+    renderer: Option<&features::syntax::SyntaxRenderer>,
 ) -> Vec<Diagnostic> {
     let Some(doc) = doc else {
         return Vec::new();
@@ -51,6 +52,7 @@ pub fn static_diagnostics(
                 &ctx.dialect,
                 features::syntax::SyntaxOptions {
                     sql: !duckdb_parses(ctx),
+                    renderer,
                 },
             ));
         }
@@ -84,7 +86,9 @@ pub fn push_diagnostics(
     perf: &features::plan::diagnostics_config::PerfSettings,
 ) -> Vec<Diagnostic> {
     // push stays lineage-free; the pull path adds the lineage-backed checks
-    let mut items = static_diagnostics(ctx, doc, uri, lints, None);
+    // the renderer only once the pull path built it: push never reads files
+    let renderer = derived.syntax_renderer_cached(std::sync::Arc::as_ptr(ctx) as usize);
+    let mut items = static_diagnostics(ctx, doc, uri, lints, None, renderer.as_deref());
     if let Some(root) = ctx.project_root.as_deref() {
         let set = derived.artifacts_cached(root);
         items.extend(features::artifact_diagnostics(ctx, uri, &set));

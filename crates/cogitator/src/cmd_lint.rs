@@ -50,6 +50,7 @@ struct Finding {
 }
 
 pub fn run(args: &LintArgs, profiles_dir: Option<&str>, target: Option<&str>) -> i32 {
+    cmd_common::init_logs();
     let project = match cmd_common::load_project(&args.project_dir, profiles_dir, target) {
         Ok(project) => project,
         Err(guidance) => return cmd_common::fail(&guidance),
@@ -105,6 +106,15 @@ fn lint_files(project: &Project, files: &[PathBuf]) -> Vec<Finding> {
     let flags = project.config.lint.flags(lint_flags::DEFAULT_ON);
     let lints = LintOptions::from_flags(flags);
     let rules = cogitator_astgrep::Rules::load(&project.root);
+    // models with control flow are checked as dbt renders them
+    let renderer = lints.syntax.then(|| {
+        features::syntax::SyntaxRenderer::new(crate::server::handlers::commands::preview_inputs_of(
+            &project.ctx,
+            None,
+            None,
+            "default".to_string(),
+        ))
+    });
     let mut out = Vec::new();
     for path in files {
         let Ok(text) = std::fs::read_to_string(path) else {
@@ -130,6 +140,7 @@ fn lint_files(project: &Project, files: &[PathBuf]) -> Vec<Finding> {
             &uri,
             lints,
             None,
+            renderer.as_ref(),
         );
         items.extend(crate::server::astgrep::diagnostics(&rules, &uri, &doc.text));
         if features::selectors_yml::is_selectors_file(&uri) {

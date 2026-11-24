@@ -10,7 +10,10 @@
 //! that some other dialect accepts) is a decline. Pure over the text.
 
 mod jinja;
+mod render;
 mod sql;
+
+pub use render::SyntaxRenderer;
 
 #[cfg(test)]
 mod tests;
@@ -36,15 +39,21 @@ pub(crate) struct Finding {
 }
 
 /// Which layers are checked: Jinja always, SQL unless another engine
-/// (the DuckDB parser) already reports it for this document.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SyntaxOptions {
+/// (the DuckDB parser) already reports it for this document; and the
+/// renderer that checks a model with control flow as dbt renders it
+/// (none: such a model's SQL is not checked).
+#[derive(Clone, Copy)]
+pub struct SyntaxOptions<'a> {
     pub sql: bool,
+    pub renderer: Option<&'a SyntaxRenderer>,
 }
 
-impl Default for SyntaxOptions {
+impl Default for SyntaxOptions<'_> {
     fn default() -> Self {
-        SyntaxOptions { sql: true }
+        SyntaxOptions {
+            sql: true,
+            renderer: None,
+        }
     }
 }
 
@@ -55,7 +64,7 @@ pub fn syntax_diagnostics(
     text: &str,
     uri: &str,
     dialect: &Dialect,
-    options: SyntaxOptions,
+    options: SyntaxOptions<'_>,
 ) -> Vec<Diagnostic> {
     if !applies_to(uri) {
         return Vec::new();
@@ -64,11 +73,21 @@ pub fn syntax_diagnostics(
         return vec![diagnostic(text, found, JINJA_CODE)];
     }
     if options.sql {
-        if let Some(found) = sql::check(text, dialect) {
+        let model = model_of(uri);
+        if let Some(found) = sql::check(text, dialect, &model, options.renderer) {
             return vec![diagnostic(text, found, SQL_CODE)];
         }
     }
     Vec::new()
+}
+
+/// The model a file defines: its file stem (`{{ this }}` resolves by it).
+fn model_of(uri: &str) -> String {
+    let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+    std::path::Path::new(&path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// A dbt SQL file, not compiled output (`target/compiled`, `target/run`).

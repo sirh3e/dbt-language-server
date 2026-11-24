@@ -3,6 +3,7 @@
 //! artifact merge, and the workspace-wide report with revision ids.
 
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use cogitator_analysis::features;
 
@@ -248,12 +249,23 @@ impl Dispatcher {
                     artifact_cap,
                 )
             });
+            // a model with control flow is checked as dbt renders it: the
+            // renderer reads the macro files once per snapshot, here, off
+            // the dispatcher (push reuses it)
+            let renderer = (lints.syntax && uri.ends_with(".sql")).then(|| {
+                derived.syntax_renderer(Arc::as_ptr(&snap.ctx) as usize, || {
+                    cogitator_analysis::features::syntax::SyntaxRenderer::new(
+                        crate::server::handlers::commands::preview_inputs(&snap, &derived),
+                    )
+                })
+            });
             let mut items = crate::server::diagnostics::static_diagnostics(
                 &snap.ctx,
                 snap.doc.as_deref(),
                 &uri,
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
+                renderer.as_deref(),
             );
             if let (Some(open), Some(doc)) = (selectors_open, snap.doc.as_deref()) {
                 items.extend(crate::server::selectors::unmatched(

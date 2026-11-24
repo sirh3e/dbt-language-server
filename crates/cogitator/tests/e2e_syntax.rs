@@ -111,3 +111,64 @@ fn syntax_errors_appear_and_clear_as_you_type() {
     });
     lsp.shutdown();
 }
+
+/// An incremental model and a `{% for %}` loop: checked as dbt renders
+/// them, on pull (which builds the renderer) and then on every push.
+#[test]
+fn incremental_models_and_loops_are_checked_as_dbt_renders_them() {
+    const INCREMENTAL_BROKEN: &str = "{{ config(materialized='incremental') }}\n\
+        select customer_id from {{ ref('stg_customers') }}\n\
+        {% if is_incremental() %}\n\
+        where customer_id > (select max(customer_id) from {{ this }}) and\n\
+        {% endif %}\n";
+    const INCREMENTAL_GOOD: &str = "{{ config(materialized='incremental') }}\n\
+        select customer_id from {{ ref('stg_customers') }}\n\
+        {% if is_incremental() %}\n\
+        where customer_id > (select max(customer_id) from {{ this }})\n\
+        {% endif %}\n";
+    const LOOP_BROKEN: &str = "select\n\
+        {% for c in ['customer_id', 'first_name'] %}max({{ c }}) as {{ c }} {% endfor %}\n\
+        from {{ ref('stg_customers') }}\n";
+    let project = jaffle();
+    let path = project.root.join("models/incremental_probe.sql");
+    std::fs::write(&path, INCREMENTAL_GOOD).unwrap();
+    let (mut lsp, _) = project.booted();
+    let uri = cogitator_lsp::fs_path_to_uri(&path);
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": INCREMENTAL_GOOD}}),
+    );
+    assert!(!pulled(&mut lsp, &uri)
+        .iter()
+        .any(|c| c.ends_with("-syntax")));
+
+    change(&mut lsp, &uri, 2, INCREMENTAL_BROKEN);
+    let response = lsp.request(
+        "textDocument/diagnostic",
+        json!({"textDocument": {"uri": uri}}),
+    );
+    let items = response["result"]["items"].as_array().unwrap().clone();
+    let found = items
+        .iter()
+        .find(|d| d["code"] == "sql-syntax")
+        .unwrap_or_else(|| panic!("{items:?}"));
+    assert_eq!(found["range"]["start"]["line"], 3, "{found}");
+    assert!(
+        found["message"]
+            .as_str()
+            .unwrap()
+            .contains("incremental run"),
+        "{found}"
+    );
+
+    // the pull built the renderer: a push now checks loops as you type
+    change(&mut lsp, &uri, 3, LOOP_BROKEN);
+    published(&mut lsp, &uri, |codes| {
+        codes.iter().any(|c| c == "sql-syntax")
+    });
+    change(&mut lsp, &uri, 4, INCREMENTAL_GOOD);
+    published(&mut lsp, &uri, |codes| {
+        !codes.iter().any(|c| c.ends_with("-syntax"))
+    });
+    lsp.shutdown();
+}
