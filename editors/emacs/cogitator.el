@@ -910,12 +910,60 @@ it is applied to every match after asking."
               "dbt.astGrep" (append argument (list :apply t))
               (lambda (_) (message "cogitator: rewrote %d matches" (length matches)))))))))))
 
+;; node selection (dbt.select): dbt's --select syntax, as `dbt ls' answers it
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--select-line (node)
+  "One completion line for a dbt.select NODE: its name, kind and tags."
+  (let ((version (plist-get node :version))
+        (graph (plist-get node :graphId))
+        (tags (append (plist-get node :tags) nil)))
+    (format "%s  [%s]%s"
+            (cond ((and (stringp version) (not (string-empty-p version)))
+                   (format "%s.v%s" (plist-get node :name) version))
+                  ((and (equal (plist-get node :resourceType) "source") (stringp graph))
+                   (format "%s.%s" (string-remove-prefix "source:" graph) (plist-get node :name)))
+                  (t (plist-get node :name)))
+            (replace-regexp-in-string "_" " " (plist-get node :resourceType))
+            (if tags (concat "  #" (mapconcat #'identity tags " #")) ""))))
+
+(defvar cogitator-select-history nil "Selections typed into `cogitator-select'.")
+
+;;;###autoload
+(defun cogitator-select (selection)
+  "Nodes a dbt SELECTION picks (dbt.select), as `dbt ls --select' would.
+SELECTION is dbt's syntax: tag:nightly, +dim_items, @m, a,b (both),
+a b (either), stg_*, config.materialized:incremental, and an inline
+`--exclude resource_type:test'.  Visit the node you choose."
+  (interactive (list (read-string "dbt select: " nil 'cogitator-select-history)))
+  (cogitator--execute
+   "dbt.select" (append (cogitator--command-argument) (list :select selection))
+   (lambda (result)
+     (let* ((err (plist-get result :error))
+            (nodes (append (plist-get result :nodes) nil))
+            (choices (mapcar (lambda (n) (cons (cogitator--select-line n) n)) nodes)))
+       (cond
+        ((and err (not (eq err :null)))
+         (message "cogitator: %s (at %d)" (plist-get err :message) (plist-get err :start)))
+        ((null choices) (message "cogitator: %s selects nothing" selection))
+        (t
+         (let* ((pick (completing-read (format "%s — %d nodes: " selection (length choices))
+                                       (mapcar #'car choices) nil t))
+                (node (cdr (assoc pick choices)))
+                (uri (plist-get node :uri))
+                (range (plist-get node :range)))
+           (when (stringp uri)
+             (find-file (cogitator--uri-to-path uri))
+             (when (and range (not (eq range :null)))
+               (goto-char (point-min))
+               (forward-line (plist-get (plist-get range :start) :line)))))))))))
+
 ;; unresolved names (dbt.unresolved)
 ;; ---------------------------------------------------------------------------
 
 (defun cogitator--unresolved-line (item)
   "One grep-style line for a dbt.unresolved ITEM.
-As file:line:column: [kind] name — message."
+It reads file:line:column: [kind] name — message."
   (let ((start (plist-get (plist-get item :range) :start)))
     (format "%s:%d:%d: [%s] %s — %s"
             (cogitator--uri-to-file (plist-get item :uri))
@@ -925,7 +973,6 @@ As file:line:column: [kind] name — message."
             (plist-get item :name)
             (or (plist-get item :message) ""))))
 
-;; the nodes a selector picks (dbt.select)
 ;; ---------------------------------------------------------------------------
 ;; schema-YAML sync (dbt.syncYaml)
 ;; ---------------------------------------------------------------------------
@@ -1028,39 +1075,6 @@ buffer (or the models of this properties file).  See
                 (lambda (_) (message "cogitator: schema YAML synced")))))))))))
 
 ;; ---------------------------------------------------------------------------
-
-(defun cogitator--select-line (node)
-  "One grep-style line for a dbt.select NODE: file:line:column: [kind] name."
-  (let ((start (plist-get (plist-get node :range) :start))
-        (uri (plist-get node :uri)))
-    (format "%s:%d:%d: [%s] %s"
-            (if (and uri (not (string-empty-p uri))) (cogitator--uri-to-file uri) "")
-            (1+ (or (plist-get start :line) 0))
-            (1+ (or (plist-get start :character) 0))
-            (plist-get node :kind)
-            (plist-get node :name))))
-
-;;;###autoload
-(defun cogitator-select (selector)
-  "The nodes the dbt SELECTOR picks, as `dbt ls' lists them (dbt.select).
-`selector:NAME' evaluates a selectors.yml entry.  The nodes land in a
-grep buffer, one per line, at their definition."
-  (interactive (list (read-string "dbt selector: ")))
-  (cogitator--execute
-   "dbt.select" (list :uri "" :selector selector)
-   (lambda (result)
-     (let ((nodes (append (plist-get result :nodes) nil))
-           (issues (append (plist-get result :issues) nil))
-           (buf (get-buffer-create "*cogitator-select*")))
-       (with-current-buffer buf
-         (let ((inhibit-read-only t))
-           (erase-buffer)
-           (insert (format "-*- dbt select %s: %d -*-\n\n" selector (plist-get result :count)))
-           (dolist (issue issues) (insert (format "; %s\n" issue)))
-           (insert (mapconcat #'cogitator--select-line nodes "\n") "\n"))
-         (require 'grep)
-         (grep-mode))
-       (display-buffer buf)))))
 
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)
@@ -1388,6 +1402,37 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
       :priority 1
       :server-id 'cogitator)))
   (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
+
+;; ---------------------------------------------------------------------------
+;; the lineage page (dbt.lineageSite)
+
+(defun cogitator--lineage-site-message (result)
+  "The message for a dbt.lineageSite RESULT written to disk, or nil."
+  (when-let* ((written (and (listp result) (plist-get result :written)))
+              (path (plist-get written :path)))
+    (let ((counts (plist-get result :counts)))
+      (format "cogitator: lineage page %s — %s of %s columns traced, %s undetermined, %s models declined"
+              path
+              (or (plist-get counts :columnsTraced) 0)
+              (or (plist-get counts :columns) 0)
+              (or (plist-get counts :columnsUndetermined) 0)
+              (or (plist-get counts :modelsDeclined) 0)))))
+
+;;;###autoload
+(defun cogitator-lineage-site ()
+  "Write the project's column-lineage page and open it in the browser.
+The server writes target/cogitator-lineage/index.html (`dbt.lineageSite'
+with write); the page works offline."
+  (interactive)
+  (cogitator--execute
+   "dbt.lineageSite"
+   (append (cogitator--command-argument) '(:write t))
+   (lambda (result)
+     (let ((text (cogitator--lineage-site-message result)))
+       (if (not text)
+           (message "cogitator: no dbt project is loaded, so there is no lineage page")
+         (message "%s" text)
+         (browse-url-of-file (plist-get (plist-get result :written) :path)))))))
 
 (provide 'cogitator)
 ;;; cogitator.el ends here

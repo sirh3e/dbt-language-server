@@ -40,6 +40,16 @@ pub struct SyntaxError {
 pub fn parse(text: &str) -> Result<Selection, SyntaxError> {
     let mut union = Vec::new();
     for (start, word) in words(text, |c| c.is_whitespace()) {
+        // `a,,b`, `,a`, `a,`: dbt reads an empty criterion there
+        let bytes = word.as_bytes();
+        if let Some(at) = (0..bytes.len())
+            .find(|&i| bytes[i] == b',' && (i == 0 || bytes[i - 1] == b',' || i + 1 == bytes.len()))
+        {
+            return Err(SyntaxError {
+                span: (start + at, start + at + 1),
+                message: format!("`{word}`: an empty criterion at a `,`"),
+            });
+        }
         let mut intersection = Vec::new();
         for (offset, part) in words(word, |c| c == ',') {
             intersection.push(criterion(part, start + offset)?);

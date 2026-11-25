@@ -54,6 +54,7 @@ pub fn build(ctx: &DbtContext, read: &Read<'_>) -> Universe {
     b.read_properties();
     b.models();
     b.sources();
+    b.yaml_snapshots();
     b.tests();
     b.citizens();
     b.link_sql();
@@ -83,6 +84,14 @@ impl Builder<'_> {
             .filter_map(|m| m.schema_uri.clone())
             .collect();
         files.extend(self.ctx.source_detail_map.values().map(|s| s.uri.clone()));
+        // a file of YAML snapshots documents no model and defines no source
+        if let Some(root) = &self.ctx.project_root {
+            for dir in &self.ctx.project.snapshot_paths {
+                for ext in [".yml", ".yaml"] {
+                    files.extend(crate::util::walk_filepath(&root.join(dir), ext));
+                }
+            }
+        }
         self.properties = files
             .into_iter()
             .filter_map(|path| Some((path.clone(), properties::read(&(self.read)(&path)?))))
@@ -154,7 +163,11 @@ impl Builder<'_> {
                 config.insert("materialized".into(), Value::from(materialized));
             }
             let mut tags = config::tag_list(config.get("tags"));
-            for tag in &details.tags {
+            let sql_tags = sql
+                .as_deref()
+                .map(crate::util::config_tags)
+                .unwrap_or_default();
+            for tag in details.tags.iter().chain(&sql_tags) {
                 if !tags.contains(tag) {
                     tags.push(tag.clone());
                 }
@@ -208,6 +221,57 @@ impl Builder<'_> {
         }
         for node in out {
             self.u.push(node);
+        }
+    }
+
+    /// dbt 1.9's snapshots defined in YAML alone (`relation:`, no
+    /// `{% snapshot %}` file), linked to the relation they read.
+    fn yaml_snapshots(&mut self) {
+        let mut out = Vec::new();
+        for (path, props) in &self.properties {
+            for entry in props.entries.iter().filter(|e| e.section == "snapshots") {
+                let Some(relation) = &entry.relation else {
+                    continue;
+                };
+                if self.ctx.model_detail_map.contains_key(&entry.name)
+                    || out
+                        .iter()
+                        .any(|(n, _, _): &(Node, _, _)| n.name == entry.name)
+                {
+                    continue;
+                }
+                let (package, rel, dirs) = self.locate(path);
+                let mut node = Node::new(ResourceType::Snapshot, &entry.name, &package);
+                node.fqn = std::iter::once(package)
+                    .chain(dirs)
+                    .chain(std::iter::once(entry.name.clone()))
+                    .collect();
+                let mut config = self.config("snapshots", &node.fqn, ResourceType::Snapshot);
+                config::layer(&mut config, &entry.config);
+                node.tags = config::tag_list(config.get("tags"));
+                config.insert("tags".into(), Value::from(node.tags.clone()));
+                node.config = config;
+                node.path = rel;
+                node.uri = path.clone();
+                node.range = entry.range;
+                out.push((
+                    node,
+                    properties::ref_name(relation),
+                    properties::source_name(relation),
+                ));
+            }
+        }
+        for (node, model, source) in out {
+            let name = node.name.clone();
+            let idx = self.u.push(node);
+            self.by_ref.insert(name, idx);
+            self.deps.push((
+                idx,
+                SqlDeps {
+                    refs: model.into_iter().collect(),
+                    sources: source.into_iter().collect(),
+                },
+            ));
         }
     }
 

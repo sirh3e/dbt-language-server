@@ -36,7 +36,11 @@ return function(ctx, dag)
   select_named("orders")
   local orders = s.selected
   H.feed("l")
-  H.check(s.boxes[s.selected].node.name == "customer_orders", "dag motions: l follows an edge to a child", s.selected)
+  H.check(
+    s.boxes[s.selected].node.name == "customer_orders",
+    "dag motions: l follows an edge to a child",
+    s.selected
+  )
   cursor_on_selection("dag motions: the cursor sits on the selected box")
   H.feed("h")
   H.check(s.selected == orders, "dag motions: h returns along the path it came", s.selected)
@@ -100,13 +104,27 @@ return function(ctx, dag)
   for _, m in ipairs(vim.api.nvim_buf_get_extmarks(s.buf, paint.STATIC_NS, 0, -1, { details = true })) do
     groups[m[4].hl_group] = true
   end
-  H.check(groups.DbtDagModel and groups.DbtDagEdge, "dag motions: models and edges are coloured", vim.inspect(groups))
+  H.check(
+    groups.DbtDagModel and groups.DbtDagEdge,
+    "dag motions: models and edges are coloured",
+    vim.inspect(groups)
+  )
   local picked = {}
   for _, m in ipairs(vim.api.nvim_buf_get_extmarks(s.buf, paint.SELECTION_NS, 0, -1, { details = true })) do
     picked[m[4].hl_group] = true
   end
-  H.check(picked.DbtDagSelected and picked.DbtDagSelectedEdge, "dag motions: the selection is coloured", vim.inspect(picked))
-  H.check(vim.api.nvim_get_hl(0, { name = "DbtDagModel" }).bg == 0x0094b3, "dag motions: the model colour is dbt-docs'")
+  H.check(
+    picked.DbtDagSelected and picked.DbtDagSelectedEdge,
+    "dag motions: the selection is coloured",
+    vim.inspect(picked)
+  )
+  H.check(
+    vim.api.nvim_get_hl(0, { name = "DbtDagModel" }).bg == 0x0094b3,
+    "dag motions: the model colour is dbt-docs'"
+  )
   vim.cmd.colorscheme("default")
-  H.check(vim.api.nvim_get_hl(0, { name = "DbtDagSource" }).bg == 0x5fb825, "dag motions: colours survive :colorscheme")
+  H.check(
+    vim.api.nvim_get_hl(0, { name = "DbtDagSource" }).bg == 0x5fb825,
+    "dag motions: colours survive :colorscheme"
+  )
 end

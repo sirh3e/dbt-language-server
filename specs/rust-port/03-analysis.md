@@ -633,6 +633,57 @@ the server running. value_hint drives the typing: `bool` → boolean,
 `MiB`/`ms` → integer ≥ 0, `[names]` → string array, `a|b|c` → closed
 string enum, anything else string.
 
+## Addendum: §10 syntax diagnostics
+
+`features/syntax/` reports Jinja and SQL syntax errors with no
+`dbt compile`, pure over a `.sql` buffer's text (compiled SQL under
+`target/compiled|run` excluded), at most one per file, Error severity,
+source `cogitator`, the message a Guidance with Reason and Solution:
+
+- **`jinja-syntax`**: minijinja's tokenizer, then its parser over the
+  template with dbt's block tags made parseable in place
+  (`rename_local::jinja::parseable`). Certain only: tokenizer errors
+  (unclosed `{{`/`{%`/`{#`/string/raw block, shown at the opener), a
+  closing tag no block opened (found by a tag-name block stack), and
+  parser errors starting with `unexpected` — an end-of-input error is
+  placed at the innermost unclosed opener. `unknown statement x`
+  (loop controls, extensions), reserved names and minijinja's limits
+  decline.
+- **`sql-syntax`**, only when the Jinja layer is clean: the template
+  masked by `cogitator_duckdb::mask_jinja` (07 §3.1) and parsed with
+  sqlparser in the project's dialect. The 07 §3.2 confidence rule
+  holds, widened. A template with control blocks other than
+  config/set, a block-form `set`, or an error inside or right after a
+  masked region is checked **rendered** instead (`syntax/render.rs`,
+  `SyntaxRenderer`): dbt.expandJinja's environment made strict
+  (UndefinedBehavior::Strict, fuel `RENDER_FUEL`), the project's macro
+  files made parseable and concatenated ahead, `ref`/`source`/`this` as
+  relation objects (`.database`, `.schema`, `.identifier`), `ref(…, v=)`,
+  `execute` true, `invocation_id`, `run_started_at`; rendered with
+  `is_incremental()` false and true, each distinct rendering parsed, an
+  error mapped back to the template by the rendered text around it
+  (unique match, shortened from the left; else the first line) and its
+  rendered line quoted. A render error (an undefined name — `run_query`,
+  `adapter`, `return`, a package namespace —, fuel) declines. The shell
+  builds the renderer once per context snapshot (`DerivedCache::
+  syntax_renderer`, on the pull path, which reads the macro files);
+  the push path uses it only once built (`syntax_renderer_cached`) and
+  so stays fs-free; `cogitator lint` builds one per run. Declines also
+  when any other sqlparser dialect accepts the SQL, on an error at or
+  after a listed warehouse extension sqlparser covers only in part
+  (`EXTENSIONS`: `asof`, `positional`, `anti`, `semi`, `lambda`,
+  `pivot`, …), on parser recursion limits, and past 512 KiB.
+
+The push set (didOpen/didChange/didSave) and pull diagnostics run it
+when cogitator.yml `lint.syntax` is on (default on; bit
+`lint_flags::SYNTAX`). Fusion owns syntax when enabled: the push path
+publishes nothing of its own and the pull path clears the bit. In a
+`duckdb-parser` build on a duckdb project, the SQL layer is left to
+DuckDB's parser (07 §3) and only the Jinja layer runs. The same set is
+what `cogitator lint` reports (04 §1.5). `selectors.yml` is
+syntax-checked only by `yaml_diagnostics`, never against the dbt
+properties schema.
+
 ## Addendum: §10 schema-YAML sync (dbt.syncYaml, `cogitator yaml-sync`)
 
 `features::yaml_sync::plan_sync(inputs, options) -> SyncPlan` is pure:

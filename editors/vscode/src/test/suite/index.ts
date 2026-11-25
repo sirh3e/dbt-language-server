@@ -13,6 +13,9 @@ import {
   astGrepLabel,
   breakingLines,
   captureColor,
+  columnPosition,
+  lineageFocus,
+  lineageHtml,
   incrementalDiffText,
   incrementalityLabel,
   languageOf,
@@ -22,7 +25,8 @@ import {
   previewCteText,
   skippedLayers,
   unresolvedLabel,
-  selectLabel,
+  selectedLabel,
+  selectionSummary,
   syncYamlLines,
   syncYamlSummary,
   spansByColor,
@@ -221,6 +225,33 @@ export async function run(): Promise<void> {
     "vscode: previewCteText is the server's table"
   );
   check(
+    lineageFocus("file:///p/models/stg_orders.sql") === "model:stg_orders" &&
+      lineageFocus("file:///p/models/schema.yml") === undefined,
+    "vscode: lineageFocus names the model of a SQL file"
+  );
+  check(
+    JSON.stringify(columnPosition("select\n  id as Customer_ID\n", "customer_id")) ===
+      JSON.stringify({ line: 1, character: 8 }),
+    "vscode: columnPosition finds the column as a word"
+  );
+  {
+    const html = lineageHtml("N0NCE", "vscode-resource:", { script: "x</script>", style: "a{}" });
+    check(
+      html.includes("script-src 'nonce-N0NCE'") &&
+        html.includes('<script nonce="N0NCE">x<\\/script></script>') &&
+        !/https?:\/\//.test(html),
+      "vscode: lineageHtml allows only its nonce and fetches nothing",
+      html
+    );
+  }
+  const site = (await exec("dbt.lineageSite", { assets: true })) as
+    | { site?: { nodes: unknown[] }; assets?: { script: string } }
+    | undefined;
+  check(
+    !!site?.site && site.site.nodes.length > 0 && !!site.assets?.script.includes("CogitatorLineage"),
+    "vscode: dbt.lineageSite answers the page's data and assets"
+  );
+  check(
     splitText({
       model: "m",
       sexp: "(split m)",
@@ -341,6 +372,30 @@ export async function run(): Promise<void> {
   );
   check(
     JSON.stringify(
+      selectedLabel({
+        uniqueId: "model.p.orders.v1",
+        resourceType: "model",
+        name: "orders",
+        version: "1",
+        tags: ["nightly"],
+      })
+    ) === JSON.stringify({ label: "orders.v1", description: "[model]  #nightly" }),
+    "vscode: a selected version is listed as dbt names it"
+  );
+  check(
+    selectionSummary({ model: 3, test: 2, unit_test: 1 }) === "6 · 3 models, 2 tests, 1 unit test",
+    "vscode: a selection's counts read kind by kind"
+  );
+  const selected = (await exec("dbt.select", {
+    uri: document.uri.toString(),
+    select: "+customers",
+  })) as { nodes: unknown[]; counts: Record<string, number> } | undefined;
+  check(
+    !!selected && selected.nodes.length > 3 && (selected.counts.model ?? 0) > 0,
+    "vscode: dbt.select answers +customers"
+  );
+  check(
+    JSON.stringify(
       astGrepLabel(
         {
           uri: "file:///p/models/a.sql",
@@ -419,26 +474,6 @@ export async function run(): Promise<void> {
     breakingResult
   );
 
-  check(
-    JSON.stringify(
-      selectLabel(
-        {
-          kind: "model",
-          name: "customers",
-          uri: "file:///p/models/customers.sql",
-          uniqueId: "model.p.customers",
-          range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
-        },
-        () => "models/customers.sql"
-      )
-    ) ===
-      JSON.stringify({
-        label: "[model] customers",
-        description: "models/customers.sql:1",
-        detail: "model.p.customers",
-      }),
-    "vscode: a selected node's quick-pick entry shows its kind and place"
-  );
   const selectResult = (await exec("dbt.select", {
     uri: document.uri.toString(),
     selector: "tag:nightly",

@@ -1,0 +1,4 @@
+state,meaning
+held,the inventory holds it
+moved,it left for another inventory
+consumed,it was used up

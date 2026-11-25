@@ -38,7 +38,8 @@ return function(ctx)
   H.check(border_ok, "canvas: edges leave box borders intact", lines[m.y])
 
   -- every recorded edge range covers only edge glyphs (bytes, not cells)
-  local edge_glyphs = { ["─"] = 1, ["│"] = 1, ["┼"] = 1, ["▸"] = 1, ["╮"] = 1, ["╯"] = 1, ["╭"] = 1, ["╰"] = 1 }
+  local edge_glyphs =
+    { ["─"] = 1, ["│"] = 1, ["┼"] = 1, ["▸"] = 1, ["╮"] = 1, ["╯"] = 1, ["╭"] = 1, ["╰"] = 1 }
   local only_edges = true
   for _, ranges in pairs(decor.edges) do
     for _, r in ipairs(ranges) do
@@ -51,12 +52,19 @@ return function(ctx)
 
   -- a box's range starts on its ╭ even after multi-byte glyphs on the row
   local r = decor.boxes.z[1]
-  H.check(lines[r[1] + 1]:sub(r[2] + 1, r[2] + 3) == "╭", "canvas: box range is byte-accurate", vim.inspect(r))
+  H.check(
+    lines[r[1] + 1]:sub(r[2] + 1, r[2] + 3) == "╭",
+    "canvas: box range is byte-accurate",
+    vim.inspect(r)
+  )
 
   local index = layout.index(boxes)
   H.check(layout.box_at(index, m.y, m.x) == m, "layout: box_at hits a box corner")
   H.check(layout.box_at(index, m.y, m.x - 1) == nil, "layout: box_at misses beside a box")
-  H.check(#index.layers[2] == 2 and index.layers[2][1].y < index.layers[2][2].y, "layout: layers sorted by row")
+  H.check(
+    #index.layers[2] == 2 and index.layers[2][1].y < index.layers[2][2].y,
+    "layout: layers sorted by row"
+  )
 
   local nav = require("cogitator.dag_nav")
   local history = nav.new_history()
@@ -66,15 +74,25 @@ return function(ctx)
   H.check(nav.travel(history, -1) == "b", "nav: history goes back")
   nav.visit(history, "d")
   H.check(nav.travel(history, 1) == nil, "nav: a new visit drops the forward history")
-  H.check(nav.travel(history, -1) == "b" and nav.travel(history, -1) == "a", "nav: history keeps the older visits")
+  H.check(
+    nav.travel(history, -1) == "b" and nav.travel(history, -1) == "a",
+    "nav: history keeps the older visits"
+  )
   H.check(nav.travel(history, -1) == nil, "nav: history stops at the oldest")
 
   local g = { boxes = boxes, index = index, adjacency = adjacency }
   local memory = nav.new_memory()
   H.check(nav.neighbour(g, memory, "a", "parent") == "a", "nav: no parent stays put")
   local child = nav.neighbour(g, memory, "z", "parent")
-  H.check(nav.neighbour(g, memory, child, "child") == "z", "nav: child returns where the parent move came from")
-  H.check(vim.deep_equal(nav.ordered(g), { "a", "m", "n", "z" }), "nav: reading order", vim.inspect(nav.ordered(g)))
+  H.check(
+    nav.neighbour(g, memory, child, "child") == "z",
+    "nav: child returns where the parent move came from"
+  )
+  H.check(
+    vim.deep_equal(nav.ordered(g), { "a", "m", "n", "z" }),
+    "nav: reading order",
+    vim.inspect(nav.ordered(g))
+  )
   H.check(nav.next_match(g, { "a", "n" }, "n", 1) == "a", "nav: search wraps forward")
   H.check(nav.next_match(g, { "a", "n" }, "a", -1) == "n", "nav: search wraps back")
 
@@ -89,7 +107,10 @@ return function(ctx)
 
   local prompt = require("cogitator.prompt")
   H.check(select(1, prompt.step("a", "ä")) == "aä", "prompt: multibyte input appends")
-  H.check(select(1, prompt.step("aä", vim.keycode("<BS>"))) == "a", "prompt: backspace removes one character")
+  H.check(
+    select(1, prompt.step("aä", vim.keycode("<BS>"))) == "a",
+    "prompt: backspace removes one character"
+  )
   H.check(select(2, prompt.step("a", vim.keycode("<Left>"))) == "leave", "prompt: special keys leave")
   H.check(select(1, prompt.step("a", "\27")) == "", "prompt: <Esc> clears")
 end

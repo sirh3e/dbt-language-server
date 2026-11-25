@@ -60,6 +60,15 @@
               '(:name "x" :list [1]))
        "client: lsp-mode hash tables normalize to plists")
 
+;; unit: the lineage page's message
+(check (equal (cogitator--lineage-site-message
+               '(:written (:path "/p/target/cogitator-lineage/index.html")
+                 :counts (:columnsTraced 25 :columns 39 :columnsUndetermined 14 :modelsDeclined 1)))
+              "cogitator: lineage page /p/target/cogitator-lineage/index.html — 25 of 39 columns traced, 14 undetermined, 1 models declined")
+       "lineage-site: message says where the page is and what was traced")
+(check (null (cogitator--lineage-site-message nil))
+       "lineage-site: no page, no message")
+
 ;; ---------------------------------------------------------------------------
 ;; integration: eglot against the live server and a fixture COPY
 ;; ---------------------------------------------------------------------------
@@ -138,6 +147,13 @@
   (check (and (plist-get caches :profiles)
               (numberp (plist-get (plist-get caches :profiles) :entries)))
          "integration: dbt.cache reports the derived-cache surfaces" caches))
+
+;; integration: dbt.lineageSite writes the page under target/
+(let ((site (run--exec "dbt.lineageSite"
+                       (append (cogitator--command-argument) '(:write t)))))
+  (check (and (file-exists-p (plist-get (plist-get site :written) :path))
+              (> (plist-get (plist-get site :counts) :columnsTraced) 0))
+         "integration: dbt.lineageSite writes the page" site))
 
 ;; pickers + doctor parity: the data each one feeds on, plus rendering
 (let ((graph (run--exec "dbt.projectGraph" (cogitator--command-argument))))
@@ -335,6 +351,21 @@
   (check (= (length (plist-get found :matches)) 4)
          "integration: dbt.astGrep finds the model's refs" (length (plist-get found :matches))))
 
+;; unit + integration: node selection
+(check (equal (cogitator--select-line
+               '(:name "orders" :version "1" :resourceType "model" :tags ["nightly"]))
+              "orders.v1  [model]  #nightly")
+       "select: a version is listed as dbt names it")
+(check (equal (cogitator--select-line
+               '(:name "items" :resourceType "source" :graphId "source:raw" :tags []))
+              "raw.items  [source]")
+       "select: a source table is source.table")
+(let ((found (run--exec "dbt.select" (append (cogitator--command-argument)
+                                              (list :select "+customers")))))
+  (check (and (> (length (plist-get found :nodes)) 3)
+              (plist-get (plist-get found :counts) :model))
+         "integration: dbt.select answers +customers" found))
+
 ;; unit + integration: unresolved names
 (check (equal (cogitator--unresolved-line
                '(:kind "ref" :name "ghost" :uri "file:///p/models/a.sql"
@@ -361,12 +392,7 @@
   (check (stringp (plist-get found :status))
          "integration: dbt.breakingChanges answers a status" found))
 
-;; unit + integration: dbt.select
-(check (equal (cogitator--select-line
-               '(:kind "model" :name "customers" :uri "file:///p/models/customers.sql"
-                 :range (:start (:line 0 :character 0) :end (:line 0 :character 0))))
-              "/p/models/customers.sql:1:1: [model] customers")
-       "select: a node is a grep line")
+;; integration: dbt.select with a selector, as the lenses send it
 (let ((found (run--exec "dbt.select" (append (cogitator--command-argument)
                                              (list :selector "tag:nightly")))))
   (check (and (numberp (plist-get found :count))

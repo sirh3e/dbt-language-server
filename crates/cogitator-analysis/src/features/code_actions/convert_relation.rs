@@ -146,6 +146,7 @@ pub fn convert_literal_relations(
             edit: Some(edit),
             command: None,
             is_preferred: None,
+            data: None,
         });
     }
     out

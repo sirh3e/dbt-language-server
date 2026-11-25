@@ -35,6 +35,9 @@ cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, a
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
+vim.api.nvim_create_user_command("DbtLineageSite", function()
+  require("cogitator.lineage_site").open()
+end, { desc = "write the project's column-lineage page and open it in the browser" })
 cmd("DbtBreakingChanges", "breaking_changes", "this model against its last built schema (quickfix)")
 vim.api.nvim_create_user_command("DbtUnresolved", function(opts)
   require("cogitator.commands").unresolved(opts)
@@ -54,11 +57,21 @@ end, {
   end,
   desc = "sync the models' schema YAML with their SQL: preview, then apply (dbt.syncYaml)",
 })
-vim.api.nvim_create_user_command("DbtSelect", function(opts)
-  require("cogitator.commands").select(opts)
+vim.api.nvim_create_user_command("DbtReferences", function(opts)
+  require("cogitator.usages").references({ bang = opts.bang })
 end, {
-  nargs = "*",
-  desc = "the nodes a dbt selector picks (quickfix; selector:<name> for selectors.yml)",
+  bang = true,
+  desc = "where the model, macro or source under the cursor is used (yazi dialog); ! the file's model",
+})
+vim.api.nvim_create_user_command("DbtMacros", function()
+  require("cogitator.usages").macros()
+end, { desc = "every macro, then where the chosen one is called (yazi dialog)" })
+vim.api.nvim_create_user_command("DbtRename", function(opts)
+  require("cogitator.rename").rename({ bang = opts.bang, args = opts.args })
+end, {
+  bang = true,
+  nargs = "?",
+  desc = "rename the model or macro under the cursor project-wide, after a preview; ! the file's model",
 })
 vim.api.nvim_create_user_command("DbtFind", function(opts)
   require("cogitator.pick").find(opts.args)
@@ -68,6 +81,15 @@ end, {
     return require("cogitator.pick.sources").ORDER
   end,
   desc = "fuzzy-find models, definitions, columns, lineage… (fzf-lua/snacks/telescope or built-in)",
+})
+vim.api.nvim_create_user_command("DbtSelect", function(opts)
+  require("cogitator.explorer").open({ select = opts.args ~= "" and opts.args or nil })
+end, {
+  nargs = "*",
+  complete = function(lead)
+    return require("cogitator.commands").select_completion(lead)
+  end,
+  desc = "dbt node selection in the navigator: tag:x +m @m a,b stg_* --exclude x (dbt.select)",
 })
 cmd("DbtSplit", "split", "split this table model at its incrementality frontier (dbt.splitPlan)")
 cmd("DbtIncrementality", "incrementality", "table models that could be incremental (quickfix)")
@@ -145,6 +167,10 @@ end, {
   complete = "dir",
   desc = "show the dbt profiles resolution, or switch the profiles directory",
 })
+
+vim.api.nvim_create_user_command("DbtInstall", function()
+  require("cogitator").install()
+end, { desc = "install (or update) the cogitator language server, then start it" })
 
 vim.api.nvim_create_user_command("DbtDeps", function()
   require("cogitator.dispatch").deps()

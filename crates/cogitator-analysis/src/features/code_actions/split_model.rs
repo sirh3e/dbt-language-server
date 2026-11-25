@@ -46,5 +46,6 @@ pub fn split_action(plan: &SplitPlan, uri: &str) -> Option<CodeAction> {
         }),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }

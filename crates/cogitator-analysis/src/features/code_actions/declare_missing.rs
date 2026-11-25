@@ -188,5 +188,6 @@ fn edit_action(title: String, document_changes: Vec<DocumentChange>) -> CodeActi
         edit: Some(WorkspaceEdit { document_changes }),
         command: None,
         is_preferred: None,
+        data: None,
     }
 }

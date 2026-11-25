@@ -206,6 +206,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.breakingChanges",
     "dbt.previewCte",
     "dbt.select",
+    "dbt.lineageSite",
     "dbt.syncYaml",
 ];
 

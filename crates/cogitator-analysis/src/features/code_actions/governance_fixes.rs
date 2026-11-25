@@ -152,6 +152,7 @@ fn action(title: String, schema: &Path, edit: TextEdit) -> CodeAction {
         }),
         command: None,
         is_preferred: None,
+        data: None,
     }
 }
 

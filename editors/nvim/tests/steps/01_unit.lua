@@ -201,6 +201,24 @@ return function(ctx)
     vim.inspect(items)
   )
 
+  -- :DbtLineageSite message
+  local site = require("cogitator.lineage_site")
+  local text, level = site.message({
+    written = { path = "/p/target/cogitator-lineage/index.html" },
+    counts = { columnsTraced = 25, columns = 39, columnsUndetermined = 14, modelsDeclined = 1 },
+  })
+  local none_text, none_level = site.message(nil)
+  local expected = "lineage page: /p/target/cogitator-lineage/index.html — "
+    .. "25 of 39 columns traced, 14 undetermined, 1 models declined"
+  H.check(
+    text == expected
+      and level == vim.log.levels.INFO
+      and none_level == vim.log.levels.WARN
+      and none_text:find("no dbt project", 1, true) ~= nil,
+    "lineage_site: message says where the page is and what was traced",
+    text
+  )
+
   -- :DbtUnresolved quickfix items
   local unresolved = require("cogitator.commands").unresolved_items({
     count = 1,
@@ -246,32 +264,6 @@ return function(ctx)
     vim.inspect(breaking)
   )
 
-  -- :DbtSelect quickfix items
-  local selected = require("cogitator.commands").select_items({
-    count = 2,
-    nodes = {
-      {
-        kind = "model",
-        name = "customers",
-        uniqueId = "model.p.customers",
-        uri = "file:///p/models/customers.sql",
-        range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
-      },
-      { kind = "source", name = "raw.orders", uri = "", range = { start = { line = 4, character = 8 } } },
-    },
-  })
-  H.check(
-    #selected == 2
-      and selected[1].filename == "/p/models/customers.sql"
-      and selected[1].lnum == 1
-      and selected[1].text == "[model] customers"
-      and selected[2].filename == ""
-      and selected[2].lnum == 5
-      and selected[2].col == 9,
-    "commands: select_items place each node at its definition",
-    vim.inspect(selected)
-  )
-
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")
@@ -291,6 +283,8 @@ return function(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_tools.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_async.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_pick.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_selection.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_explorer.lua"))(ctx)
   dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_tshl.lua"))(ctx)
+  dofile(vim.fs.joinpath(ctx.repo_root, "editors/nvim/tests/steps/unit_bootstrap.lua"))(ctx)
 end

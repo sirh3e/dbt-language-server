@@ -6,10 +6,13 @@ read, without running dbt. One engine
 (`crates/cogitator-analysis/src/selectors/`) serves every feature that
 reads a selector:
 
-- `dbt.select {selector}` lists the nodes a selector picks, as
-  `dbt ls --select` would: Neovim `:DbtSelect` (quickfix) and
-  `:DbtFind select` (picker), Emacs `M-x cogitator-select`, VS Code
-  "dbt: Select nodes" (a quick pick that jumps to each node).
+- `dbt.select {select, exclude?, vocabulary?}` lists the nodes a
+  selection picks, as `dbt ls --select … --exclude …` would, with their
+  counts, an error at its place (byte offsets) and, when asked, what
+  completion offers: Neovim `:DbtSelect`, `:DbtFind select` and the
+  navigator's `f` and `/` (live, `<Tab>` completes), Emacs
+  `M-x cogitator-select`, VS Code "dbt: Select nodes…" (a live quick
+  pick that jumps to each node).
 - In `selectors.yml`:
   - completion of methods (`method:` values and `method:` prefixes in a
     string) and of their values: tags, paths, file names, packages, node

@@ -204,3 +204,12 @@ fn unknown_schema_key_gets_position_and_suggestion() {
         d.message
     );
 }
+
+#[test]
+fn selectors_yml_is_not_validated_as_dbt_properties() {
+    let text = "selectors:\n  - name: nightly\n    definition: tag:nightly\n";
+    let diags = yaml_features::yaml_diagnostics("file:///tmp/p/selectors.yml", text);
+    assert!(diags.is_empty(), "{diags:?}");
+    let broken = yaml_features::yaml_diagnostics("file:///tmp/p/selectors.yml", "a: [\n");
+    assert_eq!(broken.len(), 1, "syntax still checked: {broken:?}");
+}

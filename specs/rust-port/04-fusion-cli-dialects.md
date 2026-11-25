@@ -15,6 +15,19 @@ Binary name: `dbt-language-server`. Behavior:
    *Resolved:* the port ships its own `install.sh`/`install.ps1` targeting this
    repository's releases; `upgrade` only prints that pointer and never
    self-mutates (deliberate deviation).
+1a. **`lineage-site` subcommand** (port addition, no Go counterpart):
+   `cogitator lineage-site [--project-dir DIR] [--out DIR] [--open]` builds
+   the context of DIR (default `.`), reads its `target/` artifacts, runs the
+   project schema job to completion, traces every model as `dbt.lineageSite`
+   does (`server::handlers::lineage_site`, shared with the server) and writes
+   `index.html` (one self-contained page: data, script and stylesheet inline,
+   a Content-Security-Policy that allows nothing remote) and `lineage.json`
+   into `--out` (default `DIR/target/cogitator-lineage`). Prints the page's
+   path on stdout and the counts on stderr; exit 0 written, 1 not (no
+   dbt_project.yml, an unwritable `--out`: Guidance with a Solution on
+   stderr). `--open` hands the page to `xdg-open` / `open` / `start`; a
+   failure there is a Guidance line, not an error. The data shape is
+   `cogitator_analysis::features::lineage_site::LineageSite` (format 1).
 2. Flags (pflag → clap):
    - `-v, --version` (bool): print version string + newline, exit 0.
    - `-d, --debug` (bool): enable file logging (01 §5).
@@ -28,6 +41,30 @@ Binary name: `dbt-language-server`. Behavior:
    result. (Go slices `output[0:len("dbt-fusion")]` — panics if output is shorter;
    guard with `starts_with` in Rust.) Errors are logged; server runs regardless.
 4. Then the stdio message loop (01 §3).
+5. **`lint` subcommand** (port addition; `crates/cogitator/src/cmd_lint.rs`):
+   `cogitator [--profiles-dir D] [--target T] lint [--project-dir DIR]
+   [--format text|json|github] [--max-warnings N] [paths…]`. Finds
+   `dbt_project.yml` at or above DIR (default `.`), reads its
+   `cogitator.yml`, builds the context as the server does, and runs the
+   server's static diagnostics (`server::diagnostics::static_diagnostics`,
+   lineage-free) plus the ast-grep rules and unmatched selectors over the
+   root project's files (`features::project_files`, selectors.yml,
+   cogitator.yml) or the given paths. Output on stdout:
+   `path:line:col: severity code: message` (1-based; the message's further
+   lines indented four spaces), a JSON array (`path, line, column, endLine,
+   endColumn, severity, code, source, message`) or GitHub workflow commands
+   (`::error|warning|notice file=…,line=…,col=…,endLine=…,endColumn=…,title=<code>::`
+   with `%`, CR, LF — and `:` `,` in properties — percent-escaped); a summary
+   on stderr. Exit 0 clean, 1 on an error or more warnings than N, 2 on a
+   usage/project error (Guidance with Reason and Solution on stderr).
+6. **`format` subcommand** (port addition; `cmd_format.rs`):
+   `cogitator format [--project-dir DIR] [--check [--diff]] [--indent N]
+   [paths…]`. Runs `format_document` (05 §9) over the root project's model
+   `.sql` files or the given paths. Default rewrites changed files in place
+   (`reformatted <path>` on stdout); `--check` writes nothing, prints
+   `would reformat <path>` (and with `--diff` a unified diff) and exits 1
+   if any file would change. A declined file (`format_document` → `None`)
+   is reported on stderr as `skipped` and never written.
 
 ## 2. Fusion compile → diagnostics (`fusion_compile`)
 

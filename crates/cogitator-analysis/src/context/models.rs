@@ -202,7 +202,7 @@ fn schema_entries(
                         alias: model.alias.clone(),
                         schema_uri: file.clone(),
                         name_pos: model.name_pos,
-                        columns: model.columns.clone(),
+                        columns: expand_columns(&model.columns, &expand),
                         tags: model.tags.clone(),
                         event_time: model.event_time.clone(),
                     },
@@ -214,6 +214,21 @@ fn schema_entries(
         }
     }
     (models, sources)
+}
+
+/// Columns with their descriptions' `{{ doc(...) }}` calls expanded, as
+/// the model's and the source table's own descriptions are.
+fn expand_columns(
+    columns: &[cogitator_schemas::ColumnEntry],
+    expand: &impl Fn(&str) -> String,
+) -> Vec<cogitator_schemas::ColumnEntry> {
+    columns
+        .iter()
+        .map(|c| cogitator_schemas::ColumnEntry {
+            description: expand(&c.description),
+            ..c.clone()
+        })
+        .collect()
 }
 
 fn source_details(
@@ -234,7 +249,7 @@ fn source_details(
                     range: Range::zero_width(t.name_pos),
                     identifier: resolve_opt(t.identifier.as_deref()),
                     loader: resolve_opt(t.loader.as_deref()),
-                    columns: t.columns.clone(),
+                    columns: expand_columns(&t.columns, expand),
                     event_time: t.event_time.clone().or_else(|| source.event_time.clone()),
                 },
             )

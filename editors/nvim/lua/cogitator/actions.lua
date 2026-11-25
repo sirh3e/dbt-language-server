@@ -11,7 +11,11 @@ local M = {}
 function M.client_for(bufnr, silent)
   local client = vim.lsp.get_clients({ bufnr = bufnr, name = "cogitator" })[1]
   if not client and not silent then
-    vim.notify("cogitator is not attached to this buffer", vim.log.levels.ERROR)
+    local cogitator = require("cogitator")
+    local config = cogitator.config or require("cogitator.config").build({})
+    local why =
+      require("cogitator.bootstrap").why_not_attached(bufnr, config, cogitator.server_found ~= false)
+    vim.notify("cogitator: " .. why, vim.log.levels.WARN)
   end
   return client
 end

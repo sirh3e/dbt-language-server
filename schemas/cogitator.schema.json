@@ -43,7 +43,7 @@
       }
     },
     "lint": {
-      "description": "Style diagnostics default to off; the macro call and dispatch checks default to on.",
+      "description": "Style diagnostics default to off; the macro call, dispatch and syntax checks default to on.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -61,6 +61,10 @@
         },
         "select_star": {
           "description": "Warn on SELECT * outside staging models. (bool)",
+          "type": "boolean"
+        },
+        "syntax": {
+          "description": "Report Jinja and SQL syntax errors as you type, without dbt compile (default on). (bool)",
           "type": "boolean"
         },
         "trailing_comma": {

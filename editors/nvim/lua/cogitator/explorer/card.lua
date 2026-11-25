@@ -18,6 +18,21 @@ local function present(v)
   return v ~= nil and v ~= vim.NIL and v ~= ""
 end
 
+--- A description on one line: its first paragraph with the whitespace
+--- folded (a doc block is Markdown over many lines), and `…` when more
+--- follows it.
+---@param text string
+---@return string
+function M.summary(text)
+  local trimmed = vim.trim((text or ""):gsub("\r", ""))
+  local first, rest = trimmed:match("^(.-)\n%s*\n(.*)$")
+  first = (first or trimmed):gsub("%s+", " ")
+  if rest and vim.trim(rest) ~= "" then
+    first = first .. " …"
+  end
+  return first
+end
+
 --- A macro's or generic test's signature: `name(a, b='x')`.
 ---@param name string
 ---@param params table[]|string[]
@@ -213,6 +228,10 @@ function M.view(s, width)
     add("relation: · loading ·")
   elseif r == false or not r.relation then
     add("relation: · unresolved ·")
+  elseif r.origin == "defaults" then
+    -- a project's own generate_schema_name is not evaluated: say so
+    -- rather than show a schema the model may not be built in
+    add("relation: " .. r.relation .. "  (dbt's defaults; dbt compile renders the real one)")
   else
     add("relation: " .. r.relation)
   end
@@ -230,7 +249,11 @@ function M.view(s, width)
   heading("columns")
   if node and node.columns and #node.columns > 0 then
     for _, column in ipairs(node.columns) do
-      add("  • " .. column.name .. (present(column.description) and (" — " .. column.description) or ""))
+      add(
+        "  • "
+          .. column.name
+          .. (present(column.description) and (" — " .. M.summary(column.description)) or "")
+      )
     end
   else
     add("  · none documented ·")

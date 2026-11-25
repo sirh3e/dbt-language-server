@@ -112,7 +112,11 @@
       },
       {
         "command": "cogitator.select",
-        "title": "dbt: Select nodes"
+        "title": "dbt: Select nodes…"
+      },
+      {
+        "command": "cogitator.lineageView",
+        "title": "dbt: Show lineage view"
       },
       {
         "command": "cogitator.syncYaml",

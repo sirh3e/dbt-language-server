@@ -9,7 +9,10 @@ mod diagnostics;
 mod line_context;
 mod presentation;
 
-pub use command::{select_command, SelectAnswer, SelectedNode};
+pub use command::{
+    select_command, select_nodes, split_exclude, vocabulary, SelectAnswer, SelectError,
+    SelectRequest, SelectedNode, Vocabulary,
+};
 pub use completion::{selector_completion, selector_completion_applies};
 pub use diagnostics::{selectors_diagnostics, unmatched_selector_diagnostics};
 pub use presentation::{selectors_hover, selectors_lenses};

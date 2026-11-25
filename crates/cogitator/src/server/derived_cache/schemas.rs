@@ -32,7 +32,7 @@ pub(crate) struct SchemaSlot {
     roots: Mutex<HashMap<PathBuf, Arc<RootSlot>>>,
 }
 
-struct Disk;
+pub(crate) struct Disk;
 
 impl SavedFiles for Disk {
     fn stamp(&self, path: &Path) -> Option<u64> {

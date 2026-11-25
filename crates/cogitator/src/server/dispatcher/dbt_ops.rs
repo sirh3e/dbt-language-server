@@ -73,17 +73,7 @@ impl Dispatcher {
 
     /// `selector`: Some overrides the uri-derived model selector
     /// (dbt.runSelection); None keeps the per-model behavior.
-    pub(super) fn run_dbt_selected(
-        &mut self,
-        id: i64,
-        kind: &'static str,
-        uri: &str,
-        selector_override: Option<String>,
-    ) {
-        self.run_dbt_full(id, kind, uri, selector_override, Vec::new(), None);
-    }
-
-    fn run_dbt_full(
+    pub(super) fn run_dbt_full(
         &mut self,
         id: i64,
         kind: &'static str,

@@ -52,19 +52,37 @@ fn engine(ctx: &DbtContext, open: &Open) -> (Universe, Vec<Definition>) {
     (universe, defs)
 }
 
-/// `dbt.select {selector}`.
+/// `dbt.select {select | selector, exclude?, vocabulary?}`: the nodes,
+/// their counts, and an error with its span, in the result.
 pub fn select_reply(ctx: &DbtContext, open: Open, arg: &Map<String, Value>) -> Reply {
-    let Some(selector) = arg.get("selector").and_then(Value::as_str) else {
+    let Some(select) = arg
+        .get("select")
+        .or_else(|| arg.get("selector"))
+        .and_then(Value::as_str)
+    else {
         return Reply::error(
             cogitator_lsp::error_codes::INVALID_PARAMS,
-            "dbt.select takes {selector}: a dbt node selector, e.g. `tag:nightly` or `selector:nightly`.".into(),
+            "dbt.select takes {select}: a dbt node selection, e.g. `tag:nightly`, `+orders` or `selector:nightly`, optionally with `--exclude …` (or {exclude}).".into(),
         );
     };
+    let exclude = arg
+        .get("exclude")
+        .and_then(Value::as_str)
+        .filter(|e| !e.trim().is_empty());
+    let vocabulary = arg
+        .get("vocabulary")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let (universe, defs) = engine(ctx, &open);
-    match selectors_yml::select_command(&universe, &defs, selector) {
-        Ok(answer) => Reply::result(&answer),
-        Err(message) => Reply::error(cogitator_lsp::error_codes::INVALID_PARAMS, message),
-    }
+    Reply::result(&selectors_yml::select_nodes(
+        &universe,
+        &defs,
+        &selectors_yml::SelectRequest {
+            select,
+            exclude,
+            vocabulary,
+        },
+    ))
 }
 
 pub fn hover(ctx: &DbtContext, open: Open, text: &str, pos: Position) -> Option<String> {

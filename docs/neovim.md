@@ -111,7 +111,7 @@ code actions are the standard LSP ones. On top:
 | `<leader>dr` / `dt` / `dc` | `:DbtRun` / `:DbtTest` / `:DbtCompile` | dbt on the current model (compile opens the compiled SQL) |
 | | `:DbtPreview [n]` | `dbt show`: the model's first rows |
 | | `:DbtRunSelection [sel]`, `:DbtCancel` | dbt with any selector; cancel a job |
-| | `:DbtSelect [sel]` | the nodes a selector picks, without running dbt (quickfix; `:DbtFind select` in the picker) |
+| | `:DbtSelect [sel]` | dbt node selection in the navigator, without running dbt: `tag:x`, `+m`, `a,b`, `--exclude x` (`:DbtFind select` too) |
 | `<leader>ds` / `dq` | `:DbtSchema` / `:DbtTests` | the model's YAML entry; one of its tests |
 | `<leader>dy` | `:DbtExtract` | scaffold the model's YAML, or add a version |
 | `<leader>dR` / `dx` | `:DbtRelation` / `:DbtQuery` | yank `db.schema.table`; a bounded `select *` on it |
@@ -203,6 +203,24 @@ macro's or test's preview marks its definition.
 
 Every other list the plugin shows (`:Dbt`, `:DbtTests`, `:DbtTags`,
 `:DbtCancel`, targets, projects) uses the same picker.
+
+## Where things are used, and renaming them
+
+- `:DbtReferences` (`<leader>dw`, `grr`) — everywhere the model, macro,
+  source or column under the cursor is used, in a yazi-style dialog: a
+  group per file, a line per use, a preview of the lines around it.
+  `:DbtReferences!` lists the uses of the file's own model wherever the
+  cursor is. `/` filters the files and lines with fzf's syntax.
+- `:DbtMacros` (`<leader>dm`) — every macro; choose one to see where it is
+  called.
+- `:DbtRename [name]` (`<leader>de`, `grn`) — rename the model or macro
+  under the cursor (else the file's model; `!` always it) across the
+  project. The new name is asked for, then the whole edit is shown —
+  every file's diff and the file rename — and applied only when you
+  choose "apply". A package's macro is refused with the reason.
+
+The first entry of a references dialog renames what it lists. With
+`ui.picker = false`, `grr` and `grn` keep Neovim's defaults.
 
 ## Graphs, lineage and analysis
 

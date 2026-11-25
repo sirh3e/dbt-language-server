@@ -30,8 +30,11 @@ end
 ---@return cogitator.GraphEntry?
 local function side_entry(explorer, pane)
   local s = explorer._state
-  local entries = s.info and (pane == "left" and s.info.upstream or s.info.downstream)
-  return entries and entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
+  if not s.info then
+    return nil
+  end
+  local entries = require("cogitator.explorer.render").side_entries(s, pane)
+  return entries[vim.api.nvim_win_get_cursor(s.wins[pane])[1]]
 end
 
 --- Make a side-pane entry the selection (recording the history).
@@ -167,7 +170,17 @@ local function entry_actions(explorer, entry_of, map)
     "r",
     with(function(e)
       local s = explorer._state
-      require("cogitator.commands").run_selection({ args = table.concat(explorer._chosen(e.name), " ") })
+      local select = require("cogitator.explorer.select")
+      if select.marks_are_the_selection(s) then
+        -- the marks are what a selection matched: run the selection
+        select.run(s, s.selection.select, s.selection.exclude)
+      else
+        require("cogitator.commands").run_selection({
+          args = table.concat(explorer._chosen(e.name), " "),
+          bufnr = s.src_buf,
+        })
+      end
+      s.selection = nil
       s.marked = {}
       require("cogitator.explorer.render").sides(s)
       require("cogitator.explorer.render").center(s)
@@ -194,7 +207,10 @@ M.HELP = {
   "  [ - / ]        back / forward through the models walked",
   "  .              macros, tests, sources… too (a macro's card: its",
   "                 callers and calls; <CR> in its compiled pane re-centres)",
-  "  f  /           pick any model (fuzzy, fzf syntax)",
+  "  f  /           pick any model (fuzzy, fzf syntax), or type a dbt",
+  "                 selection: tag:x  +m  @m  a,b  stg_*  … --exclude x",
+  "                 (<Tab> completes, <C-a> marks every match,",
+  "                 <C-r> runs it with dbt; r then runs the selection)",
   "  p              to the dbt SQL; h / l between the SQL panes",
   "  J / K          scroll both SQL panes      <Esc>  back to the model",
   "  <Space>        mark                       y / r  yank / dbt run the marked",

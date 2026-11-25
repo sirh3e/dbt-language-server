@@ -91,7 +91,11 @@ return function(ctx)
     and vim.iter(tests_result.tests or {}):any(function(t)
       return t.name == "unique" and t.column == "customer_id"
     end)
-  H.check(has_unique, "yaml: dbt.modelTests lists unique on customer_id", vim.inspect(tests_result):sub(1, 200))
+  H.check(
+    has_unique,
+    "yaml: dbt.modelTests lists unique on customer_id",
+    vim.inspect(tests_result):sub(1, 200)
+  )
 
   -- extract-to-version: applyEdit lands in the schema BUFFER (never saved)
   client:exec_cmd({
@@ -133,7 +137,9 @@ return function(ctx)
     vim.inspect(status_result):sub(1, 300)
   )
   H.check(
-    type(status_result) == "table" and type(status_result.config) == "table" and status_result.config.loaded == false,
+    type(status_result) == "table"
+      and type(status_result.config) == "table"
+      and status_result.config.loaded == false,
     "status: dbt.status carries the config section (no cogitator.yml here)",
     type(status_result) == "table" and vim.inspect(status_result.config) or status_result
   )

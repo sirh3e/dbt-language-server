@@ -30,6 +30,7 @@ mod inlay_hints;
 mod jinja_inline;
 mod jinja_preview;
 mod lenses;
+pub mod lineage_site;
 mod linked_editing;
 pub mod lint;
 pub mod macro_calls;
@@ -48,6 +49,7 @@ pub mod selectors_yml;
 mod semantic_captures;
 mod signature;
 mod structure;
+pub mod syntax;
 mod tests_nav;
 mod unresolved;
 mod unresolved_builtins;
@@ -120,7 +122,10 @@ pub use navigation::{
     document_highlights, document_symbols, references, workspace_symbols, workspace_symbols_in,
 };
 pub use references::references_at;
-pub use relation::{relation_info, RelationInfo, RelationKind, TargetRelation};
+pub use relation::{
+    relation_info, with_manifest_relation, RelationInfo, RelationKind, RelationOrigin,
+    TargetRelation,
+};
 pub use rename::{prepare_rename, rename_model};
 pub use rename_column::{prepare_rename_column, rename_column_at};
 pub use rename_local::{local_highlights, local_references, prepare_rename_local, rename_local_at};

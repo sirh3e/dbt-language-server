@@ -3,10 +3,11 @@
 //! artifact merge, and the workspace-wide report with revision ids.
 
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use cogitator_analysis::features;
 
-use cogitator_lsp::{Envelope, FullDocumentDiagnosticReport};
+use cogitator_lsp::{CodeAction, Envelope, FullDocumentDiagnosticReport};
 
 use super::Dispatcher;
 
@@ -127,9 +128,14 @@ impl Dispatcher {
                 let read = |path: &std::path::Path| std::fs::read_to_string(path).ok();
                 if uri.ends_with(".yml") || uri.ends_with(".yaml") {
                     // doc('x') lives mostly in descriptions
-                    extra.extend(features::declare_missing_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
+                    extra.extend(
+                        features::declare_missing_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
+                    // a YAML file documents many models: what follows is
+                    // about the entry under the cursor
+                    let entry_start = extra.len();
                     if let Some((model, details)) = features::model_entry_at(&snap.ctx, &uri, range)
                     {
                         let model_uri = cogitator_lsp::fs_path_to_uri(&details.uri);
@@ -177,23 +183,38 @@ impl Dispatcher {
                             model,
                         ));
                     }
+                    extra[entry_start..]
+                        .iter_mut()
+                        .for_each(CodeAction::mark_at_cursor);
                 } else {
                     let target =
                         crate::server::handlers::profiles::active_target_relation(&snap, &derived);
                     let catalog = features::RelationCatalog::build(&snap.ctx, target.as_ref());
                     extra.extend(features::convert_literal_relations(doc, &uri, &catalog));
-                    extra.extend(features::define_missing_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
+                    extra.extend(
+                        features::define_missing_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
                     extra.extend(column_actions(&snap, &derived, &uri, artifact_cap));
-                    extra.extend(features::declare_missing_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
-                    extra.extend(features::private_ref_actions(
-                        &snap.ctx, doc, &uri, range, &read,
-                    ));
-                    extra.extend(features::expand_star_action(&snap.ctx, doc, &uri, range));
-                    extra.extend(features::extract_cte_action(&snap.ctx, doc, &uri, range));
+                    extra.extend(
+                        features::declare_missing_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        features::private_ref_actions(&snap.ctx, doc, &uri, range, &read)
+                            .into_iter()
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        features::expand_star_action(&snap.ctx, doc, &uri, range)
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        features::extract_cte_action(&snap.ctx, doc, &uri, range)
+                            .map(CodeAction::at_cursor),
+                    );
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
                     if let Some(model) = features::model_name_from_uri(&uri)
                         .filter(|m| snap.ctx.model_detail_map.contains_key(m))
@@ -238,8 +259,12 @@ impl Dispatcher {
             return;
         };
         let snap = self.snapshot_for(&uri);
-        let lints =
-            features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
+        let mut flags = self.toggles.lints.load(Ordering::Relaxed);
+        if self.fusion_enabled.load(Ordering::Relaxed) {
+            // Fusion's compile owns syntax errors (07 §3 precedence)
+            flags &= !cogitator_analysis::config_schema::lint_flags::SYNTAX;
+        }
+        let lints = features::lint::LintOptions::from_flags(flags);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         let perf = self.perf_settings();
@@ -262,12 +287,23 @@ impl Dispatcher {
                     artifact_cap,
                 )
             });
+            // a model with control flow is checked as dbt renders it: the
+            // renderer reads the macro files once per snapshot, here, off
+            // the dispatcher (push reuses it)
+            let renderer = (lints.syntax && uri.ends_with(".sql")).then(|| {
+                derived.syntax_renderer(Arc::as_ptr(&snap.ctx) as usize, || {
+                    cogitator_analysis::features::syntax::SyntaxRenderer::new(
+                        crate::server::handlers::commands::preview_inputs(&snap, &derived),
+                    )
+                })
+            });
             let mut items = crate::server::diagnostics::static_diagnostics(
                 &snap.ctx,
                 snap.doc.as_deref(),
                 &uri,
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
+                renderer.as_deref(),
             );
             if let (Some(open), Some(doc)) = (selectors_open, snap.doc.as_deref()) {
                 items.extend(crate::server::selectors::unmatched(

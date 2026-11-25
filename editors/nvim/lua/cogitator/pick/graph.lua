@@ -80,6 +80,58 @@ function M.node_of_buffer(graph, bufnr)
       return node
     end
   end
+  -- a properties file: the entry the cursor is in documents a node
+  if vim.bo[bufnr].filetype == "yaml" then
+    local win = vim.fn.bufwinid(bufnr)
+    local row = win ~= -1 and vim.api.nvim_win_get_cursor(win)[1] or 1
+    local name = M.yaml_entry(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), row)
+    for _, node in ipairs(name and graph.nodes or {}) do
+      if node.name == name then
+        return node
+      end
+    end
+  end
+  return nil
+end
+
+local ENTRY_LISTS = { models = true, seeds = true, snapshots = true, analyses = true, exposures = true }
+
+--- The entry of a properties file that line `row` (1-based) is in: the
+--- `- name: x` of the `models:` (seeds:, snapshots:…) list above it, at
+--- that list's own indentation, so a column's `- name:` is not taken for
+--- the model's.
+---@param lines string[]
+---@param row integer
+---@return string?
+function M.yaml_entry(lines, row)
+  -- the list the cursor is in, and the indentation of its items
+  local list_row
+  for r = math.min(row, #lines), 1, -1 do
+    local key = lines[r]:match("^([%w_]+):%s*$")
+    if key then
+      if ENTRY_LISTS[key] then
+        list_row = r
+      end
+      break
+    end
+  end
+  if not list_row then
+    return nil
+  end
+  local item_indent
+  for r = list_row + 1, #lines do
+    local indent = lines[r]:match("^(%s*)%- ")
+    if indent then
+      item_indent = #indent
+      break
+    end
+  end
+  for r = math.min(row, #lines), list_row + 1, -1 do
+    local indent, name = lines[r]:match("^(%s*)%-%s+name:%s*[\"']?([%w_%.%-]+)[\"']?%s*$")
+    if indent and #indent == item_indent then
+      return name
+    end
+  end
   return nil
 end
 
