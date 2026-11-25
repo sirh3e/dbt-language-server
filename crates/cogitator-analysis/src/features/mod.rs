@@ -147,7 +147,7 @@ use cogitator_parser::Token;
 pub(crate) use crate::context::DbtContext;
 pub(crate) use crate::Document;
 
-fn file_uri(path: &Path) -> String {
+pub(crate) fn file_uri(path: &Path) -> String {
     cogitator_lsp::fs_path_to_uri(path)
 }
 

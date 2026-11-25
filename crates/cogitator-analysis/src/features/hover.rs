@@ -35,6 +35,16 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
         return String::new();
     };
     let parsed = &doc.parsed;
+    if let Some(m) = super::definition::macro_in_string(ctx, parsed, idx, pos) {
+        return with_definition(
+            m.description.clone(),
+            "macro",
+            &m.name,
+            &m.uri,
+            m.range.start.line,
+        );
+    }
+    let idx = super::definition::named_token(parsed, idx);
     let token = &parsed.tokens[idx];
     let literal = parsed.literal(token);
 
@@ -42,7 +52,7 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
         TokenKind::Ref => ctx
             .model_detail_map
             .get(literal)
-            .map(|m| m.description.clone())
+            .map(|m| with_definition(m.description.clone(), "model", literal, &m.uri, 0))
             .unwrap_or_default(),
         TokenKind::Doc => ctx
             .doc_detail_map
@@ -52,7 +62,15 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
         TokenKind::SourceName => ctx
             .source_detail_map
             .get(literal)
-            .map(|s| s.description.clone())
+            .map(|s| {
+                with_definition(
+                    s.description.clone(),
+                    "source",
+                    literal,
+                    &s.uri,
+                    s.range.start.line,
+                )
+            })
             .unwrap_or_default(),
         TokenKind::SourceTable => {
             let Some(source_token) = parsed.lookback_find(idx, TokenKind::SourceName, 4) else {
@@ -63,13 +81,17 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
                 return String::new();
             };
             let table = source.tables.get(literal);
-            format!(
+            let text = format!(
                 "Source: {}\n{}\n\nTable: {}\n{}",
                 source.name,
                 source.description,
                 table.map(|t| t.name.as_str()).unwrap_or_default(),
                 table.map(|t| t.description.as_str()).unwrap_or_default(),
-            )
+            );
+            match table.filter(|t| !t.uri.as_os_str().is_empty()) {
+                Some(t) => with_link(text, &t.uri, t.range.start.line),
+                None => text,
+            }
         }
         TokenKind::Var => match ctx.var_for(&doc.uri, literal) {
             Some(v) => format!(
@@ -91,7 +113,15 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
             ctx.macro_detail_map
                 .get(&package)
                 .and_then(|m| m.get(literal))
-                .map(|m| m.description.clone())
+                .map(|m| {
+                    with_definition(
+                        m.description.clone(),
+                        "macro",
+                        literal,
+                        &m.uri,
+                        m.range.start.line,
+                    )
+                })
                 .unwrap_or_default()
         }
         _ => {
@@ -148,4 +178,40 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
                 .unwrap_or_default()
         }
     }
+}
+
+/// A hover's text under a line naming what it is, and above the line
+/// that says where it is defined.
+fn with_definition(
+    text: String,
+    kind: &str,
+    name: &str,
+    path: &std::path::Path,
+    line: u32,
+) -> String {
+    let head = format!("**{kind}** `{name}`");
+    let body = if text.trim().is_empty() {
+        head
+    } else {
+        format!("{head}\n\n{text}")
+    };
+    with_link(body, path, line)
+}
+
+/// `text` and a last line linking the definition, which the editor's
+/// hover shows as a link (Neovim's plugin jumps there on <CR>).
+fn with_link(text: String, path: &std::path::Path, line: u32) -> String {
+    if path.as_os_str().is_empty() {
+        return text;
+    }
+    let shown = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    format!(
+        "{text}\n\nDefinition: [{shown}:{}]({}#L{}) · `gd` jumps there",
+        line + 1,
+        super::file_uri(path),
+        line + 1
+    )
 }

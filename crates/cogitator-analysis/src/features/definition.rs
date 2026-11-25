@@ -19,6 +19,14 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
         return fallback;
     };
     let parsed = &doc.parsed;
+    // a macro named inside a string: `post_hook="{{ m() }}"`
+    if let Some(m) = macro_in_string(ctx, parsed, idx, pos) {
+        return Location {
+            uri: file_uri(&m.uri),
+            range: m.range,
+        };
+    }
+    let idx = named_token(parsed, idx);
     let token = &parsed.tokens[idx];
     let literal = parsed.literal(token);
 
@@ -116,6 +124,107 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 .unwrap_or(fallback)
         }
     }
+}
+
+/// The kinds of token a definition or a hover is about.
+fn is_named(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Ref
+            | TokenKind::SourceName
+            | TokenKind::SourceTable
+            | TokenKind::Var
+            | TokenKind::EnvVar
+            | TokenKind::Doc
+            | TokenKind::Macro
+    )
+}
+
+/// The functions whose first string arguments name something.
+const NAMING_CALLS: &[&str] = &["ref", "source", "var", "doc", "env_var"];
+
+/// The token at `idx`, widened to the call it belongs to: on the word
+/// `ref` (`source`, `var`, `doc`, `env_var`), on a package or a project
+/// name (`ref('core', 'orders')`, `dbt_utils.star`) or the call's open
+/// parenthesis, the name the call is about — the next named token inside
+/// the same `{{ … }}`, a few tokens on. Anything else is itself.
+pub fn named_token(parsed: &cogitator_parser::ParsedDocument, idx: usize) -> usize {
+    let token = &parsed.tokens[idx];
+    if is_named(token.kind) {
+        return idx;
+    }
+    let widen = match token.kind {
+        TokenKind::Package => true,
+        TokenKind::Ident | TokenKind::Word(_) | TokenKind::Config => {
+            NAMING_CALLS.contains(&parsed.literal(token))
+        }
+        TokenKind::Symbol('(') | TokenKind::Symbol('.') => idx
+            .checked_sub(1)
+            .map(|before| {
+                let t = &parsed.tokens[before];
+                t.kind == TokenKind::Package
+                    || NAMING_CALLS.contains(&parsed.literal(t))
+                    || t.kind == TokenKind::Macro
+            })
+            .unwrap_or(false),
+        _ => false,
+    };
+    if !widen {
+        return idx;
+    }
+    parsed.tokens[idx + 1..]
+        .iter()
+        .take(6)
+        .take_while(|t| !matches!(t.kind, TokenKind::JinjaClose(_)))
+        .position(|t| is_named(t.kind))
+        .map(|offset| idx + 1 + offset)
+        .unwrap_or(idx)
+}
+
+/// A macro called inside a string literal at the cursor — the SQL of a
+/// hook, `post_hook="{{ market_export() }}"` — found by its name in the
+/// project's (or the named package's) macros.
+pub fn macro_in_string<'a>(
+    ctx: &'a DbtContext,
+    parsed: &cogitator_parser::ParsedDocument,
+    idx: usize,
+    pos: Position,
+) -> Option<&'a crate::context::MacroDetails> {
+    let token = &parsed.tokens[idx];
+    if token.kind != TokenKind::StringLit || token.line != pos.line {
+        return None;
+    }
+    let text = parsed.literal(token);
+    let at = (pos.character.checked_sub(token.column)?) as usize;
+    if !text.contains("{{") && !text.contains("{%") {
+        return None;
+    }
+    let bytes = text.as_bytes();
+    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_' || b == b'.';
+    if at >= bytes.len() || !is_word(bytes[at]) {
+        return None;
+    }
+    let mut start = at;
+    while start > 0 && is_word(bytes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = at;
+    while end < bytes.len() && is_word(bytes[end]) {
+        end += 1;
+    }
+    // a call: the name is followed by `(`
+    if !text[end..].trim_start().starts_with('(') {
+        return None;
+    }
+    let name = &text[start..end];
+    let (package, name) = match name.rsplit_once('.') {
+        Some((package, name)) => (package.to_string(), name),
+        None => (ctx.project.name.clone(), name),
+    };
+    ctx.macro_detail_map
+        .get(&package)
+        .and_then(|m| m.get(name))
+        .or_else(|| ctx.macro_detail_map.values().find_map(|m| m.get(name)))
 }
 
 /// What definition-on-a-SQL-function materializes (03 §9): the

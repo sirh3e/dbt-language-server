@@ -122,3 +122,30 @@ pub fn workspace_symbols(ctx: &DbtContext, open: Open, query: &str) -> Reply {
         ctx, &universe, query,
     ))
 }
+
+/// `dbt.modelDependencies {uri, model?, version?}`: the model's direct and
+/// transitive neighbours with how each is built; `null` when the name is
+/// no model.
+pub fn dependencies_reply(
+    ctx: &DbtContext,
+    open: Open,
+    uri: &str,
+    arg: &Map<String, Value>,
+) -> Reply {
+    let (universe, _) = engine(ctx, &open);
+    let model = arg
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string)
+        .or_else(|| cogitator_analysis::features::model_name_from_uri(uri));
+    let version = arg.get("version").and_then(|v| match v {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    });
+    let deps = model.and_then(|m| {
+        cogitator_analysis::selectors::dependencies::dependencies(&universe, &m, version.as_deref())
+    });
+    Reply::result(&deps)
+}

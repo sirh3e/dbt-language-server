@@ -178,14 +178,19 @@ pub fn publish_diagnostics(
 }
 
 pub mod symbol_kind {
+    /// Used for exposures/metrics/semantic models: kept by symbol
+    /// pickers that filter kinds (LazyVim's default filter drops Event).
+    pub const MODULE: i32 = 2;
+    /// Used for selectors.yml entries (selector search).
     pub const NAMESPACE: i32 = 3;
     pub const CLASS: i32 = 5;
     pub const INTERFACE: i32 = 11;
     pub const FUNCTION: i32 = 12;
     pub const VARIABLE: i32 = 13;
-    /// Used for selectors.yml entries (selector search).
     pub const KEY: i32 = 20;
-    /// Used for exposures/metrics/semantic models (exposure search).
+    /// Used for a model's CTEs: a relation of the file, which pickers
+    /// that filter kinds keep (they drop Variable).
+    pub const STRUCT: i32 = 23;
     pub const EVENT: i32 = 24;
 }
 

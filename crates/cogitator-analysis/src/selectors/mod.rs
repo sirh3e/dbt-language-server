@@ -6,6 +6,7 @@
 //! listed in docs/selectors.md.
 
 mod definition;
+pub mod dependencies;
 pub mod eval;
 pub mod glob;
 mod indirect;

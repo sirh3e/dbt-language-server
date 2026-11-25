@@ -162,6 +162,19 @@ impl Builder<'_> {
             {
                 config.insert("materialized".into(), Value::from(materialized));
             }
+            // the SQL's other constant config() arguments, over the
+            // project's and the properties' (tags add up below)
+            for (key, value) in sql
+                .as_deref()
+                .map(crate::util::sql_config)
+                .unwrap_or_default()
+            {
+                if key != "tags" && key != "materialized" {
+                    let mut layer = config::Config::new();
+                    layer.insert(key, value);
+                    config::layer(&mut config, &layer);
+                }
+            }
             let mut tags = config::tag_list(config.get("tags"));
             let sql_tags = sql
                 .as_deref()

@@ -169,7 +169,13 @@ M.SUBCOMMANDS = {
   query = { run = plain("query"), desc = "bounded SELECT on the relation under the cursor" },
   schema = { run = plain("schema"), desc = "jump to the properties-YAML entry" },
   tests = { run = plain("tests"), desc = "jump to a test of this model" },
-  lineage = { run = plain("lineage"), desc = "column lineage as a message" },
+  lineage = { run = plain("lineage"), desc = "column lineage in the picker" },
+  dependencies = {
+    run = function(args)
+      require("cogitator.deps").open({ model = args })
+    end,
+    desc = "what this model uses and what uses it, with how each is built [model]",
+  },
   columns = {
     run = function(args)
       require("cogitator.dag").open({ columns = true, column = args ~= "" and args or nil })
@@ -266,6 +272,7 @@ M.GROUPS = {
       "split",
       "impact",
       "breaking",
+      "dependencies",
       "lineage",
       "schema",
       "tests",

@@ -7,7 +7,17 @@ local preview = require("cogitator.pick.preview")
 
 local M = {}
 
-local SYMBOL_KINDS = { [5] = "model", [11] = "source", [12] = "macro", [20] = "selector", [24] = "exposure" }
+-- selectors were Key (20) and exposures Event (24) before servers that
+-- send Namespace (3) and Module (2), which symbol filters keep
+local SYMBOL_KINDS = {
+  [2] = "exposure",
+  [3] = "selector",
+  [5] = "model",
+  [11] = "source",
+  [12] = "macro",
+  [20] = "selector",
+  [24] = "exposure",
+}
 
 --- workspace/symbol, all of it, matched here (the server matches substrings).
 ---@param ctx cogitator.pick.Ctx
