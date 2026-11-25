@@ -4,8 +4,8 @@
 mod client_log;
 mod cmd_common;
 mod cmd_format;
-mod cmd_lint;
 mod cmd_lineage_site;
+mod cmd_lint;
 mod cmd_yaml_sync;
 mod metrics;
 mod observability;

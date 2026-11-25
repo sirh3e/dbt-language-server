@@ -223,6 +223,7 @@ pub fn code_action(
         edit: Some(plan.workspace_edit()),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }
 
