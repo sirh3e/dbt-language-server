@@ -55,6 +55,7 @@ pub(crate) const CONTEXT_FUNCTIONS: &[&str] = &[
     "source",
     "var",
     "doc",
+    "function",
     "config",
     "env_var",
     "return",

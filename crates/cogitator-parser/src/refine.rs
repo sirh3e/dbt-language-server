@@ -35,6 +35,7 @@ fn refine_at(
         "env_var" => call_string_arg(tokens, i, TokenKind::EnvVar),
         "source" => source_args(tokens, i),
         "doc" => call_string_arg(tokens, i, TokenKind::Doc),
+        "function" => call_string_arg(tokens, i, TokenKind::Function),
         "config" => config_marker(tokens, i),
         _ => macro_call_at(text, tokens, i, bound),
     }
@@ -117,6 +118,22 @@ mod tests {
         let tokens = kinds("description: '{{ doc(\"orders_status\") }}'");
         assert!(
             tokens.contains(&(TokenKind::Doc, "orders_status".into())),
+            "{tokens:?}"
+        );
+    }
+
+    #[test]
+    fn function_call_marks_the_udf_name() {
+        let tokens = kinds("select {{ function('is_positive_int') }}(n) from t");
+        assert!(
+            tokens.contains(&(TokenKind::Function, "is_positive_int".into())),
+            "{tokens:?}"
+        );
+        // the call word is no macro call
+        assert!(
+            !tokens
+                .iter()
+                .any(|(k, l)| *k == TokenKind::Macro && l == "function"),
             "{tokens:?}"
         );
     }
