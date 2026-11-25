@@ -149,3 +149,37 @@ fn lint_checks_incremental_models_and_loops() {
     assert!(out.contains("models/looped.sql:2:"), "{out}");
     assert!(out.contains("as dbt renders it"), "{out}");
 }
+
+#[test]
+fn lint_reads_function_bodies_as_expressions_and_checks_calls() {
+    let project = jaffle();
+    let functions = project.root.join("functions");
+    std::fs::create_dir_all(&functions).unwrap();
+    // a body is an expression, never a statement: no sql-syntax error
+    std::fs::write(
+        functions.join("is_positive_int.sql"),
+        "regexp_instr(a_string, '^[0-9]+$')\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.root.join("models/checked.sql"),
+        "select {{ function('is_positive_int') }}(order_id) as ok,\n\
+         {{ function('is_postive_int') }}(order_id) as typo\n\
+         from {{ ref('orders') }}\n",
+    )
+    .unwrap();
+
+    let body = cogitator(&project, &["lint", "functions/is_positive_int.sql"]);
+    assert_eq!(body.status.code(), Some(0), "{}", stdout(&body));
+    assert!(!stdout(&body).contains("sql-syntax"), "{}", stdout(&body));
+
+    let model = cogitator(&project, &["lint", "models/checked.sql"]);
+    let out = stdout(&model);
+    assert!(!out.contains("sql-syntax"), "the call is valid SQL: {out}");
+    assert!(
+        out.contains("models/checked.sql:2:")
+            && out.contains("warning dangling-function: function 'is_postive_int'"),
+        "{out}"
+    );
+    assert!(!out.contains("function 'is_positive_int'"), "{out}");
+}

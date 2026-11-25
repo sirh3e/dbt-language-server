@@ -35,6 +35,23 @@ pub fn static_diagnostics(
         items.extend(features::unused_var_diagnostics(ctx, uri, &doc.text));
         items.extend(features::env_var_diagnostics(ctx, doc));
         items
+    } else if ctx.is_function_body(uri) {
+        // a user-defined function's body is an expression (or, on some
+        // warehouses, a SELECT): its refs and Jinja are checked, its SQL
+        // is not, nor the model checks (lint, contracts, DuckDB's parser)
+        let mut items = features::dangling_ref_diagnostics(ctx, doc);
+        if lints.syntax {
+            items.extend(features::syntax::syntax_diagnostics(
+                &doc.text,
+                uri,
+                &ctx.dialect,
+                features::syntax::SyntaxOptions {
+                    sql: false,
+                    renderer: None,
+                },
+            ));
+        }
+        return items;
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);
         items.extend(features::env_var_diagnostics(ctx, doc));
