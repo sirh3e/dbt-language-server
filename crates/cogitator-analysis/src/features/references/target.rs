@@ -23,6 +23,8 @@ pub(crate) enum Target {
         name: String,
     },
     Doc(String),
+    /// A user-defined function, by name.
+    Function(String),
     Column {
         model: String,
         column: String,
@@ -38,6 +40,7 @@ pub(crate) fn target_at(
     token_target(ctx, doc, uri, pos)
         .or_else(|| yaml_target(ctx, doc, uri, pos))
         .or_else(|| definition_target(ctx, doc, uri, pos))
+        .or_else(|| function_entry_target(ctx, uri, &doc.text, pos))
         .or_else(|| column_word_target(ctx, doc, uri, pos))
 }
 
@@ -59,6 +62,7 @@ fn token_target(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) -> O
                 table: Some(literal.to_string()),
             }),
         TokenKind::Doc => Some(Target::Doc(literal.to_string())),
+        TokenKind::Function => Some(Target::Function(literal.to_string())),
         TokenKind::Macro => {
             let from =
                 path_of(uri).map_or_else(|| ctx.project.name.clone(), |p| project_of_path(ctx, &p));
@@ -70,6 +74,21 @@ fn token_target(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) -> O
         }
         _ => None,
     }
+}
+
+/// The `name:` of a `functions:` entry.
+fn function_entry_target(ctx: &DbtContext, uri: &str, text: &str, pos: Position) -> Option<Target> {
+    let path = path_of(uri)?;
+    ctx.function_detail_map
+        .values()
+        .filter(|f| f.yaml.as_deref() == Some(path.as_path()))
+        .find(|f| {
+            f.entry
+                .as_ref()
+                .and_then(|e| name_span(text, e.name_pos, &e.name))
+                .is_some_and(|r| contains(&r, pos))
+        })
+        .map(|f| Target::Function(f.name.clone()))
 }
 
 /// A name of the properties YAML: a model column, a source or source

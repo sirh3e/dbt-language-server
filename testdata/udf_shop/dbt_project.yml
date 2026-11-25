@@ -1,0 +1,4 @@
+name: udf_shop
+version: "1.0.0"
+profile: udf_shop
+model-paths: ["models"]

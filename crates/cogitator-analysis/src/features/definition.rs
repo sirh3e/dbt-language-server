@@ -89,6 +89,15 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 range: d.range,
             })
             .unwrap_or(fallback),
+        TokenKind::Function => ctx
+            .function_detail_map
+            .get(literal)
+            .and_then(|f| f.definition())
+            .map(|(path, range)| Location {
+                uri: file_uri(&path),
+                range,
+            })
+            .unwrap_or(fallback),
         TokenKind::Macro => {
             let package = parsed
                 .lookback_find(idx, TokenKind::Package, 2)
@@ -136,12 +145,13 @@ fn is_named(kind: TokenKind) -> bool {
             | TokenKind::Var
             | TokenKind::EnvVar
             | TokenKind::Doc
+            | TokenKind::Function
             | TokenKind::Macro
     )
 }
 
 /// The functions whose first string arguments name something.
-const NAMING_CALLS: &[&str] = &["ref", "source", "var", "doc", "env_var"];
+const NAMING_CALLS: &[&str] = &["ref", "source", "var", "doc", "env_var", "function"];
 
 /// The token at `idx`, widened to the call it belongs to: on the word
 /// `ref` (`source`, `var`, `doc`, `env_var`), on a package or a project

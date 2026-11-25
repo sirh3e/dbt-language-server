@@ -59,6 +59,11 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
             .get(literal)
             .map(|d| d.content.clone())
             .unwrap_or_default(),
+        TokenKind::Function => ctx
+            .function_detail_map
+            .get(literal)
+            .map(|f| f.markdown())
+            .unwrap_or_default(),
         TokenKind::SourceName => ctx
             .source_detail_map
             .get(literal)

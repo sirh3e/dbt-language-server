@@ -1,0 +1,28 @@
+version: 2
+
+functions:
+  - name: is_positive_int
+    description: Whether a string holds a positive integer
+    config:
+      type: scalar
+      volatility: deterministic
+    arguments:
+      - name: a_string
+        data_type: string
+        description: The text to check
+    returns:
+      data_type: boolean
+      description: True for a positive integer
+    overloads:
+      - defined_in: is_positive_int_numeric
+        arguments:
+          - name: a_number
+            data_type: integer
+
+  - name: masked_email
+    description: An e-mail address with its local part masked
+    arguments:
+      - name: email
+        data_type: string
+    returns:
+      data_type: string

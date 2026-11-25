@@ -169,6 +169,11 @@ fn every_fixture_sql_file_is_clean() {
         if path.extension().and_then(|e| e.to_str()) != Some("sql") {
             continue;
         }
+        // a user-defined function's body is an expression, which the
+        // server leaves to its Jinja check (`DbtContext::is_function_body`)
+        if path.components().any(|c| c.as_os_str() == "functions") {
+            continue;
+        }
         let text = std::fs::read_to_string(path).unwrap();
         let uri = cogitator_lsp::fs_path_to_uri(path);
         for dialect in ["duckdb", "postgres", "snowflake", ""] {
@@ -325,8 +330,11 @@ fn every_fixture_model_renders_clean() {
             if path.extension().and_then(|e| e.to_str()) != Some("sql") {
                 continue;
             }
-            let text = std::fs::read_to_string(path).unwrap();
             let uri = cogitator_lsp::fs_path_to_uri(path);
+            if ctx.is_function_body(&uri) {
+                continue;
+            }
+            let text = std::fs::read_to_string(path).unwrap();
             let items = syntax_diagnostics(&text, &uri, &ctx.dialect, options);
             assert!(items.is_empty(), "{}: {items:?}", path.display());
         }

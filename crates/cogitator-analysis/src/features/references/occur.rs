@@ -62,6 +62,16 @@ pub(crate) fn doc_uses(parsed: &ParsedDocument, name: &str) -> Vec<Range> {
         .collect()
 }
 
+/// `function('name')` uses.
+pub(crate) fn function_uses(parsed: &ParsedDocument, name: &str) -> Vec<Range> {
+    parsed
+        .tokens
+        .iter()
+        .filter(|t| t.kind == TokenKind::Function && parsed.literal(t) == name)
+        .map(token_range)
+        .collect()
+}
+
 /// An identifier without its SQL quotes.
 pub(crate) fn unquoted(word: &str) -> &str {
     word.trim_matches(|c| c == '"' || c == '`' || c == '[' || c == ']')

@@ -90,7 +90,8 @@ pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
 pub use diagnostics::{
-    citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
+    citizen_diagnostics, dangling_doc_diagnostics, dangling_function_diagnostics,
+    dangling_ref_diagnostics, packages_diagnostics,
 };
 pub use dispatch::implementation::implementation;
 pub use document_links::{document_links, document_links_at};

@@ -74,6 +74,12 @@ pub enum CompletionData {
     Function {
         name: String,
     },
+    /// A dbt user-defined function (`function('…')`), apart from the
+    /// dialect's SQL functions above.
+    #[serde(rename = "dbt_function")]
+    DbtFunction {
+        name: String,
+    },
 }
 
 impl CompletionData {
