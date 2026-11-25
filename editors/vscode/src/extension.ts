@@ -10,6 +10,8 @@ import {
   LanguageClientOptions,
   ServerOptions,
 } from "vscode-languageclient/node";
+import { LineageAnswer, showLineageView } from "./lineageView";
+export { columnPosition, lineageFocus, lineageHtml } from "./lineageView";
 
 let client: LanguageClient | undefined;
 
@@ -828,6 +830,70 @@ async function unresolved(): Promise<void> {
   }
 }
 
+/** One node of a dbt.modelDependencies answer, as far as the palette reads it. */
+export interface DependencyNode {
+  name: string;
+  kind: string;
+  uri?: string | null;
+  line: number;
+  depth: number;
+  config: { materialized?: string | null; incrementalStrategy?: string | null };
+}
+
+/** A dependency as a quick-pick entry: what it is, how it is built, how far. */
+export function dependencyLabel(node: DependencyNode): {
+  label: string;
+  description: string;
+} {
+  const built = [node.config.materialized, node.config.incrementalStrategy]
+    .filter((s): s is string => !!s)
+    .join(", ");
+  return {
+    label: `[${node.kind}] ${node.name}`,
+    description: [built, node.depth > 1 ? `${node.depth} hops` : ""].filter((s) => s).join(" · "),
+  };
+}
+
+/** This model and its neighbours (dbt.modelDependencies): pick one to open it. */
+async function modelDependencies(): Promise<void> {
+  const result = (await execDbt("dbt.modelDependencies")) as
+    | {
+        model: DependencyNode;
+        parents: DependencyNode[];
+        children: DependencyNode[];
+        upstream: DependencyNode[];
+        downstream: DependencyNode[];
+      }
+    | null
+    | undefined;
+  if (!result) {
+    void vscode.window.showInformationMessage("dbt: no model here");
+    return;
+  }
+  type Entry = vscode.QuickPickItem & { node?: DependencyNode };
+  const entries: Entry[] = [];
+  const section = (title: string, nodes: DependencyNode[]) => {
+    entries.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
+    for (const node of nodes) {
+      entries.push({ ...dependencyLabel(node), node });
+    }
+  };
+  section("Uses directly", result.parents);
+  section("Used directly by", result.children);
+  section("Everything upstream", result.upstream);
+  section("Everything downstream", result.downstream);
+  const pick = await vscode.window.showQuickPick(entries, {
+    matchOnDescription: true,
+    placeHolder: `${result.model.name}: ${result.upstream.length} upstream, ${result.downstream.length} downstream`,
+  });
+  if (pick?.node?.uri) {
+    const line = pick.node.line;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.node.uri), {
+      selection: new vscode.Range(line, 0, line, 0),
+    });
+  }
+}
+
 /** A dbt.breakingChanges answer, as far as the palette reads it. */
 export interface BreakingReport {
   summary: string;
@@ -886,6 +952,139 @@ async function breakingChanges(): Promise<void> {
   await vscode.window.showTextDocument(doc, { preview: true });
 }
 
+/** dbt.lineageSite: the lineage view, fed by the server (lineageView.ts). */
+function lineageView(context: vscode.ExtensionContext): Promise<void> {
+  return showLineageView(context, async (uri, assets) => {
+    if (!client) {
+      return undefined;
+    }
+    return (await client.sendRequest("workspace/executeCommand", {
+      command: "dbt.lineageSite",
+      arguments: [{ uri: uri ?? "", assets }],
+    })) as LineageAnswer | null;
+  });
+}
+
+/** A column whose description dbt.syncYaml inherits. */
+export interface SyncInherited {
+  column: string;
+  from: { kind: string; name?: string; source?: string; table?: string; column: string };
+}
+
+/** One model of a dbt.syncYaml plan. */
+export interface SyncModel {
+  model: string;
+  createdEntry?: boolean;
+  added?: string[];
+  inherited?: SyncInherited[];
+  typed?: Array<{ column: string; dataType: string }>;
+  stale?: string[];
+  pruned?: string[];
+  reordered?: boolean;
+  skipped?: Array<{ column?: string | null; reason: string }>;
+}
+
+/** A dbt.syncYaml answer. */
+export interface SyncPlanResult {
+  changes: number;
+  applied: boolean;
+  files: Array<{ uri: string; created: boolean; diff: string }>;
+  models: SyncModel[];
+}
+
+function syncFrom(from: SyncInherited["from"]): string {
+  return from.kind === "source"
+    ? `source ${from.source}.${from.table}.${from.column}`
+    : `${from.name}.${from.column}`;
+}
+
+/** The preview of a dbt.syncYaml plan: each model's changes, then the diffs. */
+export function syncYamlLines(result: SyncPlanResult): string[] {
+  const lines = [`# dbt.syncYaml: ${result.changes} change(s) in ${result.files.length} file(s)`];
+  for (const model of result.models) {
+    const pruned = new Set(model.pruned ?? []);
+    const body = [
+      ...(model.createdEntry ? ["  + entry"] : []),
+      ...(model.added ?? []).map((c) => `  + column ${c}`),
+      ...(model.inherited ?? []).map((i) => `  ~ ${i.column} description from ${syncFrom(i.from)}`),
+      ...(model.typed ?? []).map((t) => `  ~ ${t.column} data_type ${t.dataType}`),
+      ...(model.pruned ?? []).map((c) => `  - column ${c}`),
+      ...(model.reordered ? ["  ~ columns reordered"] : []),
+      ...(model.stale ?? [])
+        .filter((c) => !pruned.has(c))
+        .map((c) => `  ! stale column ${c} (prune removes it)`),
+      ...(model.skipped ?? []).map((s) => `  ? ${s.column ? `${s.column}: ` : ""}${s.reason}`),
+    ];
+    if (body.length > 0) {
+      lines.push(`# ${model.model}`, ...body);
+    }
+  }
+  for (const file of result.files) {
+    lines.push("", ...file.diff.replace(/\n$/, "").split("\n"));
+  }
+  return lines;
+}
+
+/** One line on a dbt.syncYaml plan, for the confirmation. */
+export function syncYamlSummary(result: SyncPlanResult): string {
+  const sum = (f: (m: SyncModel) => number) => result.models.reduce((n, m) => n + f(m), 0);
+  return (
+    `dbt: ${result.changes} change(s) in ${result.files.length} file(s) — ` +
+    `${sum((m) => (m.createdEntry ? 1 : 0))} entries, ${sum((m) => m.added?.length ?? 0)} columns, ` +
+    `${sum((m) => m.inherited?.length ?? 0)} descriptions inherited, ` +
+    `${sum((m) => m.stale?.length ?? 0)} stale, ${sum((m) => m.skipped?.length ?? 0)} skipped`
+  );
+}
+
+/** Bring the schema YAML in line with the SQL (dbt.syncYaml): plan, show, apply. */
+async function syncYaml(): Promise<void> {
+  const scope = await vscode.window.showQuickPick(
+    [
+      { label: "Whole project", uri: "" },
+      { label: "This model", uri: vscode.window.activeTextEditor?.document.uri.toString() ?? "" },
+    ],
+    { placeHolder: "Sync the schema YAML of…" }
+  );
+  if (!scope) {
+    return;
+  }
+  const flags = await vscode.window.showQuickPick(
+    [
+      { label: "prune", description: "remove columns the models no longer produce", key: "prune" },
+      { label: "inherit types", description: "fill data_type from proven types", key: "inheritTypes" },
+      { label: "reorder", description: "order columns as the SQL does", key: "reorder" },
+    ],
+    { canPickMany: true, placeHolder: "Options (none by default)" }
+  );
+  if (!flags) {
+    return;
+  }
+  const argument: Record<string, unknown> = { uri: scope.uri };
+  for (const flag of flags) {
+    argument[flag.key] = true;
+  }
+  const result = (await execDbt("dbt.syncYaml", argument)) as SyncPlanResult | undefined;
+  if (!result) {
+    return;
+  }
+  if (result.changes === 0) {
+    void vscode.window.showInformationMessage("dbt: schema YAML is in sync — nothing to change");
+    return;
+  }
+  let choice = await vscode.window.showInformationMessage(syncYamlSummary(result), "Apply", "Show plan");
+  if (choice === "Show plan") {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "diff",
+      content: syncYamlLines(result).join("\n"),
+    });
+    await vscode.window.showTextDocument(doc, { preview: true });
+    choice = await vscode.window.showInformationMessage(syncYamlSummary(result), "Apply");
+  }
+  if (choice === "Apply") {
+    await execDbt("dbt.syncYaml", { ...argument, apply: true });
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -904,9 +1103,12 @@ export async function activate(
     ["cogitator.highlight", highlight],
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
+    ["cogitator.lineageView", () => lineageView(context)],
+    ["cogitator.syncYaml", syncYaml],
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
+    ["cogitator.modelDependencies", modelDependencies],
     [
       "cogitator.status",
       async () => {

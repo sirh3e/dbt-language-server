@@ -95,7 +95,15 @@ columns and what reads them downstream; also a lens and a diagnostic,
 refreshed on save), `dbt: Select nodes…` (dbt's selection syntax —
 `tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `selector:<name>`,
 `… --exclude resource_type:test` — evaluated as you type by `dbt.select`,
-the counts in the title; choosing a node opens it), `dbt:
+the counts in the title; choosing a node opens it), `dbt: Show
+lineage view` (the project DAG and column-level lineage from
+`dbt.lineageSite` in a panel beside the editor — the same page as
+`cogitator lineage-site`; it follows the active model, refreshes on save,
+and clicking a file opens it at the column), `dbt: Sync
+schema YAML` (the project's or this model's schema YAML brought in line
+with its SQL by `dbt.syncYaml` — missing entries and columns added,
+descriptions inherited down the column lineage; a summary, the plan as a
+diff on request, then applied on confirm), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,

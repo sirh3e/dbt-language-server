@@ -156,11 +156,27 @@ pub fn preview_inputs(
     snap: &Snapshot,
     derived: &DerivedCache,
 ) -> cogitator_analysis::features::PreviewInputs {
-    const MACRO_SOURCE_CAP: usize = 1024 * 1024;
     let target = super::profiles::active_target_relation(snap, derived);
     let (database, schema) = target
         .map(|t| (t.database, t.schema))
         .unwrap_or((None, None));
+    let target_name = if snap.profiles.target.is_empty() {
+        "default".to_string()
+    } else {
+        snap.profiles.target.clone()
+    };
+    preview_inputs_of(&snap.ctx, database, schema, target_name)
+}
+
+/// The same from a context alone: relations in the given database and
+/// schema (none: the bare identifier), for the CLI, which has no target.
+pub fn preview_inputs_of(
+    ctx: &cogitator_analysis::DbtContext,
+    database: Option<String>,
+    schema: Option<String>,
+    target_name: String,
+) -> cogitator_analysis::features::PreviewInputs {
+    const MACRO_SOURCE_CAP: usize = 1024 * 1024;
     let relation = |identifier: &str, schema_override: Option<&str>| {
         let mut parts: Vec<&str> = Vec::new();
         if let Some(db) = database.as_deref() {
@@ -172,14 +188,13 @@ pub fn preview_inputs(
         parts.push(identifier);
         parts.join(".")
     };
-    let model_relations = snap
-        .ctx
+    let model_relations = ctx
         .model_detail_map
         .keys()
         .map(|name| (name.clone(), relation(name, None)))
         .collect();
     let mut source_relations = std::collections::HashMap::new();
-    for source in snap.ctx.source_detail_map.values() {
+    for source in ctx.source_detail_map.values() {
         for table in source.tables.values() {
             // dbt defaults: schema falls back to the source name, the
             // identifier to the declared table name (spec §1.6)
@@ -192,8 +207,7 @@ pub fn preview_inputs(
         }
     }
     let mut macro_sources = Vec::new();
-    let mut macro_files: Vec<&std::path::PathBuf> = snap
-        .ctx
+    let mut macro_files: Vec<&std::path::PathBuf> = ctx
         .macro_detail_map
         .values()
         .flat_map(|package| package.values().map(|m| &m.uri))
@@ -216,18 +230,13 @@ pub fn preview_inputs(
         macro_sources,
         model_relations,
         source_relations,
-        vars: snap
-            .ctx
+        vars: ctx
             .variable_detail_map
             .iter()
             .map(|(name, details)| (name.clone(), details.value.clone()))
             .collect(),
-        env: snap.ctx.env.process.clone(),
-        target_name: if snap.profiles.target.is_empty() {
-            "default".to_string()
-        } else {
-            snap.profiles.target.clone()
-        },
+        env: ctx.env.process.clone(),
+        target_name,
         is_incremental: false,
         this: None,
     }

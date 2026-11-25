@@ -130,7 +130,15 @@ editor integrations live under `editors/`.
   what that breaks downstream; `features/breaking/`, the shell in
   `server/breaking.rs`, computed on open/save for its diagnostics and
   lens by `dispatcher/breaking.rs`), dbt.select (the nodes a dbt selector
-  picks, as `dbt ls` lists them; the selector engine, `selectors/`). Every
+  picks, as `dbt ls` lists them; the selector engine, `selectors/`),
+  dbt.lineageSite (the lineage site's data and page assets, or the page
+  written to `target/cogitator-lineage/`; `features/lineage_site/` pure,
+  the shell `server/handlers/lineage_site.rs`, shared with the
+  `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`),
+  dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
+  columns, descriptions inherited down `ColumnLineage::direct` lineage;
+  `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
+  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).
@@ -145,7 +153,8 @@ editor integrations live under `editors/`.
   columns, drop contracted ones — offered from the YAML entry too;
   `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
   rename/remove fixes; `refactors.rs`: expand a star, extract
-  schema YAML; `extract_cte.rs`: CTE → model). All pure: the shell
+  schema YAML; `extract_cte.rs`: CTE → model; "Sync schema YAML of 'm'"
+  from `features::yaml_sync`, on the model's SQL and its YAML entry). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion
   capability advertises `triggerCharacters`.
@@ -192,7 +201,7 @@ editor integrations live under `editors/`.
 - `crates/cogitator-error` — error type
 - `crates/cogitator-lsp` — protocol types + Content-Length framing + URI helpers
 - `crates/cogitator-dialects` — dialect + bundled SQL function docs
-- `crates/cogitator-schemas` — typify-generated dbt schema types (`schemas/dbt/`) + saphyr position side-tables
+- `crates/cogitator-schemas` — the project and properties adapters with their LSP position side-tables, on the shared [`dbt-schemas`](https://github.com/sirh3e/dbt-schemas) crate, which holds the vendored dbt schemas, their typify types and the marked-YAML helpers
 - `crates/cogitator-parser` — minijinja+sqlparser pipeline, refinement, TokenIndex, jinja_scan
 - `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
 - `crates/cogitator-treesitter/src/highlight/` — `dbt.highlight`'s grammars, layers and merge (`mod.rs`) and the YAML composition (`yaml.rs`: Jinja and SQL inside values, dbt-aware captures); the server side is `server/highlight.rs` (v2 arguments, YAML context, cache) and `server/node_info.rs` (`dbt.nodeInfo`); `server/semantic_yaml.rs` serves the same YAML captures as `textDocument/semanticTokens` (§12); binding spec `specs/highlighting/00-highlighting.md`
@@ -209,7 +218,7 @@ editor integrations live under `editors/`.
   Neovim-only :DbtDag project view, headless test suite)
 - `editors/emacs` — eglot + lsp-mode integration (batch test suite)
 - `editors/zed` — Zed extension (Rust→WASM)
-- `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
+- the vendored dbt-jsonschema and schemas.getdbt.com schemas live in `dbt-schemas` (`schemas/`, pristine + `processed/` for typify; a field the manifest projection lacks is a change there, then a new tag pinned in `Cargo.toml`)
 - `specs/rust-port/` — the binding implementation specs (00–09);
   `specs/neovim-plugin/` — the editor-integration spec;
   `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules, oracles and incrementality (00–10)

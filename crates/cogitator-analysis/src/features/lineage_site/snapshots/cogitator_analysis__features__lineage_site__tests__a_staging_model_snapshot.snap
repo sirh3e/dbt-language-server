@@ -1,0 +1,81 @@
+---
+source: crates/cogitator-analysis/src/features/lineage_site/tests.rs
+expression: stg
+---
+{
+  "id": "model:stg_customers",
+  "name": "stg_customers",
+  "kind": "model",
+  "layer": 1,
+  "uri": "file:///<fixture>/models/staging/stg_customers.sql",
+  "path": "models/staging/stg_customers.sql",
+  "package": "jaffle_shop",
+  "materialized": "view",
+  "description": "",
+  "tags": [],
+  "tests": [
+    "not_null_stg_customers_customer_id",
+    "unique_stg_customers_customer_id"
+  ],
+  "columns": [
+    {
+      "name": "customer_id",
+      "description": "",
+      "dataType": null,
+      "documented": true,
+      "produced": true,
+      "tests": [
+        "unique",
+        "not_null"
+      ],
+      "inputs": [
+        {
+          "node": "model:raw_customers",
+          "column": "id",
+          "relation": null
+        }
+      ],
+      "star": false,
+      "transform": "unknown",
+      "detail": null
+    },
+    {
+      "name": "first_name",
+      "description": "",
+      "dataType": null,
+      "documented": false,
+      "produced": true,
+      "tests": [],
+      "inputs": [
+        {
+          "node": "model:raw_customers",
+          "column": "first_name",
+          "relation": null
+        }
+      ],
+      "star": false,
+      "transform": "unknown",
+      "detail": null
+    },
+    {
+      "name": "last_name",
+      "description": "",
+      "dataType": null,
+      "documented": false,
+      "produced": true,
+      "tests": [],
+      "inputs": [
+        {
+          "node": "model:raw_customers",
+          "column": "last_name",
+          "relation": null
+        }
+      ],
+      "star": false,
+      "transform": "unknown",
+      "detail": null
+    }
+  ],
+  "lineage": "traced",
+  "note": null
+}

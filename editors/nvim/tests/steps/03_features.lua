@@ -21,6 +21,19 @@ return function(ctx)
     vim.inspect(graph_result):sub(1, 200)
   )
 
+  local site_result = H.exec_cmd(client, bufnr, "dbt.lineageSite", {
+    uri = vim.uri_from_bufnr(bufnr),
+    write = true,
+  }, "integration: dbt.lineageSite")
+  H.check(
+    type(site_result) == "table"
+      and type(site_result.written) == "table"
+      and vim.uv.fs_stat(site_result.written.path) ~= nil
+      and site_result.counts.columnsTraced > 0,
+    "integration: dbt.lineageSite writes the page under target/",
+    vim.inspect(site_result):sub(1, 200)
+  )
+
   local relation_result = H.exec_cmd(client, bufnr, "dbt.relation", {
     uri = vim.uri_from_bufnr(bufnr),
   }, "integration: dbt.relation")
@@ -190,6 +203,19 @@ return function(ctx)
       and type(unresolved_result.count) == "number",
     "integration: dbt.unresolved lists the project's unresolved names",
     vim.inspect(unresolved_result):sub(1, 200)
+  )
+
+  local sync_result = H.exec_cmd(client, bufnr, "dbt.syncYaml", {
+    models = { "stg_customers" },
+  }, "integration: dbt.syncYaml")
+  H.check(
+    type(sync_result) == "table"
+      and sync_result.applied == false
+      and type(sync_result.files) == "table"
+      and sync_result.models[1].model == "stg_customers"
+      and sync_result.models[1].added[1] == "first_name",
+    "integration: dbt.syncYaml plans without applying",
+    vim.inspect(sync_result):sub(1, 300)
   )
 
   local select_result = H.exec_cmd(client, bufnr, "dbt.select", {

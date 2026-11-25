@@ -632,3 +632,108 @@ yaml-language-server at the file to validate cogitator.yml without
 the server running. value_hint drives the typing: `bool` → boolean,
 `MiB`/`ms` → integer ≥ 0, `[names]` → string array, `a|b|c` → closed
 string enum, anything else string.
+
+## Addendum: §10 syntax diagnostics
+
+`features/syntax/` reports Jinja and SQL syntax errors with no
+`dbt compile`, pure over a `.sql` buffer's text (compiled SQL under
+`target/compiled|run` excluded), at most one per file, Error severity,
+source `cogitator`, the message a Guidance with Reason and Solution:
+
+- **`jinja-syntax`**: minijinja's tokenizer, then its parser over the
+  template with dbt's block tags made parseable in place
+  (`rename_local::jinja::parseable`). Certain only: tokenizer errors
+  (unclosed `{{`/`{%`/`{#`/string/raw block, shown at the opener), a
+  closing tag no block opened (found by a tag-name block stack), and
+  parser errors starting with `unexpected` — an end-of-input error is
+  placed at the innermost unclosed opener. `unknown statement x`
+  (loop controls, extensions), reserved names and minijinja's limits
+  decline.
+- **`sql-syntax`**, only when the Jinja layer is clean: the template
+  masked by `cogitator_duckdb::mask_jinja` (07 §3.1) and parsed with
+  sqlparser in the project's dialect. The 07 §3.2 confidence rule
+  holds, widened. A template with control blocks other than
+  config/set, a block-form `set`, or an error inside or right after a
+  masked region is checked **rendered** instead (`syntax/render.rs`,
+  `SyntaxRenderer`): dbt.expandJinja's environment made strict
+  (UndefinedBehavior::Strict, fuel `RENDER_FUEL`), the project's macro
+  files made parseable and concatenated ahead, `ref`/`source`/`this` as
+  relation objects (`.database`, `.schema`, `.identifier`), `ref(…, v=)`,
+  `execute` true, `invocation_id`, `run_started_at`; rendered with
+  `is_incremental()` false and true, each distinct rendering parsed, an
+  error mapped back to the template by the rendered text around it
+  (unique match, shortened from the left; else the first line) and its
+  rendered line quoted. A render error (an undefined name — `run_query`,
+  `adapter`, `return`, a package namespace —, fuel) declines. The shell
+  builds the renderer once per context snapshot (`DerivedCache::
+  syntax_renderer`, on the pull path, which reads the macro files);
+  the push path uses it only once built (`syntax_renderer_cached`) and
+  so stays fs-free; `cogitator lint` builds one per run. Declines also
+  when any other sqlparser dialect accepts the SQL, on an error at or
+  after a listed warehouse extension sqlparser covers only in part
+  (`EXTENSIONS`: `asof`, `positional`, `anti`, `semi`, `lambda`,
+  `pivot`, …), on parser recursion limits, and past 512 KiB.
+
+The push set (didOpen/didChange/didSave) and pull diagnostics run it
+when cogitator.yml `lint.syntax` is on (default on; bit
+`lint_flags::SYNTAX`). Fusion owns syntax when enabled: the push path
+publishes nothing of its own and the pull path clears the bit. In a
+`duckdb-parser` build on a duckdb project, the SQL layer is left to
+DuckDB's parser (07 §3) and only the Jinja layer runs. The same set is
+what `cogitator lint` reports (04 §1.5). `selectors.yml` is
+syntax-checked only by `yaml_diagnostics`, never against the dbt
+properties schema.
+
+## Addendum: §10 schema-YAML sync (dbt.syncYaml, `cogitator yaml-sync`)
+
+`features::yaml_sync::plan_sync(inputs, options) -> SyncPlan` is pure:
+the shell passes typed column lineage per model, the inferred column
+types (`column_types`) and a `read` closure over file text (an open
+editor buffer wins over the disk). Per selected model of the root
+project (`ModelKind::Model`, `.sql`, own project; a `<base>_v<N>` file
+of a documented base is a version and skipped, as is an entry with
+`versions:`):
+
+1. no entry → one, in `<model>.yml` beside the SQL (`NewEntries::PerModel`,
+   `dbt.extractModelYaml`'s place) or the folder's `_<folder>__models.yml`
+   (`PerFolder`), appended to the file's top-level `models:` list;
+2. produced columns missing from the entry are appended in output order
+   (`append_to_list`);
+3. a column with an empty description (`""`, `''`, `~`, `null`, absent)
+   inherits from the nearest documented ancestor along
+   `ColumnLineage::direct` columns — one source, same name, through
+   models; a seed or snapshot ends the walk; a model whose lineage is
+   `None` stops it with a reason (`Walk::Unclear`). Written descriptions
+   are never replaced. `inherit_types` fills an absent `data_type` from a
+   `Basis::Proven` spelled type;
+4. stale columns (documented, not produced) are reported when the
+   produced list is complete (no `*` left), and removed only with `prune`;
+5. `reorder` moves whole column items into output order.
+
+Each phase edits the text line-wise (`code_actions::yaml_text`, never a
+serializer) and re-parses the entry (`parse_properties`) before the next;
+the file's final edits are line hunks from a `similar` line diff of the
+before/after texts, plus a unified diff for previews. A flow-style item,
+an inline `columns:`/`models:` value or an empty block-scalar description
+is skipped with its reason. Idempotent: a second sync over the applied
+result plans `changes: 0`.
+
+Column lineage gains `ColumnLineage::direct` (`#[serde(skip)]`, not on
+the `dbt.columnLineage` wire): a bare column reference under its own name
+at every hop (CTEs, derived tables, single-input stars, Base model/source
+leaves); expressions, renames, positional CTE column lists, `REPLACE`,
+set operations, joins' ambiguous stars and undefined relations are not.
+The typed route now expands a star over an **open** input whose known
+columns are listed (a CTE with a `{{ macro() }}` select item, an `Open`
+schema): the known columns become rows and a trailing `*` row, excluding
+them, stands for the rest — so consumers still see an incomplete list
+(`*` present) and nothing that needs the whole list (contract drift,
+stale/prune) runs on it.
+
+The shell is `server/yaml_sync.rs`: `dbt.syncYaml` (offloaded; `apply`
+sends `Effect::ApplyEdit`), the single-model code action "Sync schema
+YAML of 'm' (N changes)" (`refactor.rewrite`, on the model's SQL and its
+YAML entry) and `offline_plan` for the CLI, which builds the context,
+runs the schema job on its thread (`DerivedCache::publish_schemas_now`)
+and plans over the disk. `cogitator yaml-sync --check` exits 1 when the
+plan has changes, 0 when in sync, 2 when the project cannot be read.

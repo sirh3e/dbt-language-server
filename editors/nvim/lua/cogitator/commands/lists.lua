@@ -129,4 +129,11 @@ function M.unresolved(opts)
   end)
 end
 
+--- :DbtSyncYaml [model…] [%] [prune] [types] [reorder] [folder] — the
+--- schema-YAML sync (dbt.syncYaml): preview, then apply on confirm.
+---@param opts {fargs?: string[], args?: string}?
+function M.sync_yaml(opts)
+  require("cogitator.sync_yaml").run(opts)
+end
+
 return M

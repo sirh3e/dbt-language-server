@@ -134,6 +134,7 @@ mod tests {
                 .map(|n| ColumnLineage {
                     name: n.to_string(),
                     sources: Vec::new(),
+                    direct: false,
                 })
                 .collect(),
             origin: None,

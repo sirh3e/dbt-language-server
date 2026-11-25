@@ -120,6 +120,10 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtTests      jump to a test of this model        <leader>dq
   :DbtStatus     language-server status              <leader>dS
   :DbtDag        project DAG, dbt-docs style         <leader>dD
+  :DbtLineageSite
+                 the project's column-lineage page (dbt.lineageSite):
+                 written to target/cogitator-lineage/index.html and
+                 opened in the browser; works offline
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
   :DbtSelect [expr] dbt node selection in the navigator
@@ -149,6 +153,15 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  every unresolved ref, source, source_table, doc, macro
                  and var of the project (quickfix; `:DbtFind unresolved`
                  is the same list in the picker)
+  :DbtSyncYaml [model…] [%] [prune] [types] [reorder] [folder]
+                 bring the models' schema YAML in line with their SQL
+                 (dbt.syncYaml): missing entries and columns added,
+                 descriptions inherited down the column lineage; the
+                 plan opens in a split, then is applied on confirm.
+                 `%` is this buffer's model, `prune` removes columns
+                 the model no longer produces, `types` fills proven
+                 data_type, `reorder` follows the SQL's order,
+                 `folder` writes new entries to _<folder>__models.yml
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtInstall    install or update the language server from this

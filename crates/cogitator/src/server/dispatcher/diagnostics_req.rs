@@ -3,6 +3,7 @@
 //! artifact merge, and the workspace-wide report with revision ids.
 
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use cogitator_analysis::features;
 
@@ -174,6 +175,13 @@ impl Dispatcher {
                         extra.extend(super::yaml_types::fill_action(
                             &snap.ctx, &derived, &doc.text, &uri, range,
                         ));
+                        extra.extend(crate::server::yaml_sync::code_action(
+                            &snap,
+                            &derived,
+                            artifact_cap,
+                            &uri,
+                            model,
+                        ));
                     }
                     extra[entry_start..]
                         .iter_mut()
@@ -208,6 +216,17 @@ impl Dispatcher {
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
+                    if let Some(model) = features::model_name_from_uri(&uri)
+                        .filter(|m| snap.ctx.model_detail_map.contains_key(m))
+                    {
+                        extra.extend(crate::server::yaml_sync::code_action(
+                            &snap,
+                            &derived,
+                            artifact_cap,
+                            &uri,
+                            &model,
+                        ));
+                    }
                     extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
                     extra.extend(
                         crate::server::handlers::plan::split_plan_of(
@@ -240,8 +259,12 @@ impl Dispatcher {
             return;
         };
         let snap = self.snapshot_for(&uri);
-        let lints =
-            features::lint::LintOptions::from_flags(self.toggles.lints.load(Ordering::Relaxed));
+        let mut flags = self.toggles.lints.load(Ordering::Relaxed);
+        if self.fusion_enabled.load(Ordering::Relaxed) {
+            // Fusion's compile owns syntax errors (07 §3 precedence)
+            flags &= !cogitator_analysis::config_schema::lint_flags::SYNTAX;
+        }
+        let lints = features::lint::LintOptions::from_flags(flags);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         let perf = self.perf_settings();
@@ -264,12 +287,23 @@ impl Dispatcher {
                     artifact_cap,
                 )
             });
+            // a model with control flow is checked as dbt renders it: the
+            // renderer reads the macro files once per snapshot, here, off
+            // the dispatcher (push reuses it)
+            let renderer = (lints.syntax && uri.ends_with(".sql")).then(|| {
+                derived.syntax_renderer(Arc::as_ptr(&snap.ctx) as usize, || {
+                    cogitator_analysis::features::syntax::SyntaxRenderer::new(
+                        crate::server::handlers::commands::preview_inputs(&snap, &derived),
+                    )
+                })
+            });
             let mut items = crate::server::diagnostics::static_diagnostics(
                 &snap.ctx,
                 snap.doc.as_deref(),
                 &uri,
                 lints,
                 lineage.as_ref().and_then(|l| (**l).as_ref()),
+                renderer.as_deref(),
             );
             if let (Some(open), Some(doc)) = (selectors_open, snap.doc.as_deref()) {
                 items.extend(crate::server::selectors::unmatched(

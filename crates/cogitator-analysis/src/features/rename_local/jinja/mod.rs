@@ -10,6 +10,7 @@ mod walk;
 mod tests;
 
 pub(crate) use kwargs::keyword_args;
+pub(crate) use source::parseable;
 
 use cogitator_ir::Span;
 use minijinja::machinery::parse;

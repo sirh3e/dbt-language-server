@@ -111,8 +111,20 @@
         "title": "dbt: Breaking changes against the last build"
       },
       {
+        "command": "cogitator.modelDependencies",
+        "title": "dbt: Model dependencies"
+      },
+      {
         "command": "cogitator.select",
         "title": "dbt: Select nodes…"
+      },
+      {
+        "command": "cogitator.lineageView",
+        "title": "dbt: Show lineage view"
+      },
+      {
+        "command": "cogitator.syncYaml",
+        "title": "dbt: Sync schema YAML"
       },
       {
         "command": "cogitator.status",

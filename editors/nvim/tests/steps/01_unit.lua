@@ -121,6 +121,50 @@ return function(ctx)
     vim.inspect(same)
   )
 
+  -- :DbtSyncYaml: the argument of its words, and the preview lines
+  local sync = require("cogitator.sync_yaml")
+  local sync_arg = sync.arguments({ "%", "prune", "types", "stg_orders" }, "file:///p/models/a.sql")
+  H.check(
+    sync_arg.uri == "file:///p/models/a.sql"
+      and sync_arg.prune == true
+      and sync_arg.inheritTypes == true
+      and sync_arg.models[1] == "stg_orders"
+      and sync_arg.apply == nil,
+    "sync_yaml: words become the dbt.syncYaml argument",
+    vim.inspect(sync_arg)
+  )
+  local sync_lines = sync.lines({
+    changes = 2,
+    files = { { uri = "file:///p/models/a.yml", diff = "--- a/a.yml\n+++ b/a.yml\n+      - name: id\n" } },
+    models = {
+      {
+        model = "a",
+        createdEntry = false,
+        added = { "id" },
+        inherited = {
+          { column = "id", from = { kind = "source", source = "raw", table = "t", column = "id" } },
+        },
+        typed = {},
+        stale = { "old" },
+        pruned = {},
+        skipped = { { column = "x", reason = "written in flow style" } },
+      },
+      { model = "quiet", added = {}, inherited = {}, typed = {}, stale = {}, pruned = {}, skipped = {} },
+    },
+  })
+  H.check(
+    sync_lines[1] == "# dbt.syncYaml: 2 change(s) in 1 file(s)"
+      and sync_lines[2] == "# a"
+      and sync_lines[3] == "  + column id"
+      and sync_lines[4] == "  ~ id description from source raw.t.id"
+      and sync_lines[5] == "  ! stale column old (prune removes it)"
+      and sync_lines[6] == "  ? x: written in flow style"
+      and sync_lines[8] == "--- a/a.yml"
+      and sync_lines[#sync_lines] == "+      - name: id",
+    "sync_yaml: the preview lists each model's changes, then the diffs",
+    vim.inspect(sync_lines)
+  )
+
   -- :DbtPreviewCte rendering: the server's markdown table, line by line
   local preview = require("cogitator.preview_cte").lines({
     table = "# customers · CTE `orders`\n\n| id |\n| --- |\n| 1 |\n",
@@ -155,6 +199,24 @@ return function(ctx)
       and items[2].filename == "/p/models/ranked.sql",
     "commands: incrementality_items name verdict, strategy, run time and why",
     vim.inspect(items)
+  )
+
+  -- :DbtLineageSite message
+  local site = require("cogitator.lineage_site")
+  local text, level = site.message({
+    written = { path = "/p/target/cogitator-lineage/index.html" },
+    counts = { columnsTraced = 25, columns = 39, columnsUndetermined = 14, modelsDeclined = 1 },
+  })
+  local none_text, none_level = site.message(nil)
+  local expected = "lineage page: /p/target/cogitator-lineage/index.html — "
+    .. "25 of 39 columns traced, 14 undetermined, 1 models declined"
+  H.check(
+    text == expected
+      and level == vim.log.levels.INFO
+      and none_level == vim.log.levels.WARN
+      and none_text:find("no dbt project", 1, true) ~= nil,
+    "lineage_site: message says where the page is and what was traced",
+    text
   )
 
   -- :DbtUnresolved quickfix items

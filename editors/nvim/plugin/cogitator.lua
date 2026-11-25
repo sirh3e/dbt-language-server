@@ -35,6 +35,9 @@ cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, a
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
+vim.api.nvim_create_user_command("DbtLineageSite", function()
+  require("cogitator.lineage_site").open()
+end, { desc = "write the project's column-lineage page and open it in the browser" })
 cmd("DbtBreakingChanges", "breaking_changes", "this model against its last built schema (quickfix)")
 vim.api.nvim_create_user_command("DbtUnresolved", function(opts)
   require("cogitator.commands").unresolved(opts)
@@ -44,6 +47,15 @@ end, {
     return { "ref", "source", "source_table", "doc", "macro", "var" }
   end,
   desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
+})
+vim.api.nvim_create_user_command("DbtSyncYaml", function(opts)
+  require("cogitator.commands").sync_yaml(opts)
+end, {
+  nargs = "*",
+  complete = function()
+    return { "%", "prune", "types", "reorder", "folder" }
+  end,
+  desc = "sync the models' schema YAML with their SQL: preview, then apply (dbt.syncYaml)",
 })
 vim.api.nvim_create_user_command("DbtReferences", function(opts)
   require("cogitator.usages").references({ bang = opts.bang })

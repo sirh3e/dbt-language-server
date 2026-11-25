@@ -1,0 +1,27 @@
+---
+source: crates/cogitator-analysis/src/features/yaml_sync/tests_format.rs
+expression: text
+---
+# Staging models. Keep this comment.
+version: 2
+
+models:
+  - name: other   # not a model of the project: left alone
+    description: 'Single quoted, kept.'
+
+  - name: stg_orders
+    description: "Orders, as loaded."
+    config:
+      tags: ['staging']   # inline list
+    columns:
+      # the key
+      - name: id
+        description: "The order key."   # filled in
+        data_tests:
+          - unique
+      - {name: customer, description: ''}
+      - name: "status"
+      - name: amount
+        description: "Order amount in cents."
+
+# trailing comment

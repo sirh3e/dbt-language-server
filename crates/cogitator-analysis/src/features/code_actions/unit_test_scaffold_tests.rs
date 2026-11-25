@@ -101,6 +101,7 @@ fn lineage_narrows_inputs_and_names_outputs() {
                 name: "stg_orders".into(),
                 column: "order_id".into(),
             }],
+            direct: true,
         }],
         origin: None,
     };

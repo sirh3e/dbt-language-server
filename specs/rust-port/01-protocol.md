@@ -191,7 +191,10 @@ Ordering quirk: Go writes the initialize response *before* assigning
 - `didSave`: `state.save_document(uri)` → refresh dbt context only (document text is
   *not* re-read; the server trusts its didChange-maintained copy). Then `fusion_compile`.
 - `didChange`: apply all content changes in order to the stored text, then re-parse
-  the document (algorithm in 03 §2). No context refresh, no fusion.
+  the document (algorithm in 03 §2). No context refresh, no fusion. Then
+  the push diagnostics set (the fs-free static set, 03 §10 "syntax
+  diagnostics") is published for the URI, as on didOpen/didSave — unless
+  Fusion is enabled, which owns publishes (07 §3).
 
 ### 3.3 `shutdown` / `exit`
 
@@ -321,7 +324,8 @@ map, keyed by resolved project root:
   call-hierarchy calls (by the item's uri), dbt.modelGraph and
   dbt.goToSchema — never the primary snapshot. Requests with no URI
   (workspace/symbol, workspace/diagnostic, completionItem/resolve,
-  dbt.deadModels, dbt.projectGraph) stay on the primary context;
+  dbt.deadModels, dbt.projectGraph, dbt.lineageSite without a uri)
+  stay on the primary context;
 - the refresh task debounces per DISTINCT root and keeps one
   ContextBuilder per secondary root (same scan-cache warm start and
   persistence; no watch publish, no user-facing warnings);

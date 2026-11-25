@@ -6,7 +6,8 @@ any `.yml` that is not `dbt_project.yml`, `packages.yml`,
 
 ## Completion
 
-Driven by the vendored dbt JSON schema (`schemas/dbt/processed/`,
+Driven by the vendored dbt JSON schema (`schemas/yaml/processed/` of the shared
+[`dbt-schemas`](https://github.com/sirh3e/dbt-schemas) crate,
 walked by `cogitator_schemas::schema_walk`) at the cursor's path, which
 follows indentation and `- ` items, so a half-typed file completes too:
 

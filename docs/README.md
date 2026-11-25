@@ -11,10 +11,13 @@
 | [column-rename.md](column-rename.md) | Renaming a model's output column across the project: what changes at every depth, where the walk stops, and when it is refused |
 | [selectors.md](selectors.md) | dbt's node-selection language in cogitator: `dbt.select`, selectors.yml completion, diagnostics, hover and lenses, what is supported and what is not |
 | [properties-yaml.md](properties-yaml.md) | Properties files (`schema.yml`…): schema-driven completion of keys, values, tests and columns, the unproduced-column warning, adding missing columns |
+| [yaml-sync.md](yaml-sync.md) | Syncing schema YAML with the SQL project-wide (`dbt.syncYaml`, `cogitator yaml-sync`): missing entries and columns, descriptions inherited down the column lineage, stale columns, the CI check |
 | [file-operations.md](file-operations.md) | Renaming, moving, deleting and creating model files from the editor's file tree, and declaration vs definition (YAML entry vs SQL) |
+| [lint-and-format.md](lint-and-format.md) | Jinja and SQL syntax errors as you type (and when they decline), `cogitator lint` and `cogitator format` for CI: what runs, output formats, exit codes |
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |
 | [breaking-changes.md](breaking-changes.md) | The breaking-change preview: a model's columns against its last built schema, and what that breaks downstream |
 | [preview.md](preview.md) | The rows of one CTE: the "Preview rows" lenses, which SQL runs, the row limits, cancelling, per editor |
+| [lineage-site.md](lineage-site.md) | The column-lineage dashboard: `cogitator lineage-site` (a self-contained HTML page) and the live view in VS Code, what is traced, what is marked unknown, and why |
 | [commands.md](commands.md) | Every `dbt.*` workspace command: argument, result, side effects, and which editors expose it |
 | [editor-parity.md](editor-parity.md) | Contributors: how a new command reaches every editor, and the test that holds it |
 | [go-to-schema.md](go-to-schema.md) | `dbt.goToSchema` in detail, with a JSON-RPC example |

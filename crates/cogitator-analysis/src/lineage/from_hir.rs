@@ -18,9 +18,11 @@ use cogitator_sql_front::{build_hir, HirInput, SchemaEnv};
 
 use super::{ColumnLineage, ModelLineage, SourceRef};
 
+mod direct;
 mod exprs;
 mod lookup;
 mod rows;
+mod star;
 mod subquery;
 
 /// Lineage for one model document. `None` when the template has Jinja
@@ -111,6 +113,9 @@ struct Row {
     /// `Some` for `*` and `t.*`, whose `key` is `None`.
     star: Option<Star>,
     sources: Vec<SourceRef>,
+    /// The value is one upstream column, under its own name, through
+    /// every hop: no expression, no rename (see `ColumnLineage::direct`).
+    direct: bool,
 }
 
 /// EXCLUDE and REPLACE of one star item.
@@ -118,6 +123,8 @@ struct Row {
 struct Star {
     exclude: Vec<Symbol>,
     replace: Vec<(Symbol, Vec<SourceRef>)>,
+    /// The FROM items the star reads, for [`Row::direct`] through it.
+    targets: Vec<cogitator_ir::hir::FromId>,
 }
 
 impl Row {
@@ -129,6 +136,7 @@ impl Row {
         Some(ColumnLineage {
             name: self.label.clone()?, // boundary: as above
             sources: unique(sources),
+            direct: self.direct && self.star.is_none(),
         })
     }
 }

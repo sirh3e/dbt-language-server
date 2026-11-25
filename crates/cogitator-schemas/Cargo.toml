@@ -10,8 +10,7 @@ cogitator-lsp = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 saphyr = { workspace = true }
-typify = { workspace = true }
-regress = "0.12"
+dbt-schemas = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = { workspace = true }
