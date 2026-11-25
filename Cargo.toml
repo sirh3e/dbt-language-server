@@ -43,7 +43,7 @@ petgraph = "0.8"
 similar = "2.7"     # dbt.incrementalDiff unified diffs
 saphyr = "0.3"
 # dbt's YAML and artifact schemas as Rust types, shared with other dbt tools
-dbt-schemas = { git = "https://github.com/sirh3e/dbt-schemas", tag = "v0.1.0" }
+dbt-schemas = { git = "https://github.com/sirh3e/dbt-schemas", tag = "v0.1.1" }
 tokio = { version = "1", features = [
     "rt-multi-thread", "io-std", "io-util", "process", "sync", "time", "macros", "fs", "tracing",
 ] }

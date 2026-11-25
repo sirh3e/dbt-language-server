@@ -1042,11 +1042,12 @@ dependencies = [
 
 [[package]]
 name = "dbt-schemas"
-version = "0.1.0"
-source = "git+https://github.com/sirh3e/dbt-schemas?tag=v0.1.0#2e8aca540bfe5dfc1c356ce5f97ea4bc6f7221f8"
+version = "0.1.1"
+source = "git+https://github.com/sirh3e/dbt-schemas?tag=v0.1.1#95c7ae959a53c26b567b526180bb1b557e67b761"
 dependencies = [
  "regress",
  "saphyr",
+ "schemars 0.8.22",
  "serde",
  "serde_json",
  "thiserror",
