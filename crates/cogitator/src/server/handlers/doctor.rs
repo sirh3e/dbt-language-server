@@ -183,6 +183,7 @@ fn enabled_lints(flags: u32) -> Vec<&'static str> {
         (lint_flags::DEAD_MODELS, "dead_models"),
         (lint_flags::MACRO_CALLS, "macro_calls"),
         (lint_flags::DISPATCH, "dispatch"),
+        (lint_flags::SYNTAX, "syntax"),
     ]
     .into_iter()
     .filter(|(bit, _)| flags & bit != 0)

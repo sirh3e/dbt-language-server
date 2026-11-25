@@ -17,7 +17,21 @@ pub struct FormatOptions {
 
 /// The whole-document edit, `Some(vec![])` when already formatted,
 /// `None` when the document is not safely formattable.
+/// A file with CRLF line endings (a Windows checkout) is formatted as its
+/// LF text and keeps CRLF: line endings alone never count as a change.
 pub fn format_document(text: &str, options: &FormatOptions) -> Option<Vec<TextEdit>> {
+    if !text.contains("\r\n") {
+        return format_lf(text, options);
+    }
+    let lf = text.replace("\r\n", "\n");
+    let mut edits = format_lf(&lf, options)?;
+    for edit in &mut edits {
+        edit.new_text = edit.new_text.replace('\n', "\r\n");
+    }
+    Some(edits)
+}
+
+fn format_lf(text: &str, options: &FormatOptions) -> Option<Vec<TextEdit>> {
     let segments = segment::split(text)?;
     let mut out = String::with_capacity(text.len());
     for seg in segments {
@@ -53,6 +67,22 @@ pub fn format_document(text: &str, options: &FormatOptions) -> Option<Vec<TextEd
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crlf_endings_are_no_change_and_are_kept() {
+        let options = FormatOptions {
+            tab_size: 4,
+            insert_spaces: true,
+        };
+        let lf = "select a,b from {{ ref('x') }} where a>1\n";
+        let formatted = format_document(lf, &options).unwrap()[0].new_text.clone();
+        let crlf = formatted.replace('\n', "\r\n");
+        assert_eq!(format_document(&crlf, &options), Some(Vec::new()));
+        let messy = lf.replace('\n', "\r\n");
+        let edit = &format_document(&messy, &options).unwrap()[0].new_text;
+        assert_eq!(edit, &crlf);
+        assert!(!edit.replace("\r\n", "").contains('\n'));
+    }
 
     fn fmt(text: &str) -> Option<String> {
         let options = FormatOptions {

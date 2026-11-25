@@ -48,6 +48,7 @@ pub mod selectors_yml;
 mod semantic_captures;
 mod signature;
 mod structure;
+pub mod syntax;
 mod tests_nav;
 mod unresolved;
 mod unresolved_builtins;

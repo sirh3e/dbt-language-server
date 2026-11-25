@@ -7,7 +7,9 @@
 use std::collections::HashMap;
 
 use cogitator_error::guidance::Guidance;
-use minijinja::value::Value;
+use std::sync::Arc;
+
+use minijinja::value::{Kwargs, Object, Rest, Value};
 use minijinja::{Environment, Error, ErrorKind};
 use serde::Serialize;
 
@@ -69,16 +71,31 @@ pub(crate) fn environment(inputs: &PreviewInputs) -> Environment<'static> {
     let sources = inputs.source_relations.clone();
     let vars = inputs.vars.clone();
 
-    env.add_function("ref", move |args: &[Value]| -> Result<Value, Error> {
-        let names: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-        let model = names.last().cloned().unwrap_or_default();
-        Ok(Value::from(models.get(&model).cloned().unwrap_or(model)))
-    });
+    // ref('m'), ref('pkg', 'm'), ref('m', v=1): a relation, as in dbt
+    env.add_function(
+        "ref",
+        move |args: Rest<String>, kwargs: Kwargs| -> Result<Value, Error> {
+            let model = args.0.last().cloned().unwrap_or_default();
+            let version: Option<Value> = match kwargs.get::<Option<Value>>("v")? {
+                Some(v) => Some(v),
+                None => kwargs.get::<Option<Value>>("version")?,
+            };
+            kwargs.assert_all_used()?;
+            let versioned = version.map(|v| format!("{model}_v{v}"));
+            let relation = versioned
+                .as_ref()
+                .and_then(|name| models.get(name))
+                .or_else(|| models.get(&model))
+                .cloned()
+                .unwrap_or_else(|| versioned.unwrap_or(model));
+            Ok(Relation::value(&relation))
+        },
+    );
     env.add_function(
         "source",
         move |source: String, table: String| -> Result<Value, Error> {
-            Ok(Value::from(
-                sources
+            Ok(Relation::value(
+                &sources
                     .get(&(source.clone(), table.clone()))
                     .cloned()
                     .unwrap_or(format!("{source}.{table}")),
@@ -122,7 +139,7 @@ pub(crate) fn environment(inputs: &PreviewInputs) -> Environment<'static> {
         Ok::<Value, Error>(Value::from(incremental))
     });
     if let Some(this) = &inputs.this {
-        env.add_global("this", Value::from(this.clone()));
+        env.add_global("this", Relation::value(this));
     }
     env.add_global(
         "target",
@@ -133,6 +150,48 @@ pub(crate) fn environment(inputs: &PreviewInputs) -> Environment<'static> {
     );
 
     env
+}
+
+/// A dbt relation: renders as `database.schema.identifier` and answers
+/// `.database`, `.schema`, `.identifier` (`.name`, `.table`) as dbt's
+/// `Relation` does; any other attribute is undefined.
+#[derive(Debug)]
+pub(crate) struct Relation {
+    database: Option<String>,
+    schema: Option<String>,
+    identifier: String,
+    rendered: String,
+}
+
+impl Relation {
+    /// The relation a dotted string names (its last part the identifier).
+    pub(crate) fn value(rendered: &str) -> Value {
+        let mut parts: Vec<&str> = rendered.split('.').collect();
+        let identifier = parts.pop().unwrap_or_default().to_string();
+        let schema = parts.pop().map(str::to_string);
+        let database = parts.pop().map(str::to_string);
+        Value::from_object(Relation {
+            database,
+            schema,
+            identifier,
+            rendered: rendered.to_string(),
+        })
+    }
+}
+
+impl Object for Relation {
+    fn get_value(self: &Arc<Self>, key: &Value) -> Option<Value> {
+        match key.as_str()? {
+            "database" => self.database.clone().map(Value::from),
+            "schema" => self.schema.clone().map(Value::from),
+            "identifier" | "name" | "table" => Some(Value::from(self.identifier.clone())),
+            _ => None,
+        }
+    }
+
+    fn render(self: &Arc<Self>, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.rendered)
+    }
 }
 
 /// serde_json → minijinja without the serde bridge feature.

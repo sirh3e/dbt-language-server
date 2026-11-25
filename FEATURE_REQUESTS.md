@@ -363,13 +363,21 @@ Implemented from this bucket (they turned out cheap on the existing data):
       `dispatch-no-default`, arguments read by minijinja's parser, lenient
       for bodies reading `varargs`/`kwargs`; on by default, `lint:
       {macro_calls, dispatch}` turns them off (`features/macro_calls/`)
+- [x] Syntax diagnostics without `dbt compile`: `jinja-syntax` (minijinja's
+      parser, dbt's block tags understood) and `sql-syntax` (sqlparser in the
+      project's dialect over the masked SQL, under the 07 §3.2 confidence
+      rule), pushed on didChange too; on by default, `lint: { syntax }` turns
+      them off (`features/syntax/`, docs/lint-and-format.md)
+- [x] `cogitator lint` / `cogitator format` subcommands: the editor-free
+      diagnostics over the whole project for CI (text/JSON/GitHub output,
+      exit codes 0/1/2), and the formatter in place or `--check`/`--diff`
 - [x] `textDocument/documentHighlight` (same literal + kind occurrences)
 - [x] `workspace/symbol` (models, sources, macros)
 
 Still open, with reasons:
 
-- `textDocument/formatting` / `rangeFormatting` / `onTypeFormatting`
-  (would mean embedding a SQL formatter)
+- `rangeFormatting` / `onTypeFormatting` (`textDocument/formatting` is
+  implemented, and `cogitator format` runs it from the command line)
 - `textDocument/codeAction`, `prepareRename`,
   `inlineValue`,
   `documentColor`

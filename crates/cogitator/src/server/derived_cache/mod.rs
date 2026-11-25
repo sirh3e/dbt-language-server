@@ -8,6 +8,7 @@
 //! server/cache_persist.rs) — that supersedes the old blanket
 //! no-persistence note.
 
+use cogitator_analysis::features::syntax::SyntaxRenderer;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -120,6 +121,9 @@ pub struct DerivedCache {
     highlights_stats: Counters,
     /// The last breaking-change report per model uri (on open/save).
     breaking: breaking::BreakingSlot,
+    /// The syntax check's renderer of ONE context snapshot (the pointer
+    /// identity of the Arc): the project's macros, vars and relations.
+    syntax_renderer: Mutex<Option<(usize, Arc<SyntaxRenderer>)>>,
 }
 
 /// What a cached `dbt.highlight` answer is of: an open document at a
@@ -288,7 +292,35 @@ impl DerivedCache {
         Some(json)
     }
 
+    /// The syntax check's renderer for this snapshot, built by `build`
+    /// (it reads the macro files) when the snapshot has none yet.
+    pub fn syntax_renderer(
+        &self,
+        ctx_ptr: usize,
+        build: impl FnOnce() -> SyntaxRenderer,
+    ) -> Arc<SyntaxRenderer> {
+        if let Some(renderer) = self.syntax_renderer_cached(ctx_ptr) {
+            return renderer;
+        }
+        let renderer = Arc::new(build());
+        *self.syntax_renderer.lock().expect("syntax renderer lock") =
+            Some((ctx_ptr, renderer.clone()));
+        renderer
+    }
+
+    /// The snapshot's renderer when one was built — never builds, so the
+    /// push path stays fs-free.
+    pub fn syntax_renderer_cached(&self, ctx_ptr: usize) -> Option<Arc<SyntaxRenderer>> {
+        self.syntax_renderer
+            .lock()
+            .expect("syntax renderer lock")
+            .as_ref()
+            .filter(|(ptr, _)| *ptr == ctx_ptr)
+            .map(|(_, renderer)| renderer.clone())
+    }
+
     pub fn clear(&self) {
+        *self.syntax_renderer.lock().expect("syntax renderer lock") = None;
         self.profiles.lock().expect("profiles cache lock").clear();
         self.lineage.lock().expect("lineage cache lock").clear();
         self.typed_lineage

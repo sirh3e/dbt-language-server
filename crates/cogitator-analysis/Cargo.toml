@@ -16,6 +16,7 @@ cogitator-ir = { workspace = true }
 cogitator-sql-front = { workspace = true }
 cogitator-lower = { workspace = true }
 cogitator-rules = { workspace = true }
+cogitator-duckdb = { workspace = true }
 petgraph = { workspace = true }
 regex = { workspace = true }
 walkdir = { workspace = true }
