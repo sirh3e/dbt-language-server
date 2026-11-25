@@ -8,6 +8,30 @@ the git history belong to the upstream Go project and are ignored
 here.
 
 <!-- git-cliff: end of header -->
+## [0.7.0] - 2026-11-25
+
+### 🚀 Features
+
+- *(lsp)* Workspace file operations and textDocument/declaration (#73)
+- *(lsp)* Dispatched macro implementations and macro call checks (#74)
+- *(analysis)* Output-column types, data_type checks and type hovers (#75)
+- *(lsp)* Rename a model's output column across the whole project (#76)
+- *(lsp)* Rename, references and highlights of file-local names (#77)
+- *(lsp)* Preview breaking changes against the last built schema (#78)
+- *(lsp)* Preview the rows of a CTE (dbt.previewCte) (#79)
+- *(selectors)* One engine for dbt's node-selection language (#80)
+- *(nvim)* References, macros and rename in the yazi dialogs (#84)
+- *(nvim)* A real project's shape, and dbt node selection in the navigator (#72, #82)
+- Syntax errors as you type, and cogitator lint / format for CI (#87)
+- A column-lineage site (cogitator lineage-site) and a live lineage view in VS Code (#88)
+- Sync schema YAML with the SQL project-wide (dbt.syncYaml, cogitator yaml-sync) (#89)
+- *(nvim)* Colours, examples and file jumps for the <leader>d keys (#90)
+- A model's dependencies dialog, and navigation from anywhere in a call (#91)
+
+### 🚜 Refactor
+
+- *(nvim)* Split the plugin's three largest modules, share three helpers (#85)
+- *(schemas)* Read dbt's schemas from the shared dbt-schemas crate (#93)
 ## [0.6.0] - 2026-11-22
 
 ### 🚀 Features
@@ -59,6 +83,7 @@ here.
 
 - Proper release assets — archives, checksums, vsix (#6)
 - *(release)* Compile the extension explicitly before vsce (#8)
+- *(release)* V0.6.0 (#70)
 ## [0.5.0] - 2026-11-07
 
 ### 🚀 Features
