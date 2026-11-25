@@ -5,6 +5,7 @@ mod client_log;
 mod cmd_common;
 mod cmd_format;
 mod cmd_lint;
+mod cmd_lineage_site;
 mod metrics;
 mod observability;
 mod server;
@@ -68,10 +69,16 @@ enum Command {
     Lint(cmd_lint::LintArgs),
     /// Format the project's model SQL files (`--check` changes nothing)
     Format(cmd_format::FormatArgs),
+    /// Write the project's column-lineage dashboard as one HTML page
+    LineageSite(cmd_lineage_site::LineageSiteArgs),
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if let Some(Command::LineageSite(args)) = &cli.command {
+        std::process::exit(cmd_lineage_site::run(args));
+    }
 
     if matches!(cli.command, Some(Command::Schema)) {
         let schema = cogitator_analysis::config_schema::json::config_json_schema();

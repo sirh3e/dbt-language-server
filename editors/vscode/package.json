@@ -115,6 +115,10 @@
         "title": "dbt: Select nodes…"
       },
       {
+        "command": "cogitator.lineageView",
+        "title": "dbt: Show lineage view"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },

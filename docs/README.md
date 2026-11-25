@@ -16,6 +16,7 @@
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |
 | [breaking-changes.md](breaking-changes.md) | The breaking-change preview: a model's columns against its last built schema, and what that breaks downstream |
 | [preview.md](preview.md) | The rows of one CTE: the "Preview rows" lenses, which SQL runs, the row limits, cancelling, per editor |
+| [lineage-site.md](lineage-site.md) | The column-lineage dashboard: `cogitator lineage-site` (a self-contained HTML page) and the live view in VS Code, what is traced, what is marked unknown, and why |
 | [commands.md](commands.md) | Every `dbt.*` workspace command: argument, result, side effects, and which editors expose it |
 | [editor-parity.md](editor-parity.md) | Contributors: how a new command reaches every editor, and the test that holds it |
 | [go-to-schema.md](go-to-schema.md) | `dbt.goToSchema` in detail, with a JSON-RPC example |

@@ -30,6 +30,7 @@ mod inlay_hints;
 mod jinja_inline;
 mod jinja_preview;
 mod lenses;
+pub mod lineage_site;
 mod linked_editing;
 pub mod lint;
 pub mod macro_calls;

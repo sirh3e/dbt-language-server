@@ -116,6 +116,10 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtTests      jump to a test of this model        <leader>dq
   :DbtStatus     language-server status              <leader>dS
   :DbtDag        project DAG, dbt-docs style         <leader>dD
+  :DbtLineageSite
+                 the project's column-lineage page (dbt.lineageSite):
+                 written to target/cogitator-lineage/index.html and
+                 opened in the browser; works offline
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
   :DbtSelect [expr] dbt node selection in the navigator

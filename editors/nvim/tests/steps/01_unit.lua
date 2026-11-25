@@ -157,6 +157,24 @@ return function(ctx)
     vim.inspect(items)
   )
 
+  -- :DbtLineageSite message
+  local site = require("cogitator.lineage_site")
+  local text, level = site.message({
+    written = { path = "/p/target/cogitator-lineage/index.html" },
+    counts = { columnsTraced = 25, columns = 39, columnsUndetermined = 14, modelsDeclined = 1 },
+  })
+  local none_text, none_level = site.message(nil)
+  local expected = "lineage page: /p/target/cogitator-lineage/index.html — "
+    .. "25 of 39 columns traced, 14 undetermined, 1 models declined"
+  H.check(
+    text == expected
+      and level == vim.log.levels.INFO
+      and none_level == vim.log.levels.WARN
+      and none_text:find("no dbt project", 1, true) ~= nil,
+    "lineage_site: message says where the page is and what was traced",
+    text
+  )
+
   -- :DbtUnresolved quickfix items
   local unresolved = require("cogitator.commands").unresolved_items({
     count = 1,

@@ -130,7 +130,11 @@ editor integrations live under `editors/`.
   what that breaks downstream; `features/breaking/`, the shell in
   `server/breaking.rs`, computed on open/save for its diagnostics and
   lens by `dispatcher/breaking.rs`), dbt.select (the nodes a dbt selector
-  picks, as `dbt ls` lists them; the selector engine, `selectors/`). Every
+  picks, as `dbt ls` lists them; the selector engine, `selectors/`),
+  dbt.lineageSite (the lineage site's data and page assets, or the page
+  written to `target/cogitator-lineage/`; `features/lineage_site/` pure,
+  the shell `server/handlers/lineage_site.rs`, shared with the
+  `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).

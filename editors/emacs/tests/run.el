@@ -60,6 +60,15 @@
               '(:name "x" :list [1]))
        "client: lsp-mode hash tables normalize to plists")
 
+;; unit: the lineage page's message
+(check (equal (cogitator--lineage-site-message
+               '(:written (:path "/p/target/cogitator-lineage/index.html")
+                 :counts (:columnsTraced 25 :columns 39 :columnsUndetermined 14 :modelsDeclined 1)))
+              "cogitator: lineage page /p/target/cogitator-lineage/index.html — 25 of 39 columns traced, 14 undetermined, 1 models declined")
+       "lineage-site: message says where the page is and what was traced")
+(check (null (cogitator--lineage-site-message nil))
+       "lineage-site: no page, no message")
+
 ;; ---------------------------------------------------------------------------
 ;; integration: eglot against the live server and a fixture COPY
 ;; ---------------------------------------------------------------------------
@@ -138,6 +147,13 @@
   (check (and (plist-get caches :profiles)
               (numberp (plist-get (plist-get caches :profiles) :entries)))
          "integration: dbt.cache reports the derived-cache surfaces" caches))
+
+;; integration: dbt.lineageSite writes the page under target/
+(let ((site (run--exec "dbt.lineageSite"
+                       (append (cogitator--command-argument) '(:write t)))))
+  (check (and (file-exists-p (plist-get (plist-get site :written) :path))
+              (> (plist-get (plist-get site :counts) :columnsTraced) 0))
+         "integration: dbt.lineageSite writes the page" site))
 
 ;; pickers + doctor parity: the data each one feeds on, plus rendering
 (let ((graph (run--exec "dbt.projectGraph" (cogitator--command-argument))))

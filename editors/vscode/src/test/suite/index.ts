@@ -13,6 +13,9 @@ import {
   astGrepLabel,
   breakingLines,
   captureColor,
+  columnPosition,
+  lineageFocus,
+  lineageHtml,
   incrementalDiffText,
   incrementalityLabel,
   languageOf,
@@ -218,6 +221,33 @@ export async function run(): Promise<void> {
       table: "| id |\n| --- |\n| 1 |\n",
     }) === "| id |\n| --- |\n| 1 |\n",
     "vscode: previewCteText is the server's table"
+  );
+  check(
+    lineageFocus("file:///p/models/stg_orders.sql") === "model:stg_orders" &&
+      lineageFocus("file:///p/models/schema.yml") === undefined,
+    "vscode: lineageFocus names the model of a SQL file"
+  );
+  check(
+    JSON.stringify(columnPosition("select\n  id as Customer_ID\n", "customer_id")) ===
+      JSON.stringify({ line: 1, character: 8 }),
+    "vscode: columnPosition finds the column as a word"
+  );
+  {
+    const html = lineageHtml("N0NCE", "vscode-resource:", { script: "x</script>", style: "a{}" });
+    check(
+      html.includes("script-src 'nonce-N0NCE'") &&
+        html.includes('<script nonce="N0NCE">x<\\/script></script>') &&
+        !/https?:\/\//.test(html),
+      "vscode: lineageHtml allows only its nonce and fetches nothing",
+      html
+    );
+  }
+  const site = (await exec("dbt.lineageSite", { assets: true })) as
+    | { site?: { nodes: unknown[] }; assets?: { script: string } }
+    | undefined;
+  check(
+    !!site?.site && site.site.nodes.length > 0 && !!site.assets?.script.includes("CogitatorLineage"),
+    "vscode: dbt.lineageSite answers the page's data and assets"
   );
   check(
     splitText({

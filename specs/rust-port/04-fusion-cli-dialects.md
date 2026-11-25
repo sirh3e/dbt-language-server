@@ -15,6 +15,19 @@ Binary name: `dbt-language-server`. Behavior:
    *Resolved:* the port ships its own `install.sh`/`install.ps1` targeting this
    repository's releases; `upgrade` only prints that pointer and never
    self-mutates (deliberate deviation).
+1a. **`lineage-site` subcommand** (port addition, no Go counterpart):
+   `cogitator lineage-site [--project-dir DIR] [--out DIR] [--open]` builds
+   the context of DIR (default `.`), reads its `target/` artifacts, runs the
+   project schema job to completion, traces every model as `dbt.lineageSite`
+   does (`server::handlers::lineage_site`, shared with the server) and writes
+   `index.html` (one self-contained page: data, script and stylesheet inline,
+   a Content-Security-Policy that allows nothing remote) and `lineage.json`
+   into `--out` (default `DIR/target/cogitator-lineage`). Prints the page's
+   path on stdout and the counts on stderr; exit 0 written, 1 not (no
+   dbt_project.yml, an unwritable `--out`: Guidance with a Solution on
+   stderr). `--open` hands the page to `xdg-open` / `open` / `start`; a
+   failure there is a Guidance line, not an error. The data shape is
+   `cogitator_analysis::features::lineage_site::LineageSite` (format 1).
 2. Flags (pflag → clap):
    - `-v, --version` (bool): print version string + newline, exit 0.
    - `-d, --debug` (bool): enable file logging (01 §5).
