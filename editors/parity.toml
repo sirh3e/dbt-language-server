@@ -57,6 +57,7 @@
 "dbt.previewCte" = { kind = "user" }
 "dbt.select" = { kind = "user" }
 "dbt.lineageSite" = { kind = "user" }
+"dbt.syncYaml" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

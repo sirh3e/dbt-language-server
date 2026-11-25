@@ -4,8 +4,9 @@
 mod client_log;
 mod cmd_common;
 mod cmd_format;
-mod cmd_lint;
 mod cmd_lineage_site;
+mod cmd_lint;
+mod cmd_yaml_sync;
 mod metrics;
 mod observability;
 mod server;
@@ -71,6 +72,9 @@ enum Command {
     Format(cmd_format::FormatArgs),
     /// Write the project's column-lineage dashboard as one HTML page
     LineageSite(cmd_lineage_site::LineageSiteArgs),
+    /// Sync the models' schema YAML with their SQL (columns, inherited
+    /// descriptions); --check for CI
+    YamlSync(cmd_yaml_sync::Args),
 }
 
 fn main() -> Result<()> {
@@ -78,6 +82,10 @@ fn main() -> Result<()> {
 
     if let Some(Command::LineageSite(args)) = &cli.command {
         std::process::exit(cmd_lineage_site::run(args));
+    }
+    if let Some(Command::YamlSync(args)) = &cli.command {
+        let code = cmd_yaml_sync::run(args, cli.profiles_dir.as_deref(), cli.target.as_deref());
+        std::process::exit(code);
     }
 
     if matches!(cli.command, Some(Command::Schema)) {

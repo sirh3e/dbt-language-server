@@ -48,6 +48,15 @@ end, {
   end,
   desc = "every unresolved ref, source, doc, macro and var (quickfix; optional kinds)",
 })
+vim.api.nvim_create_user_command("DbtSyncYaml", function(opts)
+  require("cogitator.commands").sync_yaml(opts)
+end, {
+  nargs = "*",
+  complete = function()
+    return { "%", "prune", "types", "reorder", "folder" }
+  end,
+  desc = "sync the models' schema YAML with their SQL: preview, then apply (dbt.syncYaml)",
+})
 vim.api.nvim_create_user_command("DbtReferences", function(opts)
   require("cogitator.usages").references({ bang = opts.bang })
 end, {

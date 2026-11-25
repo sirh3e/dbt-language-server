@@ -134,7 +134,11 @@ editor integrations live under `editors/`.
   dbt.lineageSite (the lineage site's data and page assets, or the page
   written to `target/cogitator-lineage/`; `features/lineage_site/` pure,
   the shell `server/handlers/lineage_site.rs`, shared with the
-  `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`). Every
+  `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`),
+  dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
+  columns, descriptions inherited down `ColumnLineage::direct` lineage;
+  `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
+  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).
@@ -149,7 +153,8 @@ editor integrations live under `editors/`.
   columns, drop contracted ones — offered from the YAML entry too;
   `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
   rename/remove fixes; `refactors.rs`: expand a star, extract
-  schema YAML; `extract_cte.rs`: CTE → model). All pure: the shell
+  schema YAML; `extract_cte.rs`: CTE → model; "Sync schema YAML of 'm'"
+  from `features::yaml_sync`, on the model's SQL and its YAML entry). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion
   capability advertises `triggerCharacters`.

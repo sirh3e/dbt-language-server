@@ -207,6 +207,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.previewCte",
     "dbt.select",
     "dbt.lineageSite",
+    "dbt.syncYaml",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

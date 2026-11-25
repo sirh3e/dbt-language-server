@@ -155,6 +155,7 @@ M.SUBCOMMANDS = {
     desc = "rename the model or macro under the cursor [new_name]",
   },
   unresolved = { run = with_args("unresolved"), desc = "every unresolved ref, source, doc, macro, var" },
+  sync = { run = with_args("sync_yaml"), desc = "sync the schema YAML with the SQL [model…|%] [prune]" },
   split = { run = plain("split"), desc = "split this table model at its incrementality frontier" },
   incrementality = { run = plain("incrementality"), desc = "table models that could be incremental" },
   impact = {
@@ -303,6 +304,7 @@ M.GROUPS = {
       "cancel",
       "dead",
       "unresolved",
+      "sync",
       "incrementality",
       "tags",
       "selectors",

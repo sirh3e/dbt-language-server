@@ -62,6 +62,33 @@ impl DerivedCache {
         roots.entry(root.to_path_buf()).or_default().clone()
     }
 
+    /// Runs the job for `ctx` on this thread and publishes its snapshot:
+    /// for one-shot callers (the `yaml-sync` CLI) that have no refresh
+    /// loop to wait for.
+    pub fn publish_schemas_now(&self, ctx: &DbtContext, artifact_cap: u64) {
+        let Some(root) = ctx.project_root.clone() else {
+            return;
+        };
+        let slot = self.root_slot(&root);
+        let artifacts = self.artifacts(&root, artifact_cap);
+        let never = || false;
+        let input = JobInput {
+            dialect: &ctx.dialect,
+            models: &ctx.model_detail_map,
+            sources: &ctx.source_detail_map,
+            graph: &ctx.graph,
+            manifest: artifacts.manifest.as_deref(),
+            catalog: artifacts.catalog.as_deref(),
+            files: &Disk,
+            limits: JobLimits::default(),
+            stale: &never,
+        };
+        let mut state = slot.job.lock().expect("schema job lock");
+        if let Some(snapshot) = run_schema_job(&input, &mut state) {
+            *slot.current.lock().expect("schema snapshot lock") = Some(snapshot);
+        }
+    }
+
     /// Starts a background job for this context, superseding one in flight.
     pub fn spawn_schema_job(self: &Arc<Self>, ctx: Arc<DbtContext>, artifact_cap: u64) {
         let Some(root) = ctx.project_root.clone() else {

@@ -6,19 +6,19 @@
 use cogitator_lsp::{Position, Range, TextEdit};
 
 /// Spaces before the first non-space character.
-pub(super) fn indent(line: &str) -> usize {
+pub(crate) fn indent(line: &str) -> usize {
     line.len() - line.trim_start_matches(' ').len()
 }
 
 /// A line that carries YAML content (not blank, not only a comment).
-pub(super) fn is_content(line: &str) -> bool {
+pub(crate) fn is_content(line: &str) -> bool {
     let trimmed = line.trim();
     !trimmed.is_empty() && !trimmed.starts_with('#')
 }
 
 /// The last content line of the block that starts at `start` and holds
 /// every following line indented deeper than `parent_indent`.
-pub(super) fn block_end(lines: &[&str], start: usize, parent_indent: usize) -> usize {
+pub(crate) fn block_end(lines: &[&str], start: usize, parent_indent: usize) -> usize {
     let mut last = start;
     for (i, line) in lines.iter().enumerate().skip(start + 1) {
         if !is_content(line) {
@@ -35,7 +35,7 @@ pub(super) fn block_end(lines: &[&str], start: usize, parent_indent: usize) -> u
 /// A TextEdit inserting `body` (complete lines, each ending in `\n`) on
 /// the line after `after`. At the end of a file without a final newline
 /// the insertion goes at the end of the last line, behind a newline.
-pub(super) fn insert_after_line(text: &str, after: usize, body: String) -> TextEdit {
+pub(crate) fn insert_after_line(text: &str, after: usize, body: String) -> TextEdit {
     let lines: Vec<&str> = text.lines().collect();
     let at_end = after + 1 >= lines.len();
     if at_end && !text.is_empty() && !text.ends_with('\n') {
@@ -62,7 +62,7 @@ pub(super) fn insert_after_line(text: &str, after: usize, body: String) -> TextE
 /// One `- …` item of a YAML list: its dash line, the indent of its keys
 /// and its last content line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Entry {
+pub(crate) struct Entry {
     pub dash_line: usize,
     pub key_indent: usize,
     pub end: usize,
@@ -70,7 +70,7 @@ pub(super) struct Entry {
 
 /// The list item holding `line` (its `name:` line, say): the nearest
 /// dash line at or above it.
-pub(super) fn entry_at(lines: &[&str], line: usize) -> Option<Entry> {
+pub(crate) fn entry_at(lines: &[&str], line: usize) -> Option<Entry> {
     let dash_line = (0..=line).rev().find(|&i| {
         lines
             .get(i)
@@ -85,7 +85,7 @@ pub(super) fn entry_at(lines: &[&str], line: usize) -> Option<Entry> {
 }
 
 /// The line of `key:` among the entry's own keys (not nested ones).
-pub(super) fn key_line(lines: &[&str], entry: Entry, key: &str) -> Option<usize> {
+pub(crate) fn key_line(lines: &[&str], entry: Entry, key: &str) -> Option<usize> {
     let prefix = format!("{key}:");
     let own = |i: usize| {
         let line = lines[i];
@@ -103,7 +103,7 @@ pub(super) fn key_line(lines: &[&str], entry: Entry, key: &str) -> Option<usize>
 /// Append list items under `key:` of the entry holding `line`, or start
 /// the list at the entry's end. Each item is its lines without indent,
 /// the first beginning `- `. None where `key:` has an inline value.
-pub(super) fn append_to_list(
+pub(crate) fn append_to_list(
     text: &str,
     line: usize,
     key: &str,
@@ -140,7 +140,7 @@ pub(super) fn append_to_list(
 }
 
 /// Whole lines `first..=last`, as a range that deletes them.
-pub(super) fn lines_range(text: &str, first: usize, last: usize) -> Range {
+pub(crate) fn lines_range(text: &str, first: usize, last: usize) -> Range {
     let count = text.lines().count();
     let end = if last + 1 < count || text.ends_with('\n') {
         Position {
@@ -165,7 +165,7 @@ pub(super) fn lines_range(text: &str, first: usize, last: usize) -> Range {
 
 /// A plain YAML scalar for a name, or None when it would need quoting:
 /// the actions only write names a reader would write unquoted.
-pub(super) fn plain_name(name: &str) -> Option<&str> {
+pub(crate) fn plain_name(name: &str) -> Option<&str> {
     let ok = !name.is_empty()
         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
         && !name.starts_with(|c: char| c.is_ascii_digit());
