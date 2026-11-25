@@ -33,6 +33,16 @@ directory with `dbt_project.yml` upward from the file). Run
 `:checkhealth cogitator` to verify the binary, the project root and the
 profiles.yml resolution.
 
+                                                *cogitator-nvim-no-server*
+Without a server binary nothing can attach. When `cmd` is the default
+`cogitator` and it is not on Neovim's PATH, the plugin looks where
+install.sh puts it ($COGITATOR_BIN_DIR, then ~/.local/bin). Without
+one, the first SQL or YAML file of a dbt project you open says so once,
+and |:DbtInstall| installs it and starts it. The keymaps are set on
+such buffers either way, so `<leader>d…` never falls through to Vim's
+own `d`; a command that needs the server says why there is none (not a
+dbt project, no binary, still starting, exited).
+
 ==============================================================================
 2. Options                                           *cogitator-nvim-options*
 
@@ -112,6 +122,8 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  opened in the browser; works offline
   :DbtTags       pick a tag, then a model
   :DbtSelectors  pick a selectors.yml entry
+  :DbtSelect [expr] dbt node selection in the navigator
+                 (|cogitator-nvim-select|; `:DbtFind select` too)
   :DbtFind [src] fuzzy-find: models, sources, all,       <leader>dF
                  definitions, macros, columns, upstream,
                  downstream, lineage, refs, tests, tags,
@@ -137,13 +149,13 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  every unresolved ref, source, source_table, doc, macro
                  and var of the project (quickfix; `:DbtFind unresolved`
                  is the same list in the picker)
-  :DbtSelect {selector}
-                 the nodes a dbt selector picks, as `dbt ls` lists
-                 them (`selector:<name>` evaluates a selectors.yml
-                 entry), into quickfix; `:DbtFind select` is the same
-                 list in the picker
   :DbtColumnLineage [column]  column-lineage graph of this model
   :DbtDeps       dbt deps for the project (cancellable)
+  :DbtInstall    install or update the language server from this
+                 repository's releases (checksum-verified install.sh),
+                 then start it; the plugin also finds a server in
+                 $COGITATOR_BIN_DIR or ~/.local/bin when it is not on
+                 PATH
   :DbtReloadConfig  re-read cogitator.yml now
   :DbtSyntaxTree the tree-sitter-dbt tree in a split (toggle)
   :DbtHighlight[!] [auto|always|off]
@@ -157,6 +169,16 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   (code lens)    run the code lens on this line      <leader>dL
   (selection)    expand along selectionRange         <leader>dv
   :DbtActions    code actions, yazi-style menu       <leader>dA, gra
+  :DbtReferences[!]
+                 where the model, macro, source or column under the
+                 cursor is used, in a dialog (`!`: the file's own
+                 model)                              <leader>dw, grr
+  :DbtMacros     every macro, then where the chosen one is called
+                                                     <leader>dm
+  :DbtRename[!] [name]
+                 rename the model or macro under the cursor (else the
+                 file's model; `!` always it) across the project, after
+                 showing the edit                    <leader>de, grn
                  shrink back (visual mode)           <leader>dV
 
 Every command is also a subcommand of *:Dbt* with completion, e.g.
@@ -226,6 +248,45 @@ with the matched letters highlighted and a preview. The query is fzf's:
 
 Every other choice (:Dbt, :DbtTests, :DbtTags, :DbtCancel, targets,
 projects) uses the same picker.
+
+SELECTIONS                                            *cogitator-nvim-select*
+
+The navigator's finder (`f`, `/`), `:DbtSelect [expr]` and `:DbtFind
+select` take dbt's own selection syntax as well as fzf's words, and tell
+them apart as you type: a `method:` word, a graph operator (`+m`, `m+`,
+`2+m+1`, `@m`), a `,`, a `*` or `--exclude` make it a selection; fzf's
+`'x ^x x$ !x a | b` keep it fuzzy. A selection is evaluated by the server
+(`dbt.select`) as `dbt ls --select … --exclude …` would answer it, and
+the list is its answer, models, seeds, snapshots, sources, tests, unit
+tests and exposures alike, with the counts in the prompt
+(`dbt select · 7 · 3 models, 2 seeds, 2 tests`) or the error, underlined
+where it is.
+
+  tag:nightly           tag:a,resource_type:model    (both)
+  +dim_items            tag:a tag:b                  (either)
+  2+fct_x+1             path:models/dim   stg_*
+  @dim_items            config.materialized:incremental
+  selector:nightly      test_type:generic   source:raw.items
+  +fct_x --exclude resource_type:test
+
+Tests come along as `dbt ls` brings them: a test whose parents are all
+selected is selected. Packages, versions (`orders.v1`), YAML snapshots
+and `selectors.yml` count; `state:`, `result:` and `source_status:` need
+a previous run's artifacts and are refused. What dbt decides by rendering
+Jinja (a ref inside `{% if target.name == … %}`) counts on every branch.
+
+  <Tab>     complete the method or value under the cursor
+  <C-a>     mark every match (the navigator's marks), focus the first
+  <C-r>     run the selection with dbt: build, run or test, as typed,
+            `--exclude` and all
+  <CR>      centre the node (every kind of node then shows), or open a
+            test or seed the graph has no node of, at its line
+
+Back in the navigator, while the marks are what <C-a> marked, `r` runs
+the selection itself rather than the names; the centre title says which
+(`dbt select +dim_items --exclude resource_type:test (7)`). The finder
+is the built-in picker while it evaluates selections, whatever `picker`
+is set to: fzf-lua, snacks and telescope take a fixed list.
 
 EXPLORER                                                 *cogitator-navigator*
 
@@ -337,16 +398,47 @@ cursor offers "Open model" and "Go to tests".
 
                                                 *cogitator-nvim-code-actions*
 `:DbtActions` (<leader>dA, and `gra` in dbt buffers; also on a visual
-selection) opens every action at the cursor in one menu: the server's
-code actions grouped by kind — Quick fixes, Refactor, Source, dbt — and
-the plugin's own commands — Model, Views, Project, Session — which the
-server cannot offer itself, since a stock client drops what they answer
-(the plan, the split, the graphs, the explorer...). A server command
-the plugin also has (dbt run, Go to schema) is listed once. The preview
-column shows what an action does: an edit as a diff of every file it
-touches (and the files it creates or renames), a command with what it
-runs. A preferred fix is starred. With `ui.picker = false` the keymaps
-fall back to |vim.lsp.buf.code_action|.
+selection) opens every action at the cursor in one menu. What is about
+the cursor comes first, each chosen with one key (<CR> or `l`): a fix
+of the diagnostic there (a preferred one starred), then the refactors
+and commands of what is under it — "Expand * to 18 column(s)" on a
+`select *`, "Extract CTE 'x' to a model" on a CTE's name, "Open schema
+of 'x'" on a `ref('x')`. The server says which actions those are (in
+the action's `data`). Below them "This model · <name>" holds the
+server's actions on the whole file (dbt run, Go to schema, Add version
+2…) beside the plugin's own model commands (the plan, the split,
+preview, impact…); with nothing at the cursor these are the top level
+themselves. Then Views, Project and Session: the plugin's commands,
+which the server cannot offer itself, since a stock client drops what
+they answer. A server command the plugin also has (dbt run, Go to
+schema) is listed once. The preview column shows what an action does:
+an edit as a diff of every file it touches (and the files it creates or
+renames), a command with what it runs. With `ui.picker = false` the
+keymaps fall back to |vim.lsp.buf.code_action|.
+
+                                                   *cogitator-nvim-references*
+`:DbtReferences` (<leader>dw, and `grr` in dbt buffers) asks the server
+where whatever the cursor names is used — a `ref()`'d model, a macro, a
+source, a docs block, a column — and shows every use in a dialog, a
+group per file with each use's line; the preview shows the lines around
+it, the use marked. `:DbtReferences!` lists the uses of the file's own
+model wherever the cursor is. `/` filters the files and their lines at
+once (`'customers.sql`, `^models/marts`), `l` on a use opens it at its
+line. The dialog's first entry renames what it lists.
+
+`:DbtMacros` (<leader>dm) lists every macro of the project and its
+packages, filtered with `/` like any dialog; choosing one shows where it
+is called, in the same dialog.
+
+`:DbtRename [name]` (<leader>de, and `grn` in dbt buffers) renames what
+the cursor names — a model through its `ref()`, a macro at a call or its
+header, a var, a column, a CTE — or else the file's own model;
+`:DbtRename!` always renames the file's model. It asks for the new name,
+then shows the whole edit before anything changes: "apply" with the
+diff of every file, "cancel", and the changes one file at a time. A
+model rename also renames its file; a macro of an installed package is
+refused with the reason. The edited buffers are left unsaved (`:wall`).
+With `ui.picker = false`, `grr` and `grn` stay Neovim's own.
 
                                                       *cogitator-nvim-dialogs*
 Every dialog of the plugin — the code actions, `:Dbt` without
@@ -362,8 +454,11 @@ one-line float with a title.
   gg  G         first / last item
   <C-d>  <C-u>  half a page down / up
   J  K          scroll the preview
-  /             filter as you type; a group stays while a child matches,
-                and the filter follows you into it (<Esc> clears it)
+  /             filter as you type, in fzf's syntax: `stg cust` (each
+                term, its letters in order), `'exact`, `^prefix`,
+                `suffix$`, `!not`, `a | b`; a group stays while a child
+                matches, and the filter follows you into it unless the
+                group matched by its own name (<Esc> clears it)
   ?             the keys, in the preview column
   q  <Esc>      close
 

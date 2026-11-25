@@ -1,9 +1,11 @@
 //! dbt.relation: the database.schema.identifier coordinates of the node
 //! under the cursor — a `source()` table, a `ref()` target, or the file's
-//! own model. dbt *defaults* only: source schema falls back to the source
+//! own model. dbt *defaults*: source schema falls back to the source
 //! name, identifiers to the declared name, and model coordinates come from
 //! the active profiles target. Custom `generate_schema_name`-style macros
-//! and `models:` config trees (`+schema`/`+database`) are not evaluated.
+//! and `models:` config trees (`+schema`/`+database`) are not evaluated —
+//! but where target/manifest.json renders a model, `with_manifest_relation`
+//! answers what dbt rendered, and `origin` says which one it is.
 
 use cogitator_lsp::Position;
 use cogitator_parser::TokenKind;
@@ -16,6 +18,16 @@ use super::{model_name_from_uri, DbtContext, Document};
 pub enum RelationKind {
     Model,
     Source,
+}
+
+/// Where a relation's coordinates come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RelationOrigin {
+    /// dbt's defaults over the project and the active target.
+    Defaults,
+    /// What dbt rendered, from target/manifest.json.
+    Manifest,
 }
 
 /// The dbt.relation result. Options are explicit `null` on the wire.
@@ -32,6 +44,63 @@ pub struct RelationInfo {
     pub identifier: String,
     /// Dot-join of the known parts, unquoted.
     pub relation: String,
+    pub origin: RelationOrigin,
+}
+
+/// A model's relation as target/manifest.json renders it, where the
+/// manifest has one (it does not for ephemeral models, nor for models
+/// added since the last dbt run); otherwise `info` unchanged.
+pub fn with_manifest_relation(
+    info: RelationInfo,
+    manifest: &crate::artifacts::manifest::ManifestIndex,
+) -> RelationInfo {
+    if !matches!(info.kind, RelationKind::Model) {
+        return info;
+    }
+    let Some(rendered) = manifest
+        .models
+        .get(&info.name)
+        .and_then(|node| node.relation_name.as_deref())
+    else {
+        return info;
+    };
+    let parts = split_relation(rendered);
+    let Some((identifier, rest)) = parts.split_last() else {
+        return info;
+    };
+    let (database, schema) = match rest {
+        [database, schema] => (Some(database.clone()), Some(schema.clone())),
+        [schema] => (None, Some(schema.clone())),
+        [] => (None, None),
+        _ => return info,
+    };
+    let mut out = assemble(
+        info.kind,
+        info.name,
+        info.source,
+        database,
+        schema,
+        identifier.clone(),
+    );
+    out.origin = RelationOrigin::Manifest;
+    out
+}
+
+/// `"db"."schema"."name"` (or unquoted, or `[a].[b]`, or backticks) into
+/// its parts, without their quotes; a dot inside quotes stays.
+fn split_relation(rendered: &str) -> Vec<String> {
+    let mut parts = vec![String::new()];
+    let mut quote: Option<char> = None;
+    for ch in rendered.trim().chars() {
+        match (quote, ch) {
+            (None, '"' | '`') => quote = Some(ch),
+            (None, '[') => quote = Some(']'),
+            (Some(q), c) if c == q => quote = None,
+            (None, '.') => parts.push(String::new()),
+            (_, c) => parts.last_mut().expect("one part at least").push(c),
+        }
+    }
+    parts
 }
 
 /// The active profiles target's coordinates, handed in by the shell.
@@ -156,5 +225,6 @@ fn assemble(
         schema,
         identifier,
         relation,
+        origin: RelationOrigin::Defaults,
     }
 }

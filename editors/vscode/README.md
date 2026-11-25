@@ -92,9 +92,10 @@ to each), `dbt: Breaking changes against the last build` (this model's
 columns against `target/catalog.json` or the manifest's documented
 columns from `dbt.breakingChanges`: removed, possibly renamed and retyped
 columns and what reads them downstream; also a lens and a diagnostic,
-refreshed on save), `dbt: Select nodes` (the nodes a dbt selector picks, as `dbt
-ls` lists them, from `dbt.select` — `selector:<name>` evaluates a
-selectors.yml entry — a quick pick that jumps to each), `dbt: Show
+refreshed on save), `dbt: Select nodes…` (dbt's selection syntax —
+`tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `selector:<name>`,
+`… --exclude resource_type:test` — evaluated as you type by `dbt.select`,
+the counts in the title; choosing a node opens it), `dbt: Show
 lineage view` (the project DAG and column-level lineage from
 `dbt.lineageSite` in a panel beside the editor — the same page as
 `cogitator lineage-site`; it follows the active model, refreshes on save,

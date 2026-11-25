@@ -104,6 +104,37 @@ fn ref_token_prepends_the_target_schema_action() {
 }
 
 #[test]
+fn actions_about_the_cursor_say_so_and_the_models_do_not() {
+    // a menu puts what is under the cursor first: the server says which
+    // actions those are, in `data`, which stock clients ignore
+    let ctx = ctx();
+    let uri = model_uri("models/customers.sql");
+    let text = "select * from {{ ref('stg_customers') }}";
+    let mut docs = Documents::default();
+    docs.open(uri.clone(), text, &ctx.dialect);
+    let on_ref = Range::zero_width(Position {
+        line: 0,
+        character: 24,
+    });
+    let actions = features::code_actions(&ctx, docs.get(&uri), &uri, on_ref, None, None, &[]);
+    let open_schema = actions
+        .iter()
+        .find(|a| a.title == "Open schema of 'stg_customers'")
+        .expect("the ref's action");
+    assert!(open_schema.is_at_cursor());
+    let wire = serde_json::to_value(open_schema).unwrap();
+    assert_eq!(wire["data"]["cogitator"]["atCursor"], true);
+    let model_wide: Vec<_> = actions.iter().filter(|a| !a.is_at_cursor()).collect();
+    assert!(!model_wide.is_empty(), "the model's own commands");
+    assert!(
+        model_wide
+            .iter()
+            .all(|a| serde_json::to_value(a).unwrap().get("data").is_none()),
+        "an unmarked action carries no data at all"
+    );
+}
+
+#[test]
 fn yaml_entry_offers_model_and_tests_jumps() {
     let ctx = ctx();
     let entry_line = ctx
@@ -288,6 +319,45 @@ fn a_bare_star_expands_only_as_a_select_item_of_one_relation() {
     // a relation whose columns nobody documents: no expansion
     let (ctx, docs, uri) = open("select * from {{ ref('stg_stripe_payments') }}");
     assert!(features::expand_star_action(&ctx, docs.get(&uri).unwrap(), &uri, at(7)).is_none());
+}
+
+#[test]
+fn a_subquery_in_the_where_is_not_a_relation_the_star_selects() {
+    // cs2_schema's dim_inventories: a CTE filtered by a subquery of another
+    let text = "with touched as (select order_id from {{ ref('stg_orders') }}), \
+                transitions as (select * from {{ ref('stg_orders') }} \
+                where order_id in (select order_id from touched)) \
+                select * from transitions";
+    let (ctx, docs, uri) = open(text);
+    let doc = docs.get(&uri).unwrap();
+    let star = text.find("select * from {{").unwrap() as u32 + 7;
+    let action = features::expand_star_action(&ctx, doc, &uri, at(star)).expect("the CTE's star");
+    assert_eq!(new_text(&action), "order_id, status");
+}
+
+#[test]
+fn a_bare_star_in_one_cte_of_many_expands_to_that_ctes_relation() {
+    // the shape of nearly every model of a real project: CTEs that each
+    // read one relation, so the document as a whole reads several
+    let text = "with orders as (select * from {{ ref('stg_orders') }}), \
+                customers as (select * from {{ ref('stg_customers') }}) \
+                select * from orders join customers on orders.order_id = customers.customer_id";
+    let (ctx, docs, uri) = open(text);
+    let doc = docs.get(&uri).unwrap();
+    let stars: Vec<u32> = text
+        .match_indices("select *")
+        .map(|(i, _)| i as u32 + 7)
+        .collect();
+    let first = features::expand_star_action(&ctx, doc, &uri, at(stars[0])).expect("first CTE");
+    assert_eq!(new_text(&first), "order_id, status");
+    let second = features::expand_star_action(&ctx, doc, &uri, at(stars[1])).expect("second CTE");
+    assert!(second.title.starts_with("Expand * to "), "{}", second.title);
+    assert!(
+        !new_text(&second).contains("status"),
+        "stg_customers' own columns only"
+    );
+    // the final select reads two relations: a bare star stays ambiguous
+    assert!(features::expand_star_action(&ctx, doc, &uri, at(stars[2])).is_none());
 }
 
 #[test]

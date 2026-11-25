@@ -128,6 +128,13 @@ impl ProjectGraph {
         ] {
             let files = util::create_file_name_map(&[".sql"], root, paths);
             for (name, path) in &files {
+                // a `{% test %}` definition (tests/generic/) is a macro
+                // dbt keeps under test-paths, not a test of its own
+                if node_kind == NodeKind::Test
+                    && (is_fixture(root, paths, path) || defines_generic_test(path))
+                {
+                    continue;
+                }
                 let Some(seeds) =
                     cache.get_or_parse(path, |text, _| Some(extract_edge_seeds(text, dialect)))
                 else {
@@ -419,6 +426,26 @@ impl ProjectGraph {
 }
 
 /// Pure per-file edge extraction via the phase-1 pipeline (scan side).
+/// A unit test's fixture (`<test-path>/fixtures/…`), which dbt reads as
+/// data for unit tests, never as a test.
+pub(crate) fn is_fixture(root: &Path, test_paths: &[String], file: &Path) -> bool {
+    test_paths
+        .iter()
+        .any(|t| file.starts_with(root.join(t).join("fixtures")))
+}
+
+/// Does the file define a generic test (`{% test name(…) %}`)?
+pub(crate) fn defines_generic_test(path: &Path) -> bool {
+    std::fs::read_to_string(path).is_ok_and(|text| {
+        text.lines().any(|line| {
+            let t = line.trim_start();
+            ["{% test ", "{%- test ", "{%test "]
+                .iter()
+                .any(|p| t.starts_with(p))
+        })
+    })
+}
+
 fn extract_edge_seeds(text: &str, dialect: &Dialect) -> Vec<EdgeSeed> {
     let Ok(doc) = JinjaSqlParser.parse(text, dialect) else {
         return Vec::new();

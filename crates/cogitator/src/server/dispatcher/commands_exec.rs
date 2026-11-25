@@ -148,7 +148,29 @@ impl Dispatcher {
                         return;
                     }
                 };
-                self.run_dbt_selected(req.id, kind, &uri, Some(selector));
+                // what dbt.select listed: the same selection, its
+                // exclusion passed on as dbt's own --exclude
+                let exclude = arg
+                    .get("exclude")
+                    .and_then(|s| s.as_str())
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                if let Some(exclude) = &exclude {
+                    if let Err(guidance) = crate::server::jobs::validate_selector(exclude) {
+                        let response = ErrorResponse::new(
+                            req.id,
+                            error_codes::INVALID_PARAMS,
+                            guidance.to_message(),
+                        );
+                        self.send(&response);
+                        return;
+                    }
+                }
+                let extra = exclude
+                    .map(|e| vec!["--exclude".to_string(), e])
+                    .unwrap_or_default();
+                self.run_dbt_full(req.id, kind, &uri, Some(selector), extra, None);
                 return;
             }
             "dbt.run" | "dbt.test" | "dbt.compile" | "dbt.parse" => {

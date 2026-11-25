@@ -1,0 +1,9 @@
+version: 2
+
+exposures:
+  - name: item_history_feed
+    type: application
+    owner:
+      name: The data team
+    depends_on:
+      - ref('sat_item_version')

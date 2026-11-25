@@ -166,14 +166,14 @@ Every command takes **one argument object**, not positional values:
 | `dbt.status` | server/project/profiles/refresh/caches/config snapshot | none |
 | `dbt.projectGraph` | `{nodes: [{id, name, kind, layer, uri, tags, columns}], edges: [{from, to}]}` | none |
 | `dbt.modelInfo` | `{model, uri, description, tags, upstream, downstream, versions, tests, compiledUri}` or `null` | none |
-| `dbt.relation` | `{kind, name, source, database, schema, identifier, relation}` or `null` | none |
+| `dbt.relation` | `{kind, name, source, database, schema, identifier, relation, origin}` or `null`; `origin` is `"manifest"` where target/manifest.json renders the model, else `"defaults"` | none |
 | `dbt.compiledSql` | `{model, uri, content}` or `null` | WARNING when the file is over the wire cap (2 MiB default; `limits.compiled_sql_mib`) |
 | `dbt.openModel` | `null` | showDocument to the model's file (`{uri}` or `{model}`), or a warning |
 | `dbt.setProfilesDir` | `{dir}` or `null` | live profiles-directory switch: profile/target overrides reset, context refresh, confirmation message — no client restart |
 | `dbt.cache` | `{profiles, lineage, results, artifacts, plans, highlights}` each `{entries, hits, misses}` | `{action: "clear"}` empties the derived caches and refreshes the context |
 | `dbt.reloadConfig` | `null` | forces an immediate cogitator.yml reload pass (otherwise: 2 s stamp poll / didSave fast-path) |
 | `dbt.sourceFreshness` | `{token}` (immediately) | async `dbt source freshness` (project-wide); the refreshed sources.json feeds the freshness lenses on source YAML entries |
-| `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`) |
+| `dbt.runSelection` | `{token}` or InvalidParams | runs dbt with an arbitrary validated selector (`{selector, exclude?, kind?: run\|test\|build\|compile}`; `exclude` becomes `--exclude`) |
 | `dbt.cancel` | `{token, label}` or InvalidParams | aborts the running invocation (the child process is killed) + confirmation message |
 | `dbt.deadModels` | `{models: [{name, uri, reasons}]}` | none (conservative: seeds/package models never flagged; selector mentions keep a model alive) |
 | `dbt.impact` | `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}` | none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models) |
@@ -188,8 +188,8 @@ Every command takes **one argument object**, not positional values:
 | `dbt.nodeInfo` | `{kind, name, …}` per kind (specs/highlighting §6.1), or `null` + a WARNING with the closest names | none (read-only): `{node: {kind, name}}` — `model` (modelInfo's answer + kind), `macro` (package, description, params, uri, range, callers, calls, usedByTests), `test` / `analysis` / `source` / `exposure` / `metric` / `semantic_model` (uri, refs, calls, upstream, downstream, compiledUri for tests and analyses), `generic_test` (a `{% test %}` definition: params, uri, range, appliedTo [{model, column, uri, range}]) |
 | `dbt.breakingChanges` | `{model, status, baseline, summary, diff: {removed, added, retyped}, impacts: [{column, change, severity, tests, downstream}], exposures, public, truncated}` — the buffer's columns against `target/catalog.json`, else the manifest's documented columns | none (read-only): `{uri}`; `status: "noBaseline"` without target/ artifacts; also `breaking-change` diagnostics and an `N breaking changes` lens, computed on open/save |
 | `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
+| `dbt.select` | `{selector, count, counts: {resourceType: n}, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error: {message, start, end} \| null, vocabulary?: {methods, values: {method: [value]}}}` — what `dbt ls --select … --exclude …` lists, by resource type then name; an error lists no node | none (read-only): `{select, exclude?, vocabulary?}` (`selector` for `select`, as the selectors.yml lenses send it); `select` may carry its own `--exclude …`; error offsets are bytes into `select` (or `exclude`); docs/selectors.md — `:DbtSelect`, the navigator's `f` and `/` |
 | `dbt.lineageSite` | `{site, counts}` (`site`: format 1 — the `dbt.projectGraph` nodes/edges with each node's details and columns, each traced column's `inputs` one hop up and its `transform`); with `assets: true` also `assets: {script, style}`; with `write: true` `{written: {path, uri}, counts}` instead of `site`; `null` with no project | `{uri?, assets?, write?}`; `write` writes `<root>/target/cogitator-lineage/index.html` + `lineage.json` — :DbtLineageSite, `cogitator lineage-site` (docs/lineage-site.md) |
-| `dbt.select` | `{selector, count, nodes: [{uri, name, kind, uniqueId, range}], issues}` or InvalidParams for a selector that does not parse | none (read-only): `{selector}` — dbt's selector language (docs/selectors.md), `selector:<name>` for a selectors.yml entry; what `dbt ls --select` lists, tests by eager indirect selection — :DbtSelect |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -382,7 +382,13 @@ cogitator.nvim/
 ├── lua/cogitator/
 │   ├── init.lua                  -- setup(opts), vim.lsp.config registration
 │   ├── config.lua                -- defaults + validation
-│   ├── commands.lua              -- :Dbt* user commands → executeCommand
+│   ├── commands/                 -- :Dbt* user commands → executeCommand: a module
+│   │                             --   per concern (jobs, lists, analysis, views, node,
+│   │                             --   split, navigation), gathered by init.lua
+│   ├── picker/                   -- the yazi-style dialogs: match, view, window, keys,
+│   │                             --   dialogs (select/input), init (state, open)
+│   ├── pick/sources/             -- what :DbtFind lists, a module per origin
+│   ├── paths.lua, positions.lua  -- shared display paths and LSP → byte columns
 │   ├── lens.lua                  -- codelens refresh autocmds
 │   └── health.lua                -- :checkhealth cogitator
 └── doc/cogitator.txt
@@ -498,6 +504,9 @@ vim.lsp.enable("cogitator")
 | `:DbtProfiles [dir]` | `dbt.setProfilesDir` | no arg: candidate report; with dir: live switch (persisted per root; restart fallback for servers without the command) |
 | `:DbtProjects` | — (manager store) | picker over every project root ever attached; opening its dbt_project.yml attaches the per-root client, `<leader>dP` |
 | `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
+| `:DbtReferences[!]` | `textDocument/references` | every use of what the cursor names (`!`: the file's own model), in the yazi-style dialog, a group per file and a line per use with its preview; the first entry renames it — **Neovim only** |
+| `:DbtMacros` | `workspace/symbol`, `textDocument/references` | every macro in the yazi-style dialog; choosing one shows where it is called (asked at its header, which the server reads from disk when the file is not open) — **Neovim only** |
+| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
@@ -510,8 +519,8 @@ vim.lsp.enable("cogitator")
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
 | `:DbtBreakingChanges` | `dbt.breakingChanges` | this model's removed, possibly renamed and retyped columns against its last built schema, and what reads them downstream, into quickfix |
 | `:DbtLineageSite` | `dbt.lineageSite` | `write: true`, then `vim.ui.open` on the written page; a message with the counts; never blocks |
-| `:DbtSelect {selector}` | `dbt.select` | the nodes a dbt selector picks into quickfix (asks for the selector when none is given); `:DbtFind select` shows them in the picker |
 | `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
+| `:DbtSelect [selection]` | `dbt.select` | the navigator's finder over a dbt selection (`tag:x`, `+model`, `resource_type:test`, `a,b`, `--exclude …`), live as it is typed; completion of methods and values |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |
 | `:DbtTreesitter [install\|status\|start]` | — | the tree-sitter-dbt grammar in Neovim (§5.3d) |
 | `:DbtProjects!` | — (manager store) | manage one project: open, profiles directory, clear selections, rename (`label`), forget |

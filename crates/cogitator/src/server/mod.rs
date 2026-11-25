@@ -2,7 +2,7 @@
 //! reader → dispatcher (owns Documents) → writer; debounced refresh task
 //! publishing `Arc<DbtContext>` snapshots over a watch channel.
 
-mod astgrep;
+pub(crate) mod astgrep;
 mod breaking;
 mod cache_persist;
 mod client_link;
@@ -12,7 +12,7 @@ mod compiled_source;
 pub(crate) mod config_file;
 mod config_watcher;
 mod derived_cache;
-mod diagnostics;
+pub(crate) mod diagnostics;
 mod dispatcher;
 mod function_docs;
 mod fusion;
@@ -25,7 +25,7 @@ mod offload;
 mod preview_cte;
 mod refresh;
 mod reply;
-mod selectors;
+pub(crate) mod selectors;
 mod semantic_yaml;
 mod snapshot;
 mod status;

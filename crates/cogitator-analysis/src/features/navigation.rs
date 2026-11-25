@@ -31,14 +31,27 @@ pub fn references(
         return Vec::new();
     };
 
-    ctx.graph
-        .downstream_of(&model)
-        .filter(|node| !node.uri.as_os_str().is_empty())
-        .map(|node| Location {
-            uri: file_uri(&node.uri),
-            range: Range::default(),
+    // every ref('model') call site; a dependent whose file names none we
+    // can find (unparsable, generated) still shows, as its whole file
+    let sites = super::rename::model_ref_sites(ctx, &model, &read);
+    let mut out: Vec<Location> = sites
+        .iter()
+        .flat_map(|(path, ranges)| {
+            ranges.iter().map(|range| Location {
+                uri: file_uri(path),
+                range: *range,
+            })
         })
-        .collect()
+        .collect();
+    for node in ctx.graph.downstream_of(&model) {
+        if !node.uri.as_os_str().is_empty() && !sites.contains_key(&node.uri) {
+            out.push(Location {
+                uri: file_uri(&node.uri),
+                range: Range::default(),
+            });
+        }
+    }
+    out
 }
 
 /// textDocument/documentSymbol (flat): CTEs + macros defined in the file.

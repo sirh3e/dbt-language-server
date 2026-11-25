@@ -48,7 +48,7 @@ editor "exposes" a command when one of its files holds the quoted name.
 - README/AGENTS.md where the feature is described.
 
 **Neovim** (`editors/nvim`)
-- A function in `lua/cogitator/commands.lua` that calls `client:exec_cmd`;
+- A function in the fitting module of `lua/cogitator/commands/` (jobs, lists, analysis, views, node, split, navigation; `commands/init.lua` gathers them into the one `commands` table) that calls `client:exec_cmd`;
   rendering goes in a pure function exposed on `M` (`plan_lines`,
   `split_lines`, `incrementality_items`) so it is testable without a server.
 - A `:Dbt*` user command in `plugin/cogitator.lua`, a line in

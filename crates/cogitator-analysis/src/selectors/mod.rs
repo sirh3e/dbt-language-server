@@ -15,7 +15,7 @@ pub mod syntax;
 pub mod universe;
 pub mod yaml;
 
-pub use eval::{Evaluation, Indirect, Issue};
+pub use eval::{expr_of, select_expr, Evaluation, Indirect, Issue};
 pub use method::{Method, METHODS};
 pub use syntax::{parse, union_of, Criterion, Selection, SyntaxError};
 pub use universe::{Node, Read, ResourceType, Universe};

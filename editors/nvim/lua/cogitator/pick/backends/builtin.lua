@@ -7,8 +7,12 @@
 --- Keys in the prompt: <C-j>/<C-n>/<Down> and <C-k>/<C-p>/<Up> move,
 --- <Tab> marks and moves on, <CR> opens, <C-v>/<C-x>/<C-t> in a vsplit /
 --- split / tab, <C-g> shows it in the navigator, <C-y> yanks, <C-r> runs
---- with dbt, <C-d>/<C-u> scroll the preview, <Esc>/<C-c> close.
+--- with dbt, <C-d>/<C-u> scroll the preview, <Esc>/<C-c> close. A
+--- source that evaluates its own queries (a dbt selection) lists its
+--- answer instead of ranking, and <Tab> then completes; a source's own
+--- `keys` act on everything listed.
 
+local live = require("cogitator.pick.backends.builtin_live")
 local query = require("cogitator.pick.query")
 local ui = require("cogitator.ui")
 
@@ -56,6 +60,7 @@ function M.close(cancelled)
   M._state = nil
   s.timer:stop()
   s.timer:close()
+  live.close(s)
   vim.cmd("stopinsert")
   for _, win in pairs(s.wins) do
     if valid(win) then
@@ -73,6 +78,10 @@ function M.close(cancelled)
 end
 
 local function title(s)
+  local live_title = live.title(s)
+  if live_title then
+    return live_title
+  end
   if not s.items then
     return ("%s · loading…"):format(s.source.title)
   end
@@ -178,6 +187,7 @@ local function render_list(s)
   if valid(s.wins.prompt) then
     ui.retitle(s.wins.prompt, " " .. title(s) .. " ")
   end
+  live.mark_error(s)
   render_preview(s)
 end
 
@@ -194,9 +204,31 @@ function M._set_query(text)
       vim.api.nvim_buf_set_lines(s.bufs.prompt, 0, -1, false, { text })
     end
   end
+  if live.update(s, render_list) then
+    render_list(s)
+    return
+  end
   s.matches = s.items and query.rank(s.texts, s.query) or {}
   s.cursor = 1
   render_list(s)
+end
+
+--- Close and hand every listed item to `fn` (a source's own key).
+---@param fn fun(items: table[], query: string)
+function M._all(fn)
+  local s = M._state
+  if not s or not s.items then
+    return
+  end
+  local listed = {}
+  for _, m in ipairs(s.matches) do
+    listed[#listed + 1] = s.items[m.index]
+  end
+  local asked = s.query
+  M.close(false)
+  vim.schedule(function()
+    fn(listed, asked)
+  end)
 end
 
 --- Move the cursor by `delta` (wraps).
@@ -275,10 +307,19 @@ local function keymaps(s)
       M._move(-1)
     end)
   end
-  map("<Tab>", M._toggle_mark)
+  map("<Tab>", function()
+    if not live.complete(s, M._set_query) then
+      M._toggle_mark()
+    end
+  end)
   for action, lhs in pairs(require("cogitator.pick.actions").KEYS) do
     map(lhs, function()
       M._accept(action)
+    end)
+  end
+  for _, key in ipairs(s.source.keys or {}) do
+    map(key.lhs, function()
+      M._all(key.fn)
     end)
   end
   map("<C-d>", function()
@@ -349,6 +390,15 @@ function M.open(source, run, items)
     title = title(s),
   })
   vim.bo[s.bufs.prompt].modifiable = true
+  -- the prompt is a query, not text: no completion plugin's menu over the
+  -- list (blink.cmp reads vim.b.completion; nvim-cmp its buffer setup)
+  vim.b[s.bufs.prompt].completion = false
+  local has_cmp, cmp = pcall(require, "cmp")
+  if has_cmp and type(cmp) == "table" and cmp.setup and cmp.setup.buffer then
+    vim.api.nvim_buf_call(s.bufs.prompt, function()
+      pcall(cmp.setup.buffer, { enabled = false })
+    end)
+  end
   keymaps(s)
   vim.api.nvim_create_autocmd("TextChangedI", {
     buffer = s.bufs.prompt,
@@ -377,11 +427,21 @@ function M.open(source, run, items)
     if M._state ~= s then
       return
     end
-    s.items = list
+    local texts = {}
     for i, item in ipairs(list) do
-      s.texts[i] = item.text
+      texts[i] = item.text
     end
+    if s.base then
+      -- live: the items wait for the query to be fuzzy words again
+      s.base = { items = list, texts = texts }
+      return
+    end
+    s.items, s.texts = list, texts
     M._set_query()
+  end
+  if source.query and source.query ~= "" then
+    M._set_query(source.query)
+    pcall(vim.api.nvim_win_set_cursor, s.wins.prompt, { 1, #source.query })
   end
   if items then
     arrived(items)

@@ -666,6 +666,121 @@ async function astGrep(): Promise<void> {
   }
 }
 
+/** One node of a dbt.select answer. */
+export interface SelectedNode {
+  uniqueId: string;
+  resourceType: string;
+  name: string;
+  version?: string | null;
+  tags: string[];
+  uri?: string | null;
+  range?: HighlightSpan["range"] | null;
+  graphId?: string | null;
+}
+
+/** What dbt.select answers. */
+export interface SelectionAnswer {
+  nodes: SelectedNode[];
+  counts: Record<string, number>;
+  error?: { message: string; start: number; end: number } | null;
+}
+
+/** A selected node as a quick-pick entry: dbt's name, its kind and tags. */
+export function selectedLabel(node: SelectedNode): { label: string; description: string } {
+  let name = node.name;
+  if (node.version) {
+    name = `${node.name}.v${node.version}`;
+  } else if (node.resourceType === "source" && node.graphId) {
+    name = `${node.graphId.replace(/^source:/, "")}.${node.name}`;
+  }
+  const tags = node.tags.length > 0 ? `  #${node.tags.join(" #")}` : "";
+  return { label: name, description: `[${node.resourceType.replace(/_/g, " ")}]${tags}` };
+}
+
+const KIND_ORDER = [
+  "model", "seed", "snapshot", "source", "test", "unit_test",
+  "analysis", "exposure", "metric", "semantic_model",
+];
+
+/** "7 · 3 models, 2 tests, 2 seeds" from dbt.select's counts. */
+export function selectionSummary(counts: Record<string, number>): string {
+  let total = 0;
+  const parts: string[] = [];
+  for (const kind of KIND_ORDER) {
+    const n = counts[kind] ?? 0;
+    if (n > 0) {
+      total += n;
+      const word = kind.replace(/_/g, " ");
+      parts.push(`${n} ${word}${n === 1 ? "" : word.endsWith("s") ? "es" : "s"}`);
+    }
+  }
+  return total === 0 ? "0" : `${total} · ${parts.join(", ")}`;
+}
+
+/**
+ * dbt node selection (dbt.select): dbt's --select syntax, evaluated as
+ * typed, as `dbt ls --select … --exclude …` answers it; choosing a node
+ * opens it at its place.
+ */
+async function select(): Promise<void> {
+  const pick = vscode.window.createQuickPick<vscode.QuickPickItem & { node: SelectedNode }>();
+  pick.placeholder = "tag:nightly  +dim_items  @m  a,b  stg_*  config.materialized:incremental  --exclude x";
+  pick.title = "dbt select";
+  pick.matchOnDescription = true;
+  let asked = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ask = (text: string) => {
+    const mine = ++asked;
+    if (text.trim() === "") {
+      pick.items = [];
+      pick.title = "dbt select";
+      return;
+    }
+    pick.busy = true;
+    void execDbt("dbt.select", { select: text }).then((result) => {
+      if (mine !== asked) {
+        return;
+      }
+      pick.busy = false;
+      const answer = result as SelectionAnswer | undefined;
+      if (!answer) {
+        return;
+      }
+      if (answer.error) {
+        pick.items = [];
+        pick.title = `dbt select · ✗ ${answer.error.message}`;
+        return;
+      }
+      // the server selected them: keep every one, whatever the box says
+      pick.items = answer.nodes.map((node) => ({ ...selectedLabel(node), alwaysShow: true, node }));
+      pick.title = `dbt select · ${selectionSummary(answer.counts)}`;
+    }, (err: unknown) => {
+      if (mine === asked) {
+        pick.busy = false;
+        pick.title = `dbt select · ✗ ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+  };
+  pick.onDidChangeValue((text) => {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => ask(text), 150);
+  });
+  pick.onDidAccept(async () => {
+    const node = pick.selectedItems[0]?.node;
+    pick.hide();
+    if (node?.uri) {
+      const r = node.range;
+      await vscode.window.showTextDocument(vscode.Uri.parse(node.uri), {
+        selection: r ? new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character) : undefined,
+      });
+    }
+  });
+  pick.onDidHide(() => pick.dispose());
+  pick.show();
+}
+
 /** One dbt.unresolved item. */
 export interface UnresolvedItem {
   kind: string;
@@ -773,62 +888,6 @@ async function breakingChanges(): Promise<void> {
   await vscode.window.showTextDocument(doc, { preview: true });
 }
 
-/** One node of a dbt.select answer. */
-export interface SelectedNode {
-  kind: string;
-  name: string;
-  uri: string;
-  uniqueId: string;
-  range: HighlightSpan["range"];
-}
-
-/** A selected node as a quick-pick entry: what, and where. */
-export function selectLabel(
-  node: SelectedNode,
-  relative: (uri: string) => string
-): { label: string; description: string; detail: string } {
-  return {
-    label: `[${node.kind}] ${node.name}`,
-    description: node.uri ? `${relative(node.uri)}:${node.range.start.line + 1}` : "",
-    detail: node.uniqueId,
-  };
-}
-
-/** The nodes a dbt selector picks, as `dbt ls` lists them (dbt.select). */
-async function select(): Promise<void> {
-  const selector = await vscode.window.showInputBox({
-    prompt: "dbt selector (selector:<name> evaluates a selectors.yml entry)",
-    placeHolder: "tag:nightly +orders",
-  });
-  if (!selector) {
-    return;
-  }
-  const result = (await execDbt("dbt.select", { uri: "", selector })) as
-    | { nodes: SelectedNode[]; count: number; issues: string[] }
-    | undefined;
-  if (!result) {
-    return;
-  }
-  for (const issue of result.issues) {
-    void vscode.window.showWarningMessage(`dbt: ${issue}`);
-  }
-  if (result.count === 0) {
-    void vscode.window.showInformationMessage(`dbt: ${selector} selects no node`);
-    return;
-  }
-  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
-  const pick = await vscode.window.showQuickPick(
-    result.nodes.map((n) => ({ ...selectLabel(n, relative), node: n })),
-    { matchOnDescription: true, placeHolder: `${result.count} nodes match ${selector}` }
-  );
-  if (pick && pick.node.uri) {
-    const r = pick.node.range;
-    await vscode.window.showTextDocument(vscode.Uri.parse(pick.node.uri), {
-      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
-    });
-  }
-}
-
 /** dbt.lineageSite: the lineage view, fed by the server (lineageView.ts). */
 function lineageView(context: vscode.ExtensionContext): Promise<void> {
   return showLineageView(context, async (uri, assets) => {
@@ -860,9 +919,9 @@ export async function activate(
     ["cogitator.highlight", highlight],
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
-    ["cogitator.select", select],
     ["cogitator.lineageView", () => lineageView(context)],
     ["cogitator.unresolved", unresolved],
+    ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
     [
       "cogitator.status",

@@ -197,6 +197,69 @@ return function(ctx)
     cmd_preview
   )
 
+  -- what is about the cursor: the server marks it in `data`
+  local mark = { cogitator = { atCursor = true } }
+  local server = {
+    fixture_actions[1],
+    { title = "Add version 2 of 'm'", kind = "refactor.extract", edit = { changes = {} } },
+    {
+      title = "Open schema of 'stg_orders'",
+      command = { command = "dbt.openSchema", arguments = {} },
+      data = mark,
+    },
+    fixture_actions[2],
+    { title = "Expand * to 2 column(s)", kind = "refactor.rewrite", edit = { changes = {} }, data = mark },
+  }
+  local function titles(list)
+    return vim.tbl_map(function(a)
+      return a.title or a.label
+    end, list)
+  end
+  local at_cursor, model_wide = ca.split(server)
+  H.check(
+    vim.deep_equal(titles(at_cursor), {
+      "Open schema of 'stg_orders'",
+      "Remove the trailing comma",
+      "Expand * to 2 column(s)",
+    }) and vim.deep_equal(titles(model_wide), { "dbt run", "Add version 2 of 'm'" }),
+    "actions: the server's marked actions and every fix are about the cursor",
+    vim.inspect({ titles(at_cursor), titles(model_wide) })
+  )
+  local root = ca.items(bufnr, server, "utf-16")
+  local labels = titles(root)
+  H.check(
+    labels[1] == "Remove the trailing comma"
+      and root[1].children == nil
+      and root[1].icon == "★"
+      and labels[2] == "Expand * to 2 column(s)"
+      and labels[3] == "Open schema of 'stg_orders'",
+    "actions: the cursor's actions are the first rows, a preferred fix first, each chosen with one key",
+    vim.inspect(labels)
+  )
+  local this_model
+  for _, item in ipairs(root) do
+    if item.label:find("^This model") then
+      this_model = item
+    end
+  end
+  H.check(
+    not vim.tbl_contains(labels, "dbt") and not vim.tbl_contains(labels, "Model"),
+    "actions: no dbt or Model group beside the cursor's actions",
+    vim.inspect(labels)
+  )
+  local model_titles = this_model and titles(this_model.children) or {}
+  H.check(
+    vim.tbl_contains(model_titles, "dbt run") and vim.tbl_contains(model_titles, "Add version 2 of 'm'"),
+    "actions: the file's actions and the plugin's model commands are one group, This model",
+    vim.inspect(model_titles)
+  )
+  local flat = ca.items(bufnr, { fixture_actions[1] }, "utf-16")
+  H.check(
+    flat[1].label == "dbt run" and flat[1].children == nil,
+    "actions: with nothing at the cursor the model's actions are the top level",
+    flat[1].label
+  )
+
   -- the menu against the live server, on the customers model
   vim.api.nvim_set_current_buf(bufnr)
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -210,19 +273,31 @@ return function(ctx)
     for _, item in ipairs(menu.stack[1].items) do
       top[item.label] = item
     end
+    -- the model's actions: the top level itself, or "This model" when
+    -- something is about the cursor (here a fix of line 1's diagnostic)
+    local model_level = menu.stack[1].items
+    for label, item in pairs(top) do
+      if label:find("^This model") then
+        model_level = item.children
+      end
+    end
+    local details, model_labels = {}, {}
+    for _, c in ipairs(model_level) do
+      details[#details + 1] = c.detail or ""
+      model_labels[#model_labels + 1] = c.label
+    end
     H.check(
-      top.dbt ~= nil and top.Model ~= nil and top.Views ~= nil,
-      "actions: server and plugin groups",
+      top.dbt == nil and top.Model == nil and top.Views ~= nil and vim.tbl_contains(model_labels, "dbt run"),
+      "actions: the model's actions are one level, the plugin's views a group",
       vim.inspect(vim.tbl_keys(top))
     )
-    local model_labels = vim.tbl_map(function(c)
-      return c.detail
-    end, top.Model and top.Model.children or {})
     H.check(
-      vim.tbl_contains(model_labels, ":Dbt plan") and not vim.tbl_contains(model_labels, ":Dbt run"),
-      "actions: Model has the plugin's commands, not the server's twins",
-      vim.inspect(model_labels)
+      vim.tbl_contains(details, ":Dbt plan") and not vim.tbl_contains(details, ":Dbt run"),
+      "actions: the plugin's model commands beside the server's, not their twins",
+      vim.inspect(details)
     )
+    local first = menu.stack[1].items[1]
+    H.check(first.children == nil, "actions: the menu opens on an action, not on a group", first.label)
     picker.close()
   end
   H.check(picker._state == nil, "actions: the menu closes")

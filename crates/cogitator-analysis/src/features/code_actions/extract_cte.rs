@@ -57,6 +57,7 @@ pub fn extract_cte_action(
         }),
         command: None,
         is_preferred: None,
+        data: None,
     })
 }
 

@@ -17,8 +17,10 @@ installs to `~/.local/bin`). Alternatively unpack an archive from the
 [releases page](https://github.com/sirh3e/dbt-language-server/releases)
 or build from source: `cargo build --release -p cogitator`.
 
-Not on PATH? Point the plugin at it with
-`setup({ cmd = { "/path/to/cogitator" } })`.
+Not on PATH? The plugin also looks where `install.sh` puts it
+(`$COGITATOR_BIN_DIR`, `~/.local/bin`), or point it at one with
+`setup({ cmd = { "/path/to/cogitator" } })`. Without any, opening a model
+says so once and `:DbtInstall` installs it from inside Neovim.
 
 ## 2. Install the plugin
 
@@ -106,13 +108,20 @@ binary, the project root and the profiles.yml resolution.
 model, `:DbtFind` for fuzzy pickers (models, definitions, columns,
 lineage… in fzf-lua, snacks.picker or telescope when installed, else a
 built-in one), `:DbtBrowse` for the model explorer (upstream | model | downstream over
-its dbt SQL | compiled SQL), `:DbtGraph`
-and `:DbtDag` for the graph browsers, `:DbtSchema`,
+its dbt SQL | compiled SQL; its `f` and `/` also take dbt selections,
+`tag:nightly`, `+dim_items`, `a,b`, `… --exclude x`, evaluated as `dbt ls`
+would, with `<C-a>` to mark them all and `<C-r>` to run them —
+`:DbtSelect [expr]` opens it there), `:DbtGraph`
+and `:DbtDag` for the graph browsers, `:DbtReferences` (`grr`) for
+where a model or macro is used and `:DbtMacros` for every macro's
+callers, `:DbtRename` (`grn`) to rename a model or macro after a preview
+of the edit, `:DbtSchema`,
 `:DbtLineage`, `:DbtTarget`, `:DbtStatus` and more. `gra` (or
-`<leader>dA`) opens every code action at the cursor — the server's fixes
-and refactors with a diff preview, and the plugin's own commands — in a
-yazi-style menu walked with `h j k l`, as every dialog of the plugin
-is. The full list,
+`<leader>dA`) opens every code action at the cursor in a yazi-style menu
+walked with `h j k l`, as every dialog of the plugin is: what is about
+the cursor first, one key away (a fix, "Expand * to 18 column(s)",
+"Extract CTE 'x' to a model"), then "This model" and the plugin's own
+commands, each with a diff preview of what it changes. The full list,
 options and keymaps are in `:h cogitator`
 ([doc/cogitator.txt](doc/cogitator.txt)); the binding behavior spec is
 [specs/neovim-plugin/00-plugin.md](../../specs/neovim-plugin/00-plugin.md).

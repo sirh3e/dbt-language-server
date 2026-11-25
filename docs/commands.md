@@ -139,7 +139,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.runSelection`
 
-- **Argument**: `{uri, selector, kind?}` — any dbt selector; `kind` is `run` (default), `test`, `build` or `compile`
+- **Argument**: `{uri, selector, exclude?, kind?}` — any dbt selector, and what to leave out of it (dbt's `--exclude`, checked the same way); `kind` is `run` (default), `test`, `build` or `compile`
 - **Result**: `{token}` or InvalidParams
 - **Side effects**: runs dbt with an arbitrary validated selector (`{selector, kind?: run\|test\|build\|compile}`); the "Run this test" / "Run this unit test" lenses on a properties YAML's tests and on singular test files send it with `kind: test` and the test's dbt node name (a test on a versioned model's base entry is one test per version, so its lens sends their names as a space-separated union)
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
@@ -310,10 +310,10 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.select`
 
-- **Argument**: `{selector, uri?}` — a dbt node selector as `--select` takes it (`tag:nightly +orders`, `config.materialized:table,path:models/marts`); `selector:<name>` evaluates a selectors.yml definition (the open buffer's text when selectors.yml is open)
-- **Result**: `{selector, count, nodes: [{uri, name, kind, uniqueId, range}], issues: [string]}` — what `dbt ls --select` would list (eager indirect selection brings tests along), by resource type then name; `name` is `source.table` for a source table and `model.v2` for a model version; `issues` says what was not evaluated (an unknown method or selector, a cycle, `state:`/`result:`/`source_status:`). A selector that does not parse is InvalidParams. See [selectors.md](selectors.md)
+- **Argument**: `{select, exclude?, vocabulary?, uri?}` — dbt's node-selection syntax as `--select` takes it (space a union, `,` an intersection, `[@][n+]method:value[+n]`); `select` may carry an inline `--exclude …`, and `exclude` is one more; `selector` is accepted for `select` (the selectors.yml lenses send it); `selector:<name>` evaluates a selectors.yml definition (the open buffer's text when selectors.yml is open); `vocabulary: true` adds what completion offers
+- **Result**: `{selector, count, counts, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error, vocabulary?}` — what `dbt ls --select … --exclude …` would list (eager indirect selection brings tests along), by resource type then name; `name` is dbt's name (a source's table, a model without its version), `label` how `dbt ls --output name` prints it (`landing.items`, `orders.v1`), `graphId` the node's id in `dbt.projectGraph` where it has one, `counts` how many of each resource type. What dbt refuses — a text that does not parse, an empty criterion (`a,,b`), an unknown method, resource type or selector, `state:` / `result:` / `source_status:` (they need a previous run), a cycle between selectors — answers `error: {message, start, end}` (byte offsets into `select`, or into `exclude`) and no nodes; `issues` says what was not evaluated, in words. One engine serves it with every other selector feature: see [selectors.md](selectors.md). `oracles/selection.sh` diffs it with `dbt ls`: on testdata/vault_lake every selection of its tests without `--exclude` is what dbt-core 1.12.7 lists, but `tag:nightly` (dbt ignores a model entry's top-level `tags:`, which the engine reads)
 - **Side effects**: none (read-only; reads the project's files off the dispatcher). The "N nodes match" lens on each selectors.yml definition sends it with `selector:<name>`
-- **Editors**: Neovim ✓ (`:DbtSelect` quickfix, `:DbtFind select` picker) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes`)
+- **Editors**: Neovim ✓ (`:DbtSelect`, `:Dbt select`, `:DbtFind select`, the navigator's `f` and `/`: live, `<Tab>` completes, `<C-a>` marks every match, `<C-r>` runs it through `dbt.runSelection` with `exclude`) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`, live)
 
 ### `dbt.lineageSite`
 

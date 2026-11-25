@@ -46,6 +46,9 @@ for _, step in ipairs({
   "04_tools",
   "04_pickers",
   "04_dialogs",
+  "04_vault_lake",
+  "04_vault_select",
+  "04_usages",
   "05_profiles",
 }) do
   dofile(vim.fs.joinpath(tests_dir, "steps", step .. ".lua"))(ctx)

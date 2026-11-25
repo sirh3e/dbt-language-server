@@ -63,6 +63,17 @@ pub fn select(
     run(u, defs, indirect, |ev| ev.expr(&expr))
 }
 
+/// Evaluate a set expression, e.g. a `--select` string's minus its
+/// `--exclude` (`Expr::Difference`, as dbt subtracts the two).
+pub fn select_expr(
+    u: &Universe,
+    defs: &[Definition],
+    expr: &Expr,
+    indirect: Indirect,
+) -> Evaluation {
+    run(u, defs, indirect, |ev| ev.expr(expr))
+}
+
 /// Evaluate a selectors.yml definition by name.
 pub fn select_definition(u: &Universe, defs: &[Definition], name: &str) -> Evaluation {
     run(u, defs, Indirect::Eager, |ev| {

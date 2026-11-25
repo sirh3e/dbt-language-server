@@ -97,6 +97,10 @@ invalid only because a branch was blanked. To avoid noise:
   template; convert to 0-based line/character via 03 §7.5).
 - Template **has** control blocks: publish nothing on parse failure (silently
   skip). Correctness over coverage; revisit after real-world feedback.
+- The always-on sqlparser syntax check (03 §10 "syntax diagnostics") reuses
+  this masking and this rule. When this feature is compiled in and the
+  dialect is duckdb, that check leaves the SQL layer to DuckDB and keeps
+  only its Jinja layer, so a SQL error is never reported twice.
 - `json_serialize_sql` handles statements it can parse; non-SELECT or
   multi-statement edge cases that error structurally (not positionally) are
   logged (tracing event, 05 §6.3) and skipped.

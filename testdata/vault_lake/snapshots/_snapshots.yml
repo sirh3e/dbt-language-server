@@ -1,0 +1,14 @@
+version: 2
+
+snapshots:
+  - name: item_versions_snapshot
+    description: Every state of an item as the landing table had it.
+    relation: source('landing', 'item_versions')
+    config:
+      unique_key: item_id
+      strategy: check
+      check_cols: [state]
+      tags: [history]
+    columns:
+      - name: item_id
+        data_tests: [not_null]

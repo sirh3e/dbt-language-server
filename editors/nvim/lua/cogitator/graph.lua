@@ -67,26 +67,32 @@ local function fetch(by, on_result, on_fail)
     vim.notify("cogitator client is gone; close and reopen the graph", vim.log.levels.ERROR)
     return
   end
-  actions.exec_with(s.client, s.src_buf, "dbt.modelGraph", { uri = by.uri or "", model = by.model }, function(err, result)
-    if err then
-      vim.notify("dbt.modelGraph failed: " .. err.message, vim.log.levels.ERROR)
-      if on_fail then
-        on_fail()
+  actions.exec_with(
+    s.client,
+    s.src_buf,
+    "dbt.modelGraph",
+    { uri = by.uri or "", model = by.model },
+    function(err, result)
+      if err then
+        vim.notify("dbt.modelGraph failed: " .. err.message, vim.log.levels.ERROR)
+        if on_fail then
+          on_fail()
+        end
+        return
       end
-      return
-    end
-    if not result or result == vim.NIL then
-      vim.notify(
-        (by.model or "this model") .. " is not in the project graph (not a model file?)",
-        vim.log.levels.WARN
-      )
-      if on_fail then
-        on_fail()
+      if not result or result == vim.NIL then
+        vim.notify(
+          (by.model or "this model") .. " is not in the project graph (not a model file?)",
+          vim.log.levels.WARN
+        )
+        if on_fail then
+          on_fail()
+        end
+        return
       end
-      return
+      on_result(result)
     end
-    on_result(result)
-  end)
+  )
 end
 
 --- The entry under the cursor in a side pane.
@@ -108,7 +114,8 @@ end
 local function recenter(pane, count)
   local s = M._state
   if s.loading then
-    s.pending = { pane = pane, count = ((s.pending and s.pending.pane == pane) and s.pending.count or 0) + count }
+    s.pending =
+      { pane = pane, count = ((s.pending and s.pending.pane == pane) and s.pending.count or 0) + count }
     return
   end
   local e = selected_entry(pane)
@@ -116,7 +123,10 @@ local function recenter(pane, count)
     return
   end
   if e.kind ~= "model" then
-    vim.notify(("%s is a %s — no further lineage behind it"):format(e.name, e.kind:gsub("_", " ")), vim.log.levels.INFO)
+    vim.notify(
+      ("%s is a %s — no further lineage behind it"):format(e.name, e.kind:gsub("_", " ")),
+      vim.log.levels.INFO
+    )
     return
   end
   s.loading = true

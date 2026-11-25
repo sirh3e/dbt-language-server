@@ -70,7 +70,7 @@ In short:
    `crates/cogitator/src/server/dispatcher/commands_exec.rs`, the handler,
    an e2e test; the spec row; the `editors/parity.toml` line; a section in
    `docs/commands.md`.
-2. **Neovim** — a function in `lua/cogitator/commands.lua` with its
+2. **Neovim** — a function in the fitting module of `lua/cogitator/commands/` (jobs, lists, analysis, views, node, split, navigation; `commands/init.lua` gathers them into the one `commands` table) with its
    rendering in a pure function the unit tests call, a `:Dbt…` command, the
    help, a unit and a wire check. Never block: `exec_cmd` with a callback,
    `actions.request` for other methods (a scan fails on `request_sync`,

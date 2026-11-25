@@ -28,7 +28,9 @@ editor integrations live under `editors/`.
 - **Editor suites** (self-sandboxing, per-run fixture COPIES):
   `just system-test` (the Rust orchestrator driving nvim + emacs +
   the VS Code extension host; what CI runs), `just nvim-test`
-  (Neovim ≥ 0.11 headless), `just emacs-test` (Emacs ≥ 29 batch/eglot),
+  (Neovim ≥ 0.11 headless, over jaffle_shop and testdata/vault_lake, a
+  made-up project in a real one's shape), `just nvim-real-test <dir>`
+  (the plugin read-only over every model of a real dbt project; not in CI), `just emacs-test` (Emacs ≥ 29 batch/eglot),
   `just vscode-test` (extension host via @vscode/test-electron, VS Code
   cached under editors/vscode/.vscode-test), `just zed-build`
   (wasm32-wasip1 compile check)
@@ -194,7 +196,7 @@ editor integrations live under `editors/`.
 - `crates/cogitator-error` — error type
 - `crates/cogitator-lsp` — protocol types + Content-Length framing + URI helpers
 - `crates/cogitator-dialects` — dialect + bundled SQL function docs
-- `crates/cogitator-schemas` — typify-generated dbt schema types (`schemas/dbt/`) + saphyr position side-tables
+- `crates/cogitator-schemas` — the project and properties adapters with their LSP position side-tables, on the shared [`dbt-schemas`](https://github.com/sirh3e/dbt-schemas) crate, which holds the vendored dbt schemas, their typify types and the marked-YAML helpers
 - `crates/cogitator-parser` — minijinja+sqlparser pipeline, refinement, TokenIndex, jinja_scan
 - `crates/cogitator-analysis` — context builders, feature functions, petgraph project graph, profiles auth manager, lineage
 - `crates/cogitator-treesitter/src/highlight/` — `dbt.highlight`'s grammars, layers and merge (`mod.rs`) and the YAML composition (`yaml.rs`: Jinja and SQL inside values, dbt-aware captures); the server side is `server/highlight.rs` (v2 arguments, YAML context, cache) and `server/node_info.rs` (`dbt.nodeInfo`); `server/semantic_yaml.rs` serves the same YAML captures as `textDocument/semanticTokens` (§12); binding spec `specs/highlighting/00-highlighting.md`
@@ -211,7 +213,7 @@ editor integrations live under `editors/`.
   Neovim-only :DbtDag project view, headless test suite)
 - `editors/emacs` — eglot + lsp-mode integration (batch test suite)
 - `editors/zed` — Zed extension (Rust→WASM)
-- `schemas/dbt/` — vendored dbt-jsonschema (pristine + `processed/` for typify; regenerate with `preprocess.py`)
+- the vendored dbt-jsonschema and schemas.getdbt.com schemas live in `dbt-schemas` (`schemas/`, pristine + `processed/` for typify; a field the manifest projection lacks is a change there, then a new tag pinned in `Cargo.toml`)
 - `specs/rust-port/` — the binding implementation specs (00–09);
   `specs/neovim-plugin/` — the editor-integration spec;
   `specs/ir-pipeline/` — the HIR/MIR/LIR pipeline, rules, oracles and incrementality (00–10)

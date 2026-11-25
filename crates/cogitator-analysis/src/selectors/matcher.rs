@@ -13,7 +13,17 @@ use super::universe::{Node, ResourceType, Universe, VersionKind};
 pub fn search(u: &Universe, method: &Method, value: &str) -> Option<Vec<usize>> {
     let test = |n: &Node| -> bool {
         match method {
-            Method::Fqn => n.resource_type.is_parsed_node() && fqn_matches(n, value),
+            // dbt-core's qualified-name method searches the parsed nodes
+            // and exposures, metrics and semantic models, not sources
+            // (checked against `dbt ls`, dbt-core 1.12)
+            Method::Fqn => {
+                (n.resource_type.is_parsed_node()
+                    || matches!(
+                        n.resource_type,
+                        ResourceType::Exposure | ResourceType::Metric | ResourceType::SemanticModel
+                    ))
+                    && fqn_matches(n, value)
+            }
             Method::Tag => n.tags.iter().any(|t| glob::matches(t, value)),
             Method::Group => n.group.as_deref().is_some_and(|g| glob::matches(g, value)),
             Method::Access => {
@@ -68,22 +78,28 @@ fn named(n: &Node, resource: ResourceType, value: &str) -> bool {
 
 /// dbt's `is_selected_node`: the bare name, `name.vN` for a version, or a
 /// dotted prefix of the fqn where a `*` part matches all below it.
+/// dbt-core's `node_is_match`: the fqn, or the fqn without its package
+/// (a folder or a name in any package).
 fn fqn_matches(n: &Node, selector: &str) -> bool {
-    let fqn = &n.fqn;
-    if n.version_number.is_some() && fqn.len() >= 2 {
-        let parts: Vec<&str> = selector.split('.').collect();
-        if glob::matches(&fqn[fqn.len() - 2], selector)
-            || (parts.len() == 2
-                && fqn[fqn.len() - 2] == parts[0]
-                && fqn[fqn.len() - 1] == parts[1])
-        {
+    let versioned = n.version_number.is_some();
+    is_selected(&n.fqn, selector, versioned)
+        || (n.fqn.len() > 1 && is_selected(&n.fqn[1..], selector, versioned))
+}
+
+/// dbt-core's `is_selected_node`: the name (a versioned model's by its
+/// name, or by `name_vN` / `name.vN`), else a prefix of the flattened fqn.
+fn is_selected(fqn: &[String], selector: &str, versioned: bool) -> bool {
+    let parts: Vec<&str> = selector.split('.').collect();
+    if versioned && fqn.len() >= 2 {
+        let tail = &fqn[fqn.len() - 2..];
+        let wanted = &parts[parts.len().saturating_sub(2)..];
+        if glob::matches(&tail[0], selector) || tail.join("_") == wanted.join("_") {
             return true;
         }
     } else if fqn.last().is_some_and(|last| glob::matches(last, selector)) {
         return true;
     }
     let flat: Vec<&str> = fqn.iter().flat_map(|s| s.split('.')).collect();
-    let parts: Vec<&str> = selector.split('.').collect();
     if parts.len() > flat.len() {
         return false;
     }
@@ -200,7 +216,10 @@ mod tests {
             ("jaffle.staging", true),
             ("jaffle.staging.stg_orders", true),
             ("jaffle.*", true),
-            ("staging", false),
+            // node_is_match: the fqn without its package, too
+            ("staging", true),
+            ("staging.stg_orders", true),
+            ("marts", false),
             ("jaffle.marts", false),
             ("jaffle.staging.stg_orders.extra", false),
         ];

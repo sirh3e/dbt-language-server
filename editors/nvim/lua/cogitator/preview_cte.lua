@@ -32,19 +32,23 @@ function M.preview_cte(opts)
   if limit then
     arg.limit = limit
   end
-  client:exec_cmd({ command = "dbt.previewCte", arguments = { arg } }, { bufnr = bufnr }, function(err, result)
-    if err or type(result) ~= "table" then
-      vim.notify("dbt.previewCte failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
-      return
+  client:exec_cmd(
+    { command = "dbt.previewCte", arguments = { arg } },
+    { bufnr = bufnr },
+    function(err, result)
+      if err or type(result) ~= "table" then
+        vim.notify("dbt.previewCte failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+        return
+      end
+      vim.cmd.split()
+      local scratch = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(scratch, 0, -1, false, M.lines(result))
+      vim.bo[scratch].filetype = "markdown"
+      vim.bo[scratch].modifiable = false
+      vim.api.nvim_win_set_buf(0, scratch)
+      vim.keymap.set("n", "q", vim.cmd.close, { buffer = scratch, nowait = true })
     end
-    vim.cmd.split()
-    local scratch = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_lines(scratch, 0, -1, false, M.lines(result))
-    vim.bo[scratch].filetype = "markdown"
-    vim.bo[scratch].modifiable = false
-    vim.api.nvim_win_set_buf(0, scratch)
-    vim.keymap.set("n", "q", vim.cmd.close, { buffer = scratch, nowait = true })
-  end)
+  )
 end
 
 return M

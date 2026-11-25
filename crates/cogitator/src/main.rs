@@ -2,6 +2,9 @@
 //! bootstrap (05 §6.2).
 
 mod client_log;
+mod cmd_common;
+mod cmd_format;
+mod cmd_lint;
 mod cmd_lineage_site;
 mod metrics;
 mod observability;
@@ -62,6 +65,10 @@ enum Command {
     Upgrade,
     /// Print the cogitator.yml JSON Schema (draft-07) to stdout and exit
     Schema,
+    /// Lint every file of the dbt project (syntax, lint checks, refs, YAML)
+    Lint(cmd_lint::LintArgs),
+    /// Format the project's model SQL files (`--check` changes nothing)
+    Format(cmd_format::FormatArgs),
     /// Write the project's column-lineage dashboard as one HTML page
     LineageSite(cmd_lineage_site::LineageSiteArgs),
 }
@@ -77,6 +84,15 @@ fn main() -> Result<()> {
         let schema = cogitator_analysis::config_schema::json::config_json_schema();
         println!("{}", serde_json::to_string_pretty(&schema)?);
         return Ok(());
+    }
+
+    let (profiles_dir, target) = (cli.profiles_dir.as_deref(), cli.target.as_deref());
+    match &cli.command {
+        Some(Command::Lint(args)) => std::process::exit(cmd_lint::run(args, profiles_dir, target)),
+        Some(Command::Format(args)) => {
+            std::process::exit(cmd_format::run(args, profiles_dir, target))
+        }
+        _ => {}
     }
 
     if matches!(cli.command, Some(Command::Upgrade)) {

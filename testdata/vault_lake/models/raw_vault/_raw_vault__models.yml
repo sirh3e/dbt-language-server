@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: landing
+    schema: landing
+    tables:
+      - name: items
+      - name: item_versions
+
+models:
+  - name: hub_item
+    description: One row per item ever seen.
+    columns:
+      - name: item_hk
+        description: '{{ doc("item_hk") }}'
+      - name: item_id
+        description: '{{ doc("item_id") }}'
+  - name: sat_item_version
+    description: One row per version of an item.
+    columns:
+      - name: item_hk
+        description: '{{ doc("item_hk") }}'
+      - name: version_number
+        description: The version's place among its item's versions, from 1.
+      - name: state
+        description: '{{ doc("item_state") }}'
+      - name: landed_at
+        description: When the version landed.
