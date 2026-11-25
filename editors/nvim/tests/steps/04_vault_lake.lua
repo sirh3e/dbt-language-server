@@ -107,7 +107,8 @@ return function(ctx)
   local card_lines = vim.api.nvim_buf_get_lines(s.bufs.center, 0, -1, false)
   local card = table.concat(card_lines, "\n")
   H.check(
-    card:find("• state — What an item is at the end of a version: …", 1, true) ~= nil,
+    -- a type may stand between the name and the description, once inferred
+    card:find("• state[^\n]* — What an item is at the end of a version: …") ~= nil,
     "vault: a column's Markdown doc block shows as its first paragraph",
     card
   )

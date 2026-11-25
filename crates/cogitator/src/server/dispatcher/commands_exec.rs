@@ -326,8 +326,9 @@ impl Dispatcher {
                 let open = crate::server::selectors::Open::of(self.documents.texts());
                 let arg = arg.clone();
                 let uri = uri.clone();
+                let derived = self.derived.clone();
                 self.offload_blocking(req.id, "dbt.modelDependencies", move || {
-                    crate::server::selectors::dependencies_reply(&ctx, open, &uri, &arg)
+                    crate::server::selectors::dependencies_reply(&ctx, &derived, open, &uri, &arg)
                 });
                 return;
             }

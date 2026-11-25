@@ -550,6 +550,20 @@ and for an incremental model its strategy, unique_key and partition_by
 (◈ marks one). The preview lists every part; <CR> opens the node. The
 server's command is `dbt.modelDependencies {uri, model?, version?}`.
 
+Column types: the dialog's "Columns" group (and every model's preview, and
+the columns on |:DbtBrowse|'s card) lists the model's output columns with
+their types, `?` after one that may be null, coloured by how far the type
+can be trusted:
+  proven    (`DbtTypeProven`)   SQL inference over typed inputs, the
+                                catalog (target/catalog.json), or a YAML
+                                data_type under an enforced contract
+  declared  (`DbtTypeDeclared`) a YAML data_type nothing enforces
+  unknown   (`DbtTypeUnknown`)  nothing claims a type
+Inference comes with the project's schema job, after the first refresh;
+where it cannot plan a model (Jinja it cannot render), the model's YAML
+`data_type`s stand in, with the contract as dbt_project.yml resolves it.
+Sources and seeds are typed only by a catalog: `dbt docs generate`.
+
                                                    *cogitator-nvim-goto-call*
 Definition (`gd`, |vim.lsp.buf.definition()|, snacks' or telescope's
 pickers) and hover answer from anywhere in a call: the word `ref`,

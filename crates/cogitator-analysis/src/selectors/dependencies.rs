@@ -11,7 +11,31 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::universe::{ResourceType, Universe};
+use crate::features::column_types::{Basis, ModelColumnTypes};
 use crate::features::file_uri;
+
+/// A model's output columns with their types, by its name, or none
+/// before they are known (the shell composes the schema snapshot's
+/// inference and the YAML's `data_type`s: [`columns_of`],
+/// [`with_yaml_types`]).
+/// Its second argument says whether the node's resolved config enforces
+/// its contract (`dbt_project.yml`'s `+contract` included).
+pub type Types<'a> = &'a dyn Fn(&str, bool) -> Option<Vec<DependencyColumn>>;
+
+/// One output column and its type, as the dialog shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyColumn {
+    pub name: String,
+    /// The dialect's spelling, when the type is pinned exactly.
+    pub data_type: Option<String>,
+    /// For people: the spelling, or the family and what is unproven.
+    pub description: String,
+    pub nullable: Option<bool>,
+    pub basis: Basis,
+    /// One line on why the type is what it is.
+    pub why: String,
+}
 
 /// How a node is built, from its resolved config.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -41,6 +65,9 @@ pub struct DependencyNode {
     pub depth: u32,
     pub tags: Vec<String>,
     pub config: BuildConfig,
+    /// A model's output columns with their types; `None` when they are
+    /// not inferred (yet) or the node is no model.
+    pub columns: Option<Vec<DependencyColumn>>,
 }
 
 /// The dbt.modelDependencies result.
@@ -87,8 +114,105 @@ pub fn build_config(config: &serde_json::Map<String, Value>) -> BuildConfig {
     }
 }
 
-fn node_of(universe: &Universe, index: usize, depth: u32) -> DependencyNode {
+/// The dialog's columns of an inference.
+pub fn columns_of(types: &ModelColumnTypes) -> Vec<DependencyColumn> {
+    types
+        .columns
+        .iter()
+        .map(|c| DependencyColumn {
+            name: c.name.clone(),
+            data_type: c.data_type.clone(),
+            description: c.description.clone(),
+            nullable: c.nullable,
+            basis: c.basis,
+            why: c.why.clone(),
+        })
+        .collect()
+}
+
+/// The YAML's `data_type`s over what inference left unknown: a column
+/// inference could not type takes the one written for it, and a model it
+/// could not plan at all takes its YAML columns. Proven under an enforced
+/// contract (dbt checks it at build time), declared otherwise.
+pub fn with_yaml_types(
+    inferred: Option<Vec<DependencyColumn>>,
+    yaml: &[cogitator_schemas::ColumnEntry],
+    contract_enforced: bool,
+) -> Option<Vec<DependencyColumn>> {
+    let basis = if contract_enforced {
+        Basis::Proven
+    } else {
+        Basis::Declared
+    };
+    let why = if contract_enforced {
+        "its YAML data_type, under an enforced contract"
+    } else {
+        "its YAML data_type, not enforced"
+    };
+    let typed = |c: &cogitator_schemas::ColumnEntry| {
+        c.data_type
+            .as_ref()
+            .filter(|t| !t.trim().is_empty())
+            .map(|t| DependencyColumn {
+                name: c.name.clone(),
+                data_type: Some(t.clone()),
+                description: t.clone(),
+                nullable: None,
+                basis,
+                why: why.to_string(),
+            })
+    };
+    match inferred {
+        Some(mut columns) if !columns.is_empty() => {
+            for column in &mut columns {
+                if column.basis != Basis::Unknown {
+                    continue;
+                }
+                if let Some(entry) = yaml
+                    .iter()
+                    .find(|c| c.name.eq_ignore_ascii_case(&column.name))
+                {
+                    if let Some(from_yaml) = typed(entry) {
+                        *column = DependencyColumn {
+                            nullable: column.nullable,
+                            ..from_yaml
+                        };
+                    }
+                }
+            }
+            Some(columns)
+        }
+        inferred => {
+            let from_yaml: Vec<DependencyColumn> = yaml.iter().filter_map(typed).collect();
+            if from_yaml.is_empty() {
+                inferred
+            } else {
+                Some(from_yaml)
+            }
+        }
+    }
+}
+
+fn node_of(universe: &Universe, index: usize, depth: u32, types: Types<'_>) -> DependencyNode {
     let node = &universe.nodes[index];
+    let enforced = node
+        .config
+        .get("contract")
+        .and_then(|c| c.get("enforced"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    // by name, else by the file's stem (a versioned model's file)
+    let columns = (node.resource_type == ResourceType::Model)
+        .then(|| {
+            types(&node.name, enforced).or_else(|| {
+                node.uri
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .filter(|stem| *stem != node.name)
+                    .and_then(|stem| types(stem, enforced))
+            })
+        })
+        .flatten();
     // a test's config is how it fails, not how it is built: left out
     let config = if matches!(
         node.resource_type,
@@ -107,6 +231,7 @@ fn node_of(universe: &Universe, index: usize, depth: u32) -> DependencyNode {
         depth,
         tags: node.tags.clone(),
         config,
+        columns,
     }
 }
 
@@ -118,6 +243,7 @@ fn walk(
     edges: &[Vec<usize>],
     start: usize,
     tests: bool,
+    types: Types<'_>,
 ) -> Vec<DependencyNode> {
     let mut seen = vec![false; universe.nodes.len()];
     seen[start] = true;
@@ -135,7 +261,7 @@ fn walk(
             if is_test && !tests {
                 continue;
             }
-            out.push(node_of(universe, n, depth + 1));
+            out.push(node_of(universe, n, depth + 1, types));
             queue.push_back((n, depth + 1));
         }
     }
@@ -149,15 +275,25 @@ pub fn dependencies(
     model: &str,
     version: Option<&str>,
 ) -> Option<Dependencies> {
+    dependencies_with(universe, model, version, &|_, _| None)
+}
+
+/// [`dependencies`] with each model's output-column types from `types`.
+pub fn dependencies_with(
+    universe: &Universe,
+    model: &str,
+    version: Option<&str>,
+    types: Types<'_>,
+) -> Option<Dependencies> {
     let index = universe.nodes.iter().position(|n| {
         n.resource_type == ResourceType::Model
             && n.name == model
             && (version.is_none() || n.version_number.as_deref() == version)
     })?;
-    let upstream = walk(universe, &universe.parents, index, false);
-    let downstream = walk(universe, &universe.children, index, false);
+    let upstream = walk(universe, &universe.parents, index, false, types);
+    let downstream = walk(universe, &universe.children, index, false, types);
     Some(Dependencies {
-        model: node_of(universe, index, 0),
+        model: node_of(universe, index, 0, types),
         parents: upstream.iter().filter(|n| n.depth == 1).cloned().collect(),
         children: downstream
             .iter()
@@ -256,6 +392,107 @@ mod tests {
             vec!["day".to_string()]
         );
         assert_eq!(deps.upstream[1].kind, "source");
+    }
+
+    #[test]
+    fn models_carry_their_column_types() {
+        use crate::features::column_types::{ColumnType, ModelColumnTypes, Provenance};
+        let types = |model: &str, _enforced: bool| {
+            (model == "dim" || model == "stg").then(|| {
+                columns_of(&ModelColumnTypes {
+                    model: model.to_string(),
+                    revision: 1,
+                    columns: vec![ColumnType {
+                        name: "id".into(),
+                        data_type: Some("BIGINT".into()),
+                        description: "BIGINT".into(),
+                        nullable: Some(false),
+                        basis: Basis::Proven,
+                        why: "inferred from stg.id".into(),
+                        sql_type: cogitator_ir::SqlType::Unknown,
+                        provenance: Provenance::Cast,
+                        feeds: Vec::new(),
+                    }],
+                })
+            })
+        };
+        let deps = dependencies_with(&project(), "dim", None, &types).unwrap();
+        let id = &deps.model.columns.as_ref().unwrap()[0];
+        assert_eq!(
+            (
+                id.name.as_str(),
+                id.data_type.as_deref(),
+                id.nullable,
+                id.basis
+            ),
+            ("id", Some("BIGINT"), Some(false), Basis::Proven)
+        );
+        // stg has types, the source none, fct none yet
+        assert!(deps.parents[0].columns.is_some());
+        assert!(deps.upstream[1].columns.is_none());
+        assert!(deps.children[0].columns.is_none());
+        // without a lookup nothing is claimed
+        assert!(dependencies(&project(), "dim", None)
+            .unwrap()
+            .model
+            .columns
+            .is_none());
+    }
+
+    fn yaml(name: &str, data_type: Option<&str>) -> cogitator_schemas::ColumnEntry {
+        cogitator_schemas::ColumnEntry {
+            name: name.into(),
+            description: String::new(),
+            name_pos: Default::default(),
+            data_type: data_type.map(str::to_string),
+            tests: Vec::new(),
+        }
+    }
+
+    fn column(name: &str, data_type: Option<&str>, basis: Basis) -> DependencyColumn {
+        DependencyColumn {
+            name: name.into(),
+            data_type: data_type.map(str::to_string),
+            description: data_type.unwrap_or("unknown").into(),
+            nullable: None,
+            basis,
+            why: String::new(),
+        }
+    }
+
+    #[test]
+    fn the_yaml_types_fill_what_inference_left_unknown() {
+        let entries = [
+            yaml("id", Some("bigint")),
+            yaml("day", Some("date")),
+            yaml("note", None),
+        ];
+        // inference typed `id`, not `day`: day takes its YAML type
+        let got = with_yaml_types(
+            Some(vec![
+                column("id", Some("BIGINT"), Basis::Proven),
+                column("day", None, Basis::Unknown),
+            ]),
+            &entries,
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            got.iter()
+                .map(|c| (c.name.as_str(), c.data_type.as_deref(), c.basis))
+                .collect::<Vec<_>>(),
+            vec![
+                ("id", Some("BIGINT"), Basis::Proven),
+                ("day", Some("date"), Basis::Proven)
+            ]
+        );
+        // nothing inferred: the YAML's typed columns, declared without a contract
+        let got = with_yaml_types(None, &entries, false).unwrap();
+        assert_eq!(got.len(), 2);
+        assert!(got.iter().all(|c| c.basis == Basis::Declared));
+        // nothing anywhere stays nothing
+        assert!(with_yaml_types(None, &[yaml("x", None)], true).is_none());
+        assert_eq!(with_yaml_types(Some(vec![]), &[], false), Some(vec![]));
     }
 
     #[test]

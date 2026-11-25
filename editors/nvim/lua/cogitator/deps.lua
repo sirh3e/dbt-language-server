@@ -74,6 +74,10 @@ function M.card(node)
     lines[#lines + 1] = ""
     lines[#lines + 1] = "  #" .. table.concat(node.tags, " #")
   end
+  if node.kind == "model" then
+    lines[#lines + 1] = ""
+    vim.list_extend(lines, M.columns_lines(node))
+  end
   if node.depth and node.depth > 0 then
     lines[#lines + 1] = ""
     lines[#lines + 1] = ("  %d hop%s away"):format(node.depth, node.depth == 1 and "" or "s")
@@ -81,6 +85,76 @@ function M.card(node)
   lines[#lines + 1] = ""
   lines[#lines + 1] = "  <CR> opens it"
   return { lines = lines }
+end
+
+M.NOT_INFERRED = "column types not inferred yet — they come with the project's schema job"
+
+--- A model's columns with their types, for a preview (pure).
+---@param node table
+---@return string[]
+function M.columns_lines(node)
+  local columns = node.columns
+  if columns == nil or columns == vim.NIL then
+    return { "  " .. M.NOT_INFERRED }
+  end
+  if #columns == 0 then
+    return { "  · no columns ·" }
+  end
+  local width = 0
+  for _, c in ipairs(columns) do
+    width = math.max(width, vim.fn.strdisplaywidth(c.name))
+  end
+  local lines = { ("  columns (%d)"):format(#columns) }
+  for _, c in ipairs(columns) do
+    local text = paint.type_text(c)
+    lines[#lines + 1] = ("    %s%s  %s"):format(
+      c.name,
+      string.rep(" ", width - vim.fn.strdisplaywidth(c.name)),
+      text
+    )
+  end
+  return lines
+end
+
+--- A model's columns as picker leaves: the name, then its type in the
+--- colour of how far it can be trusted (pure; exposed for the suite).
+---@param node table
+---@return table[]
+function M.column_items(node)
+  local columns = node.columns
+  if columns == nil or columns == vim.NIL then
+    return { { label = M.NOT_INFERRED, icon = "·", disabled = "not inferred yet", value = {} } }
+  end
+  local out = {}
+  for _, c in ipairs(columns) do
+    local text, group = paint.type_text(c)
+    out[#out + 1] = {
+      label = c.name,
+      icon = "▪",
+      icon_hl = group,
+      detail = text,
+      value = { column = c, node = node },
+      preview = function()
+        local lines =
+          { "  " .. c.name .. "  " .. text, "", "  " .. (paint.BASIS_WORDS[c.basis] or "unknown") }
+        if present(c.why) then
+          lines[#lines + 1] = "  " .. c.why
+        end
+        if c.nullable == false then
+          lines[#lines + 1] = "  never null"
+        elseif c.nullable == true then
+          lines[#lines + 1] = "  may be null"
+        end
+        lines[#lines + 1] = ""
+        lines[#lines + 1] = "  <CR> opens the model at the column"
+        return { lines = lines }
+      end,
+    }
+  end
+  if #out == 0 then
+    out[1] = { label = "· no columns ·", icon = " ", disabled = "nothing here", value = {} }
+  end
+  return out
 end
 
 --- A node as a picker leaf; `arrow` marks the direction of a walk.
@@ -108,6 +182,15 @@ end
 ---@return table[]
 function M.items(deps)
   local items = { leaf(deps.model) }
+  local columns = deps.model.columns
+  local count = (columns ~= nil and columns ~= vim.NIL) and #columns or nil
+  items[#items + 1] = {
+    label = "Columns",
+    icon = "▦",
+    icon_hl = "DbtTypeProven",
+    detail = count and tostring(count) or "?",
+    children = M.column_items(deps.model),
+  }
   local function group(label, nodes, arrow, icon, hl)
     local children = {}
     for _, node in ipairs(nodes or {}) do
@@ -172,9 +255,12 @@ function M.open(opts)
       title = M.title(deps),
       items = M.items(deps),
       on_choose = function(item)
-        local node = item.value
+        local node = item.value.node or item.value
         if present(node.uri) and actions.open_uri(node.uri) then
           pcall(vim.api.nvim_win_set_cursor, 0, { (node.line or 0) + 1, 0 })
+          if item.value.column then
+            vim.fn.search("\\V\\<" .. item.value.column.name .. "\\>", "w")
+          end
         end
       end,
     })

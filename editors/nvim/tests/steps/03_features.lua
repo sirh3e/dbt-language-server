@@ -65,9 +65,37 @@ return function(ctx)
     "integration: dbt.modelDependencies says what customers uses and how each is built",
     vim.inspect(deps):sub(1, 600)
   )
+  -- the columns come with the project's schema job, which follows the refresh
+  local typed
+  H.wait("integration: dbt.modelDependencies carries column types", 20000, function()
+    local answer = H.exec_cmd(client, bufnr, "dbt.modelDependencies", {
+      uri = vim.uri_from_bufnr(bufnr),
+    }, "integration: dbt.modelDependencies (types)")
+    typed = type(answer) == "table" and answer.model.columns
+    return type(typed) == "table" and #typed > 0
+  end)
+  local bases = {}
+  for _, c in ipairs(type(typed) == "table" and typed or {}) do
+    bases[c.basis] = (bases[c.basis] or 0) + 1
+  end
+  H.check(
+    type(typed) == "table" and #typed > 0 and typed[1].name ~= nil and typed[1].basis ~= nil,
+    "integration: customers' columns come with a type and a basis",
+    vim.inspect(bases)
+  )
+  deps = H.exec_cmd(
+    client,
+    bufnr,
+    "dbt.modelDependencies",
+    { uri = vim.uri_from_bufnr(bufnr) },
+    "integration: deps again"
+  )
   local items = require("cogitator.deps").items(deps)
   H.check(
-    #items == 5 and items[2].label == "Uses directly" and #items[2].children == #deps.parents,
+    #items == 6
+      and items[2].label == "Columns"
+      and items[3].label == "Uses directly"
+      and #items[3].children == #deps.parents,
     "integration: the dialog is the model, then direct and transitive both ways",
     vim.inspect(vim.tbl_map(function(i)
       return i.label

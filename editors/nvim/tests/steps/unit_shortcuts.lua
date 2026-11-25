@@ -266,4 +266,82 @@ return function(ctx)
     "hover: the definition link under the cursor, else the first one",
     vim.inspect(hj.link_in(lines, 4))
   )
+
+  -- column types: their text, the dialog's leaves, the card's rows
+  local paint_types = require("cogitator.pick.paint")
+  local text_a, group_a = paint_types.type_text({ dataType = "BIGINT", nullable = false, basis = "proven" })
+  local text_b, group_b = paint_types.type_text({
+    dataType = vim.NIL,
+    description = "a number",
+    nullable = true,
+    basis = "declared",
+  })
+  local text_c, group_c = paint_types.type_text({ basis = "unknown" })
+  H.check(
+    text_a == "BIGINT"
+      and group_a == "DbtTypeProven"
+      and text_b == "a number?"
+      and group_b == "DbtTypeDeclared"
+      and text_c == "unknown"
+      and group_c == "DbtTypeUnknown",
+    "types: the spelling, else what is known, ? when nullable, coloured by basis",
+    vim.inspect({ text_a, text_b, text_c })
+  )
+  local typed_model = {
+    name = "dim",
+    kind = "model",
+    columns = {
+      { name = "id", dataType = "BIGINT", basis = "proven", why = "inferred from stg.id", nullable = false },
+      { name = "day", dataType = "date", basis = "declared", why = "its YAML data_type, not enforced" },
+    },
+  }
+  local leaves = deps.column_items(typed_model)
+  H.check(
+    #leaves == 2
+      and leaves[1].label == "id"
+      and leaves[1].detail == "BIGINT"
+      and leaves[1].icon_hl == "DbtTypeProven"
+      and table.concat(leaves[1].preview().lines, "\n"):find("never null", 1, true) ~= nil,
+    "types: the dialog lists each column with its type",
+    vim.inspect(leaves[1])
+  )
+  local pending = deps.column_items({ name = "x", kind = "model", columns = vim.NIL })
+  H.check(
+    #pending == 1 and pending[1].disabled ~= nil and pending[1].label:find("not inferred yet", 1, true) ~= nil,
+    "types: before inference the dialog says so, never an empty list",
+    vim.inspect(pending)
+  )
+  H.check(
+    table.concat(deps.columns_lines(typed_model), "\n"):find("day%s+date") ~= nil,
+    "types: a node's preview lists its columns with their types",
+    table.concat(deps.columns_lines(typed_model), "\n")
+  )
+  local menu = deps.items({
+    model = typed_model,
+    parents = {},
+    children = {},
+    upstream = {},
+    downstream = {},
+  })
+  H.check(
+    menu[2].label == "Columns" and menu[2].detail == "2",
+    "types: the dialog's second group is the model's columns",
+    vim.inspect(menu[2].label)
+  )
+  local rows = require("cogitator.explorer.card").column_rows(
+    { { name = "ID", description = "the key" }, { name = "note", description = "" } },
+    typed_model.columns
+  )
+  H.check(
+    #rows == 3
+      and rows[1].name == "ID"
+      and rows[1].type == "BIGINT"
+      and rows[1].description == "the key"
+      and rows[2].name == "note"
+      and rows[2].type == nil
+      and rows[3].name == "day"
+      and rows[3].type == "date",
+    "types: the card merges documented and typed columns by name",
+    vim.inspect(rows)
+  )
 end

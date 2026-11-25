@@ -128,10 +128,14 @@ pub fn workspace_symbols(ctx: &DbtContext, open: Open, query: &str) -> Reply {
 /// no model.
 pub fn dependencies_reply(
     ctx: &DbtContext,
+    derived: &crate::server::derived_cache::DerivedCache,
     open: Open,
     uri: &str,
     arg: &Map<String, Value>,
 ) -> Reply {
+    use cogitator_analysis::selectors::dependencies::{
+        columns_of, dependencies_with, with_yaml_types,
+    };
     let (universe, _) = engine(ctx, &open);
     let model = arg
         .get("model")
@@ -144,8 +148,23 @@ pub fn dependencies_reply(
         Value::Number(n) => Some(n.to_string()),
         _ => None,
     });
-    let deps = model.and_then(|m| {
-        cogitator_analysis::selectors::dependencies::dependencies(&universe, &m, version.as_deref())
-    });
+    // the output-column types of the last schema job, when one has run
+    let snapshot = crate::server::dispatcher::yaml_types::snapshot(ctx, derived);
+    // inferred types, with the YAML's data_type where inference has none
+    let types = |name: &str, enforced: bool| {
+        let inferred = snapshot.as_deref().and_then(|snapshot| {
+            cogitator_analysis::features::column_types::column_types(ctx, snapshot, name)
+                .map(|t| columns_of(&t))
+        });
+        match ctx.model_detail_map.get(name) {
+            Some(details) => with_yaml_types(
+                inferred,
+                &details.columns,
+                details.contract_enforced || enforced,
+            ),
+            None => inferred,
+        }
+    };
+    let deps = model.and_then(|m| dependencies_with(&universe, &m, version.as_deref(), &types));
     Reply::result(&deps)
 }
