@@ -212,6 +212,8 @@ M.HELP = {
   "                 (<Tab> completes, <C-a> marks every match,",
   "                 <C-r> runs it with dbt; r then runs the selection)",
   "  p              to the dbt SQL; h / l between the SQL panes",
+  "  e / E          open the dbt SQL / the compiled SQL file",
+  "                 (<CR> or o in a SQL pane: that file, at that line)",
   "  J / K          scroll both SQL panes      <Esc>  back to the model",
   "  <Space>        mark                       y / r  yank / dbt run the marked",
   "  o s v t        open / split / vsplit / tab",
@@ -286,6 +288,13 @@ function M.attach(explorer, pane, buf)
     explorer._history(1)
   end)
   map(".", explorer._toggle_all)
+  -- the model's two files, from any pane
+  map("e", function()
+    explorer._open_sql("raw")
+  end)
+  map("E", function()
+    explorer._open_sql("compiled")
+  end)
 
   if pane == "raw" or pane == "compiled" then
     map("<Esc>", focus("center"))
@@ -296,8 +305,20 @@ function M.attach(explorer, pane, buf)
         local caller = s.compiled_jumps and s.compiled_jumps[line]
         if caller then
           explorer.focus(caller.name, { record = true, node = caller })
+        else
+          explorer._open_sql("compiled", line)
         end
       end)
+      map("o", function()
+        explorer._open_sql("compiled", vim.api.nvim_win_get_cursor(s.wins.compiled)[1])
+      end)
+    else
+      -- the dbt SQL at the line the cursor is on
+      local function open_here()
+        explorer._open_sql("raw", vim.api.nvim_win_get_cursor(s.wins.raw)[1])
+      end
+      map("<CR>", open_here)
+      map("o", open_here)
     end
     if pane == "raw" then
       map("l", focus("compiled"))

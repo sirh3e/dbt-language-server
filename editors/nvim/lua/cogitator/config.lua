@@ -8,6 +8,7 @@ M.defaults = {
   profiles_dir = nil, -- string → initializationOptions.profilesDir
   manager_path = nil, -- string → where the project/profile store lives
   query_limit = 100, -- :DbtQuery row cap
+  compiled_sql = "ask", -- after dbt compile: "ask" | "open" | "never"
   fusion = false, -- false | true | "/path/to/dbt"
   tree_sitter = true, -- false → --no-tree-sitter
   debug = false, -- true → --debug
@@ -72,6 +73,9 @@ local function validate(opts)
   vim.validate("profiles_dir", opts.profiles_dir, "string", true)
   vim.validate("manager_path", opts.manager_path, "string", true)
   vim.validate("query_limit", opts.query_limit, "number", true)
+  vim.validate("compiled_sql", opts.compiled_sql, function(v)
+    return v == nil or v == "ask" or v == "open" or v == "never"
+  end, '"ask", "open" or "never"')
   vim.validate("fusion", opts.fusion, { "boolean", "string" }, true)
   vim.validate("tree_sitter", opts.tree_sitter, "boolean", true)
   vim.validate("debug", opts.debug, "boolean", true)

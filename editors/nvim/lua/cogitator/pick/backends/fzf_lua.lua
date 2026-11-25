@@ -47,12 +47,36 @@ local function previewer(source, items)
   return P
 end
 
+--- An item's text with its colours as ANSI escapes (fzf's --ansi);
+--- plain where fzf-lua cannot make them.
+---@param item table
+---@return string
+function M.ansi(item)
+  if not item.hls or #item.hls == 0 then
+    return item.text
+  end
+  local ok, utils = pcall(require, "fzf-lua.utils")
+  if not ok or type(utils.ansi_from_hl) ~= "function" then
+    return item.text
+  end
+  local out = {}
+  for _, seg in ipairs(require("cogitator.pick.paint").segments(item.text, item.hls)) do
+    local piece = seg[1]
+    if seg[2] then
+      local colored = utils.ansi_from_hl(seg[2], piece)
+      piece = type(colored) == "string" and colored or piece
+    end
+    out[#out + 1] = piece
+  end
+  return table.concat(out)
+end
+
 function M.open(source, items, run)
   local fzf = require("fzf-lua")
   local keys = require("cogitator.pick.actions").FZF_KEYS
   local entries = {}
   for i, item in ipairs(items) do
-    entries[i] = ("%d\t%s"):format(i, item.text)
+    entries[i] = ("%d\t%s"):format(i, M.ansi(item))
   end
   local fzf_actions = {}
   for action, key in pairs(keys) do
@@ -66,7 +90,7 @@ function M.open(source, items, run)
   end
   fzf.fzf_exec(entries, {
     prompt = source.title .. "> ",
-    fzf_opts = { ["--delimiter"] = "\t", ["--with-nth"] = "2..", ["--multi"] = true },
+    fzf_opts = { ["--delimiter"] = "\t", ["--with-nth"] = "2..", ["--multi"] = true, ["--ansi"] = true },
     previewer = source.preview and previewer(source, items) or nil,
     actions = fzf_actions,
   })

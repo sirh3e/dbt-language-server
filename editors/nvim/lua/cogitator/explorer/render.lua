@@ -177,6 +177,14 @@ function M.center(s)
   local row = vim.api.nvim_win_get_cursor(win)[1]
   ui.set_lines(buf, view.lines)
   vim.api.nvim_buf_clear_namespace(buf, CARD_NS, 0, -1)
+  for _, m in ipairs(view.marks or {}) do
+    vim.api.nvim_buf_set_extmark(buf, CARD_NS, m[1] - 1, m[2], {
+      end_col = m[3],
+      hl_group = m[4],
+      priority = 4200,
+      strict = false,
+    })
+  end
   for _, line in ipairs(view.headings) do
     vim.api.nvim_buf_set_extmark(buf, CARD_NS, line - 1, 0, {
       end_row = line,

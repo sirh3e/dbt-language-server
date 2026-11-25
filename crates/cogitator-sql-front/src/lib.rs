@@ -31,6 +31,7 @@ mod parse;
 mod segment;
 mod types;
 
+pub use jinja::{config_values, ConfigValue};
 pub use types::parse_sql_type;
 
 /// Folds an unquoted name from schema metadata the way the binder folds

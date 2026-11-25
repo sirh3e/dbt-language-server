@@ -98,16 +98,18 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
 
   :DbtRun        dbt run for the current model       <leader>dr
   :DbtTest       dbt test for the current model      <leader>dt
-  :DbtCompile    dbt compile; opens compiled SQL     <leader>dc
+  :DbtCompile    dbt compile; asks to open the SQL   <leader>dc
   :DbtParse      dbt parse; refreshes the context
   :DbtPreview    dbt show result rows ([limit], default 50)
   :DbtPreviewCte rows of the CTE under the cursor ([limit]) in a split
-  :DbtRelation   yank database.schema.identifier     <leader>dR
+  :DbtRelation   yank database.schema.identifier
+                 (<leader>dR: a menu of the relation, quoted, its
+                 ref()/source() and a select to yank)
   :DbtProjects   pick a known dbt project            <leader>dP
   :DbtQuery      bounded SELECT on the relation      <leader>dx
   :DbtCache      derived-cache stats ('clear' empties)
   :DbtSchema     jump to the schema.yml entry        <leader>ds
-  :DbtLineage    show column lineage (message)       <leader>dl
+  :DbtLineage    column lineage in the picker        <leader>dl
   :DbtGraph      model-graph browser                 <leader>dg
   :DbtBrowse     the model explorer                  <leader>db
   :DbtProfiles   show/switch the profiles directory
@@ -380,7 +382,10 @@ the selected model in four tabs. Keys inside it:
   o              open the selected entry's file
   y              yank the selected model's or entry's name
   s / v / t      open the selected entry in a split / vsplit / tab
-  c              compile the selected model (the compiled SQL opens)
+  c              compile the selected model (then asks to open the SQL)
+  e / E          open the dbt SQL / the compiled SQL file (also the
+                 card's "files" lines; <CR> or o in a SQL pane opens
+                 that file at that line)
   g              show the selection in |:DbtDag|
   L              the selection's column-lineage graph
   P              dbt parse for the project
@@ -523,9 +528,27 @@ dbt grammar, so a dbt pattern matches Jinja; prefix `sql:` for a whole SQL
 statement over the compiled SQL (`sql:select $$$C from $T`). With
 `pattern => rewrite` the matches are listed and, after asking, rewritten
 (`{{ ref($M) }} => {{ ref('core', $M) }}`). `:DbtFind astgrep`
-(`<leader>da`) asks for a pattern and shows the matches in the picker.
+(`<leader>da`) first offers example patterns (refs, sources, configs,
+vars, `{{ this }}`, a rewrite, and `sql:` ones over the compiled SQL;
+`astgrep.EXAMPLES`), puts the one chosen in the pattern box to edit, and
+shows the matches in the picker: the file, the line, the match and its
+rewrite in colours of their own.
 The project's `sgconfig.yml` rules show as diagnostics with their fixes as
 code actions — see docs/ast-grep.md.
+
+                                                     *cogitator-nvim-colours*
+The pickers (|:DbtFind|, <leader>dd, du, dU, da, dl…) colour each line by
+what it names: models, sources, exposures and metrics in the dbt-docs
+colours of |:DbtDag|, tests, macros, seeds, snapshots, selectors and
+analyses in colours of their own (`DbtKind<Kind>Fg`), tags as `DbtPickTag`,
+paths `DbtPickPath`. The built-in picker, telescope, snacks.picker and
+fzf-lua all draw them. The explorer's card colours the model by its kind,
+its tags (`DbtCardTag`) and its relation (`DbtCardRelation`). Every group
+is `default`, so a colorscheme may set its own.
+
+After |:DbtCompile| (or `c` in the explorer) the compiled SQL is asked
+about rather than opened: here, in a split, vsplit or tab, or not now.
+`compiled_sql = "open"` in setup() opens it at once, `"never"` never.
 
                                                   *cogitator-nvim-treesitter*
 `:DbtTreesitter install` builds the tree-sitter-dbt grammar at the

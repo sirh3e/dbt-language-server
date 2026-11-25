@@ -14,6 +14,14 @@ local FILLS = {
   DbtDagSemanticModel = { "#ffa8c2", 218 },
   DbtDagPython = { "#6a5acd", 62 },
   DbtDagSelected = { "#88447d", 96 },
+  -- dbt-docs draws these in the model's colour; the pickers, the
+  -- explorer's card and ast-grep's results tell them apart
+  DbtKindTest = { "#d79921", 172 },
+  DbtKindMacro = { "#b16286", 132 },
+  DbtKindSeed = { "#689d6a", 72 },
+  DbtKindSnapshot = { "#458588", 66 },
+  DbtKindSelector = { "#a89984", 138 },
+  DbtKindAnalysis = { "#928374", 245 },
 }
 
 --- Line groups: name → {foreground, 256-colour foreground}.
@@ -40,6 +48,24 @@ local LINKS = {
   DbtPickerSource = "Constant",
   DbtPickerCommand = "Special",
   DbtPickerKey = "Special",
+  -- the fzf-style pickers' parts (cogitator.pick.paint)
+  DbtPickTag = "Constant",
+  DbtPickPath = "Directory",
+  DbtPickLine = "LineNr",
+  DbtPickDetail = "Comment",
+  DbtPickMatchText = "Normal",
+  DbtPickReplacement = "DiagnosticOk",
+  DbtPickArrow = "Special",
+  DbtPickUpstream = "DiagnosticInfo",
+  DbtPickDownstream = "DiagnosticHint",
+  -- the explorer's card
+  DbtCardKind = "Type",
+  DbtCardTag = "Constant",
+  DbtCardLabel = "Label",
+  DbtCardRelation = "String",
+  DbtCardWarn = "DiagnosticWarn",
+  DbtCardPath = "Directory",
+  DbtCardJump = "Underlined",
 }
 
 local KIND_GROUPS = {

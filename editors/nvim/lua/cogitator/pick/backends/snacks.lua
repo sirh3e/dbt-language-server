@@ -41,7 +41,10 @@ function M.open(source, items, run)
   snacks.picker.pick({
     title = source.title,
     items = entries,
-    format = "text",
+    -- the item's colours as snacks' segments
+    format = function(entry)
+      return require("cogitator.pick.paint").segments(entry.text, entry.item.hls)
+    end,
     preview = source.preview and function(ctx)
       source.preview(ctx.item.item, function(p)
         if ctx.preview then

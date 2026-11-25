@@ -15,6 +15,39 @@ local M = {}
 
 M.DEFAULT_PATTERN = "{{ ref($M) }}"
 
+--- Patterns to start from (`<leader>da` offers them before the pattern
+--- box, which then holds the one chosen to edit). `$X` is one node,
+--- `$$$X` any number of them; `sql:` searches the compiled SQL.
+---@type {group: string, pattern: string, what: string}[]
+M.EXAMPLES = {
+  { group = "dbt", pattern = "{{ ref($M) }}", what = "every ref() to a model" },
+  {
+    group = "dbt",
+    pattern = "{{ ref($P, $M) }}",
+    what = "refs naming a project or a version (two arguments)",
+  },
+  { group = "dbt", pattern = "{{ source($S, $T) }}", what = "every source() of a table" },
+  { group = "dbt", pattern = "{{ config($$$A) }}", what = "every config() block, whatever it sets" },
+  { group = "dbt", pattern = "{{ var($V) }}", what = "project vars read without a default" },
+  { group = "dbt", pattern = "{{ var($V, $D) }}", what = "project vars read with a default" },
+  { group = "dbt", pattern = "{{ env_var($V) }}", what = "environment variables read in SQL" },
+  { group = "dbt", pattern = "{{ this }}", what = "the model's own relation (incremental filters)" },
+  { group = "dbt", pattern = "{{ adapter.dispatch($$$A) }}", what = "dispatched macros" },
+  {
+    group = "dbt",
+    pattern = "{{ ref($M) }} => {{ ref('my_project', $M) }}",
+    what = "rewrite: pin every ref to a project (asks before writing)",
+  },
+  { group = "sql", pattern = "sql:select * from $T", what = "compiled SELECT * — name the columns" },
+  { group = "sql", pattern = "sql:count(distinct $X)", what = "distinct counts in the compiled SQL" },
+  { group = "sql", pattern = "sql:$A = null", what = "comparisons with NULL that are never true" },
+}
+
+local GROUPS = {
+  { key = "dbt", label = "dbt (Jinja)", icon = "{}", hl = "DbtDagModelFg" },
+  { key = "sql", label = "SQL (compiled)", icon = "▤", hl = "DbtDagSourceFg" },
+}
+
 --- `[sql:]pattern [=> rewrite]` → its parts.
 ---@param args string
 ---@return {pattern: string, rewrite: string?, language: "dbt"|"sql"}?
@@ -56,6 +89,27 @@ function M.item(m)
     col = start.character + 1,
     text = text,
   }
+end
+
+--- A match as a coloured picker line: the file, the line, what matched
+--- and (for a rewrite) what it becomes.
+---@param m table one of dbt.astGrep's matches
+---@return table
+function M.picker_item(m)
+  local item = M.item(m)
+  local matched = (m.text or ""):gsub("%s*\n%s*", " ")
+  local parts = {
+    { vim.fn.fnamemodify(item.filename, ":~:."), "DbtPickPath" },
+    { ":" },
+    { tostring(item.lnum), "DbtPickLine" },
+    { "  " },
+    { matched, "DbtPickMatchText" },
+  }
+  if m.replacement and m.replacement ~= vim.NIL then
+    parts[#parts + 1] = { "  →  ", "DbtPickArrow" }
+    parts[#parts + 1] = { (m.replacement:gsub("%s*\n%s*", " ")), "DbtPickReplacement" }
+  end
+  return require("cogitator.pick.paint").paint(item, parts)
 end
 
 --- Ask the server; `done(result)` only on an answer.
@@ -148,11 +202,7 @@ function M.source(ctx)
     empty = "no match of " .. query.pattern,
     items = function(done)
       M.request(ctx.client, ctx.bufnr, query, nil, function(result)
-        done(vim.tbl_map(function(m)
-          local item = M.item(m)
-          item.text = ("%s:%d  %s"):format(vim.fn.fnamemodify(item.filename, ":~:."), item.lnum, item.text)
-          return item
-        end, result.matches))
+        done(vim.tbl_map(M.picker_item, result.matches))
       end)
     end,
     preview = function(item, done)
@@ -161,18 +211,75 @@ function M.source(ctx)
   }
 end
 
---- Ask for a pattern (`[sql:]pattern`), then `on_query(query)`.
----@param on_query fun(query: table)
-function M.prompt(on_query)
-  require("cogitator.picker").input(
-    { prompt = "ast-grep pattern ([sql:]pattern): ", default = M.DEFAULT_PATTERN },
-    function(text)
-      local query = text and M.parse(text)
-      if query then
-        on_query(query)
+--- The example menu's items: "type a pattern" first, then a group per
+--- language (exposed for the suite).
+---@return table[]
+function M.example_items()
+  local items = {
+    {
+      label = "type a pattern…",
+      icon = "✎",
+      icon_hl = "DbtPickerCommand",
+      value = { pattern = M.DEFAULT_PATTERN },
+    },
+  }
+  for _, g in ipairs(GROUPS) do
+    local children = {}
+    for _, e in ipairs(M.EXAMPLES) do
+      if e.group == g.key then
+        children[#children + 1] = {
+          label = e.pattern,
+          icon = g.icon,
+          icon_hl = g.hl,
+          detail = e.what,
+          value = e,
+          preview = function()
+            return {
+              "  " .. e.pattern,
+              "",
+              "  " .. e.what,
+              "",
+              "  $X is one node, $$$X any number of them;",
+              "  sql: searches the compiled SQL (target/compiled).",
+              "  <CR> puts it in the pattern box to edit first.",
+            }
+          end,
+        }
       end
     end
-  )
+    items[#items + 1] =
+      { label = g.label, icon = g.icon, icon_hl = g.hl, detail = tostring(#children), children = children }
+  end
+  return items
+end
+
+--- Ask for a pattern (`[sql:]pattern`), offering the examples first,
+--- then `on_query(query)`.
+---@param on_query fun(query: table)
+function M.prompt(on_query)
+  local picker = require("cogitator.picker")
+  local function ask(default)
+    picker.input(
+      { prompt = "ast-grep pattern ([sql:]pattern [=> rewrite]): ", default = default },
+      function(text)
+        local query = text and M.parse(text)
+        if query then
+          on_query(query)
+        end
+      end
+    )
+  end
+  local config = package.loaded["cogitator"] and require("cogitator").config
+  if config and config.ui and config.ui.picker == false then
+    return ask(M.DEFAULT_PATTERN)
+  end
+  picker.open({
+    title = "ast-grep · examples",
+    items = M.example_items(),
+    on_choose = function(item)
+      ask(item.value.pattern)
+    end,
+  })
 end
 
 return M

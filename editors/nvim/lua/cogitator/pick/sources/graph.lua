@@ -3,6 +3,7 @@
 
 local common = require("cogitator.pick.sources.common")
 local graph_lib = require("cogitator.pick.graph")
+local paint = require("cogitator.pick.paint")
 local preview = require("cogitator.pick.preview")
 
 local M = {}
@@ -31,14 +32,17 @@ function M.columns(ctx)
           for _, column in ipairs(node.columns or {}) do
             local desc = column.description
             items[#items + 1] = {
-              text = node.name
-                .. "."
-                .. column.name
-                .. ((desc and desc ~= vim.NIL and desc ~= "") and ("  — " .. desc) or ""),
+              text = nil,
               name = node.name,
               uri = node.uri ~= vim.NIL and node.uri or nil,
               value = { node = node, column = column.name },
             }
+            paint.paint(items[#items], {
+              { node.name, paint.kind_group(node.kind, node.uri) },
+              { "." },
+              { column.name, "DbtPickMatchText" },
+              { (desc and desc ~= vim.NIL and desc ~= "") and ("  — " .. desc) or "", "DbtPickDetail" },
+            })
           end
         end
         done(items)
@@ -96,7 +100,12 @@ function M.lineage(ctx, direction)
           for _, step in ipairs(graph_lib.walk(here.id, edges)) do
             local node = by_id[step.id]
             if node then
-              items[#items + 1] = common.node_item(node, ("%s%d %s"):format(arrow, step.depth, node.name))
+              items[#items + 1] = common.node_item(node, nil, {
+                {
+                  ("%s%d "):format(arrow, step.depth),
+                  arrow == "↑" and "DbtPickUpstream" or "DbtPickDownstream",
+                },
+              })
             end
           end
         end
@@ -110,6 +119,129 @@ function M.lineage(ctx, direction)
       end)
     end,
     preview = common.node_preview,
+  }
+end
+
+--- The ref of one of dbt.columnLineage's `sources` as picker parts and
+--- the graph node it lives in.
+---@param ref table
+---@param by_id table<string, table>
+---@return {[1]: string, [2]: string?}[] parts
+---@return table? node
+local function ref_parts(ref, by_id)
+  if ref.kind == "model" then
+    local node = by_id["model:" .. ref.name]
+    return {
+      { ref.name, paint.kind_group("model", node and node.uri) },
+      { "." },
+      { ref.column, "DbtPickMatchText" },
+    },
+      node
+  elseif ref.kind == "source" then
+    local node = by_id["source:" .. ref.source] or by_id["source:" .. ref.source .. "." .. (ref.table or "")]
+    return {
+      { ref.source .. "." .. (ref.table or ""), paint.KIND_GROUP.source },
+      { "." },
+      { ref.column, "DbtPickMatchText" },
+    },
+      node
+  end
+  return {
+    { (ref.name or "?") .. "." .. (ref.column or "?"), "DbtPickDetail" },
+    { "  (unresolved)", "DbtPickDetail" },
+  },
+    nil
+end
+
+--- The column lineage of the buffer's model (dbt.columnLineage, which the
+--- server computes once per edit and keeps): a line per output column and
+--- each column it reads; <CR> jumps to that column, `nav` opens the
+--- column graph. `on_none` runs when the server has no lineage for it.
+---@param ctx cogitator.pick.Ctx
+function M.column_lineage(ctx)
+  return {
+    title = "column lineage",
+    empty = "no column lineage for this model",
+    items = function(done)
+      graph_lib.get(ctx.client, ctx.bufnr, function(graph)
+        local by_id = {}
+        for _, node in ipairs(graph and graph.nodes or {}) do
+          by_id[node.id] = node
+        end
+        require("cogitator.actions").exec_with(
+          ctx.client,
+          ctx.bufnr,
+          "dbt.columnLineage",
+          { uri = vim.uri_from_bufnr(ctx.bufnr) },
+          function(err, lineage)
+            local items = {}
+            if err or type(lineage) ~= "table" or type(lineage.columns) ~= "table" then
+              if ctx.on_none then
+                ctx.on_none()
+              end
+              return done(items)
+            end
+            local here = graph and graph_lib.node_of_buffer(graph, ctx.bufnr)
+            for _, entry in ipairs(lineage.columns) do
+              local sources = entry.sources or {}
+              if #sources == 0 then
+                items[#items + 1] = paint.paint(
+                  {
+                    name = entry.name,
+                    value = { column = entry.name },
+                    uri = vim.uri_from_bufnr(ctx.bufnr),
+                  },
+                  {
+                    { entry.name, "DbtPickMatchText" },
+                    { "  ←  ", "DbtPickArrow" },
+                    { "(computed here)", "DbtPickDetail" },
+                  }
+                )
+              end
+              for _, ref in ipairs(sources) do
+                local parts, node = ref_parts(ref, by_id)
+                table.insert(parts, 1, { "  ←  ", "DbtPickArrow" })
+                table.insert(parts, 1, { entry.name, paint.kind_group("model", here and here.uri) })
+                items[#items + 1] = paint.paint({
+                  name = ref.name or ref.source,
+                  uri = node and node.uri ~= vim.NIL and node.uri or nil,
+                  value = { column = ref.column, out = entry.name, ref = ref, node = node },
+                }, parts)
+              end
+            end
+            done(items)
+          end
+        )
+      end)
+    end,
+    preview = function(item, done)
+      preview.file(
+        item,
+        { ("-- %s ← %s"):format(item.value.out or item.value.column, item.value.column) },
+        function(p)
+          for i, line in ipairs(p.lines) do
+            if i > 1 and line:find(item.value.column, 1, true) then
+              p.lnum = i
+              break
+            end
+          end
+          done(p)
+        end
+      )
+    end,
+    choose = function(items, action)
+      local item = items[1]
+      if action == "nav" then
+        require("cogitator.dag").open({ columns = true, column = item.value.out or item.value.column })
+        return
+      end
+      if not item.uri then
+        vim.notify("no file for " .. item.text, vim.log.levels.INFO)
+        return
+      end
+      require("cogitator.pick.actions").open(items, action)
+      vim.fn.search("\\V\\<" .. item.value.column .. "\\>", "w")
+    end,
   }
 end
 
@@ -137,11 +269,13 @@ function M.tags(ctx)
         end
         local items = {}
         for tag, nodes in pairs(by_tag) do
-          items[#items + 1] = {
-            text = ("#%s  (%d node%s)"):format(tag, #nodes, #nodes == 1 and "" or "s"),
+          items[#items + 1] = paint.paint({
             name = "tag:" .. tag,
             value = nodes,
-          }
+          }, {
+            { "#" .. tag, "DbtPickTag" },
+            { ("  (%d node%s)"):format(#nodes, #nodes == 1 and "" or "s"), "DbtPickDetail" },
+          })
         end
         table.sort(items, function(a, b)
           return a.text < b.text

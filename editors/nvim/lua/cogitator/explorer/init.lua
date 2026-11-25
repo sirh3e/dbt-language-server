@@ -189,6 +189,7 @@ local function fetch(name)
       s.compiled = (result ~= vim.NIL) and result or false
     end
     preview.render_compiled(s)
+    erender.center(s) -- the card names the compiled file
   end)
 end
 
@@ -395,6 +396,38 @@ function M._card_enter()
   if actions.open_uri(uri) and target and target.range and target.range ~= vim.NIL then
     local start = target.range.start
     pcall(vim.api.nvim_win_set_cursor, 0, { start.line + 1, start.character })
+  end
+end
+
+--- Open the selection's dbt SQL ("raw") or compiled SQL ("compiled"),
+--- at `line` when given, closing the explorer.
+---@param which "raw"|"compiled"
+---@param line integer?
+function M._open_sql(which, line)
+  local s = M._state
+  if not s then
+    return
+  end
+  local uri
+  if which == "compiled" then
+    uri = require("cogitator.explorer.card").compiled_uri(s)
+    if not uri then
+      vim.notify("not compiled yet — c compiles it, then E opens it", vim.log.levels.INFO)
+      return
+    end
+  else
+    local node = M._selected_node()
+    uri = (s.info and s.info.uri ~= vim.NIL and s.info.uri)
+      or (node and node.uri ~= vim.NIL and node.uri)
+      or nil
+    if not uri then
+      vim.notify("no file on disk for this entry", vim.log.levels.WARN)
+      return
+    end
+  end
+  M.close()
+  if actions.open_uri(uri) and line then
+    pcall(vim.api.nvim_win_set_cursor, 0, { line, 0 })
   end
 end
 

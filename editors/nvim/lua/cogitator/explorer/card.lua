@@ -5,6 +5,7 @@
 --- compiled; a generic test, where YAML applies it (dbt.nodeInfo). Lines with a jump target (a test, a
 --- version) open it on <CR>. Pure: lines and jumps from the state.
 
+local paint = require("cogitator.pick.paint")
 local render_lib = require("cogitator.render")
 
 local M = {}
@@ -13,6 +14,7 @@ local M = {}
 ---@field lines string[]
 ---@field jumps table<integer, {uri: string, range?: table}> 1-based line → jump target
 ---@field headings integer[] 1-based lines that start a section
+---@field marks {[1]: integer, [2]: integer, [3]: integer, [4]: string}[] 1-based line, 0-based start and end byte, group
 
 local function present(v)
   return v ~= nil and v ~= vim.NIL and v ~= ""
@@ -170,7 +172,7 @@ end
 ---@param width integer? wrap the description to this many cells
 ---@return cogitator.explorer.Card
 function M.view(s, width)
-  local lines, jumps, headings = {}, {}, {}
+  local lines, jumps, headings, marks = {}, {}, {}, {}
   local function add(line, jump)
     lines[#lines + 1] = line
     if jump then
@@ -182,18 +184,41 @@ function M.view(s, width)
     add(text)
     headings[#headings + 1] = #lines
   end
+  --- a line of `{text, group?}` parts, coloured
+  local function add_parts(parts, jump)
+    local text = ""
+    for _, part in ipairs(parts) do
+      if part[2] and part[1] ~= "" then
+        marks[#marks + 1] = { #lines + 1, #text, #text + #part[1], part[2] }
+      end
+      text = text .. part[1]
+    end
+    add(text, jump)
+  end
+  local function done()
+    return { lines = lines, jumps = jumps, headings = headings, marks = marks }
+  end
   if not s.selected then
-    return { lines = { "· no model selected — f or / to pick one ·" }, jumps = {}, headings = {} }
+    return {
+      lines = { "· no model selected — f or / to pick one ·" },
+      jumps = {},
+      headings = {},
+      marks = {},
+    }
   end
   local node = s.node_of[s.selected]
   local info = s.info
 
-  add(s.selected .. (s.marked[s.selected] and "  ● marked" or ""))
-  headings[1] = 1
   local kind = node and node.kind or "model"
-  local file = info and present(info.uri) and vim.fn.fnamemodify(vim.uri_to_fname(info.uri), ":~:.")
-    or (node and present(node.uri) and vim.fn.fnamemodify(vim.uri_to_fname(node.uri), ":~:."))
-  add(kind .. (file and ("  ·  " .. file) or ""))
+  local uri = (info and present(info.uri) and info.uri) or (node and present(node.uri) and node.uri) or nil
+  local kind_group = paint.kind_group(kind, uri) or "DbtCardKind"
+  add_parts({
+    { s.selected, kind_group },
+    { s.marked[s.selected] and "  ● marked" or "", "DbtPickerSelected" },
+  })
+  headings[1] = 1
+  local file = uri and vim.fn.fnamemodify(vim.uri_to_fname(uri), ":~:.")
+  add_parts({ { kind, kind_group }, { file and "  ·  " or "" }, { file or "", "DbtCardPath" } })
 
   if info and present(info.description) then
     add("")
@@ -210,31 +235,58 @@ function M.view(s, width)
     if info then
       node_lines(info, add, heading)
     end
-    return { lines = lines, jumps = jumps, headings = headings }
+    return done()
   end
 
   local tags = {}
   for _, tag in ipairs((info and present(info.tags) and info.tags) or (node and node.tags) or {}) do
-    tags[#tags + 1] = "#" .. tag
+    if #tags > 0 then
+      tags[#tags + 1] = { " " }
+    end
+    tags[#tags + 1] = { "#" .. tag, "DbtCardTag" }
   end
   if #tags > 0 then
     add("")
-    add(table.concat(tags, " "))
+    add_parts(tags)
   end
 
   local r = s.relation
   add("")
+  local label = { "relation: ", "DbtCardLabel" }
   if r == nil then
-    add("relation: · loading ·")
+    add_parts({ label, { "· loading ·", "DbtPickDetail" } })
   elseif r == false or not r.relation then
-    add("relation: · unresolved ·")
+    add_parts({ label, { "· unresolved ·", "DbtCardWarn" } })
   elseif r.origin == "defaults" then
     -- a project's own generate_schema_name is not evaluated: say so
     -- rather than show a schema the model may not be built in
-    add("relation: " .. r.relation .. "  (dbt's defaults; dbt compile renders the real one)")
+    add_parts({
+      label,
+      { r.relation, "DbtCardRelation" },
+      { "  (dbt's defaults; dbt compile renders the real one)", "DbtCardWarn" },
+    })
   else
-    add("relation: " .. r.relation)
+    add_parts({ label, { r.relation, "DbtCardRelation" } })
   end
+
+  -- the two files, one key away: <CR> here, or e / E anywhere
+  heading("files (<CR> opens · e / E)")
+  add_parts(
+    {
+      { "  dbt SQL       ", "DbtCardLabel" },
+      { file or "· no file ·", file and "DbtCardJump" or "DbtPickDetail" },
+    },
+    uri and { uri = uri } or nil
+  )
+  local compiled = M.compiled_uri(s)
+  local compiled_file = compiled and vim.fn.fnamemodify(vim.uri_to_fname(compiled), ":~:.")
+  add_parts({
+    { "  compiled SQL  ", "DbtCardLabel" },
+    {
+      compiled_file or (s.compiled == nil and "· loading ·" or "· not compiled yet — c compiles ·"),
+      compiled_file and "DbtCardJump" or "DbtPickDetail",
+    },
+  }, compiled and { uri = compiled } or nil)
 
   local v = info and info.versions
   if present(v) then
@@ -262,12 +314,26 @@ function M.view(s, width)
   heading("tests (<CR> jumps)")
   if info and present(info.tests) and #info.tests > 0 then
     for _, t in ipairs(info.tests) do
-      add("  " .. render_lib.test_label(t), { uri = t.uri, range = t.range })
+      add_parts(
+        { { "  " }, { render_lib.test_label(t), paint.KIND_GROUP.test } },
+        { uri = t.uri, range = t.range }
+      )
     end
   else
     add(info and "  · none ·" or "  · loading ·")
   end
-  return { lines = lines, jumps = jumps, headings = headings }
+  return done()
+end
+
+--- The compiled SQL file of the selection, when dbt has written one.
+---@param s cogitator.explorer.State
+---@return string?
+function M.compiled_uri(s)
+  local c = s.compiled
+  if type(c) == "table" and not c.callers and present(c.uri) then
+    return c.uri
+  end
+  return nil
 end
 
 return M

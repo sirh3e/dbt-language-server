@@ -36,7 +36,17 @@ function M.open(source, items, run)
       finder = finders.new_table({
         results = items,
         entry_maker = function(item)
-          return { value = item, display = item.text, ordinal = item.text }
+          local display = item.text
+          if item.hls and #item.hls > 0 then
+            display = function()
+              local hl = {}
+              for _, span in ipairs(item.hls) do
+                hl[#hl + 1] = { { span[1], span[2] }, span[3] }
+              end
+              return item.text, hl
+            end
+          end
+          return { value = item, display = display, ordinal = item.text }
         end,
       }),
       sorter = conf.generic_sorter({}),

@@ -72,6 +72,16 @@ static CONFIG_TAGS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"tags\s*=\s*(?:\[([^\]]*)\]|'([^']*)'|"([^"]*)")"#).unwrap());
 static QUOTED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"'([^']*)'|"([^"]*)""#).unwrap());
 
+/// The `config(...)` expressions of a model's SQL, each as the text
+/// inside its `{{ }}`, in file order; commented-out ones are left out.
+pub fn config_calls(text: &str) -> Vec<String> {
+    let live = blanked(text, NOT_CODE);
+    CONFIG_SPAN_RE
+        .captures_iter(&live)
+        .map(|caps| format!("config({})", &caps[1]))
+        .collect()
+}
+
 /// Tags declared in SQL via `{{ config(tags=…) }}` (string or list).
 pub fn config_tags(text: &str) -> Vec<String> {
     let mut tags = Vec::new();

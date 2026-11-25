@@ -66,7 +66,7 @@ return function(ctx)
     text
   )
   local jumps = vim.tbl_count(view.jumps)
-  H.check(jumps == 2, "explorer: the card's version and test lines jump", jumps)
+  H.check(jumps == 3, "explorer: the card's dbt SQL, version and test lines jump", jumps)
   s.info, s.relation = nil, nil
   text = table.concat(card.view(s, 60).lines, "\n")
   H.check(text:find("· loading ·", 1, true) ~= nil, "explorer: the card says it is loading", text)
