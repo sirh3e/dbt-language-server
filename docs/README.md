@@ -21,13 +21,15 @@
 | [commands.md](commands.md) | Every `dbt.*` workspace command: argument, result, side effects, and which editors expose it |
 | [editor-parity.md](editor-parity.md) | Contributors: how a new command reaches every editor, and the test that holds it |
 | [go-to-schema.md](go-to-schema.md) | `dbt.goToSchema` in detail, with a JSON-RPC example |
+| [functions.md](functions.md) | dbt's user-defined functions (`functions/`, `{{ function('…') }}`): hover, definition, completion, references and the dangling check, where functions are read from, and what is not done yet |
+| [configuration.md](configuration.md) | Where profiles.yml is found, the Snowflake auth checks, `cogitator.yml` and its hot reload, dbt Fusion, the performance advice, OpenTelemetry |
 
 Elsewhere:
 
 - `:h cogitator` — the Neovim plugin's own help; `editors/*/README.md` —
   installing each editor's integration.
-- The top-level [README](../README.md) — the server's features and its
-  configuration file, `cogitator.yml`.
+- The top-level [README](../README.md) — what the server does, installing
+  it, and each editor.
 - [`specs/`](../specs) — the binding specifications: the editor contract
   (`specs/neovim-plugin/00-plugin.md`), the IR pipeline
   (`specs/ir-pipeline/`) and highlighting (`specs/highlighting/`).

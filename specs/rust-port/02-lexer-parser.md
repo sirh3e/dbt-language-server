@@ -189,6 +189,10 @@ All "retype" operations mutate `cur.token.type` **before** it is appended to `to
   retypes the string argument of `doc('name')` to `DOC` (`TokenKind::Doc`),
   feeding the doc() hover/definition/completion/diagnostic set (03 §6.4
   addendum).
+- `parse_function` *(addendum — dbt 1.11 user-defined functions)*: same
+  shape, retypes the string argument of `function('name')` to `FUNCTION`
+  (`TokenKind::Function`); `function` is a context function, so the call
+  word is no macro call (03 §6.4, user-defined functions addendum).
 - `parse_source`: pattern
   `SOURCE LPAREN ('|") IDENT ('|") COMMA ('|") IDENT` —
   first IDENT → `SOURCE`, second IDENT → `SOURCE_TABLE`.

@@ -7,11 +7,11 @@ The server currently implements exactly the original Go server's surface:
 |---|---|
 | `initialize` / `shutdown` / `exit` | capabilities per `specs/rust-port/01-protocol.md` §3.1 |
 | `textDocument/didOpen` / `didChange` / `didSave` | incremental sync (`textDocumentSync: 2`) |
-| `textDocument/hover` | refs, sources, vars, env vars, macros, dialect SQL functions, what a `{{ … }}` renders to |
-| `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), env vars (`.env` line, else profiles.yml), macros, in-file CTEs |
-| `textDocument/references` | models, vars, sources, macros, docs, columns, file-local names (Jinja locals, macro parameters, CTEs, aliases) |
+| `textDocument/hover` | refs, sources, vars, env vars, macros, user-defined functions (`function('…')`), dialect SQL functions, what a `{{ … }}` renders to |
+| `textDocument/definition` | models, sources/tables, vars (by scope, to the deciding key), env vars (`.env` line, else profiles.yml), macros, user-defined functions (body, else `functions:` entry), in-file CTEs |
+| `textDocument/references` | models, vars, sources, macros, docs, user-defined functions, columns, file-local names (Jinja locals, macro parameters, CTEs, aliases) |
 | `textDocument/inlayHint` | relations, var values, env var values (secrets masked), macro parameters, opt-in Jinja renderings |
-| `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `{{` |
+| `textDocument/completion` | context-aware inside `ref('` / `source('` / `var('` / `doc('` / `function('` / `{{` |
 | `workspace/executeCommand` → `dbt.goToSchema` | jump to the model's properties-YAML entry |
 | `textDocument/publishDiagnostics` (push) | dbt Fusion compile only (`--fusion`) |
 

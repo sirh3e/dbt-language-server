@@ -329,6 +329,45 @@ refined to its own token kind (02 §3.3):
   dangling-ref pass). Column descriptions still skip doc() EXPANSION
   (unchanged from the Go port); the dangling check covers them anyway.
 
+#### Addendum: user-defined functions (dbt 1.11+, beyond the Go original)
+
+`function_detail_map` (`context/functions.rs`): function name → its body
+file (`.sql`, `.py`, `.js` under the project's `function-paths`, default
+`functions` when that directory exists; the stem is the name, the
+extension the language) and its `functions:` entry from a `.yml`/`.yaml`
+under the same paths (name position, description, arguments, returns,
+`config.type`, `config.volatility`, `overloads[].defined_in`). Either half
+alone is a function; a body an `overloads[].defined_in` names is not.
+Own project first, packages after, the first definition wins. The
+entries are read from the marked YAML tree, leniently, cached per file in
+memory only (the persisted scan format is unchanged). `function_bodies`
+holds every body file seen, overloads' and shadowed packages' included,
+for `DbtContext::is_function_body`. On the `function('…')` argument
+(02 §3.3):
+
+- hover: the signature (`name(arg type = default, …) -> returns`) in a
+  code fence of the body's language, the description, the documented
+  arguments, what it returns, and type · volatility · language ·
+  overloads · project;
+- definition and the document link: the body, else the entry's `name:`;
+- `function('` completes the names (detail: the signature;
+  `CompletionItem.data` `{"kind": "dbt_function", "name": …}`, resolved
+  lazily), with the closing-suffix mirroring of §9.4.1;
+- a `function()` naming no function warns as `dangling-function` with
+  did-you-mean suggestions, in the SQL pass, once a project was read (an
+  empty map is no sign of a missing read here: a project may have none);
+  `dbt.unresolved` reports it as the kind `function`;
+- references, from a call or from the entry's `name:`, search the files of
+  every graph node and the open document; the declarations are the body
+  and the entry;
+- semantic tokens type the name `function`;
+- a body file gets the dangling checks and the Jinja syntax check only:
+  its SQL is an expression (a `SELECT` on some warehouses), so the SQL
+  syntax check, lint, contracts and DuckDB's parser are not run on it.
+
+A function is no graph node yet (no `NodeKind`), so DAG views, impact and
+`resource_type:function` selection do not show it.
+
 ## 7. Util functions
 
 ### 7.1 Project root (`get_project_root(file_name, wd)`)
