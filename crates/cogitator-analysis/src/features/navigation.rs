@@ -62,7 +62,7 @@ pub fn document_symbols(doc: &Document, uri: &str) -> Vec<SymbolInformation> {
         .iter()
         .map(|(name, token)| SymbolInformation {
             name: name.to_string(),
-            kind: symbol_kind::VARIABLE,
+            kind: symbol_kind::STRUCT,
             location: Location {
                 uri: uri.to_string(),
                 range: token_range(token),
@@ -165,7 +165,7 @@ pub fn workspace_symbols_in(
             .filter_map(|d| ctx.selector_detail_map.get(&d.name))
             .map(|s| SymbolInformation {
                 name: s.name.clone(),
-                kind: symbol_kind::KEY,
+                kind: symbol_kind::NAMESPACE,
                 location: Location {
                     uri: file_uri(&s.uri),
                     range: s.range,
@@ -187,7 +187,7 @@ pub fn workspace_symbols_in(
             .filter(|(name, _)| exposure.is_empty() || name.to_lowercase().contains(exposure))
             .map(|(name, c)| SymbolInformation {
                 name: name.clone(),
-                kind: symbol_kind::EVENT,
+                kind: symbol_kind::MODULE,
                 location: Location {
                     uri: file_uri(&c.uri),
                     range: c.range,
@@ -204,7 +204,7 @@ pub fn workspace_symbols_in(
         if matches(name) {
             out.push(SymbolInformation {
                 name: name.clone(),
-                kind: symbol_kind::KEY,
+                kind: symbol_kind::NAMESPACE,
                 location: Location {
                     uri: file_uri(&s.uri),
                     range: s.range,
@@ -251,7 +251,20 @@ pub fn workspace_symbols_in(
         }
     }
     out.sort_by(|a, b| a.name.cmp(&b.name));
+    dedup_same_file(&mut out);
     out
+}
+
+/// One symbol per name and file: a package installed by a link, or a
+/// folder of linked macros, reaches the same file under several paths.
+fn dedup_same_file(out: &mut Vec<SymbolInformation>) {
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|s| {
+        let path = cogitator_lsp::uri_to_fs_path(&s.location.uri)
+            .map(std::path::PathBuf::from)
+            .map(|p| std::fs::canonicalize(&p).unwrap_or(p));
+        seen.insert((s.name.clone(), s.kind, path, s.location.range.start.line))
+    });
 }
 
 /// textDocument/documentHighlight: occurrences of the same literal + kind.

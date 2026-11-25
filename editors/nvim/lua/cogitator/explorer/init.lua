@@ -30,6 +30,7 @@ local M = {}
 ---@field selected string? the selected model's name
 ---@field info table? the dbt.modelInfo payload for the selection
 ---@field compiled table|false|nil dbt.compiledSql (false = none, nil = loading)
+---@field columns table[]|false|nil the selection's columns with types (false = not inferred, nil = loading)
 ---@field relation table|false|nil dbt.relation (false = unresolved, nil = loading)
 ---@field raw {uri: string, lines: string[]?}? the dbt SQL pane's file, read in the background
 ---@field card_jumps table<integer, {uri: string, range?: table}>? card lines that jump
@@ -191,6 +192,23 @@ local function fetch(name)
     preview.render_compiled(s)
     erender.center(s) -- the card names the compiled file
   end)
+  -- the columns with their types: inferred, else the YAML's under the
+  -- resolved contract (the dependencies dialog's answer, its model alone)
+  s.columns = nil
+  actions.exec_with(
+    s.client,
+    s.src_buf,
+    "dbt.modelDependencies",
+    { uri = "", model = name },
+    function(err, result)
+      if M._state ~= s or gen ~= s.info_gen then
+        return
+      end
+      local model = not err and type(result) == "table" and result.model or nil
+      s.columns = model and model.columns ~= vim.NIL and model.columns or false
+      erender.center(s)
+    end
+  )
 end
 
 --- The graph node of the selection.

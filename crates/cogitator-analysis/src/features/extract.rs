@@ -320,6 +320,20 @@ mod tests {
         assert_eq!(config_yaml(sql, "    "), expected);
     }
 
+    #[test]
+    fn the_sql_config_as_json() {
+        let sql = "{{\n    config(\n        materialized='incremental',\n        incremental_strategy='delete+insert',\n        unique_key=['venue', 'id'],\n        batch=500,\n        post_hook=[\"{{ m() }}\"]\n    )\n}}";
+        let got = crate::util::sql_config(sql);
+        let get = |k: &str| got.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+        assert_eq!(
+            get("incremental_strategy"),
+            Some(serde_json::json!("delete+insert"))
+        );
+        assert_eq!(get("unique_key"), Some(serde_json::json!(["venue", "id"])));
+        assert_eq!(get("batch"), Some(serde_json::json!(500)));
+        assert_eq!(get("post_hook"), Some(serde_json::json!(["{{ m() }}"])));
+    }
+
     /// What is written reads back as YAML holding the same values.
     #[test]
     fn the_config_block_is_yaml() {

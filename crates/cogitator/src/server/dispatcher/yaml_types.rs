@@ -12,11 +12,11 @@ use cogitator_lsp::{CodeAction, Diagnostic, Position, Range};
 
 use crate::server::derived_cache::DerivedCache;
 
-fn snapshot(ctx: &DbtContext, derived: &DerivedCache) -> Option<Arc<SchemaSnapshot>> {
+pub(crate) fn snapshot(ctx: &DbtContext, derived: &DerivedCache) -> Option<Arc<SchemaSnapshot>> {
     derived.project_schemas(ctx.project_root.as_deref()?)
 }
 
-fn lookup<'a>(
+pub(crate) fn lookup<'a>(
     ctx: &'a DbtContext,
     snapshot: &'a SchemaSnapshot,
 ) -> impl Fn(&str) -> Option<ModelColumnTypes> + 'a {

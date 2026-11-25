@@ -119,7 +119,8 @@ writer wins).
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
-  `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`
+  `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`,
+  `dbt.modelDependencies`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 

@@ -58,6 +58,110 @@ return function(ctx)
     vim.fn.getreg('"')
   )
 
+  -- the dependencies dialog's answer: direct and transitive, each with
+  -- how it is built (models/ is a table, staging/ a view)
+  local deps = H.exec_cmd(client, bufnr, "dbt.modelDependencies", {
+    uri = vim.uri_from_bufnr(bufnr),
+  }, "integration: dbt.modelDependencies")
+  local by_name = {}
+  for _, node in ipairs(type(deps) == "table" and deps.parents or {}) do
+    by_name[node.name] = node
+  end
+  H.check(
+    type(deps) == "table"
+      and deps.model.name == "customers"
+      and deps.model.config.materialized == "table"
+      and by_name.stg_customers
+      and by_name.stg_customers.config.materialized == "view"
+      and by_name.stg_customers.depth == 1
+      and #deps.upstream >= #deps.parents,
+    "integration: dbt.modelDependencies says what customers uses and how each is built",
+    vim.inspect(deps):sub(1, 600)
+  )
+  -- the columns come with the project's schema job, which follows the refresh
+  local typed
+  H.wait("integration: dbt.modelDependencies carries column types", 20000, function()
+    local answer = H.exec_cmd(client, bufnr, "dbt.modelDependencies", {
+      uri = vim.uri_from_bufnr(bufnr),
+    }, "integration: dbt.modelDependencies (types)")
+    typed = type(answer) == "table" and answer.model.columns
+    return type(typed) == "table" and #typed > 0
+  end)
+  local bases = {}
+  for _, c in ipairs(type(typed) == "table" and typed or {}) do
+    bases[c.basis] = (bases[c.basis] or 0) + 1
+  end
+  H.check(
+    type(typed) == "table" and #typed > 0 and typed[1].name ~= nil and typed[1].basis ~= nil,
+    "integration: customers' columns come with a type and a basis",
+    vim.inspect(bases)
+  )
+  deps = H.exec_cmd(
+    client,
+    bufnr,
+    "dbt.modelDependencies",
+    { uri = vim.uri_from_bufnr(bufnr) },
+    "integration: deps again"
+  )
+  local items = require("cogitator.deps").items(deps)
+  H.check(
+    #items == 6
+      and items[2].label == "Columns"
+      and items[3].label == "Uses directly"
+      and #items[3].children == #deps.parents,
+    "integration: the dialog is the model, then direct and transitive both ways",
+    vim.inspect(vim.tbl_map(function(i)
+      return i.label
+    end, items))
+  )
+
+  -- definition and hover from the word `ref`, not only from its argument
+  local model_lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local ref_line, ref_col
+  for i, l in ipairs(model_lines) do
+    local s = l:find("ref%(")
+    if s then
+      ref_line, ref_col = i - 1, s
+      break
+    end
+  end
+  local pos = {
+    textDocument = { uri = vim.uri_from_bufnr(bufnr) },
+    position = { line = ref_line, character = ref_col },
+  }
+  local def = client:request_sync("textDocument/definition", pos, 10000, bufnr)
+  local def_uri = def and def.result and (def.result.uri or (def.result[1] and def.result[1].uri))
+  H.check(
+    type(def_uri) == "string" and def_uri:find("stg_", 1, true) ~= nil,
+    "integration: definition on the word ref goes to the model it names",
+    vim.inspect(def and def.result)
+  )
+  local hover = client:request_sync("textDocument/hover", pos, 10000, bufnr)
+  local contents = hover and hover.result and hover.result.contents
+  contents = type(contents) == "table" and (contents.value or "") or (contents or "")
+  local link = require("cogitator.hover_jump").link_in(vim.split(contents, "\n"))
+  H.check(
+    contents:find("^%*%*model%*%*") ~= nil and link and link.uri == def_uri,
+    "integration: the hover on ref names the model and links its definition",
+    contents
+  )
+
+  -- in a hover float holding that link, <CR> opens the definition
+  local fbuf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(fbuf, 0, -1, false, vim.split(contents, "\n"))
+  local fwin =
+    vim.api.nvim_open_win(fbuf, true, { relative = "editor", row = 1, col = 1, width = 60, height = 6 })
+  H.wait("integration: the hover float gets its keys", 3000, function()
+    return vim.b[fbuf].cogitator_hover_jump == true
+  end)
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<CR>", true, false, true), "x", false)
+  H.check(
+    not vim.api.nvim_win_is_valid(fwin) and vim.uri_from_bufnr(0) == def_uri,
+    "integration: <CR> in the hover closes it and opens the definition",
+    vim.uri_from_bufnr(0)
+  )
+  vim.api.nvim_set_current_buf(bufnr)
+
   local incr_result = H.exec_cmd(client, bufnr, "dbt.incrementality", {
     uri = vim.uri_from_bufnr(bufnr),
   }, "integration: dbt.incrementality")

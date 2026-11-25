@@ -830,6 +830,70 @@ async function unresolved(): Promise<void> {
   }
 }
 
+/** One node of a dbt.modelDependencies answer, as far as the palette reads it. */
+export interface DependencyNode {
+  name: string;
+  kind: string;
+  uri?: string | null;
+  line: number;
+  depth: number;
+  config: { materialized?: string | null; incrementalStrategy?: string | null };
+}
+
+/** A dependency as a quick-pick entry: what it is, how it is built, how far. */
+export function dependencyLabel(node: DependencyNode): {
+  label: string;
+  description: string;
+} {
+  const built = [node.config.materialized, node.config.incrementalStrategy]
+    .filter((s): s is string => !!s)
+    .join(", ");
+  return {
+    label: `[${node.kind}] ${node.name}`,
+    description: [built, node.depth > 1 ? `${node.depth} hops` : ""].filter((s) => s).join(" · "),
+  };
+}
+
+/** This model and its neighbours (dbt.modelDependencies): pick one to open it. */
+async function modelDependencies(): Promise<void> {
+  const result = (await execDbt("dbt.modelDependencies")) as
+    | {
+        model: DependencyNode;
+        parents: DependencyNode[];
+        children: DependencyNode[];
+        upstream: DependencyNode[];
+        downstream: DependencyNode[];
+      }
+    | null
+    | undefined;
+  if (!result) {
+    void vscode.window.showInformationMessage("dbt: no model here");
+    return;
+  }
+  type Entry = vscode.QuickPickItem & { node?: DependencyNode };
+  const entries: Entry[] = [];
+  const section = (title: string, nodes: DependencyNode[]) => {
+    entries.push({ label: title, kind: vscode.QuickPickItemKind.Separator });
+    for (const node of nodes) {
+      entries.push({ ...dependencyLabel(node), node });
+    }
+  };
+  section("Uses directly", result.parents);
+  section("Used directly by", result.children);
+  section("Everything upstream", result.upstream);
+  section("Everything downstream", result.downstream);
+  const pick = await vscode.window.showQuickPick(entries, {
+    matchOnDescription: true,
+    placeHolder: `${result.model.name}: ${result.upstream.length} upstream, ${result.downstream.length} downstream`,
+  });
+  if (pick?.node?.uri) {
+    const line = pick.node.line;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.node.uri), {
+      selection: new vscode.Range(line, 0, line, 0),
+    });
+  }
+}
+
 /** A dbt.breakingChanges answer, as far as the palette reads it. */
 export interface BreakingReport {
   summary: string;
@@ -1044,6 +1108,7 @@ export async function activate(
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
+    ["cogitator.modelDependencies", modelDependencies],
     [
       "cogitator.status",
       async () => {

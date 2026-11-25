@@ -271,13 +271,10 @@ function M.view(s, width)
 
   -- the two files, one key away: <CR> here, or e / E anywhere
   heading("files (<CR> opens · e / E)")
-  add_parts(
-    {
-      { "  dbt SQL       ", "DbtCardLabel" },
-      { file or "· no file ·", file and "DbtCardJump" or "DbtPickDetail" },
-    },
-    uri and { uri = uri } or nil
-  )
+  add_parts({
+    { "  dbt SQL       ", "DbtCardLabel" },
+    { file or "· no file ·", file and "DbtCardJump" or "DbtPickDetail" },
+  }, uri and { uri = uri } or nil)
   local compiled = M.compiled_uri(s)
   local compiled_file = compiled and vim.fn.fnamemodify(vim.uri_to_fname(compiled), ":~:.")
   add_parts({
@@ -298,17 +295,25 @@ function M.view(s, width)
     end
   end
 
-  heading("columns")
-  if node and node.columns and #node.columns > 0 then
-    for _, column in ipairs(node.columns) do
-      add(
-        "  • "
-          .. column.name
-          .. (present(column.description) and (" — " .. M.summary(column.description)) or "")
-      )
+  -- documented columns and typed ones, merged by name: the name, its type
+  -- in the colour of how far it can be trusted, the description
+  local rows = M.column_rows(node and node.columns, s.columns)
+  heading(("columns (%d)"):format(#rows))
+  for _, row in ipairs(rows) do
+    local parts = { { "  • " }, { row.name } }
+    if row.type then
+      parts[#parts + 1] = { "  " }
+      parts[#parts + 1] = { row.type, row.group }
     end
-  else
-    add("  · none documented ·")
+    if present(row.description) then
+      parts[#parts + 1] = { " — " .. M.summary(row.description), "DbtPickDetail" }
+    end
+    add_parts(parts)
+  end
+  if #rows == 0 then
+    add(s.columns == nil and "  · loading ·" or "  · none documented or inferred ·")
+  elseif s.columns == false then
+    add_parts({ { "  types not inferred yet", "DbtTypeUnknown" } })
   end
 
   heading("tests (<CR> jumps)")
@@ -323,6 +328,38 @@ function M.view(s, width)
     add(info and "  · none ·" or "  · loading ·")
   end
   return done()
+end
+
+--- The card's column rows: the documented columns (graph) in their order,
+--- then the typed ones no YAML documents, each with its type when known
+--- (pure; exposed for the suite).
+---@param documented table[]? graph columns `{name, description}`
+---@param typed table[]|false|nil dbt.modelDependencies columns
+---@return {name: string, description: string?, type: string?, group: string?}[]
+function M.column_rows(documented, typed)
+  local by_name = {}
+  for _, c in ipairs(type(typed) == "table" and typed or {}) do
+    by_name[c.name:lower()] = c
+  end
+  local rows, seen = {}, {}
+  local function row(name, description)
+    local c = by_name[name:lower()]
+    local text, group
+    if c then
+      text, group = paint.type_text(c)
+    end
+    seen[name:lower()] = true
+    rows[#rows + 1] = { name = name, description = description, type = text, group = group }
+  end
+  for _, c in ipairs(documented or {}) do
+    row(c.name, present(c.description) and c.description or nil)
+  end
+  for _, c in ipairs(type(typed) == "table" and typed or {}) do
+    if not seen[c.name:lower()] then
+      row(c.name, nil)
+    end
+  end
+  return rows
 end
 
 --- The compiled SQL file of the selection, when dbt has written one.

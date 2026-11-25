@@ -110,6 +110,8 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtCache      derived-cache stats ('clear' empties)
   :DbtSchema     jump to the schema.yml entry        <leader>ds
   :DbtLineage    column lineage in the picker        <leader>dl
+  :DbtDependencies what a model uses / what uses it   <leader>dp
+                 [model], direct and transitive, how each is built
   :DbtGraph      model-graph browser                 <leader>dg
   :DbtBrowse     the model explorer                  <leader>db
   :DbtProfiles   show/switch the profiles directory
@@ -549,6 +551,42 @@ is `default`, so a colorscheme may set its own.
 After |:DbtCompile| (or `c` in the explorer) the compiled SQL is asked
 about rather than opened: here, in a split, vsplit or tab, or not now.
 `compiled_sql = "open"` in setup() opens it at once, `"never"` never.
+
+                                                *cogitator-nvim-dependencies*
+:DbtDependencies [model] (<leader>dp, and "This model" in the code-action
+menu) shows one model — the buffer's, or the one named — and its
+neighbours in the yazi-style picker: what it uses directly, what uses it
+directly, then everything upstream and downstream, nearest first (tests
+left out). Every node says how it is built, as dbt resolves it from
+dbt_project.yml, the properties YAML and the SQL's config(): materialized,
+and for an incremental model its strategy, unique_key and partition_by
+(◈ marks one). The preview lists every part; <CR> opens the node. The
+server's command is `dbt.modelDependencies {uri, model?, version?}`.
+
+Column types: the dialog's "Columns" group (and every model's preview, and
+the columns on |:DbtBrowse|'s card) lists the model's output columns with
+their types, `?` after one that may be null, coloured by how far the type
+can be trusted:
+  proven    (`DbtTypeProven`)   SQL inference over typed inputs, the
+                                catalog (target/catalog.json), or a YAML
+                                data_type under an enforced contract
+  declared  (`DbtTypeDeclared`) a YAML data_type nothing enforces
+  unknown   (`DbtTypeUnknown`)  nothing claims a type
+Inference comes with the project's schema job, after the first refresh;
+where it cannot plan a model (Jinja it cannot render), the model's YAML
+`data_type`s stand in, with the contract as dbt_project.yml resolves it.
+Sources and seeds are typed only by a catalog: `dbt docs generate`.
+
+                                                   *cogitator-nvim-goto-call*
+Definition (`gd`, |vim.lsp.buf.definition()|, snacks' or telescope's
+pickers) and hover answer from anywhere in a call: the word `ref`,
+`source`, `var`, a package or project name, the parenthesis, as well as
+the name itself; and a macro called inside a hook's string
+(`post_hook="{{ m() }}"`). The hover of a ref(), source() or macro ends
+with `Definition: [file:line](…)`: focus the hover (`K` again) and <CR>
+or `gd` opens it. Document symbols report a model's CTEs as Struct and
+workspace symbols selectors as Namespace and exposures as Module, so
+pickers that filter symbol kinds (LazyVim's `<leader>ss`) keep them.
 
                                                   *cogitator-nvim-treesitter*
 `:DbtTreesitter install` builds the tree-sitter-dbt grammar at the

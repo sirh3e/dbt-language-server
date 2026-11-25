@@ -58,6 +58,10 @@ local LINKS = {
   DbtPickArrow = "Special",
   DbtPickUpstream = "DiagnosticInfo",
   DbtPickDownstream = "DiagnosticHint",
+  -- a column's type, by how far it can be trusted
+  DbtTypeProven = "DiagnosticOk",
+  DbtTypeDeclared = "DiagnosticWarn",
+  DbtTypeUnknown = "Comment",
   -- the explorer's card
   DbtCardKind = "Type",
   DbtCardTag = "Constant",

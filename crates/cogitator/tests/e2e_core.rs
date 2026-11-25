@@ -760,7 +760,11 @@ fn multi_root_workspace_folders() {
         serde_json::json!({"textDocument": {"uri": beta_uri},
                            "position": {"line": 0, "character": 25}}),
     );
-    assert_eq!(hover["result"]["contents"], "beta base model", "{hover}");
+    let contents = hover["result"]["contents"].as_str().unwrap_or_default();
+    assert!(
+        contents.starts_with("**model** `beta_base`") && contents.contains("beta base model"),
+        "{hover}"
+    );
 
     // dbt.modelGraph routes through the owning root as well
     let graph = lsp.request(

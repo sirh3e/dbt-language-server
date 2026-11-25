@@ -86,6 +86,37 @@ function M.node_parts(label, kind, tags, uri, kind_label)
   return parts
 end
 
+--- How far a column's type can be trusted → the group its type is in.
+M.BASIS_GROUP = {
+  proven = "DbtTypeProven",
+  declared = "DbtTypeDeclared",
+  unknown = "DbtTypeUnknown",
+}
+
+--- What a basis means, for previews.
+M.BASIS_WORDS = {
+  proven = "proven — SQL inference, the catalog or an enforced contract",
+  declared = "declared — a YAML data_type nothing enforces",
+  unknown = "unknown — nothing claims a type",
+}
+
+--- A column's type as shown: the dialect's spelling, else what is known
+--- of it; `?` after a nullable one. `column` is a dbt.modelDependencies or
+--- dbt.modelInfo column.
+---@param column {dataType?: string, description?: string, nullable?: boolean, basis?: string}
+---@return string text
+---@return string group
+function M.type_text(column)
+  local spelled = column.dataType
+  if spelled == nil or spelled == vim.NIL or spelled == "" then
+    spelled = (column.description ~= nil and column.description ~= vim.NIL and column.description ~= "")
+        and column.description
+      or "unknown"
+  end
+  local text = spelled .. (column.nullable == true and "?" or "")
+  return text, M.BASIS_GROUP[column.basis] or M.BASIS_GROUP.unknown
+end
+
 --- An item's text cut into `{text, group?}` segments at its spans (for
 --- the backends that draw segments). Overlapping spans: the later wins.
 ---@param text string

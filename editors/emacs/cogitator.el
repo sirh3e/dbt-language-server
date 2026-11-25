@@ -1101,6 +1101,54 @@ grep buffer, one per line, at their place."
            (grep-mode))
          (display-buffer buf))))))
 
+;; a model's dependencies (dbt.modelDependencies)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--dependency-line (node)
+  "One grep-style line for a dbt.modelDependencies NODE: where it is,
+what it is, how it is built and how many hops away."
+  (let* ((uri (plist-get node :uri))
+         (config (plist-get node :config))
+         (built (seq-filter #'stringp (list (plist-get config :materialized)
+                                            (plist-get config :incrementalStrategy)))))
+    (format "%s:%d:1: [%s] %s%s%s"
+            (if (and (stringp uri) (not (string-empty-p uri))) (cogitator--uri-to-file uri) "")
+            (1+ (or (plist-get node :line) 0))
+            (plist-get node :kind)
+            (plist-get node :name)
+            (if built (concat " — " (string-join built ", ")) "")
+            (let ((depth (or (plist-get node :depth) 1)))
+              (if (> depth 1) (format " (%d hops)" depth) "")))))
+
+;;;###autoload
+(defun cogitator-model-dependencies ()
+  "This model and its neighbours (dbt.modelDependencies): what it uses
+directly, what uses it directly, and everything upstream and downstream,
+nearest first, in a grep buffer."
+  (interactive)
+  (cogitator--execute
+   "dbt.modelDependencies" (cogitator--command-argument)
+   (lambda (result)
+     (if (not result)
+         (message "cogitator: no model here")
+       (let ((buf (get-buffer-create "*cogitator-dependencies*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (format "-*- dbt dependencies of %s -*-\n"
+                             (plist-get (plist-get result :model) :name)))
+             (dolist (section '((:parents . "Uses directly")
+                                (:children . "Used directly by")
+                                (:upstream . "Everything upstream")
+                                (:downstream . "Everything downstream")))
+               (let ((nodes (append (plist-get result (car section)) nil)))
+                 (insert (format "\n; %s: %d\n" (cdr section) (length nodes)))
+                 (dolist (node nodes)
+                   (insert (cogitator--dependency-line node) "\n")))))
+           (require 'grep)
+           (grep-mode))
+         (display-buffer buf))))))
+
 ;; breaking changes (dbt.breakingChanges)
 ;; ---------------------------------------------------------------------------
 

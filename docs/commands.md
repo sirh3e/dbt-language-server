@@ -329,6 +329,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: `write: true` writes `target/cogitator-lineage/index.html` and `lineage.json` under the project root; otherwise none (reads model files, compiled SQL and `target/` artifacts off the dispatcher)
 - **Editors**: Neovim ✓ (`:DbtLineageSite` writes and opens the page) · Emacs ✓ (`M-x cogitator-lineage-site`, the same) · VS Code ✓ (`dbt: Show lineage view`, a live webview)
 
+### `dbt.modelDependencies`
+
+- **Argument**: `{uri, model?, version?}` — the model named, else the model of `uri`
+- **Result**: `{model, parents, children, upstream, downstream}` — each a node `{name, kind, package, uri, line, depth, tags, config: {materialized, incrementalStrategy, uniqueKey, partitionBy, clusterBy, onSchemaChange}, columns}`; `parents` and `children` are the direct neighbours, `upstream` and `downstream` everything, nearest first (tests left out); `columns` a model's inferred output columns, else `null`. `null` when there is no such model
+- **Side effects**: none (read-only)
+- **Editors**: Neovim ✓ (`:DbtDependencies [model]`, `<leader>dp`, "This model" in the code-action menu) · Emacs ✓ (`M-x cogitator-model-dependencies`) · VS Code ✓ (`dbt: Model dependencies`)
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`

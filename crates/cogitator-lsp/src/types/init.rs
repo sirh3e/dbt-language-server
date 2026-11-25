@@ -208,6 +208,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.select",
     "dbt.lineageSite",
     "dbt.syncYaml",
+    "dbt.modelDependencies",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

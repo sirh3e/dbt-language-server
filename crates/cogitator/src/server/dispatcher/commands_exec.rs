@@ -325,6 +325,17 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.modelDependencies" => {
+                let ctx = self.snapshot_for(&uri).ctx;
+                let open = crate::server::selectors::Open::of(self.documents.texts());
+                let arg = arg.clone();
+                let uri = uri.clone();
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.modelDependencies", move || {
+                    crate::server::selectors::dependencies_reply(&ctx, &derived, open, &uri, &arg)
+                });
+                return;
+            }
             "dbt.unresolved" => {
                 let ctx = self.snapshot_for(&uri).ctx;
                 let open = self.documents.texts();

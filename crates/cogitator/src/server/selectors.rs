@@ -122,3 +122,49 @@ pub fn workspace_symbols(ctx: &DbtContext, open: Open, query: &str) -> Reply {
         ctx, &universe, query,
     ))
 }
+
+/// `dbt.modelDependencies {uri, model?, version?}`: the model's direct and
+/// transitive neighbours with how each is built; `null` when the name is
+/// no model.
+pub fn dependencies_reply(
+    ctx: &DbtContext,
+    derived: &crate::server::derived_cache::DerivedCache,
+    open: Open,
+    uri: &str,
+    arg: &Map<String, Value>,
+) -> Reply {
+    use cogitator_analysis::selectors::dependencies::{
+        columns_of, dependencies_with, with_yaml_types,
+    };
+    let (universe, _) = engine(ctx, &open);
+    let model = arg
+        .get("model")
+        .and_then(Value::as_str)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string)
+        .or_else(|| cogitator_analysis::features::model_name_from_uri(uri));
+    let version = arg.get("version").and_then(|v| match v {
+        Value::String(s) => Some(s.clone()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    });
+    // the output-column types of the last schema job, when one has run
+    let snapshot = crate::server::dispatcher::yaml_types::snapshot(ctx, derived);
+    // inferred types, with the YAML's data_type where inference has none
+    let types = |name: &str, enforced: bool| {
+        let inferred = snapshot.as_deref().and_then(|snapshot| {
+            cogitator_analysis::features::column_types::column_types(ctx, snapshot, name)
+                .map(|t| columns_of(&t))
+        });
+        match ctx.model_detail_map.get(name) {
+            Some(details) => with_yaml_types(
+                inferred,
+                &details.columns,
+                details.contract_enforced || enforced,
+            ),
+            None => inferred,
+        }
+    };
+    let deps = model.and_then(|m| dependencies_with(&universe, &m, version.as_deref(), &types));
+    Reply::result(&deps)
+}

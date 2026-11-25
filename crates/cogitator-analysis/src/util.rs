@@ -76,9 +76,74 @@ static QUOTED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"'([^']*)'|"([
 /// inside its `{{ }}`, in file order; commented-out ones are left out.
 pub fn config_calls(text: &str) -> Vec<String> {
     let live = blanked(text, NOT_CODE);
-    CONFIG_SPAN_RE
-        .captures_iter(&live)
-        .map(|caps| format!("config({})", &caps[1]))
+    let bytes = live.as_bytes();
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(open) = live[from..].find("{{").map(|i| from + i) {
+        let rest = live[open + 2..].trim_start();
+        let start = live.len() - rest.len();
+        from = open + 2;
+        let Some(after) = rest.strip_prefix("config") else {
+            continue;
+        };
+        let paren = start + 6 + (after.len() - after.trim_start().len());
+        if bytes.get(paren) != Some(&b'(') {
+            continue;
+        }
+        // the matching `)`: strings (a hook's `"{{ m() }}"`) do not count
+        let (mut depth, mut quote, mut i) = (0usize, None::<u8>, paren);
+        let mut close = None;
+        while i < bytes.len() {
+            let b = bytes[i];
+            match quote {
+                Some(_) if b == b'\\' => i += 1,
+                Some(q) if b == q => quote = None,
+                Some(_) => {}
+                None if b == b'\'' || b == b'"' => quote = Some(b),
+                None if b == b'(' || b == b'[' || b == b'{' => depth += 1,
+                None if b == b')' || b == b']' || b == b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        close = Some(i);
+                        break;
+                    }
+                }
+                None => {}
+            }
+            i += 1;
+        }
+        if let Some(close) = close {
+            out.push(text[start..=close].to_string());
+            from = close + 1;
+        }
+    }
+    out
+}
+
+/// The constant arguments of a model's `config(...)` calls as JSON, in
+/// file order (a later call's key after an earlier one's, so laying them
+/// over a config in order lets the later win, as in dbt).
+pub fn sql_config(text: &str) -> Vec<(String, serde_json::Value)> {
+    use cogitator_sql_front::{config_values, ConfigValue};
+    fn json(value: ConfigValue) -> serde_json::Value {
+        match value {
+            ConfigValue::Str(s) => serde_json::Value::String(s),
+            ConfigValue::Bool(b) => serde_json::Value::Bool(b),
+            ConfigValue::Number(n) => {
+                serde_json::from_str(&n).unwrap_or(serde_json::Value::String(n))
+            }
+            ConfigValue::List(items) => {
+                serde_json::Value::Array(items.into_iter().map(json).collect())
+            }
+            ConfigValue::Map(entries) => {
+                serde_json::Value::Object(entries.into_iter().map(|(k, v)| (k, json(v))).collect())
+            }
+        }
+    }
+    config_calls(text)
+        .iter()
+        .flat_map(|call| config_values(call))
+        .map(|(k, v)| (k, json(v)))
         .collect()
 }
 
