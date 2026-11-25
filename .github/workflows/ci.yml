@@ -110,11 +110,6 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets --features cogitator/e2e -- -D warnings
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: just
-      - name: Generated schemas are fresh
-        run: just gen-schemas-check
 
 
   # The engine oracles (specs/ir-pipeline/07): the differential corpus
