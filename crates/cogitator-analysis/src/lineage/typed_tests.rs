@@ -33,7 +33,7 @@ fn schema(names: &[&str], completeness: Completeness) -> Arc<ModelSchema> {
     })
 }
 
-fn env(models: &[(&str, &[&str], Completeness)]) -> SchemaEnv {
+pub(super) fn env(models: &[(&str, &[&str], Completeness)]) -> SchemaEnv {
     let mut schemas = ProjectSchemas::default();
     for (name, columns, completeness) in models {
         schemas
@@ -47,7 +47,7 @@ fn env(models: &[(&str, &[&str], Completeness)]) -> SchemaEnv {
 }
 
 /// A plan input with no compiled file; models named so relations resolve.
-fn plan_input<'a>(
+pub(super) fn plan_input<'a>(
     text: &'a str,
     dialect: &'a Dialect,
     models: &'a HashMap<String, ModelDetails>,
@@ -77,7 +77,7 @@ fn typed(sql: &str, schema_env: &SchemaEnv) -> String {
     format!("{sql}\n---\n{}", render(&lineage))
 }
 
-const CLOSED: Completeness = Completeness::Closed;
+pub(super) const CLOSED: Completeness = Completeness::Closed;
 const OPEN: Completeness = Completeness::Open;
 
 #[test]

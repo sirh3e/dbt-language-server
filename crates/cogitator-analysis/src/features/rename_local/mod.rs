@@ -10,7 +10,7 @@
 //! (installed packages' files are never edited). Positional arguments do
 //! not name the parameter and are left alone.
 
-mod jinja;
+pub(crate) mod jinja;
 mod names;
 mod occurrences;
 mod sql;

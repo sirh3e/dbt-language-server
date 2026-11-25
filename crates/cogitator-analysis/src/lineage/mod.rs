@@ -37,6 +37,13 @@ pub enum SourceRef {
 pub struct ColumnLineage {
     pub name: String,
     pub sources: Vec<SourceRef>,
+    /// The column passes one upstream column through unchanged: a bare
+    /// reference under the same name at every hop (CTEs, derived tables,
+    /// `select *`), no expression, rename, set operation or replacement.
+    /// What documentation may be inherited along (`features::yaml_sync`);
+    /// not on the wire.
+    #[serde(skip)]
+    pub direct: bool,
 }
 
 /// Where an answer that was not read off the live template came from.
@@ -68,6 +75,8 @@ impl ModelLineage {
 
 #[cfg(test)]
 mod corpus_tests;
+#[cfg(test)]
+mod direct_tests;
 #[cfg(test)]
 mod gap_tests;
 #[cfg(test)]

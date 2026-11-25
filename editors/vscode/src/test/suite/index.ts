@@ -13,6 +13,9 @@ import {
   astGrepLabel,
   breakingLines,
   captureColor,
+  columnPosition,
+  lineageFocus,
+  lineageHtml,
   incrementalDiffText,
   incrementalityLabel,
   languageOf,
@@ -24,6 +27,8 @@ import {
   unresolvedLabel,
   selectedLabel,
   selectionSummary,
+  syncYamlLines,
+  syncYamlSummary,
   spansByColor,
   splitText,
   syntaxLine,
@@ -218,6 +223,33 @@ export async function run(): Promise<void> {
       table: "| id |\n| --- |\n| 1 |\n",
     }) === "| id |\n| --- |\n| 1 |\n",
     "vscode: previewCteText is the server's table"
+  );
+  check(
+    lineageFocus("file:///p/models/stg_orders.sql") === "model:stg_orders" &&
+      lineageFocus("file:///p/models/schema.yml") === undefined,
+    "vscode: lineageFocus names the model of a SQL file"
+  );
+  check(
+    JSON.stringify(columnPosition("select\n  id as Customer_ID\n", "customer_id")) ===
+      JSON.stringify({ line: 1, character: 8 }),
+    "vscode: columnPosition finds the column as a word"
+  );
+  {
+    const html = lineageHtml("N0NCE", "vscode-resource:", { script: "x</script>", style: "a{}" });
+    check(
+      html.includes("script-src 'nonce-N0NCE'") &&
+        html.includes('<script nonce="N0NCE">x<\\/script></script>') &&
+        !/https?:\/\//.test(html),
+      "vscode: lineageHtml allows only its nonce and fetches nothing",
+      html
+    );
+  }
+  const site = (await exec("dbt.lineageSite", { assets: true })) as
+    | { site?: { nodes: unknown[] }; assets?: { script: string } }
+    | undefined;
+  check(
+    !!site?.site && site.site.nodes.length > 0 && !!site.assets?.script.includes("CogitatorLineage"),
+    "vscode: dbt.lineageSite answers the page's data and assets"
   );
   check(
     splitText({
@@ -452,6 +484,55 @@ export async function run(): Promise<void> {
     selectResult
   );
 
+  const plan = {
+    changes: 2,
+    applied: false,
+    files: [{ uri: "file:///p/models/a.yml", created: false, diff: "--- a/a.yml\n+++ b/a.yml\n+      - name: id\n" }],
+    models: [
+      {
+        model: "a",
+        added: ["id"],
+        inherited: [{ column: "id", from: { kind: "source", source: "raw", table: "t", column: "id" } }],
+        stale: ["old"],
+        skipped: [{ column: "x", reason: "written in flow style" }],
+      },
+      { model: "quiet" },
+    ],
+  };
+  check(
+    JSON.stringify(syncYamlLines(plan)) ===
+      JSON.stringify([
+        "# dbt.syncYaml: 2 change(s) in 1 file(s)",
+        "# a",
+        "  + column id",
+        "  ~ id description from source raw.t.id",
+        "  ! stale column old (prune removes it)",
+        "  ? x: written in flow style",
+        "",
+        "--- a/a.yml",
+        "+++ b/a.yml",
+        "+      - name: id",
+      ]),
+    "vscode: the sync preview lists each model's changes, then the diffs",
+    syncYamlLines(plan)
+  );
+  check(
+    syncYamlSummary(plan).startsWith("dbt: 2 change(s) in 1 file(s) — 0 entries, 1 columns"),
+    "vscode: the sync summary counts the plan",
+    syncYamlSummary(plan)
+  );
+  const syncResult = (await exec("dbt.syncYaml", {
+    uri: "",
+    models: ["stg_customers"],
+  })) as { applied?: boolean; models?: Array<{ model: string; added: string[] }> } | null;
+  check(
+    syncResult?.applied === false &&
+      syncResult?.models?.[0]?.model === "stg_customers" &&
+      syncResult?.models?.[0]?.added?.[0] === "first_name",
+    "vscode: dbt.syncYaml plans without applying",
+    syncResult
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -463,6 +544,7 @@ export async function run(): Promise<void> {
       "cogitator.incrementalDiff",
       "cogitator.previewCte",
       "cogitator.incrementality",
+      "cogitator.syncYaml",
       "cogitator.syntaxTree",
       "cogitator.highlight",
       "cogitator.astGrep",

@@ -60,6 +60,15 @@
               '(:name "x" :list [1]))
        "client: lsp-mode hash tables normalize to plists")
 
+;; unit: the lineage page's message
+(check (equal (cogitator--lineage-site-message
+               '(:written (:path "/p/target/cogitator-lineage/index.html")
+                 :counts (:columnsTraced 25 :columns 39 :columnsUndetermined 14 :modelsDeclined 1)))
+              "cogitator: lineage page /p/target/cogitator-lineage/index.html — 25 of 39 columns traced, 14 undetermined, 1 models declined")
+       "lineage-site: message says where the page is and what was traced")
+(check (null (cogitator--lineage-site-message nil))
+       "lineage-site: no page, no message")
+
 ;; ---------------------------------------------------------------------------
 ;; integration: eglot against the live server and a fixture COPY
 ;; ---------------------------------------------------------------------------
@@ -138,6 +147,13 @@
   (check (and (plist-get caches :profiles)
               (numberp (plist-get (plist-get caches :profiles) :entries)))
          "integration: dbt.cache reports the derived-cache surfaces" caches))
+
+;; integration: dbt.lineageSite writes the page under target/
+(let ((site (run--exec "dbt.lineageSite"
+                       (append (cogitator--command-argument) '(:write t)))))
+  (check (and (file-exists-p (plist-get (plist-get site :written) :path))
+              (> (plist-get (plist-get site :counts) :columnsTraced) 0))
+         "integration: dbt.lineageSite writes the page" site))
 
 ;; pickers + doctor parity: the data each one feeds on, plus rendering
 (let ((graph (run--exec "dbt.projectGraph" (cogitator--command-argument))))
@@ -382,6 +398,35 @@
   (check (and (numberp (plist-get found :count))
               (equal (plist-get (aref (plist-get found :nodes) 0) :name) "customers"))
          "integration: dbt.select picks the nightly model" found))
+
+;; unit + integration: dbt.syncYaml
+(check (equal (cogitator--sync-yaml-lines
+               '(:changes 2
+                 :files [(:uri "file:///p/models/a.yml"
+                          :diff "--- a/a.yml\n+++ b/a.yml\n+      - name: id\n")]
+                 :models [(:model "a" :createdEntry :json-false :added ["id"]
+                           :inherited [(:column "id" :from (:kind "source" :source "raw"
+                                                            :table "t" :column "id"))]
+                           :typed [] :stale ["old"] :pruned [] :reordered :json-false
+                           :skipped [(:column "x" :reason "written in flow style")])
+                          (:model "quiet" :added [] :inherited [] :typed [] :stale []
+                           :pruned [] :skipped [])]))
+              '("# dbt.syncYaml: 2 change(s) in 1 file(s)"
+                "# a"
+                "  + column id"
+                "  ~ id description from source raw.t.id"
+                "  ! stale column old (prune removes it)"
+                "  ? x: written in flow style"
+                ""
+                "--- a/a.yml"
+                "+++ b/a.yml"
+                "+      - name: id"))
+       "sync-yaml: the preview lists each model's changes, then the diffs")
+(let ((found (run--exec "dbt.syncYaml" (list :uri "" :models ["stg_customers"]))))
+  (check (and (eq (plist-get found :applied) :json-false)
+              (equal (plist-get (aref (plist-get found :models) 0) :model) "stg_customers")
+              (equal (aref (plist-get (aref (plist-get found :models) 0) :added) 0) "first_name"))
+         "integration: dbt.syncYaml plans without applying" found))
 
 ;; unit: test labels
 (check (equal (cogitator--test-label '(:name "unique" :column "id" :version 2))

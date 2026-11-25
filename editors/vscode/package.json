@@ -115,6 +115,14 @@
         "title": "dbt: Select nodes…"
       },
       {
+        "command": "cogitator.lineageView",
+        "title": "dbt: Show lineage view"
+      },
+      {
+        "command": "cogitator.syncYaml",
+        "title": "dbt: Sync schema YAML"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },

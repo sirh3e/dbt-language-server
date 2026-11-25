@@ -223,6 +223,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: workspace/applyEdit (CreateFile scaffold, or version TextEdits) + showDocument
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code —
 
+### `dbt.syncYaml`
+
+- **Argument**: `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?, apply?}` — `models` names the models to sync; without it a `.sql` `uri` narrows to its model and a properties-file `uri` to the models of its entries, and no `uri` is every SQL model of the root project. `prune` removes documented columns no longer produced, `inheritTypes` fills `data_type` from proven inferred types, `reorder` orders column items as the SQL outputs them, `newEntries: "folder"` puts new entries in `_<folder>__models.yml` (default `<model>.yml`, as `dbt.extractModelYaml`), `apply: true` applies the plan
+- **Result**: `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from: SourceRef, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` — `from` is the documented upstream column (`{kind: "model", name, column}` or `{kind: "source", source, table, column}`), `via` the undocumented models walked through; `edits` are line hunks against the file as read (the whole content for a created file), `diff` a unified diff for previews. `changes: 0` means the YAML is in sync. See [yaml-sync.md](yaml-sync.md)
+- **Side effects**: with `apply: true` and something to change, workspace/applyEdit (CreateFile + TextEdits, label "Sync schema YAML"); a summary message; a warning while the project's schemas are not computed yet. The code action "Sync schema YAML of 'm' (N changes)" on a model's SQL and its YAML entry carries the same edit for one model
+- **Editors**: Neovim ✓ (`:DbtSyncYaml`, preview split then confirm) · Emacs ✓ (`M-x cogitator-sync-yaml`) · VS Code ✓ (`dbt: Sync schema YAML`); the CLI `cogitator yaml-sync` plans the same
+
 ## Analysis
 
 ### `dbt.queryPlan`
@@ -314,6 +321,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Result**: `{selector, count, counts, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error, vocabulary?}` — what `dbt ls --select … --exclude …` would list (eager indirect selection brings tests along), by resource type then name; `name` is dbt's name (a source's table, a model without its version), `label` how `dbt ls --output name` prints it (`landing.items`, `orders.v1`), `graphId` the node's id in `dbt.projectGraph` where it has one, `counts` how many of each resource type. What dbt refuses — a text that does not parse, an empty criterion (`a,,b`), an unknown method, resource type or selector, `state:` / `result:` / `source_status:` (they need a previous run), a cycle between selectors — answers `error: {message, start, end}` (byte offsets into `select`, or into `exclude`) and no nodes; `issues` says what was not evaluated, in words. One engine serves it with every other selector feature: see [selectors.md](selectors.md). `oracles/selection.sh` diffs it with `dbt ls`: on testdata/vault_lake every selection of its tests without `--exclude` is what dbt-core 1.12.7 lists, but `tag:nightly` (dbt ignores a model entry's top-level `tags:`, which the engine reads)
 - **Side effects**: none (read-only; reads the project's files off the dispatcher). The "N nodes match" lens on each selectors.yml definition sends it with `selector:<name>`
 - **Editors**: Neovim ✓ (`:DbtSelect`, `:Dbt select`, `:DbtFind select`, the navigator's `f` and `/`: live, `<Tab>` completes, `<C-a>` marks every match, `<C-r>` runs it through `dbt.runSelection` with `exclude`) · Emacs ✓ (`M-x cogitator-select`) · VS Code ✓ (`dbt: Select nodes…`, live)
+
+### `dbt.lineageSite`
+
+- **Argument**: `{uri?, assets?, write?}` — `uri` picks the project (multi-root), else the primary one; `assets: true` adds the page's script and stylesheet; `write: true` writes the page instead of answering its data
+- **Result**: `{site, counts}` — `site` is the lineage page's data (format 1: the `dbt.projectGraph` nodes and edges, each node's details and columns, and each traced column's inputs one hop up with how it is made); with `assets`, also `assets: {script, style}`; with `write`, `{written: {path, uri}, counts}` and no `site`. `null` with no project. See [lineage-site.md](lineage-site.md)
+- **Side effects**: `write: true` writes `target/cogitator-lineage/index.html` and `lineage.json` under the project root; otherwise none (reads model files, compiled SQL and `target/` artifacts off the dispatcher)
+- **Editors**: Neovim ✓ (`:DbtLineageSite` writes and opens the page) · Emacs ✓ (`M-x cogitator-lineage-site`, the same) · VS Code ✓ (`dbt: Show lineage view`, a live webview)
 
 ## Profiles, configuration and health
 

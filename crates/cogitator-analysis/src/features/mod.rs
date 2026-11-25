@@ -30,6 +30,7 @@ mod inlay_hints;
 mod jinja_inline;
 mod jinja_preview;
 mod lenses;
+pub mod lineage_site;
 mod linked_editing;
 pub mod lint;
 pub mod macro_calls;
@@ -48,12 +49,14 @@ pub mod selectors_yml;
 mod semantic_captures;
 mod signature;
 mod structure;
+pub mod syntax;
 mod tests_nav;
 mod unresolved;
 mod unresolved_builtins;
 mod unused_vars;
 mod vars;
 mod workspace_diagnostics;
+pub mod yaml_sync;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
 pub use call_hierarchy::{

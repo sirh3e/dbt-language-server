@@ -64,9 +64,12 @@ impl Dispatcher {
             return;
         };
         let Some(params) = req.params else { return };
-        let dialect = self.ctx_for(&params.text_document.uri).dialect.clone();
+        let uri = params.text_document.uri.into_owned();
+        let dialect = self.ctx_for(&uri).dialect.clone();
         self.documents
-            .change(&params.text_document.uri, &params.content_changes, &dialect);
+            .change(&uri, &params.content_changes, &dialect);
+        // syntax errors as you type: the push set is fs-free and cheap
+        self.publish_static_diagnostics(&uri);
     }
 
     /// Diagnostics for one open doc — see server::diagnostics.
@@ -93,7 +96,7 @@ impl Dispatcher {
             .clone()
     }
 
-    /// Push pipeline (didOpen/didSave). Fusion owns publishes when enabled
+    /// Push pipeline (didOpen/didChange/didSave). Fusion owns publishes when enabled
     /// (07 §3 precedence) — never double-publish.
     pub(super) fn publish_static_diagnostics(&mut self, uri: &str) {
         if self.fusion_enabled.load(Ordering::Relaxed) {

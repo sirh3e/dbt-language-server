@@ -16,11 +16,12 @@ pub fn yaml_diagnostics(uri: &str, text: &str) -> Vec<Diagnostic> {
     if path.file_name().is_some_and(|f| f == "profiles.yml") {
         return profiles_diagnostics(path, text);
     }
-    // packages.yml has its own schema: syntax check only here — the
-    // declared-vs-installed pass rides in from the context layer
+    // packages.yml and selectors.yml have their own schemas: syntax
+    // check only here — the declared-vs-installed pass and the selector
+    // checks ride in from their own modules
     if path
         .file_name()
-        .is_some_and(|f| f == "packages.yml" || f == "dependencies.yml")
+        .is_some_and(|f| f == "packages.yml" || f == "dependencies.yml" || f == "selectors.yml")
     {
         return match cogitator_schemas::yaml::syntax_error(text) {
             Some((line, character, message)) => vec![diag(

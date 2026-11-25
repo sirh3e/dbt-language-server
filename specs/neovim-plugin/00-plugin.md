@@ -119,7 +119,7 @@ writer wins).
   `dbt.preview`, `dbt.queryPlan`, `dbt.deps`, `dbt.incrementality`,
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
-  `dbt.previewCte`, `dbt.select`
+  `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -189,6 +189,8 @@ Every command takes **one argument object**, not positional values:
 | `dbt.breakingChanges` | `{model, status, baseline, summary, diff: {removed, added, retyped}, impacts: [{column, change, severity, tests, downstream}], exposures, public, truncated}` — the buffer's columns against `target/catalog.json`, else the manifest's documented columns | none (read-only): `{uri}`; `status: "noBaseline"` without target/ artifacts; also `breaking-change` diagnostics and an `N breaking changes` lens, computed on open/save |
 | `dbt.unresolved` | `{items: [{kind, name, uri, range, message, suggestions?}], count, byKind, truncated}` — every unresolved name of the root project, by file then position (at most 5 000 items) | none (read-only): `{kinds?: ["ref"\|"source"\|"source_table"\|"doc"\|"macro"\|"var"]}`; open documents' unsaved text counts |
 | `dbt.select` | `{selector, count, counts: {resourceType: n}, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error: {message, start, end} \| null, vocabulary?: {methods, values: {method: [value]}}}` — what `dbt ls --select … --exclude …` lists, by resource type then name; an error lists no node | none (read-only): `{select, exclude?, vocabulary?}` (`selector` for `select`, as the selectors.yml lenses send it); `select` may carry its own `--exclude …`; error offsets are bytes into `select` (or `exclude`); docs/selectors.md — `:DbtSelect`, the navigator's `f` and `/` |
+| `dbt.lineageSite` | `{site, counts}` (`site`: format 1 — the `dbt.projectGraph` nodes/edges with each node's details and columns, each traced column's `inputs` one hop up and its `transform`); with `assets: true` also `assets: {script, style}`; with `write: true` `{written: {path, uri}, counts}` instead of `site`; `null` with no project | `{uri?, assets?, write?}`; `write` writes `<root>/target/cogitator-lineage/index.html` + `lineage.json` — :DbtLineageSite, `cogitator lineage-site` (docs/lineage-site.md) |
+| `dbt.syncYaml` | `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` | `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?: "model"\|"folder", apply?}`: the schema-YAML sync plan (docs/yaml-sync.md); with `apply: true` the server sends it as workspace/applyEdit (label "Sync schema YAML") — :DbtSyncYaml |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -517,6 +519,8 @@ vim.lsp.enable("cogitator")
 | `:DbtHighlight[!] [auto\|always\|off]` | `dbt.highlight` | toggle the buffer's colours from the server (`cogitator.tshl`: a namespace and priority per layer — yaml 120, sql 124, jinja 126, dbt 128 — captures → `@<capture>` groups, regex syntax off once painted, repainted 150 ms after edits, older answers dropped, the visible window first past 2 000 lines); `!` sets `highlight.server` for the session. With `highlight.server = "auto"` (default) SQL buffers without Neovim's tree-sitter highlighter and every YAML buffer are coloured on attach (specs/highlighting §7.1); the explorer's SQL panes and picker previews always are |
 | `:DbtNode [kind:]name` | `dbt.nodeInfo` | a node's card in a float (macro, test, generic test, source…); kinds tried in order with `quiet` when none is given; `<CR>` opens the line's target |
 | `:DbtBreakingChanges` | `dbt.breakingChanges` | this model's removed, possibly renamed and retyped columns against its last built schema, and what reads them downstream, into quickfix |
+| `:DbtLineageSite` | `dbt.lineageSite` | `write: true`, then `vim.ui.open` on the written page; a message with the counts; never blocks |
+| `:DbtSyncYaml [model…] [%] [prune] [types] [reorder] [folder]` | `dbt.syncYaml` | the plan (each model's changes, then every file's diff) in a split, then applied on confirm through `apply: true`; `%` narrows to this buffer's model or entries; nothing to change is a message |
 | `:DbtUnresolved [kind…]` | `dbt.unresolved` | every unresolved ref, source, source table, doc, macro and var of the project into quickfix; `:DbtFind unresolved` shows the same list in the picker |
 | `:DbtSelect [selection]` | `dbt.select` | the navigator's finder over a dbt selection (`tag:x`, `+model`, `resource_type:test`, `a,b`, `--exclude …`), live as it is typed; completion of methods and values |
 | `:DbtAstGrep [sql:]pattern [=> rewrite]` | `dbt.astGrep` | matches over the project into quickfix; with a rewrite, the matches listed and applied after a confirmation (`apply: true`); `:DbtFind astgrep` / `<leader>da` asks for a pattern and shows the matches in the picker |

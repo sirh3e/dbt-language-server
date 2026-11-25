@@ -2,7 +2,6 @@
 
 use cogitator_ir::hir::{Body, ExprId, ExprKind, FromId, Ident, QueryId, SelectItem};
 
-use super::lookup::Wanted;
 use super::{unique, Ctx, Row, Star, Walker};
 use crate::lineage::SourceRef;
 
@@ -39,9 +38,12 @@ impl Walker<'_> {
         }
     }
 
-    /// One row per column of a star over `Closed` inputs. `None` when the
-    /// star's column list is not known in full, or the item is no star:
-    /// the caller then keeps the `*` row, so nothing here guesses.
+    /// One row per known column of a star. An `Open` input (a CTE with a
+    /// `{{ macro() }}` select item, a model with columns beyond those
+    /// known) adds a `*` row after its columns, excluding them, for what
+    /// is not known. `None` when an input knows no column at all, or the
+    /// item is no star: the caller then keeps the `*` row, so nothing here
+    /// guesses.
     fn star_columns(&mut self, item: &SelectItem, ctx: Ctx<'_>) -> Option<Vec<Row>> {
         let SelectItem::Star {
             from,
@@ -60,38 +62,15 @@ impl Walker<'_> {
             None => self.scope_leaves(ctx),
         };
         let hir = self.hir;
-        let known = |t: &FromId| {
-            hir.from
-                .get(*t)
-                .is_some_and(|f| !f.open && !f.output.is_empty())
-        };
+        let known = |t: &FromId| hir.from.get(*t).is_some_and(|f| !f.output.is_empty());
         if targets.is_empty() || !targets.iter().all(known) {
             return None;
         }
         let mut rows = Vec::new();
         for target in targets {
-            let item = hir.from.get(target)?;
-            for (position, col) in item.output.iter().enumerate() {
-                if exclude.iter().any(|e| e.folded == col.name) {
-                    continue;
-                }
-                let replaced = replace.iter().find(|(_, name)| name.folded == col.name);
-                let label = hir.syms.text(col.name).to_string(); // boundary: reports own names
-                let wanted = Wanted {
-                    key: Some(col.name),
-                    label: &label,
-                    bound: u32::try_from(position).ok(),
-                };
-                let sources = match replaced {
-                    Some((expr, _)) => self.expr_sources(*expr, ctx),
-                    None => self.item_sources(target, wanted, ctx),
-                };
-                rows.push(Row {
-                    key: Some(col.name),
-                    label: Some(label),
-                    star: None,
-                    sources: unique(sources),
-                });
+            rows.extend(self.known_rows(target, exclude, replace, ctx));
+            if hir.from.get(target).is_some_and(|f| f.open) {
+                rows.push(self.residual_star(target, exclude, replace, ctx));
             }
         }
         Some(rows)
@@ -123,12 +102,14 @@ impl Walker<'_> {
                         .iter()
                         .map(|(e, name)| (name.folded, self.expr_sources(*e, ctx)))
                         .collect(),
+                    targets: targets.clone(), // boundary: a short per-select list
                 };
                 Some(Row {
                     key: None,
                     label: Some(label),
                     star: Some(star),
                     sources: self.star_sources(&targets, ctx),
+                    direct: false,
                 })
             }
             // A placeholder item keeps positions aligned for column lists
@@ -136,7 +117,7 @@ impl Walker<'_> {
         }
     }
 
-    fn star_sources(&mut self, targets: &[FromId], ctx: Ctx<'_>) -> Vec<SourceRef> {
+    pub(super) fn star_sources(&mut self, targets: &[FromId], ctx: Ctx<'_>) -> Vec<SourceRef> {
         let mut out = Vec::new();
         for target in targets {
             out.extend(self.star_of_item(*target, ctx));
@@ -152,6 +133,7 @@ impl Walker<'_> {
         query: QueryId,
     ) -> Row {
         let sources = self.expr_sources(expr, ctx);
+        let direct = self.expr_direct(expr, alias);
         let named = match alias {
             Some(alias) => Some((alias.folded, self.surface(alias))),
             None => self.implicit_name(expr, query),
@@ -162,6 +144,7 @@ impl Walker<'_> {
                 label: Some(label),
                 star: None,
                 sources,
+                direct,
             },
             None => Row {
                 sources,
@@ -258,11 +241,13 @@ fn merged(l: &Row, r: &Row) -> Row {
         (Some(s), None) | (None, Some(s)) => Some(s.clone()),
         (None, None) => None,
     };
+    // a set operation mixes arms: no column of it is one upstream column
     Row {
         key: named.key,
         label: named.label.clone(),
         star,
         sources: unique(sources),
+        direct: false,
     }
 }
 
@@ -279,5 +264,6 @@ fn merged_stars(a: &Star, b: &Star) -> Star {
             .copied()
             .collect(),
         replace,
+        targets: Vec::new(),
     }
 }

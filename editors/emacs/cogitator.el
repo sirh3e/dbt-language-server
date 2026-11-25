@@ -973,6 +973,109 @@ It reads file:line:column: [kind] name — message."
             (plist-get item :name)
             (or (plist-get item :message) ""))))
 
+;; ---------------------------------------------------------------------------
+;; schema-YAML sync (dbt.syncYaml)
+;; ---------------------------------------------------------------------------
+
+(defcustom cogitator-sync-yaml-prune nil
+  "Whether `cogitator-sync-yaml' removes columns a model no longer produces."
+  :type 'boolean
+  :group 'cogitator)
+
+(defcustom cogitator-sync-yaml-inherit-types nil
+  "Whether `cogitator-sync-yaml' fills missing data_type from proven types."
+  :type 'boolean
+  :group 'cogitator)
+
+(defun cogitator--sync-yaml-from (from)
+  "The column FROM of an inherited description, as text."
+  (if (equal (plist-get from :kind) "source")
+      (format "source %s.%s.%s" (plist-get from :source) (plist-get from :table)
+              (plist-get from :column))
+    (format "%s.%s" (plist-get from :name) (plist-get from :column))))
+
+(defun cogitator--sync-yaml-lines (result)
+  "The preview lines of a dbt.syncYaml RESULT: a line per change, stale
+column and skip of each model, then every file's unified diff."
+  (let ((lines (list (format "# dbt.syncYaml: %d change(s) in %d file(s)"
+                             (or (plist-get result :changes) 0)
+                             (length (plist-get result :files))))))
+    (dolist (model (append (plist-get result :models) nil))
+      (let (body
+            (pruned (append (plist-get model :pruned) nil)))
+        (when (eq (plist-get model :createdEntry) t)
+          (push "  + entry" body))
+        (dolist (column (append (plist-get model :added) nil))
+          (push (concat "  + column " column) body))
+        (dolist (inherited (append (plist-get model :inherited) nil))
+          (push (format "  ~ %s description from %s" (plist-get inherited :column)
+                        (cogitator--sync-yaml-from (plist-get inherited :from)))
+                body))
+        (dolist (typed (append (plist-get model :typed) nil))
+          (push (format "  ~ %s data_type %s" (plist-get typed :column)
+                        (plist-get typed :dataType))
+                body))
+        (dolist (column pruned)
+          (push (concat "  - column " column) body))
+        (when (eq (plist-get model :reordered) t)
+          (push "  ~ columns reordered" body))
+        (dolist (column (append (plist-get model :stale) nil))
+          (unless (member column pruned)
+            (push (format "  ! stale column %s (prune removes it)" column) body)))
+        (dolist (skip (append (plist-get model :skipped) nil))
+          (let ((column (plist-get skip :column)))
+            (push (format "  ? %s%s" (if (stringp column) (concat column ": ") "")
+                          (plist-get skip :reason))
+                  body)))
+        (when body
+          (setq lines (append lines (list (concat "# " (plist-get model :model)))
+                              (nreverse body))))))
+    (dolist (file (append (plist-get result :files) nil))
+      (setq lines (append lines (list "")
+                          (split-string (string-trim-right (or (plist-get file :diff) "") "\n")
+                                        "\n"))))
+    lines))
+
+(defun cogitator--sync-yaml-argument (this-buffer)
+  "The dbt.syncYaml argument: THIS-BUFFER narrows to its model or entries."
+  (append (if this-buffer (cogitator--command-argument) (list :uri ""))
+          (when cogitator-sync-yaml-prune (list :prune t))
+          (when cogitator-sync-yaml-inherit-types (list :inheritTypes t))))
+
+;;;###autoload
+(defun cogitator-sync-yaml (&optional this-buffer)
+  "Bring the models' schema YAML in line with their SQL (dbt.syncYaml).
+Missing entries and columns are added and descriptions inherited down
+the column lineage.  The plan opens in a buffer; it is applied once you
+confirm.  With a prefix argument THIS-BUFFER, only the model of this
+buffer (or the models of this properties file).  See
+`cogitator-sync-yaml-prune' and `cogitator-sync-yaml-inherit-types'."
+  (interactive "P")
+  (let ((argument (cogitator--sync-yaml-argument this-buffer)))
+    (cogitator--execute
+     "dbt.syncYaml" argument
+     (lambda (result)
+       (let ((changes (or (plist-get result :changes) 0)))
+         (if (zerop changes)
+             (message "cogitator: schema YAML is in sync — nothing to change")
+           (let ((buf (get-buffer-create "*cogitator-sync-yaml*")))
+             (with-current-buffer buf
+               (let ((inhibit-read-only t))
+                 (erase-buffer)
+                 (insert (mapconcat #'identity (cogitator--sync-yaml-lines result) "\n") "\n")
+                 (goto-char (point-min)))
+               (diff-mode)
+               (setq buffer-read-only t)
+               (local-set-key (kbd "q") #'quit-window))
+             (display-buffer buf)
+             (when (yes-or-no-p (format "Apply %d change(s) to %d file(s)? " changes
+                                        (length (plist-get result :files))))
+               (cogitator--execute
+                "dbt.syncYaml" (append argument (list :apply t))
+                (lambda (_) (message "cogitator: schema YAML synced")))))))))))
+
+;; ---------------------------------------------------------------------------
+
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)
   "Every unresolved ref, source, doc, macro and var (dbt.unresolved).
@@ -1299,6 +1402,37 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
       :priority 1
       :server-id 'cogitator)))
   (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
+
+;; ---------------------------------------------------------------------------
+;; the lineage page (dbt.lineageSite)
+
+(defun cogitator--lineage-site-message (result)
+  "The message for a dbt.lineageSite RESULT written to disk, or nil."
+  (when-let* ((written (and (listp result) (plist-get result :written)))
+              (path (plist-get written :path)))
+    (let ((counts (plist-get result :counts)))
+      (format "cogitator: lineage page %s — %s of %s columns traced, %s undetermined, %s models declined"
+              path
+              (or (plist-get counts :columnsTraced) 0)
+              (or (plist-get counts :columns) 0)
+              (or (plist-get counts :columnsUndetermined) 0)
+              (or (plist-get counts :modelsDeclined) 0)))))
+
+;;;###autoload
+(defun cogitator-lineage-site ()
+  "Write the project's column-lineage page and open it in the browser.
+The server writes target/cogitator-lineage/index.html (`dbt.lineageSite'
+with write); the page works offline."
+  (interactive)
+  (cogitator--execute
+   "dbt.lineageSite"
+   (append (cogitator--command-argument) '(:write t))
+   (lambda (result)
+     (let ((text (cogitator--lineage-site-message result)))
+       (if (not text)
+           (message "cogitator: no dbt project is loaded, so there is no lineage page")
+         (message "%s" text)
+         (browse-url-of-file (plist-get (plist-get result :written) :path)))))))
 
 (provide 'cogitator)
 ;;; cogitator.el ends here

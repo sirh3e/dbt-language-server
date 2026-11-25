@@ -87,8 +87,8 @@ pub fn config_keys() -> &'static HashSet<String> {
     KEYS.get_or_init(|| {
         let mut keys = HashSet::new();
         for schema in [
-            include_str!("../../../../schemas/dbt/processed/dbt_project.json"),
-            include_str!("../../../../schemas/dbt/processed/dbt_yml_files.json"),
+            cogitator_schemas::processed::DBT_PROJECT_JSON,
+            cogitator_schemas::processed::DBT_YML_FILES_JSON,
         ] {
             let Ok(value) = serde_json::from_str::<Value>(schema) else {
                 continue;

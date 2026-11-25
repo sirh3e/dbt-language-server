@@ -312,6 +312,10 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.syncYaml" => {
+                self.sync_yaml(req.id, uri, arg);
+                return;
+            }
             "dbt.select" => {
                 let ctx = self.snapshot_for(&uri).ctx;
                 let open = crate::server::selectors::Open::of(self.documents.texts());
@@ -388,6 +392,31 @@ impl Dispatcher {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.projectGraph", move || {
                     crate::server::reply::Reply::result(&features::project_graph_json(&ctx))
+                });
+                return;
+            }
+            "dbt.lineageSite" => {
+                let flag = |name: &str| arg.get(name).and_then(|v| v.as_bool()) == Some(true);
+                let request = crate::server::handlers::lineage_site::Request {
+                    assets: flag("assets"),
+                    write: flag("write"),
+                };
+                let ctx = if uri.is_empty() {
+                    self.snapshot()
+                } else {
+                    self.ctx_for(&uri)
+                };
+                let derived = self.derived.clone();
+                let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+                let compiled_cap = self.limits.compiled_cap_bytes.load(Ordering::Relaxed);
+                self.offload_blocking(req.id, "dbt.lineageSite", move || {
+                    crate::server::handlers::lineage_site::command(
+                        &ctx,
+                        &derived,
+                        artifact_cap,
+                        compiled_cap,
+                        request,
+                    )
                 });
                 return;
             }
