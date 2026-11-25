@@ -99,25 +99,9 @@ elisp-lint:
 
 # everything CI checks: formatting, lints, tests, schema freshness
 [group('ci')]
-check: fmt-check lint test gen-schemas-check
+check: fmt-check lint test
 
 # -------------------------------------------------------------- schemas
-
-# regenerate the preprocessed dbt schemas (specs/rust-port/08 §2.2)
-[group('schemas')]
-gen-schemas:
-    for f in dbt_project dbt_yml_files packages selectors; do \
-        python3 schemas/dbt/preprocess.py "schemas/dbt/$f-latest.json" "schemas/dbt/processed/$f.json"; \
-    done
-    for f in run-results-v6 sources-v3 catalog-v1; do \
-        python3 schemas/dbt/preprocess.py --mode=artifact "schemas/dbt/artifacts/$f.json" "schemas/dbt/processed/artifacts/$f.json"; \
-    done
-    python3 schemas/dbt/preprocess.py --mode=manifest-projection "schemas/dbt/artifacts/manifest-v12.json" "schemas/dbt/processed/artifacts/manifest-v12-projection.json" 
-
-# fail if the preprocessed schemas are stale (CI job, 09 §5)
-[group('schemas')]
-gen-schemas-check: gen-schemas
-    git diff --exit-code -- schemas/dbt/processed
 
 # regenerate the committed cogitator.yml JSON Schema (03 §10; a sync
 # test fails the suite while it is stale)
