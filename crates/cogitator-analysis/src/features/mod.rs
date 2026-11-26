@@ -125,7 +125,9 @@ pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };
 pub use hover::{hover, hover_with_lineage};
-pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
+pub use impact::{
+    impact, impact_graph, impact_over, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP,
+};
 pub use incremental_diff::{
     config_materialized, incremental_diff, incremental_lens, is_incremental_model, IncrementalDiff,
     INCREMENTAL_LENS_TITLE,

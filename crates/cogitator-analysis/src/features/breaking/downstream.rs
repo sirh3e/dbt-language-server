@@ -100,7 +100,8 @@ pub(super) fn impacts(
             .is_some_and(|d| d.access.as_deref() == Some("public"))
     };
     let model_public = public(model);
-    let closure = crate::features::impact(ctx, model, None, lineages);
+    let graph = crate::features::impact_graph(lineages);
+    let closure = crate::features::impact_over(ctx, model, None, lineages, &graph);
     let has_exposures = !closure.exposures.is_empty();
     let changed = diff
         .removed
@@ -119,7 +120,7 @@ pub(super) fn impacts(
         );
     changed
         .map(|(column, change, renamed_to)| {
-            let report = crate::features::impact(ctx, model, Some(column), lineages);
+            let report = crate::features::impact_over(ctx, model, Some(column), lineages, &graph);
             let reach = extras
                 .corpus
                 .and_then(|corpus| column_reach::reach(ctx, &report, corpus, None))

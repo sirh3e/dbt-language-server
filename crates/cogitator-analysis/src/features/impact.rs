@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use super::DbtContext;
 use crate::graph::NodeKind;
-use crate::lineage::{ModelLineage, SourceRef};
+use crate::lineage::{ColumnGraph, ModelLineage, Relation};
 
 #[derive(Debug, Serialize)]
 pub struct ImpactNode {
@@ -72,11 +72,30 @@ pub fn impact_targets(ctx: &DbtContext, model: &str) -> Vec<(String, std::path::
         .collect()
 }
 
+/// The column graph dbt.impact walks: the downstream models' lineages.
+/// Build it once to ask about several columns ([`impact_over`]).
+pub fn impact_graph(lineages: &HashMap<String, ModelLineage>) -> ColumnGraph {
+    let mut sorted: Vec<(&String, &ModelLineage)> = lineages.iter().collect();
+    sorted.sort_by(|a, b| a.0.cmp(b.0));
+    ColumnGraph::build(sorted.into_iter().map(|(m, l)| (m.as_str(), l)))
+}
+
 pub fn impact(
     ctx: &DbtContext,
     model: &str,
     column: Option<&str>,
     lineages: &HashMap<String, ModelLineage>,
+) -> ImpactReport {
+    impact_over(ctx, model, column, lineages, &impact_graph(lineages))
+}
+
+/// [`impact`] over a graph [`impact_graph`] built of `lineages`.
+pub fn impact_over(
+    ctx: &DbtContext,
+    model: &str,
+    column: Option<&str>,
+    lineages: &HashMap<String, ModelLineage>,
+    graph: &ColumnGraph,
 ) -> ImpactReport {
     let closure = ctx.graph.downstream_closure_with_depth(model);
     let mut models = Vec::new();
@@ -102,7 +121,7 @@ pub fn impact(
         .map(|node| node.name.clone())
         .collect();
     let column_hits = column
-        .map(|column| column_closure(model, column, &models, lineages))
+        .map(|column| column_closure(model, column, &models, graph))
         .unwrap_or_default();
     let subject = column
         .map(|c| format!("{model}.{c}"))
@@ -125,58 +144,51 @@ pub fn impact(
     }
 }
 
-/// Taint propagation over per-model lineage, in closure (depth) order:
-/// a downstream column is hit when any of its sources is a tainted
-/// column of an upstream model. `*` and unknowns stay out — the hits
-/// are an under-approximation on purpose.
+/// The downstream columns `model.column` feeds, from the column graph of
+/// the downstream lineages: what reads it at any remove, renamed or passed
+/// on by a `*` (it keeps its name there). A model's unresolved `*` stays
+/// out: the hits are an under-approximation on purpose.
+///
+/// The graph decides what is reached; the order is for reading: the
+/// model's place in the closure, then the column's in the model's outputs.
+/// (A walk in closure order missed a model that reads a sibling sorting
+/// after it at the same depth.)
 fn column_closure(
     model: &str,
     column: &str,
     downstream: &[ImpactNode],
-    lineages: &HashMap<String, ModelLineage>,
+    graph: &ColumnGraph,
 ) -> Vec<ColumnHit> {
-    let mut tainted: HashMap<&str, Vec<String>> =
-        HashMap::from([(model, vec![column.to_string()])]);
-    let mut hits = Vec::new();
-    for node in downstream {
-        let Some(lineage) = lineages.get(&node.name) else {
-            continue;
-        };
-        let mut own: Vec<String> = Vec::new();
-        for col in &lineage.columns {
-            let star = col.name.contains('*');
-            for source in &col.sources {
-                let SourceRef::Model { name, column } = source else {
-                    continue;
+    let Some(start) = graph.find_model_column(model, column) else {
+        return Vec::new();
+    };
+    let place: HashMap<&str, usize> = downstream
+        .iter()
+        .enumerate()
+        .map(|(i, node)| (node.name.as_str(), i))
+        .collect();
+    let mut hits: Vec<(usize, usize, ColumnHit)> = graph
+        .downstream(&[start], None)
+        .into_iter()
+        .filter_map(|reached| {
+            let node = graph.column(reached.node);
+            let Relation::Model(hit_model) = &node.relation else {
+                return None;
+            };
+            let model_place = *place.get(hit_model.as_str())?;
+            let column_place = graph
+                .outputs(hit_model)
+                .iter()
+                .position(|&n| n == reached.node)?;
+            (node.column != "*").then(|| {
+                let hit = ColumnHit {
+                    model: hit_model.clone(),
+                    column: node.column.clone(),
                 };
-                if column.starts_with("__dbt_rel_") {
-                    continue; // internal relation placeholders
-                }
-                let is_tainted = tainted
-                    .get(name.as_str())
-                    .is_some_and(|cols| cols.iter().any(|c| c.eq_ignore_ascii_case(column)));
-                if !is_tainted {
-                    continue;
-                }
-                // through a star the column keeps its upstream name;
-                // otherwise the select list renames it
-                let produced = if star {
-                    column.clone()
-                } else {
-                    col.name.clone()
-                };
-                if !own.iter().any(|c| c.eq_ignore_ascii_case(&produced)) {
-                    own.push(produced.clone());
-                    hits.push(ColumnHit {
-                        model: node.name.clone(),
-                        column: produced,
-                    });
-                }
-            }
-        }
-        if !own.is_empty() {
-            tainted.insert(node.name.as_str(), own);
-        }
-    }
-    hits
+                (model_place, column_place, hit)
+            })
+        })
+        .collect();
+    hits.sort_by_key(|(m, c, _)| (*m, *c));
+    hits.into_iter().map(|(_, _, hit)| hit).collect()
 }

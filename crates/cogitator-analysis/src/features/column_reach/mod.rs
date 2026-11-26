@@ -165,10 +165,11 @@ pub fn model_reach(
     corpus: &Corpus,
     bi: Option<&BiManifest>,
 ) -> ModelReach {
+    let graph = super::impact_graph(lineages);
     let columns = columns
         .iter()
         .filter_map(|c| {
-            let report = super::impact(ctx, model, Some(c), lineages);
+            let report = super::impact_over(ctx, model, Some(c), lineages, &graph);
             Some((c.to_ascii_lowercase(), reach(ctx, &report, corpus, bi)?))
         })
         .collect();
