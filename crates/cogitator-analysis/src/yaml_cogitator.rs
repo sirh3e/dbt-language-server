@@ -151,6 +151,7 @@ pub fn cogitator_completion(text: &str, pos: Position) -> Vec<CompletionItem> {
         insert_text: insert,
         sort_text: label.to_string(),
         data: None,
+        ..Default::default()
     };
     if indent == 0 {
         return COGITATOR_SCHEMA

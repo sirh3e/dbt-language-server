@@ -13,7 +13,7 @@
 pub(crate) mod jinja;
 mod names;
 mod occurrences;
-mod sql;
+pub(crate) mod sql;
 
 #[cfg(test)]
 mod tests;

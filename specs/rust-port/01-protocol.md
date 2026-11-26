@@ -120,6 +120,10 @@ TextDocumentPositionParams: { "textDocument": TextDocumentIdentifier, "position"
   "kind": int, "insertText": string, "sortText": string }
 ```
 
+Additive, omitted when unused: `data` (the `completionItem/resolve`
+payload), `filterText` (a qualified column, `o.customer_id`, filters as
+its bare name) and `preselect: true` (the best-ranked column; 03 §9.4.3).
+
 Completion kinds used: `Reference = 18`, `Snippet = 15`, `Variable = 6`, `Function = 3`
 (full LSP table 1..=25 in `lsp/completionKind` — port as consts or an enum).
 

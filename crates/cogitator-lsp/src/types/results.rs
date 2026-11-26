@@ -28,7 +28,7 @@ pub struct HoverResult {
     pub contents: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct CompletionItem {
     pub label: String,
     pub detail: String,
@@ -42,6 +42,14 @@ pub struct CompletionItem {
     /// Go shape, omitted when unused).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
+    /// What the client filters on when it is not the label: a qualified
+    /// column (`o.customer_id`) filters as its bare name, so typing the
+    /// column keeps the qualified form in the list and in its rank.
+    #[serde(rename = "filterText", skip_serializing_if = "Option::is_none")]
+    pub filter_text: Option<String>,
+    /// The item the client should select first (the best-ranked column).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub preselect: bool,
 }
 
 /// The typed shape inside `CompletionItem.data` (the field itself stays an

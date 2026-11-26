@@ -43,10 +43,11 @@ fn write_assist_suggests_ctes_identifiers_columns_and_keywords() {
     // local CTE
     let cte = find("recent_orders").expect("cte suggested");
     assert_eq!(cte.detail, "CTE in this file");
-    // documented column of the ref'd model, with its YAML description
+    // the CTE in scope selects `*` of the ref'd model: its documented
+    // columns, with their YAML descriptions, as the CTE's
     let column = find("customer_id").expect("column of customers suggested");
     assert_eq!(column.kind, completion_kind::FIELD);
-    assert_eq!(column.detail, "Column of customers");
+    assert_eq!(column.detail, "recent_orders (CTE)");
     assert!(column.documentation.contains("unique identifier"));
     // buffer identifier (the alias `c`)
     let alias = find("c").expect("alias identifier suggested");

@@ -511,6 +511,46 @@ First match of `['"]` in the line, or `""` if none. (Go comment claims "last";
 `FindString` returns the first — **[Q3]**, keep or fix consciously; used only for the
 source item's middle quotes.)
 
+#### 9.4.3 Column completion (binding)
+
+Plain SQL positions are classified from the cursor's statement as
+sqlparser parses it (`features/completion/scope/sql/`): the template is
+masked in place (`cogitator_duckdb::mask_jinja`, after flattening
+`if`/`for` with the local-rename masking), an identifier placeholder is
+written at the cursor, and the innermost parenthesized query holding it
+is parsed — whole, else up to the placeholder followed by the clauses
+after it cut back one at a time, else up to the placeholder alone. The
+clause holding the placeholder decides: a select-list item, WHERE, GROUP
+BY, HAVING, QUALIFY, ORDER BY, JOIN ON/USING take columns; a FROM/JOIN
+relation name takes relations; an alias being typed takes neither. When
+nothing parses, the token classification (`context.rs`) and the token
+scope (`ScopeIndex`) decide as before.
+
+Relations in scope are the FROM items of the cursor's SELECT, by alias,
+else by their own name (a ref's model, a source's table). Their columns:
+a model's from its properties YAML, else from its column lineage (the
+model file read through the shell's `read`; names with `*` left out); a
+source table's from its YAML; a CTE's or derived table's from its select
+list, `*` and `t.*` expanded through the relations it reads (CTEs up to
+8 deep), descriptions and types passing through bare references.
+
+Items: kind Field, detail = the relation (`customers`, `shop.orders`,
+`recent (CTE)`) and ` · {data_type}` when the YAML has one, documentation
+= the column description. sortText tiers below every global:
+
+| sortText | item |
+|---|---|
+| `0` + index | after `alias.`: that relation's columns, in its order |
+| `00` + label | `alias.col` of a name two relations in scope share |
+| `01` + label | bare `col` of one relation |
+| `02` + label | `alias.col` of such a column |
+| `03` + label | bare `col` that is ambiguous (detail `ambiguous: o, c`) |
+| `0` / `1` / `2` + label | after FROM/JOIN: CTEs, `ref()` snippets, `source()` snippets |
+
+A qualified item carries `filterText` = the bare column; the lowest
+sortText is `preselect`. Columns of the document's other refs (`a`),
+buffer words (`b`), functions (`m`) and keywords (`z`) follow.
+
 ## 10. Feature-batch additions (binding)
 
 - **dbt artifacts** (`cogitator-analysis/src/artifacts/`): readers for

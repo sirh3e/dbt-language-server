@@ -194,7 +194,7 @@ fn full_session() {
     assert!(
         member["result"].as_array().is_some_and(|items| items
             .iter()
-            .any(|i| i["label"] == "customer_id" && i["detail"] == "Column of customers")),
+            .any(|i| i["label"] == "customer_id" && i["detail"] == "customers")),
         "alias member access over the wire: {}",
         member["result"]
     );

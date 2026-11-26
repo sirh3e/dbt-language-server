@@ -1,11 +1,12 @@
 //! Completion item providers, composed per context with sort-text tiers:
-//! `0` context-exact · `a` CTEs/locals/columns of refs · `b` buffer idents ·
-//! `c` relations · `m` functions · `z` keywords.
+//! `0` context-exact (columns in scope, [`super::column_items`]; after
+//! FROM/JOIN: `0` CTEs, `1` refs, `2` sources) · `a` CTEs/locals/columns
+//! of the document's other relations · `b` buffer idents · `m` functions
+//! · `z` keywords.
 
 use cogitator_lsp::{completion_kind, CompletionData, CompletionItem, Position};
 use cogitator_parser::{Keyword, TokenKind};
 
-use super::scope::{cte_columns, RelationTarget, ScopeIndex};
 use super::{DbtContext, Document};
 
 pub(super) use super::dbt_calls::{
@@ -29,6 +30,7 @@ pub(super) fn item(
         kind,
         insert_text: insert.into(),
         data: None,
+        ..Default::default()
     }
 }
 
@@ -36,26 +38,8 @@ pub(super) fn item(
 // Context arms
 // ---------------------------------------------------------------------------
 
-/// `alias.` — the columns of whatever the qualifier resolves to.
-pub fn qualifier_column_items(
-    ctx: &DbtContext,
-    doc: &Document,
-    scope: &ScopeIndex,
-    qualifier: &str,
-) -> Vec<CompletionItem> {
-    let target = scope.resolve(qualifier).cloned().or_else(|| {
-        doc.parsed
-            .def_tokens
-            .contains_key(qualifier)
-            .then(|| RelationTarget::Cte(qualifier.to_string()))
-    });
-    match target {
-        Some(target) => target_column_items(ctx, doc, &target, '0'),
-        None => Vec::new(),
-    }
-}
-
-/// After FROM/JOIN: CTEs plainly, models and source tables as Jinja snippets.
+/// After FROM/JOIN: CTEs plainly (`0`), then models (`1`) and source
+/// tables (`2`) as Jinja snippets.
 pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = doc
         .parsed
@@ -68,7 +52,7 @@ pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
                 "",
                 completion_kind::VARIABLE,
                 name.to_string(),
-                'a',
+                '0',
             )
         })
         .collect();
@@ -79,7 +63,7 @@ pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
             "",
             completion_kind::REFERENCE,
             format!("{{{{ ref('{name}') }}}}"),
-            'c',
+            '1',
         );
         relation.data = Some(CompletionData::Model { name: name.clone() }.into_value());
         items.push(relation);
@@ -92,7 +76,7 @@ pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
                 "",
                 completion_kind::REFERENCE,
                 format!("{{{{ source('{}', '{}') }}}}", source.name, table.name),
-                'c',
+                '2',
             );
             relation.data = Some(
                 CompletionData::Source {
@@ -107,29 +91,28 @@ pub fn relation_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
     items
 }
 
-/// Select list / predicates: columns in scope first, then locals, functions,
-/// demoted keywords.
+/// Select list / predicates: the columns in scope (qualified and bare,
+/// [`super::column_items`]) first, then the document's other relations'
+/// columns, locals, functions, demoted keywords.
 pub fn column_position_items(
     ctx: &DbtContext,
     doc: &Document,
     pos: Position,
+    columns: Vec<CompletionItem>,
 ) -> Vec<CompletionItem> {
-    let scope = ScopeIndex::build(doc);
-    let mut items = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for target in scope.targets() {
-        for column in target_column_items(ctx, doc, target, 'a') {
-            if seen.insert((column.label.clone(), column.detail.clone())) {
-                items.push(column);
-            }
-        }
-    }
+    let mut items = columns;
+    let mut seen: std::collections::BTreeSet<String> =
+        items.iter().map(|c| c.label.clone()).collect();
     items.extend(
         relation_column_items(ctx, doc)
             .into_iter()
-            .filter(|c| seen.insert((c.label.clone(), c.detail.clone()))),
+            .filter(|c| seen.insert(c.label.clone())),
     );
-    items.extend(local_identifier_items(doc, pos));
+    items.extend(
+        local_identifier_items(doc, pos)
+            .into_iter()
+            .filter(|c| seen.insert(c.label.clone())),
+    );
     items.extend(retier(ctx.dialect.function_completion_items(), 'm'));
     items.extend(keyword_items());
     items
@@ -152,9 +135,16 @@ pub fn keyword_continuation_items(words: &[&'static str]) -> Vec<CompletionItem>
         .collect()
 }
 
-/// Broad write-assist set (the old fallback, unchanged behavior).
-pub fn general_items(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<CompletionItem> {
-    let mut items = ctx.dialect.function_completion_items();
+/// Broad write-assist set: the columns in scope first, then functions,
+/// keywords, locals and the document's relations' columns.
+pub fn general_items(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    columns: Vec<CompletionItem>,
+) -> Vec<CompletionItem> {
+    let mut items = columns;
+    items.extend(ctx.dialect.function_completion_items());
     items.extend(keyword_items());
     items.extend(local_identifier_items(doc, pos));
     items.extend(relation_column_items(ctx, doc));
@@ -164,70 +154,6 @@ pub fn general_items(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<Com
 // ---------------------------------------------------------------------------
 // Shared providers
 // ---------------------------------------------------------------------------
-
-fn target_column_items(
-    ctx: &DbtContext,
-    doc: &Document,
-    target: &RelationTarget,
-    tier: char,
-) -> Vec<CompletionItem> {
-    match target {
-        RelationTarget::Model(name) => ctx
-            .model_detail_map
-            .get(name)
-            .map(|model| {
-                model
-                    .columns
-                    .iter()
-                    .map(|c| {
-                        item(
-                            c.name.clone(),
-                            format!("Column of {name}"),
-                            c.description.clone(),
-                            completion_kind::FIELD,
-                            c.name.clone(),
-                            tier,
-                        )
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        RelationTarget::SourceTable { source, table } => ctx
-            .source_detail_map
-            .get(source)
-            .and_then(|s| s.tables.get(table))
-            .map(|t| {
-                t.columns
-                    .iter()
-                    .map(|c| {
-                        item(
-                            c.name.clone(),
-                            format!("Column of {source}.{table}"),
-                            c.description.clone(),
-                            completion_kind::FIELD,
-                            c.name.clone(),
-                            tier,
-                        )
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
-        RelationTarget::Cte(name) => cte_columns(doc, name)
-            .into_iter()
-            .map(|column| {
-                item(
-                    column.clone(),
-                    format!("Column of {name} (CTE)"),
-                    "",
-                    completion_kind::FIELD,
-                    column,
-                    tier,
-                )
-            })
-            .collect(),
-        RelationTarget::Unknown(_) => Vec::new(),
-    }
-}
 
 /// SQL keywords from sqlparser's global table (covers the Snowflake set —
 /// QUALIFY, ILIKE, …), demoted below everything local.
@@ -300,7 +226,10 @@ pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<Completion
         if seen.insert((relation.to_string(), column.name.clone())) {
             items.push(item(
                 column.name.clone(),
-                format!("Column of {relation}"),
+                match &column.data_type {
+                    Some(t) if !t.is_empty() => format!("{relation} · {t}"),
+                    _ => relation.to_string(),
+                },
                 column.description.clone(),
                 completion_kind::FIELD,
                 column.name.clone(),
