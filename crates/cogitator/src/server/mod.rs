@@ -98,6 +98,10 @@ pub struct SharedToggles {
     pub inlay_lineage_off: std::sync::atomic::AtomicBool,
     /// cogitator.yml `inlay.lineage_max_len`; 0 is the built-in cap.
     pub inlay_lineage_max_len: std::sync::atomic::AtomicU64,
+    /// initializationOptions `renameColumnDirection: "both"`:
+    /// textDocument/rename takes a model column up- and downstream, as
+    /// `dbt.renameColumn {direction: "both"}` does (default: down).
+    pub rename_column_both: std::sync::atomic::AtomicBool,
     /// The client advertised workspace.inlayHint.refreshSupport.
     pub inlay_refresh: std::sync::atomic::AtomicBool,
     /// `perf`/`perf_rules`: an atomic can't hold a severity per rule, so

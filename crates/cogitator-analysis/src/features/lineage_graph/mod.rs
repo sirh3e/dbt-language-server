@@ -18,7 +18,11 @@ use serde::Serialize;
 use super::{GraphNodeKind, ProjectGraph};
 use crate::lineage::{ModelLineage, SourceRef};
 
+mod action;
 mod layers;
+pub mod text;
+
+pub use action::{show_lineage_action, SHOW_COMMAND};
 #[cfg(test)]
 mod tests;
 

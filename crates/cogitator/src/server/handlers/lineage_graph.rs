@@ -4,25 +4,29 @@
 //! for its workers, waited for up to a budget, and named `stale` in the
 //! answer when the budget ran out. Then the rest of the project is queued
 //! behind, so the next walk anywhere finds it computed. Offloaded.
+//!
+//! With `show: true` (the code action on a column, for clients that
+//! cannot wrap a command, as Zed) the walk is also written as text under
+//! `target/.cogitator/lineage/` and opened through showDocument.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cogitator_analysis::features::lineage_graph::{
-    walk, Direction, Known, LineageEdge, LineageNode, WalkInput,
+    text, walk, Direction, Known, LineageEdge, LineageNode, WalkInput,
 };
 use cogitator_analysis::features::{model_name_from_uri, project_graph_json};
 use cogitator_analysis::graph::NodeKind;
 use cogitator_analysis::DbtContext;
 use cogitator_error::guidance::Guidance;
-use cogitator_lsp::error_codes;
+use cogitator_lsp::{error_codes, ShowDocumentParams};
 use serde::Serialize;
 
 use super::super::derived_cache::DerivedCache;
 use super::super::lineage_graph::stamps::{self, Keyed};
 use super::super::lineage_graph::Compute;
-use super::super::reply::Reply;
+use super::super::reply::{Effect, Reply};
 use super::super::snapshot::Snapshot;
 use super::lineage::TypedLineage;
 
@@ -35,6 +39,8 @@ pub struct Request {
     pub direction: Direction,
     pub depth: usize,
     pub budget: Duration,
+    /// Write the walk as text and open it (the code action).
+    pub show: bool,
 }
 
 impl Request {
@@ -62,6 +68,7 @@ impl Request {
                 .get("budgetMs")
                 .and_then(|b| b.as_u64())
                 .map_or(DEFAULT_BUDGET, Duration::from_millis),
+            show: arg.get("show").and_then(|s| s.as_bool()) == Some(true),
         })
     }
 }
@@ -163,7 +170,19 @@ pub fn command(
         .collect::<Vec<_>>();
     store.ensure(rest, &compute, false);
 
-    Reply::result(&Answer {
+    let shown = request
+        .show
+        .then(|| {
+            let heading = text::Heading {
+                model: &model,
+                column: request.column.as_deref(),
+                direction: request.direction,
+                depth: request.depth,
+            };
+            write_text(&root, &heading, &result)
+        })
+        .flatten();
+    let reply = Reply::result(&Answer {
         nodes: result.nodes,
         edges: result.edges,
         start: result.start,
@@ -171,7 +190,32 @@ pub fn command(
         stale: result.stale,
         missing: result.missing,
         truncated: false,
-    })
+    });
+    match shown {
+        Some(uri) => reply.with(Effect::ShowDocument(ShowDocumentParams {
+            uri,
+            take_focus: true,
+            selection: None,
+        })),
+        None => reply,
+    }
+}
+
+/// The walk as text under `target/.cogitator/lineage/`; its uri, or
+/// `None` (logged) when it cannot be written — the answer still goes out.
+fn write_text(
+    root: &std::path::Path,
+    heading: &text::Heading<'_>,
+    result: &cogitator_analysis::features::lineage_graph::WalkResult,
+) -> Option<String> {
+    let dir = root.join("target/.cogitator/lineage");
+    let path = dir.join(text::file_name(heading.model, heading.column));
+    let body = text::render(heading, result, Some(root));
+    if let Err(err) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, body)) {
+        tracing::warn!(%err, "could not write the column lineage text; returning it only");
+        return None;
+    }
+    Some(cogitator_lsp::fs_path_to_uri(&path))
 }
 
 /// What a worker computes a model with: this request's context, read

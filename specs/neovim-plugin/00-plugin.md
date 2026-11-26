@@ -43,7 +43,10 @@ Target: **Neovim ≥ 0.11** (`vim.lsp.config` / `vim.lsp.enable`). §10 notes th
 launch flag. The server also accepts `profile`, `target` and
 `profilesAllow` (`profiles_allow`) — the same overrides as the matching
 CLI flags; the Neovim manager store injects profilesDir/profile/target
-per project root at attach. Any other shape of `initializationOptions`
+per project root at attach. `renameColumnDirection`
+(`rename_column_direction`) `"down"` (default) or `"both"` says which way
+textDocument/rename takes a model column (`dbt.renameColumn`'s
+`direction`), for clients that send no command (Zed). Any other shape of `initializationOptions`
 is ignored, never an error.
 
 A fourth, **hot** configuration layer sits underneath these:
@@ -151,7 +154,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.goToSchema` | `Location` or `null` | none (client jumps) |
 | `dbt.openSchema` | `null` | `window/showDocument` or warning |
 | `dbt.columnLineage` | lineage JSON or `null` | none |
-| `dbt.columnLineageGraph` | `{nodes, edges, start, cached, stale?, missing, truncated}` or `null` | none; `{uri, column?, direction?, depth?}`, the column walk of §5.3b in one answer from the server's project-wide lineage cache (persisted to `target/.cogitator-lineage-cache`) |
+| `dbt.columnLineageGraph` | `{nodes, edges, start, cached, stale?, missing, truncated}` or `null` | none, or with `show: true` (the code action "Show column lineage of m.col") the walk written to `target/.cogitator/lineage/` and opened via showDocument; `{uri, column?, direction?, depth?, show?}`, the column walk of §5.3b in one answer from the server's project-wide lineage cache (persisted to `target/.cogitator-lineage-cache`) |
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
 | `dbt.run` / `dbt.test` / `dbt.compile` | `{token}` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument; the token feeds `dbt.cancel` |
 | `dbt.parse` | `{token}` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
@@ -193,7 +196,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.select` | `{selector, count, counts: {resourceType: n}, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error: {message, start, end} \| null, vocabulary?: {methods, values: {method: [value]}}}` — what `dbt ls --select … --exclude …` lists, by resource type then name; an error lists no node | none (read-only): `{select, exclude?, vocabulary?}` (`selector` for `select`, as the selectors.yml lenses send it); `select` may carry its own `--exclude …`; error offsets are bytes into `select` (or `exclude`); docs/selectors.md — `:DbtSelect`, the navigator's `f` and `/` |
 | `dbt.lineageSite` | `{site, counts}` (`site`: format 1 — the `dbt.projectGraph` nodes/edges with each node's details and columns, each traced column's `inputs` one hop up and its `transform`); with `assets: true` also `assets: {script, style}`; with `write: true` `{written: {path, uri}, counts}` instead of `site`; `null` with no project | `{uri?, assets?, write?}`; `write` writes `<root>/target/cogitator-lineage/index.html` + `lineage.json` — :DbtLineageSite, `cogitator lineage-site` (docs/lineage-site.md) |
 | `dbt.syncYaml` | `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` | `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?: "model"\|"folder", apply?}`: the schema-YAML sync plan (docs/yaml-sync.md); with `apply: true` the server sends it as workspace/applyEdit (label "Sync schema YAML") — :DbtSyncYaml |
-| `dbt.renameColumn` | `{model, column, newName, direction, origin: {model, column, chain, stop}, models, edit}` | `{uri, position, newName, direction?: "down"\|"both", apply?}`: the column under the cursor renamed downstream (the default, what textDocument/rename does: a pass-through gets `old as new`) or, with `"both"`, from the model its lineage says defines it (`origin`; `chain` the models climbed) and then downstream from there; `edit` is the WorkspaceEdit, `models` the models whose output column it renames; with `apply: true` the server sends it as workspace/applyEdit (label "Rename column …"); `null` off a column; a refusal is an error with the reason — :DbtRename (its confirmation offers "apply up- and downstream") |
+| `dbt.renameColumn` | `{model, column, newName, direction, origin: {model, column, chain, stop}, models, edit}` | `{uri, position, newName, direction?: "down"\|"both", apply?}`: the column under the cursor renamed downstream (the default, what textDocument/rename does: a pass-through gets `old as new`) or, with `"both"`, from the model its lineage says defines it (`origin`; `chain` the models climbed) and then downstream from there; `edit` is the WorkspaceEdit, `models` the models whose output column it renames; with `apply: true` the server sends it as workspace/applyEdit (label "Rename column …"); textDocument/rename gives the `"both"` edit when `initializationOptions.renameColumnDirection` is `"both"`; `null` off a column; a refusal is an error with the reason — :DbtRename (its confirmation offers "apply up- and downstream") |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the

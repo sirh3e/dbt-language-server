@@ -122,6 +122,13 @@ impl InitializeParams<'_> {
         self.init_option_str(&["target"])
     }
 
+    /// `initializationOptions.renameColumnDirection` (or
+    /// `rename_column_direction`): which way textDocument/rename takes a
+    /// model column, `"down"` (the default) or `"both"`.
+    pub fn rename_column_direction(&self) -> Option<&str> {
+        self.init_option_str(&["renameColumnDirection", "rename_column_direction"])
+    }
+
     /// `initializationOptions.vars`: `--vars` equivalents, name → value.
     pub fn vars(&self) -> Vec<(String, serde_json::Value)> {
         self.initialization_options
@@ -377,6 +384,17 @@ mod tests {
         let params: super::InitializeParams =
             serde_json::from_str(r#"{"initializationOptions":"nonsense"}"#).unwrap();
         assert_eq!(params.profiles_dir(), None);
+    }
+
+    #[test]
+    fn initialization_options_rename_column_direction() {
+        let params: super::InitializeParams =
+            serde_json::from_str(r#"{"initializationOptions":{"renameColumnDirection":"both"}}"#)
+                .unwrap();
+        assert_eq!(params.rename_column_direction(), Some("both"));
+        let params: super::InitializeParams =
+            serde_json::from_str(r#"{"initializationOptions":{}}"#).unwrap();
+        assert_eq!(params.rename_column_direction(), None);
     }
 
     #[test]

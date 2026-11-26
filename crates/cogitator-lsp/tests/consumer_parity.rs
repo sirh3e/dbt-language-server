@@ -22,6 +22,17 @@ struct Manifest {
     commands: BTreeMap<String, Entry>,
     #[serde(default)]
     gaps: BTreeMap<String, BTreeMap<String, String>>,
+    /// User commands Zed reaches through stock LSP, and how.
+    #[serde(default)]
+    zed: BTreeMap<String, ZedRoute>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ZedRoute {
+    via: String,
+    /// The file that sends the command in a lens or action.
+    sent_in: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,6 +172,44 @@ fn problems(
                     consumer.name
                 )),
                 Some(_) => {}
+            }
+        }
+    }
+    out
+}
+
+/// `[zed]`: each entry a user command, said how, named in the Zed
+/// README, and named in the file it is sent in.
+fn zed_problems(
+    manifest: &Manifest,
+    readme: &str,
+    read: &dyn Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (command, route) in &manifest.zed {
+        match manifest.commands.get(command) {
+            None => out.push(format!(
+                "[zed] lists `{command}`, which editors/parity.toml does not classify"
+            )),
+            Some(entry) if entry.kind == Kind::Internal => out.push(format!(
+                "[zed] lists internal `{command}`: every client runs it already"
+            )),
+            Some(_) => {}
+        }
+        if route.via.trim().is_empty() {
+            out.push(format!("[zed] `{command}` must say `via`"));
+        }
+        if !readme.contains(&format!("`{command}`")) {
+            out.push(format!(
+                "editors/zed/README.md does not name `{command}`, which [zed] says Zed reaches"
+            ));
+        }
+        if let Some(file) = &route.sent_in {
+            let sends = read(file).is_some_and(|text| text.contains(&format!("\"{command}\"")));
+            if !sends {
+                out.push(format!(
+                    "[zed] says `{command}` is sent in {file}, which does not name it"
+                ));
             }
         }
     }
@@ -320,11 +369,18 @@ fn every_editor_exposes_every_command_a_person_runs() {
 
 #[test]
 fn zed_says_where_commands_are() {
-    let readme = read(&root().join("editors/zed/README.md"));
+    let root = root();
+    let readme = read(&root.join("editors/zed/README.md"));
     assert!(
         readme.contains("executeCommand"),
         "editors/zed/README.md must say that dbt.* commands need an executeCommand client"
     );
+    let manifest: Manifest = toml::from_str(&read(&root.join("editors/parity.toml")))
+        .expect("editors/parity.toml parses");
+    let found = zed_problems(&manifest, &readme, &|file| {
+        std::fs::read_to_string(root.join(file)).ok()
+    });
+    assert!(found.is_empty(), "zed parity:\n- {}", found.join("\n- "));
 }
 
 #[cfg(test)]
@@ -400,6 +456,38 @@ mod checker {
         #[case] expect: Option<&str>,
     ) {
         let found = problems(&manifest(text), server, &[editor("a", refs)], SPEC);
+        match expect {
+            None => assert!(found.is_empty(), "{found:?}"),
+            Some(needle) => assert!(
+                found.iter().any(|p| p.contains(needle)),
+                "expected one saying {needle:?} in {found:?}"
+            ),
+        }
+    }
+
+    #[rstest]
+    #[case::in_sync(
+        "\"dbt.run\" = { via = \"a lens\", sent_in = \"f\" }",
+        "`dbt.run`",
+        None
+    )]
+    #[case::not_in_the_readme("\"dbt.run\" = { via = \"a lens\" }", "", Some("does not name"))]
+    #[case::not_sent_there(
+        "\"dbt.run\" = { via = \"a lens\", sent_in = \"g\" }",
+        "`dbt.run`",
+        Some("does not name it")
+    )]
+    #[case::internal("\"dbt.lens\" = { via = \"x\" }", "`dbt.lens`", Some("internal"))]
+    #[case::unknown(
+        "\"dbt.new\" = { via = \"x\" }",
+        "`dbt.new`",
+        Some("does not classify")
+    )]
+    #[case::empty_via("\"dbt.run\" = { via = \" \" }", "`dbt.run`", Some("must say `via`"))]
+    fn the_zed_table(#[case] line: &str, #[case] readme: &str, #[case] expect: Option<&str>) {
+        let text = format!("{BASE}[zed]\n{line}\n");
+        let read = |file: &str| (file == "f").then(|| "command: \"dbt.run\"".to_string());
+        let found = zed_problems(&manifest(&text), readme, &read);
         match expect {
             None => assert!(found.is_empty(), "{found:?}"),
             Some(needle) => assert!(
