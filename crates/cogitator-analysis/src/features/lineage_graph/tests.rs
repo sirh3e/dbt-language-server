@@ -43,6 +43,8 @@ fn col(name: &str, direct: bool, sources: Vec<SourceRef>) -> ColumnLineage {
         name: name.to_string(),
         sources,
         direct,
+        derived: false,
+        end: None,
     }
 }
 

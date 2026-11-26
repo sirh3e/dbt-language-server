@@ -34,6 +34,8 @@ fn counting() -> (Compute, Arc<Mutex<Vec<String>>>) {
                 name: "id".into(),
                 sources: Vec::new(),
                 direct: false,
+                derived: false,
+                end: None,
             }],
             origin: None,
         };

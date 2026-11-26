@@ -42,11 +42,11 @@ struct Column {
     name: String,
     direct: bool,
     sources: Vec<Ref>,
-    /// Room for the select item's end offset and the `derived` flag the
-    /// inline-lineage work adds to `ColumnLineage` (both off the wire):
-    /// written once that lands, defaulted when absent, so the format reads
-    /// either way. Nothing inline reads this cache: inlay hints and hovers
-    /// take the open document's lineage, computed from its text.
+    /// The select item's end offset and the `derived` flag of
+    /// `ColumnLineage` (both off the wire), kept so an entry reads back as
+    /// it was; defaulted when absent. Nothing inline reads this cache:
+    /// inlay hints and hovers take the open document's lineage, computed
+    /// from its text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     end: Option<usize>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -147,8 +147,8 @@ fn to_disk(lineage: &ModelLineage) -> Lineage {
             .map(|c| Column {
                 name: c.name.clone(),
                 direct: c.direct,
-                end: None,
-                derived: false,
+                end: c.end.map(|e| e as usize),
+                derived: c.derived,
                 sources: c
                     .sources
                     .iter()
@@ -180,6 +180,8 @@ fn from_disk(lineage: Lineage) -> ModelLineage {
             .map(|c| ColumnLineage {
                 name: c.name,
                 direct: c.direct,
+                derived: c.derived,
+                end: c.end.and_then(|e| u32::try_from(e).ok()),
                 sources: c
                     .sources
                     .into_iter()
@@ -215,6 +217,8 @@ mod tests {
             columns: vec![ColumnLineage {
                 name: "id".into(),
                 direct: true,
+                derived: true,
+                end: Some(42),
                 sources: vec![
                     SourceRef::Model {
                         name: "stg".into(),
@@ -254,6 +258,8 @@ mod tests {
         let a = (*a.lineage).as_ref().unwrap();
         assert_eq!(a.origin, Some(LineageOrigin::Compiled));
         assert!(a.columns[0].direct, "direct survives, though off the wire");
+        assert!(a.columns[0].derived, "derived survives too");
+        assert_eq!(a.columns[0].end, Some(42));
         assert_eq!(a.columns[0].sources.len(), 2);
         assert_eq!(back["b"].base, u64::MAX);
         assert!(back["b"].lineage.is_none());
