@@ -1,0 +1,47 @@
+//! Iterative parser implementation for SQLFluff
+//!
+//! This module contains an iterative (non-recursive) parser that uses an
+//! explicit stack of frames to parse SQL grammar without stack overflow risks.
+
+/// Verbose debug logging macro - only compiles logging code when verbose-debug feature is enabled.
+/// This eliminates runtime overhead of debug logging in production builds.
+#[macro_export]
+macro_rules! vdebug {
+    ($($arg:tt)*) => {
+        #[cfg(feature = "verbose-debug")]
+        log::debug!($($arg)*);
+    };
+}
+
+pub(crate) mod arena;
+mod cache;
+mod core;
+mod frame;
+mod helpers; // Utility methods for Parser
+mod match_result;
+mod table_driven;
+pub(crate) mod types;
+
+#[cfg(feature = "python")]
+pub(crate) mod arena_py;
+#[cfg(feature = "python")]
+pub mod python;
+
+// Re-export public types
+pub use core::{intern_indent_config, Parser};
+pub use match_result::{MatchResult, MatchedClass, MetaSegment};
+pub use sqlfluffrs_types::ParseMode;
+pub use table_driven::ref_grammar::MISSING_REF_PREFIX;
+pub use types::{MetaType, Node, ParseError, ParseErrorType, RawSegmentKwargs};
+
+// Internal re-exports for submodules
+pub(crate) use frame::{
+    AnyNumberOfState, BracketedPhase, BracketedState, DelimitedPhase, DelimitedState, FrameContext,
+    FrameState, OneOfState, RefState, SequenceState,
+};
+
+// Re-export Python bindings when feature is enabled
+#[cfg(feature = "python")]
+pub use arena_py::{PyHandle, PyTree};
+#[cfg(feature = "python")]
+pub use python::{PyMatchResult, PyNode, PyParser, RsParseError};
