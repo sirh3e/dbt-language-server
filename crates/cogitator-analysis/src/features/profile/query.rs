@@ -56,7 +56,8 @@ pub fn profile_sql(dialect: &str, relation: &str, column: &str, sample_rows: u64
          where v is not null group by cast(v as {text}) order by n desc limit {TOP_VALUES})\n\
          select 'stats' as kind, lo as value, hi as value2, n, distinct_count, null_count from stats\n\
          union all\n\
-         select 'top' as kind, value, null as value2, n, null as distinct_count, null as null_count \
+         select 'top' as kind, value, cast(null as {text}) as value2, n, \
+         cast(null as bigint) as distinct_count, cast(null as bigint) as null_count \
          from top_values"
     )
 }
@@ -79,6 +80,19 @@ mod tests {
         assert!(bq.contains("select `c` as v from `p.d.t` limit 5"), "{bq}");
         assert!(bq.contains("as string"));
         assert!(profile_sql("postgres", "r", "c", 0).contains("limit 1"));
+    }
+
+    /// cogitator-duckdb's catalog test runs this exact text on a real
+    /// DuckDB; a change here is a change there.
+    #[test]
+    fn the_duckdb_text_is_the_one_tested_against_duckdb() {
+        let sql = profile_sql("duckdb", "raw.orders", "status", 100);
+        assert!(sql.starts_with(
+            "with sampled as (select \"status\" as v from raw.orders using sample 100 rows),\n"
+        ));
+        assert!(sql.ends_with(
+            "cast(null as bigint) as distinct_count, cast(null as bigint) as null_count from top_values"
+        ));
     }
 
     #[test]

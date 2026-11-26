@@ -265,7 +265,15 @@ pub mod catalog {
         while let Some(row) = rows.next().map_err(fail)? {
             let mut cells = Vec::with_capacity(columns.len());
             for i in 0..columns.len() {
-                let value: duckdb::types::Value = row.get(i).map_err(fail)?;
+                // duckdb-rs panics on a few logical types (an untyped
+                // NULL column); a profile must not take the server down
+                let value = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    row.get::<_, duckdb::types::Value>(i)
+                }))
+                .map_err(|_| {
+                    open_error(db_path, "a result column has a type duckdb-rs cannot read")
+                })?
+                .map_err(fail)?;
                 cells.push(cell_text(value));
             }
             out.push(cells);
@@ -337,7 +345,11 @@ pub mod catalog {
             assert_eq!(names, vec!["id", "amount"]);
             assert!(columns[1].data_type.to_lowercase().contains("decimal"));
             assert!(table_columns(&db, "raw", "nope").unwrap().is_empty());
-            let answer = query(&db, "select 'a' as kind, 2::bigint as n, null as v").unwrap();
+            let answer = query(
+                &db,
+                "select 'a' as kind, 2::bigint as n, null::varchar as v",
+            )
+            .unwrap();
             assert_eq!(answer.columns, ["kind", "n", "v"]);
             assert_eq!(
                 answer.rows,
@@ -347,6 +359,49 @@ pub mod catalog {
                 query(&db, "create table raw.x (a int)").is_err(),
                 "read-only"
             );
+            // the shape of cogitator-analysis's profile_sql (duckdb)
+            {
+                let conn = duckdb::Connection::open(&db).unwrap();
+                conn.execute_batch(
+                    "create table raw.orders as select * from (values ('open'), ('open'), ('paid'), (null)) t(status);",
+                )
+                .unwrap();
+            }
+            let profile = query(
+                &db,
+                "with sampled as (select \"status\" as v from raw.orders using sample 100 rows),\n\
+                 stats as (select count(*) as n, count(distinct v) as distinct_count, \
+                 count(*) - count(v) as null_count, cast(min(v) as varchar) as lo, \
+                 cast(max(v) as varchar) as hi from sampled),\n\
+                 top_values as (select cast(v as varchar) as value, count(*) as n from sampled \
+                 where v is not null group by cast(v as varchar) order by n desc limit 10)\n\
+                 select 'stats' as kind, lo as value, hi as value2, n, distinct_count, null_count from stats\n\
+                 union all\n\
+                 select 'top' as kind, value, cast(null as varchar) as value2, n, \
+                 cast(null as bigint) as distinct_count, cast(null as bigint) as null_count \
+                 from top_values",
+            )
+            .unwrap();
+            assert_eq!(
+                profile.columns,
+                [
+                    "kind",
+                    "value",
+                    "value2",
+                    "n",
+                    "distinct_count",
+                    "null_count"
+                ]
+            );
+            let stats = profile
+                .rows
+                .iter()
+                .find(|r| r[0].as_deref() == Some("stats"))
+                .unwrap();
+            assert_eq!(stats[3].as_deref(), Some("4"));
+            assert_eq!(stats[4].as_deref(), Some("2"));
+            assert_eq!(stats[5].as_deref(), Some("1"));
+            assert_eq!(profile.rows.len(), 3, "stats and two top values");
             std::fs::remove_dir_all(&dir).ok();
         }
     }
