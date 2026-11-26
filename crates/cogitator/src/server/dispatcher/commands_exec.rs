@@ -71,6 +71,35 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.incrementalSql" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let strategy = arg
+                    .get("strategy")
+                    .and_then(|s| s.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.incrementalSql", move || {
+                    crate::server::handlers::incremental::incremental_sql(
+                        &snap,
+                        &derived,
+                        &uri,
+                        strategy.as_deref(),
+                        show,
+                    )
+                });
+                return;
+            }
+            "dbt.testSql" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.testSql", move || {
+                    crate::server::handlers::test_sql::test_sql(&snap, &derived, &uri, show)
+                });
+                return;
+            }
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;

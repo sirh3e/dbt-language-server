@@ -187,6 +187,16 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                                                      <leader>di
   :DbtProblems   this file's problems in the location list, errors
                  first, `✚` where a fix exists       <leader>dI
+  :DbtTestSql    the SQL every test of this model runs, as the query
+                 dbt executes; <CR> on a header opens the test's
+                 declaration, ]t / [t walk the tests <leader>dQ
+  :DbtIncrementalSql [strategy]
+                 what an incremental run executes for the model's
+                 strategy (or the one named), and the full refresh
+                                                     <leader>dM
+  :Dbt incremental
+                 make this model incremental, or switch its strategy:
+                 a template per strategy in the code-action menu
   :DbtReferences[!]
                  where the model, macro, source or column under the
                  cursor is used, in a dialog (`!`: the file's own

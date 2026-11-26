@@ -26,6 +26,7 @@ mod graph_nav;
 mod hover;
 mod impact;
 mod incremental_diff;
+mod incremental_sql;
 mod inlay_hints;
 mod jinja_inline;
 mod jinja_preview;
@@ -51,6 +52,7 @@ mod semantic_captures;
 mod signature;
 mod structure;
 pub mod syntax;
+mod test_sql;
 mod tests_nav;
 mod unresolved;
 mod unresolved_builtins;
@@ -110,6 +112,10 @@ pub use incremental_diff::{
     config_materialized, incremental_diff, incremental_lens, is_incremental_model, IncrementalDiff,
     INCREMENTAL_LENS_TITLE,
 };
+pub use incremental_sql::{
+    incremental_sql, incremental_sql_action, incremental_template_actions, IncrementalSql,
+    Step as IncrementalStep, STRATEGIES as INCREMENTAL_STRATEGIES,
+};
 pub use inlay_hints::{inlay_hints, inlay_hints_with, InlayOptions};
 pub use jinja_inline::{
     jinja_expression_at, jinja_expressions, jinja_hover, jinja_inlay_hints, InlineRenderer,
@@ -135,6 +141,10 @@ pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};
 pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
+pub use test_sql::{
+    shown_text as test_sql_text, test_sql, test_sql_action, RenderedTest, SingularFile, TestKind,
+    TestSql,
+};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
 pub use unresolved::{
     document_unresolved, project_files, project_unresolved, Unresolved, UnresolvedKind,

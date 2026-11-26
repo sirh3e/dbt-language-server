@@ -261,6 +261,20 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none; with `show: true` writes `target/.cogitator/incremental/<model>.diff` and opens it via showDocument. Incremental models (the file's `config(materialized=…)`, else the manifest's) carry the code lens "Compare incremental / full refresh" — :DbtIncrementalDiff
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.testSql`
+
+- **Argument**: `{uri, show?}` — the model; `show: true` also opens the text as a document (what the code action sends)
+- **Result**: `{model, relation, tests, text}` — each test `{label, name, column, kind (generic, singular, unit), definedBy, severity, uri, range, sql, query, error, note}`: a YAML data test rendered by its macro (`<adapter>__test_<x>`, `default__test_<x>`, `test_<x>`, a `{% test x %}` block; else dbt's own `not_null`, `unique`, `accepted_values`, `relationships`) with its arguments, `config.where` wrapping the model; a singular test that refs the model rendered as written; `query` the failures dbt counts around `sql` (`fail_calc`, `warn_if`, `error_if`, `limit`); a unit test listed with a note. A test that cannot be rendered has `error` and no SQL. `text` is all of it as one SQL text
+- **Side effects**: none; with `show: true` writes `target/.cogitator/tests/<model>.sql` and opens it via showDocument. A model with tests carries the code action "Show the SQL of N tests" — :DbtTestSql
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.incrementalSql`
+
+- **Argument**: `{uri, strategy?, show?}` — the model; `strategy` one of `append`, `merge`, `delete+insert`, `insert_overwrite`, `microbatch` (else the config's `incremental_strategy`, else the adapter's default: merge on Snowflake, BigQuery and Databricks, append on Spark, delete+insert with a `unique_key` and append without elsewhere); `show: true` also opens the text
+- **Result**: `{model, strategy, strategySource, adapter, uniqueKey, steps, fullRefresh, notes, text}` — `steps` `[{title, sql}]`: the new rows staged as `<this>__dbt_tmp` from the model rendered with `is_incremental()` true, then the strategy's statements with `unique_key`, `incremental_predicates`, `merge_update_columns`, `merge_exclude_columns`, `partition_by` and `event_time` applied (the documented columns name the column lists); a strategy whose config is missing (delete+insert without `unique_key`, insert_overwrite without `partition_by`, microbatch without `event_time`) or an unknown one is InvalidParams Guidance
+- **Side effects**: none; with `show: true` writes `target/.cogitator/incremental/<model>.<strategy>.sql` and opens it. An incremental model carries the code action "Show the SQL of an incremental run"; a table or view model carries "Make incremental with the <strategy> strategy" per strategy, and an incremental one "Switch to the <strategy> strategy" (kind `refactor.rewrite`: the config rewritten, and for a new incremental model the `is_incremental()` filter appended, with a unique key and a timestamp guessed from the documented columns) — :DbtIncrementalSql, :Dbt incremental
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
 ### `dbt.expandJinja`
 
 - **Argument**: `{uri}` — the document the command is about

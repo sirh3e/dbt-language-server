@@ -70,6 +70,15 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Diagnostics**: dangling `ref()` detection, dbt YAML schema validation
   (typify-generated types from [dbt-jsonschema]), pull diagnostics
   (`textDocument/diagnostic`)
+- **The SQL of a model's tests** (`dbt.testSql`): every YAML data test
+  (dbt's own, the project's and packages' generic tests, with their
+  arguments and `where:`), singular test and unit test of the model,
+  rendered as the query dbt executes — no `dbt compile` first
+- **Incremental strategies** (`dbt.incrementalSql`): what an incremental
+  run executes for `append`, `merge`, `delete+insert`, `insert_overwrite`
+  and `microbatch` (the config's, the adapter's default, or one picked),
+  and code actions that make a model incremental with a strategy's
+  template or switch its strategy
 - **Invalid models as you type**: a misspelt materialization, config key
   or value, a model that refs itself or closes a ref cycle, `is_incremental()`
   in a model that is not incremental, an empty model — each with its

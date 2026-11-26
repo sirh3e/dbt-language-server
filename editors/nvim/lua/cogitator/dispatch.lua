@@ -138,6 +138,18 @@ M.SUBCOMMANDS = {
   cancel = { run = plain("cancel"), desc = "cancel a dbt job" },
   actions = { run = module_call("cogitator.code_actions", "open"), desc = "code actions at the cursor" },
   fix = { run = module_call("cogitator.diagnostics", "fix"), desc = "fix the problem under the cursor" },
+  testsql = { run = plain("test_sql"), desc = "the SQL every test of this model runs" },
+  incrementalsql = {
+    run = with_args("incremental_sql"),
+    desc = "what an incremental run executes [strategy]",
+    complete = function()
+      return require("cogitator.commands.views").STRATEGIES
+    end,
+  },
+  incremental = {
+    run = plain("incremental_templates"),
+    desc = "make this model incremental, or switch its strategy (templates)",
+  },
   problems = {
     run = module_call("cogitator.diagnostics", "problems"),
     desc = "this file's problems in the location list",
@@ -289,6 +301,9 @@ M.GROUPS = {
       "rename",
       "fix",
       "problems",
+      "testsql",
+      "incrementalsql",
+      "incremental",
     },
   },
   {

@@ -77,6 +77,129 @@ function M.incremental_diff()
   end)
 end
 
+--- The incremental strategies dbt.incrementalSql takes.
+M.STRATEGIES = { "append", "merge", "delete+insert", "insert_overwrite", "microbatch" }
+
+--- The lines of a dbt.testSql answer and, by line, the test whose
+--- header it is (exposed for the test suite): the server's `text`, each
+--- `-- ── <label>` header matched to the test of that label, in order.
+---@param result table
+---@return string[] lines
+---@return table<integer, table> tests by 1-based header line
+function M.test_sql_lines(result)
+  local lines = vim.split((result.text or ""):gsub("\n$", ""), "\n")
+  local by_line, next_test = {}, 1
+  local tests = result.tests or {}
+  for i, line in ipairs(lines) do
+    local test = tests[next_test]
+    if test and vim.startswith(line, "-- ── " .. test.label) then
+      by_line[i] = test
+      next_test = next_test + 1
+    end
+  end
+  return lines, by_line
+end
+
+--- A read-only SQL split of `lines`; `q` closes it.
+local function sql_split(lines, name)
+  vim.cmd.vsplit()
+  local scratch = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(scratch, 0, -1, false, lines)
+  vim.bo[scratch].filetype = "sql"
+  vim.bo[scratch].modifiable = false
+  pcall(vim.api.nvim_buf_set_name, scratch, name)
+  vim.api.nvim_win_set_buf(0, scratch)
+  vim.keymap.set("n", "q", vim.cmd.close, { buffer = scratch, nowait = true })
+  return scratch
+end
+
+--- :DbtTestSql — the SQL every test of this model runs (dbt.testSql),
+--- each test's query in a SQL split; <CR> on a test's header opens
+--- where it is declared, ]t / [t walk the tests, q closes.
+function M.test_sql()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  client:exec_cmd({
+    command = "dbt.testSql",
+    arguments = { { uri = vim.uri_from_bufnr(bufnr) } },
+  }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      vim.notify("dbt.testSql failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+      return
+    end
+    local lines, by_line = M.test_sql_lines(result)
+    local scratch = sql_split(lines, "cogitator://tests/" .. tostring(result.model))
+    local headers = vim.tbl_keys(by_line)
+    table.sort(headers)
+    vim.keymap.set("n", "<CR>", function()
+      local test = by_line[vim.api.nvim_win_get_cursor(0)[1]]
+      if not test then
+        return
+      end
+      vim.cmd.wincmd("p")
+      vim.cmd.edit(vim.fn.fnameescape(vim.uri_to_fname(test.uri)))
+      local pos = test.range and test.range.start or { line = 0, character = 0 }
+      pcall(vim.api.nvim_win_set_cursor, 0, { pos.line + 1, pos.character })
+    end, { buffer = scratch, desc = "open where the test is declared" })
+    local function walk(step)
+      return function()
+        local row = vim.api.nvim_win_get_cursor(0)[1]
+        local target
+        for _, h in ipairs(headers) do
+          if (step > 0 and h > row and not target) or (step < 0 and h < row) then
+            target = h
+          end
+        end
+        if target then
+          vim.api.nvim_win_set_cursor(0, { target, 0 })
+        end
+      end
+    end
+    vim.keymap.set("n", "]t", walk(1), { buffer = scratch, desc = "next test" })
+    vim.keymap.set("n", "[t", walk(-1), { buffer = scratch, desc = "previous test" })
+  end)
+end
+
+--- :DbtIncrementalSql [strategy] — what an incremental run of this model
+--- executes for its strategy, or the one named (dbt.incrementalSql).
+---@param opts? {args?: string}
+function M.incremental_sql(opts)
+  local strategy = vim.trim((opts or {}).args or "")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = client_for(bufnr)
+  if not client then
+    return
+  end
+  local argument = { uri = vim.uri_from_bufnr(bufnr) }
+  if strategy ~= "" then
+    argument.strategy = strategy
+  end
+  client:exec_cmd(
+    { command = "dbt.incrementalSql", arguments = { argument } },
+    { bufnr = bufnr },
+    function(err, result)
+      if err or type(result) ~= "table" then
+        vim.notify("dbt.incrementalSql failed" .. (err and (": " .. err.message) or ""), vim.log.levels.ERROR)
+        return
+      end
+      local lines = vim.split((result.text or ""):gsub("\n$", ""), "\n")
+      sql_split(
+        lines,
+        ("cogitator://incremental/%s.%s"):format(tostring(result.model), tostring(result.strategy))
+      )
+    end
+  )
+end
+
+--- :Dbt incremental — the strategy templates of this model (make it
+--- incremental, or switch its strategy) in the code-action menu.
+function M.incremental_templates()
+  require("cogitator.code_actions").open({ only = { "refactor.rewrite" } })
+end
+
 --- The dbt.queryPlan payload as display lines (exposed for the test suite).
 ---@param plan table the server's result
 ---@param line_of fun(span: {start: integer}): integer byte span to 1-based line

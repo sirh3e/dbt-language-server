@@ -133,6 +133,52 @@ async function incrementalDiff(): Promise<void> {
   });
 }
 
+/** Open a SQL text beside the editor, as a preview. */
+async function showSql(content: string): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument({ language: "sql", content });
+  await vscode.window.showTextDocument(doc, {
+    preview: true,
+    viewColumn: vscode.ViewColumn.Beside,
+  });
+}
+
+/** dbt.testSql: the SQL every test of the model runs. */
+async function testSql(): Promise<void> {
+  const result = (await execDbt("dbt.testSql")) as { text?: string } | null | undefined;
+  if (result?.text) {
+    await showSql(result.text);
+  }
+}
+
+/** The strategies dbt.incrementalSql takes. */
+export const INCREMENTAL_STRATEGIES = [
+  "append",
+  "merge",
+  "delete+insert",
+  "insert_overwrite",
+  "microbatch",
+];
+
+/** dbt.incrementalSql: what an incremental run executes, for the
+ * model's strategy or one picked. */
+async function incrementalSql(): Promise<void> {
+  const pick = await vscode.window.showQuickPick(
+    ["the model's own strategy", ...INCREMENTAL_STRATEGIES],
+    { placeHolder: "Which incremental strategy?" }
+  );
+  if (pick === undefined) {
+    return;
+  }
+  const extra = INCREMENTAL_STRATEGIES.includes(pick) ? { strategy: pick } : undefined;
+  const result = (await execDbt("dbt.incrementalSql", extra)) as
+    | { text?: string }
+    | null
+    | undefined;
+  if (result?.text) {
+    await showSql(result.text);
+  }
+}
+
 /** A dbt.previewCte answer: the rows of one CTE (or the final select). */
 export interface CtePreview {
   model: string;
@@ -1098,6 +1144,8 @@ export async function activate(
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
     ["cogitator.incrementalDiff", incrementalDiff],
+    ["cogitator.testSql", testSql],
+    ["cogitator.incrementalSql", incrementalSql],
     ["cogitator.incrementality", incrementality],
     ["cogitator.syntaxTree", syntaxTree],
     ["cogitator.highlight", highlight],

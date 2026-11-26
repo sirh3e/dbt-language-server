@@ -381,6 +381,53 @@ and the SQL when `is_incremental()' changes nothing."
          (pop-to-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
+;; the SQL of the tests (dbt.testSql) and of an incremental run
+;; (dbt.incrementalSql)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--show-sql (name result)
+  "Show RESULT's :text in the read-only SQL buffer NAME."
+  (let ((text (plist-get result :text)))
+    (if (not (stringp text))
+        (message "cogitator: nothing to show")
+      (let ((buf (get-buffer-create name)))
+        (with-current-buffer buf
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert text)
+            (goto-char (point-min)))
+          (if (fboundp 'sql-mode) (sql-mode) (fundamental-mode))
+          (setq buffer-read-only t)
+          (local-set-key (kbd "q") #'quit-window))
+        (pop-to-buffer buf)))))
+
+;;;###autoload
+(defun cogitator-test-sql ()
+  "The SQL every test of this model runs, as dbt runs it."
+  (interactive)
+  (cogitator--execute
+   "dbt.testSql" (cogitator--command-argument)
+   (lambda (result) (cogitator--show-sql "*cogitator-test-sql*" result))))
+
+(defconst cogitator-incremental-strategies
+  '("append" "merge" "delete+insert" "insert_overwrite" "microbatch")
+  "The strategies `cogitator-incremental-sql' takes.")
+
+;;;###autoload
+(defun cogitator-incremental-sql (&optional strategy)
+  "What an incremental run of this model executes, for its own strategy
+or STRATEGY (asked with a prefix argument)."
+  (interactive
+   (list (when current-prefix-arg
+           (completing-read "Strategy: " cogitator-incremental-strategies nil t))))
+  (let ((argument (cogitator--command-argument)))
+    (when (and strategy (not (string-empty-p strategy)))
+      (setq argument (append argument (list :strategy strategy))))
+    (cogitator--execute
+     "dbt.incrementalSql" argument
+     (lambda (result) (cogitator--show-sql "*cogitator-incremental-sql*" result)))))
+
+;; ---------------------------------------------------------------------------
 ;; the rows of a CTE (dbt.previewCte)
 ;; ---------------------------------------------------------------------------
 

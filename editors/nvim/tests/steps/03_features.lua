@@ -194,6 +194,63 @@ return function(ctx)
     vim.inspect(diff_result):sub(1, 200)
   )
 
+  -- the SQL of orders' tests, as dbt runs them, and where each header leads
+  local orders_uri = vim.uri_from_fname(vim.fs.joinpath(ctx.fixture, "models", "orders.sql"))
+  local tests_result =
+    H.exec_cmd(client, bufnr, "dbt.testSql", { uri = orders_uri }, "integration: dbt.testSql")
+  local views = require("cogitator.commands.views")
+  local test_lines, test_headers = {}, {}
+  if type(tests_result) == "table" then
+    test_lines, test_headers = views.test_sql_lines(tests_result)
+  end
+  local header_labels = {}
+  for _, test in pairs(test_headers) do
+    header_labels[test.label] = true
+  end
+  H.check(
+    header_labels["accepted_values on status"]
+      and header_labels["relationships on customer_id"]
+      and header_labels["singular test assert_positive_order_amount"],
+    "integration: dbt.testSql renders orders' YAML and singular tests, each under its header",
+    vim.inspect(vim.tbl_keys(header_labels))
+  )
+  H.check(
+    table.concat(test_lines, "\n"):find("count(*) as failures", 1, true) ~= nil,
+    "integration: dbt.testSql shows the query dbt executes",
+    table.concat(test_lines, "\n"):sub(1, 300)
+  )
+  local merge_result = H.exec_cmd(client, bufnr, "dbt.incrementalSql", {
+    uri = orders_uri,
+    strategy = "append",
+  }, "integration: dbt.incrementalSql")
+  H.check(
+    type(merge_result) == "table"
+      and merge_result.strategy == "append"
+      and type(merge_result.text) == "string"
+      and merge_result.text:find("insert into", 1, true) ~= nil,
+    "integration: dbt.incrementalSql renders the strategy's statements",
+    vim.inspect(merge_result):sub(1, 300)
+  )
+  vim.cmd.edit(vim.uri_to_fname(orders_uri))
+  local orders_buf = vim.api.nvim_get_current_buf()
+  H.wait("integration: client attaches to orders.sql", 15000, function()
+    return #vim.lsp.get_clients({ bufnr = orders_buf, name = "cogitator" }) > 0
+  end)
+  local templates = H.request(client, orders_buf, "textDocument/codeAction", {
+    textDocument = { uri = orders_uri },
+    range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+    context = { diagnostics = {}, only = { "refactor.rewrite" } },
+  }, "integration: the strategy templates answer") or {}
+  local template_titles = vim.tbl_map(function(a)
+    return a.title
+  end, templates)
+  H.check(
+    vim.tbl_contains(template_titles, "Make incremental with the merge strategy (unique_key='order_id')"),
+    "integration: a table model is offered the strategy templates",
+    vim.inspect(template_titles)
+  )
+  vim.api.nvim_set_current_buf(bufnr)
+
   local unresolved_result = H.exec_cmd(client, bufnr, "dbt.unresolved", {
     uri = vim.uri_from_bufnr(bufnr),
   }, "integration: dbt.unresolved")

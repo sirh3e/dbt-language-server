@@ -38,6 +38,16 @@ vim.api.nvim_create_user_command("DbtPreviewCte", function(opts)
 end, { nargs = "?", desc = "rows of the CTE under the cursor (optional row limit, default preview.rows)" })
 cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
 cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, as a diff in a split")
+cmd("DbtTestSql", "test_sql", "the SQL every test of this model runs, in a split")
+vim.api.nvim_create_user_command("DbtIncrementalSql", function(opts)
+  require("cogitator.commands").incremental_sql(opts)
+end, {
+  nargs = "?",
+  complete = function()
+    return require("cogitator.commands.views").STRATEGIES
+  end,
+  desc = "what an incremental run of this model executes [strategy]",
+})
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")

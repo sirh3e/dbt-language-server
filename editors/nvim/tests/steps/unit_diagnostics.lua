@@ -93,4 +93,22 @@ return function(ctx)
     diag.decide({ { kind = "refactor", title = "Extract", edit = edit } }) == "none",
     ":Dbt fix: only quickfixes count"
   )
+
+  -- :DbtTestSql's headers lead to the tests, in order, by label
+  local views = require("cogitator.commands.views")
+  local lines, headers = views.test_sql_lines({
+    text = "-- The tests of orders\n\n-- ── unique on order_id · severity error\nselect 1\n\n"
+      .. "-- ── not_null on order_id · severity warn\nselect 2\n",
+    tests = { { label = "unique on order_id" }, { label = "not_null on order_id" } },
+  })
+  H.check(#lines == 7, ":DbtTestSql: the server's text, a line each", vim.inspect(lines))
+  H.check(
+    headers[3] and headers[3].label == "unique on order_id" and headers[6].label == "not_null on order_id",
+    ":DbtTestSql: each header line knows its test",
+    vim.inspect(headers)
+  )
+  H.check(
+    vim.tbl_contains(views.STRATEGIES, "delete+insert"),
+    ":DbtIncrementalSql: the strategies are completed"
+  )
 end

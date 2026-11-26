@@ -83,6 +83,14 @@
         "title": "dbt: Compare incremental / full refresh"
       },
       {
+        "command": "cogitator.testSql",
+        "title": "dbt: Show the SQL of this model's tests"
+      },
+      {
+        "command": "cogitator.incrementalSql",
+        "title": "dbt: Show the SQL of an incremental run"
+      },
+      {
         "command": "cogitator.incrementality",
         "title": "dbt: Table models that could be incremental"
       },

@@ -209,6 +209,8 @@ pub const COMMANDS: &[&str] = &[
     "dbt.lineageSite",
     "dbt.syncYaml",
     "dbt.modelDependencies",
+    "dbt.testSql",
+    "dbt.incrementalSql",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

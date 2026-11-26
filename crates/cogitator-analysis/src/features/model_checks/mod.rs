@@ -18,7 +18,7 @@
 //! a fix carries it as typed data, so the editor offers it as a
 //! quickfix. Pure over the context and the document.
 
-mod config;
+pub(crate) mod config;
 mod refs;
 
 #[cfg(test)]
