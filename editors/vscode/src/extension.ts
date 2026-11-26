@@ -894,6 +894,62 @@ async function modelDependencies(): Promise<void> {
   }
 }
 
+/** A dbt.impact answer, as far as the palette reads it. */
+export interface ImpactReport {
+  summary: string;
+  models?: { name: string; depth: number }[];
+  columnHits?: { model: string; column: string }[];
+  reach?: {
+    tests?: { model: string; column: string; test: string }[];
+    semanticItems?: { semanticModel: string; list?: string; name?: string }[];
+    metrics?: { name: string; via: string }[];
+    exposures?: { name: string }[];
+    dashboards?: { name: string; level: string; url?: string }[];
+    notes?: string[];
+  };
+}
+
+/** The lines of a dbt.impact answer: the downstream models, the column
+ * hits and, for a column, what reads it. */
+export function impactLines(report: ImpactReport): string[] {
+  const reach = report.reach ?? {};
+  return [
+    ...(report.models ?? []).map((m) => `model ${m.name} (depth ${m.depth})`),
+    ...(report.columnHits ?? []).map((h) => `column ${h.model}.${h.column}`),
+    ...(reach.tests ?? []).map((t) => `test ${t.test} on ${t.model}.${t.column}`),
+    ...(reach.semanticItems ?? []).map(
+      (s) => `semantic model ${s.semanticModel}: ${s.list ?? "expr"} ${s.name ?? ""}`
+    ),
+    ...(reach.metrics ?? []).map((m) => `metric ${m.name} (via ${m.via})`),
+    ...(reach.exposures ?? []).map((e) => `exposure ${e.name} (node level)`),
+    ...(reach.dashboards ?? []).map(
+      (d) => `dashboard ${d.name} (${d.level} level)` + (d.url ? ` ${d.url}` : "")
+    ),
+    ...(reach.notes ?? []).map((n) => `note: ${n}`),
+  ];
+}
+
+/** Who reads this model or one of its columns (dbt.impact). */
+async function impact(): Promise<void> {
+  const column = await vscode.window.showInputBox({
+    prompt: "Column (empty: the whole model)",
+  });
+  if (column === undefined) {
+    return;
+  }
+  const report = (await execDbt("dbt.impact", column ? { column } : {})) as
+    | ImpactReport
+    | undefined;
+  if (!report) {
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "plaintext",
+    content: [report.summary, "", ...impactLines(report)].join("\n"),
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
 /** A dbt.breakingChanges answer, as far as the palette reads it. */
 export interface BreakingReport {
   summary: string;
@@ -1108,6 +1164,7 @@ export async function activate(
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
+    ["cogitator.impact", impact],
     ["cogitator.modelDependencies", modelDependencies],
     [
       "cogitator.status",

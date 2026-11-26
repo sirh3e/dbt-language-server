@@ -71,6 +71,7 @@ mod file_ops;
 mod navigation;
 mod plan;
 mod preview_cte;
+mod reach;
 mod requests;
 mod selectors;
 mod semantic;

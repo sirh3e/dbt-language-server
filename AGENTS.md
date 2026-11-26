@@ -113,7 +113,10 @@ editor integrations live under `editors/`.
   (showDocument navigation for the YAML-side code actions),
   dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
   dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
-  dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
+  dbt.impact (with a `column`, its reach: tests, semantic models,
+  metrics, exposures at node level, BI-manifest dashboards;
+  `features/column_reach/`, shell `server/handlers/impact.rs`, cached per
+  model on open/save for the column hover), dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
   findings and rule trace for one model; `features/plan/`), dbt.deps
   (project-wide `dbt deps`, refreshes the context; the packages.yml
   quickfix runs it), dbt.syntaxTree (the open document's tree-sitter-dbt

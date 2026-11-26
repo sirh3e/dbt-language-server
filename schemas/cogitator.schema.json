@@ -6,6 +6,17 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "bi": {
+      "description": "BI tools as the end of the lineage: dbt.impact's column reach and the column hover name the dashboards that read a column.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "manifest": {
+          "description": "A JSON file, relative to the project root, listing dashboards and the models/columns they read ({\"dashboards\": [{\"name\", \"url\", \"reads\": [{\"model\", \"column\"}]}]}; docs/column-reach.md). (path)",
+          "type": "string"
+        }
+      }
+    },
     "inlay": {
       "description": "Which inlay hints the server sends.",
       "type": "object",

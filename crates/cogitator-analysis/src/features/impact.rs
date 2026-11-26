@@ -40,6 +40,21 @@ pub struct ImpactReport {
     /// none did (additive, like `ModelLineage.origin`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub compiled_lineage: Vec<String>,
+    /// With a column: what it reaches past the models — tests, semantic
+    /// models, metrics, exposures, dashboards (`features::column_reach`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reach: Option<super::column_reach::ColumnReach>,
+}
+
+impl ImpactReport {
+    /// Attach a column reach; the one-liner then says what reads it.
+    pub fn with_reach(mut self, reach: Option<super::column_reach::ColumnReach>) -> Self {
+        if let Some(reach) = &reach {
+            self.summary = format!("{}; {}", self.summary, reach.summary);
+        }
+        self.reach = reach;
+        self
+    }
 }
 
 /// How many downstream models the shell computes lineage for.
@@ -106,6 +121,7 @@ pub fn impact(
         column_hits,
         truncated,
         compiled_lineage,
+        reach: None,
     }
 }
 

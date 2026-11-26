@@ -125,14 +125,4 @@ pub(super) fn severity(
     Severity::Information
 }
 
-fn column_tests(ctx: &DbtContext, model: &str, column: &str) -> Vec<String> {
-    ctx.model_detail_map
-        .get(model)
-        .and_then(|d| {
-            d.columns
-                .iter()
-                .find(|c| c.name.eq_ignore_ascii_case(column))
-        })
-        .map(|c| c.tests.iter().map(|t| t.name.clone()).collect())
-        .unwrap_or_default()
-}
+use crate::features::column_reach::column_tests;

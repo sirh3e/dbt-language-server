@@ -6,6 +6,7 @@
 
 pub mod commands;
 pub mod doctor;
+pub mod impact;
 pub mod incremental;
 pub mod lineage;
 pub mod lineage_site;

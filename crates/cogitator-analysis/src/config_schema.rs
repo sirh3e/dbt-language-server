@@ -191,6 +191,13 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("max_rows", "The most rows a preview may ask for; larger limits are capped (default 1000).", "rows"),
         ],
     },
+    SectionSchema {
+        name: "bi",
+        doc: "BI tools as the end of the lineage: dbt.impact's column reach and the column hover name the dashboards that read a column.",
+        keys: &[
+            key("manifest", "A JSON file, relative to the project root, listing dashboards and the models/columns they read ({\"dashboards\": [{\"name\", \"url\", \"reads\": [{\"model\", \"column\"}]}]}; docs/column-reach.md).", "path"),
+        ],
+    },
 ];
 
 /// The `perf_rules` value set (one severity per entry).

@@ -1149,6 +1149,60 @@ nearest first, in a grep buffer."
            (grep-mode))
          (display-buffer buf))))))
 
+;; downstream impact and column reach (dbt.impact)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--impact-lines (result)
+  "The lines of a dbt.impact RESULT: the downstream models, the column
+hits and, for a column, what reads it (tests, semantic models, metrics,
+exposures at node level, dashboards)."
+  (let ((reach (plist-get result :reach))
+        lines)
+    (dolist (node (append (plist-get result :models) nil))
+      (push (format "model %s (depth %s)" (plist-get node :name) (plist-get node :depth)) lines))
+    (dolist (hit (append (plist-get result :columnHits) nil))
+      (push (format "column %s.%s" (plist-get hit :model) (plist-get hit :column)) lines))
+    (when (and reach (not (eq reach :null)))
+      (dolist (test (append (plist-get reach :tests) nil))
+        (push (format "test %s on %s.%s" (plist-get test :test)
+                      (plist-get test :model) (plist-get test :column))
+              lines))
+      (dolist (item (append (plist-get reach :semanticItems) nil))
+        (push (format "semantic model %s: %s %s" (plist-get item :semanticModel)
+                      (or (plist-get item :list) "expr") (or (plist-get item :name) ""))
+              lines))
+      (dolist (metric (append (plist-get reach :metrics) nil))
+        (push (format "metric %s (via %s)" (plist-get metric :name) (plist-get metric :via)) lines))
+      (dolist (exposure (append (plist-get reach :exposures) nil))
+        (push (format "exposure %s (node level)" (plist-get exposure :name)) lines))
+      (dolist (dash (append (plist-get reach :dashboards) nil))
+        (push (format "dashboard %s (%s level)%s" (plist-get dash :name) (plist-get dash :level)
+                      (if (stringp (plist-get dash :url)) (concat " " (plist-get dash :url)) ""))
+              lines))
+      (dolist (note (append (plist-get reach :notes) nil))
+        (push (concat "note: " note) lines)))
+    (nreverse lines)))
+
+;;;###autoload
+(defun cogitator-impact (column)
+  "What this model feeds downstream (dbt.impact); with a COLUMN, who reads it:
+the downstream columns, their tests, semantic models, metrics, exposures
+and the dashboards of the BI manifest (cogitator.yml bi.manifest)."
+  (interactive (list (read-string "Column (empty: the whole model): ")))
+  (cogitator--execute
+   "dbt.impact"
+   (append (cogitator--command-argument)
+           (and column (not (string-empty-p column)) (list :column column)))
+   (lambda (result)
+     (let ((buf (get-buffer-create "*cogitator-impact*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt impact: %s -*-\n\n" (plist-get result :summary)))
+           (insert (mapconcat #'identity (cogitator--impact-lines result) "\n") "\n"))
+         (special-mode))
+       (display-buffer buf)))))
+
 ;; breaking changes (dbt.breakingChanges)
 ;; ---------------------------------------------------------------------------
 

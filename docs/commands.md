@@ -198,9 +198,9 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.impact`
 
 - **Argument**: `{uri, model?, column?}` — the buffer's model, or `model`; `column` narrows to one column
-- **Result**: `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}`
-- **Side effects**: none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models)
-- **Editors**: Neovim ✓ · Emacs — · VS Code —
+- **Result**: `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated, reach?}`. With a `column`, `reach` says who reads it past the models (docs/column-reach.md): `{summary, models, tests: [{model, column, test}], semanticItems: [{semanticModel, model, column, list?, name?, uri, range}], semanticModels, metrics: [{name, uri, range, via}], exposures: [{name, level: "node"}], dashboards: [{name, url?, level: "column"|"node", model, column?}], notes?}`, and `summary` ends in "read by N models, M tests, K semantic models, J dashboards"
+- **Side effects**: none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models; exposures are node level only; metric filters are not followed). On open/save the server caches every output column's reach of the model for the column hover
+- **Editors**: Neovim ✓ (`:DbtImpact [column]` quickfix) · Emacs ✓ (`M-x cogitator-impact`) · VS Code ✓ (`dbt: Who reads this column?`)
 
 ### `dbt.breakingChanges`
 

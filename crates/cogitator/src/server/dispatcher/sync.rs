@@ -31,6 +31,7 @@ impl Dispatcher {
         }
         self.publish_static_diagnostics(&uri);
         self.spawn_breaking(&uri);
+        self.spawn_reach(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -56,6 +57,7 @@ impl Dispatcher {
         }
         self.publish_static_diagnostics(&uri);
         self.spawn_breaking(&uri);
+        self.spawn_reach(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -85,6 +87,15 @@ impl Dispatcher {
             &self.derived,
             &self.perf_settings(),
         )
+    }
+
+    /// cogitator.yml `bi.manifest` (empty: none).
+    pub(super) fn bi_manifest_path(&self) -> String {
+        self.toggles
+            .bi_manifest
+            .read()
+            .expect("bi manifest lock")
+            .clone()
     }
 
     /// The live perf settings: a cheap Arc clone.

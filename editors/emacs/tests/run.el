@@ -378,6 +378,25 @@
               (= (plist-get found :count) (length (plist-get found :items))))
          "integration: dbt.unresolved lists the project's unresolved names" found))
 
+;; unit + integration: impact and column reach
+(check (equal (cogitator--impact-lines
+               '(:models [(:name "customers" :depth 1)]
+                 :columnHits [(:model "customers" :column "customer_id")]
+                 :reach (:tests [(:model "customers" :column "customer_id" :test "unique")]
+                         :semanticItems [(:semanticModel "sm" :list "entity" :name "customer")]
+                         :metrics [(:name "active" :via "measure:n")]
+                         :exposures [(:name "weekly" :level "node")]
+                         :dashboards [(:name "Board" :level "column" :url "https://x")])))
+              '("model customers (depth 1)" "column customers.customer_id"
+                "test unique on customers.customer_id" "semantic model sm: entity customer"
+                "metric active (via measure:n)" "exposure weekly (node level)"
+                "dashboard Board (column level) https://x"))
+       "impact: models, hits and the column reach are lines")
+(let ((found (run--exec "dbt.impact" (append (cogitator--command-argument)
+                                             (list :column "customer_id")))))
+  (check (stringp (plist-get found :summary))
+         "integration: dbt.impact answers a summary" found))
+
 ;; unit + integration: breaking changes
 (check (equal (cogitator--breaking-lines
                '(:diff (:removed [(:name "customer_id" :possiblyRenamedTo "customer_key")])

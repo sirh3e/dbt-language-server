@@ -8,8 +8,60 @@ local client_for = actions.client_for
 
 local M = {}
 
+--- The quickfix items of a dbt.impact answer (exposed for the test
+--- suite): the downstream models, the column hits and, for a column,
+--- what reads it — tests, semantic models, metrics, exposures (node
+--- level) and the BI manifest's dashboards.
+---@param result table
+---@return table[]
+function M.impact_items(result)
+  local function at(uri, range)
+    local start = type(range) == "table" and range.start or {}
+    return {
+      filename = uri and uri ~= vim.NIL and vim.uri_to_fname(uri) or "",
+      lnum = (start.line or 0) + 1,
+      col = (start.character or 0) + 1,
+    }
+  end
+  local items = {}
+  local function add(item, text)
+    item.text = text
+    items[#items + 1] = item
+  end
+  for _, node in ipairs(result.models or {}) do
+    add(at(node.uri), ("depth %d — %s"):format(node.depth, node.name))
+  end
+  for _, hit in ipairs(result.columnHits or {}) do
+    add({}, ("column hit: %s.%s"):format(hit.model, hit.column))
+  end
+  local reach = type(result.reach) == "table" and result.reach or {}
+  for _, t in ipairs(reach.tests or {}) do
+    add({}, ("test %s on %s.%s"):format(t.test, t.model, t.column))
+  end
+  for _, s in ipairs(reach.semanticItems or {}) do
+    local list = (s.list and s.list ~= vim.NIL) and s.list or "expr"
+    local name = (s.name and s.name ~= vim.NIL) and s.name or ""
+    add(at(s.uri, s.range), ("semantic model %s: %s %s"):format(s.semanticModel, list, name))
+  end
+  for _, m in ipairs(reach.metrics or {}) do
+    add(at(m.uri, m.range), ("metric %s (via %s)"):format(m.name, m.via))
+  end
+  for _, e in ipairs(reach.exposures or {}) do
+    add({}, ("exposure %s (node level)"):format(e.name))
+  end
+  for _, d in ipairs(reach.dashboards or {}) do
+    local url = (d.url and d.url ~= vim.NIL) and (" " .. d.url) or ""
+    add({}, ("dashboard %s (%s level)%s"):format(d.name, d.level, url))
+  end
+  for _, note in ipairs(reach.notes or {}) do
+    add({}, "note: " .. note)
+  end
+  return items
+end
+
 --- :DbtImpact [column] — downstream closure of this model, with
---- column-level hits when a column is given; quickfix list + summary.
+--- column-level hits and the column's reach when a column is given;
+--- quickfix list + summary.
 function M.impact(opts)
   local bufnr = vim.api.nvim_get_current_buf()
   local client = client_for(bufnr)
@@ -26,18 +78,7 @@ function M.impact(opts)
       return
     end
     vim.notify(result.summary, vim.log.levels.INFO)
-    local items = {}
-    for _, node in ipairs(result.models) do
-      items[#items + 1] = {
-        filename = node.uri and node.uri ~= vim.NIL and vim.uri_to_fname(node.uri) or "",
-        lnum = 1,
-        col = 1,
-        text = ("depth %d — %s"):format(node.depth, node.name),
-      }
-    end
-    for _, hit in ipairs(result.columnHits or {}) do
-      items[#items + 1] = { text = ("column hit: %s.%s"):format(hit.model, hit.column) }
-    end
+    local items = M.impact_items(result)
     if #items > 0 then
       vim.fn.setqflist({}, " ", { title = "dbt impact: " .. result.summary, items = items })
       vim.cmd.copen()

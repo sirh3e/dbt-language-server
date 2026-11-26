@@ -223,6 +223,20 @@ names what already exists in the codebase.
       Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
       VS Code "dbt: Breaking changes against the last build". No git
       baseline (the model at `origin/main`) yet.
+- [x] **Who reads this column?** (`dbt.impact` with a column,
+      `features/column_reach/`, docs/column-reach.md): past the downstream
+      models, the column tests of every hit, the semantic-model entities,
+      dimensions and measures whose `expr:` (or name) reads a hit
+      (`rename_column/semantic.rs::semantic_items`, shared with the
+      rename), the metrics over those measures to a fixpoint
+      (`column_reach/metrics.rs`: simple, cumulative, conversion, ratio,
+      derived), exposures at node level and the dashboards of a BI manifest
+      (`artifacts/bi_manifest.rs`, cogitator.yml `bi.manifest`). The shell
+      is `server/handlers/impact.rs`; every output column's reach is cached
+      on open/save (`dispatcher/reach.rs`, `derived_cache/reach.rs`) for a
+      hover line "`m.c` is read by N models, M tests, K semantic models, J
+      dashboards". Neovim `:DbtImpact`, Emacs `cogitator-impact`, VS Code
+      "dbt: Who reads this column?". Metric filters are not followed.
 - [x] **dbt node selection** (`selectors/`, docs/selectors.md): one pure
       engine for dbt's selector language — methods (`fqn`, `tag`, `path`,
       `file`, `package`, `config.<key>`, `resource_type`, `source`,

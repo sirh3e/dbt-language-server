@@ -97,6 +97,8 @@ pub struct SharedToggles {
     pub perf: std::sync::RwLock<
         Arc<cogitator_analysis::features::plan::diagnostics_config::PerfSettings>,
     >,
+    /// cogitator.yml `bi.manifest` (empty: none), relative to the root.
+    pub bi_manifest: std::sync::RwLock<String>,
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by

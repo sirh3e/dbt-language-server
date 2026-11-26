@@ -264,6 +264,36 @@ return function(ctx)
     vim.inspect(breaking)
   )
 
+  -- :DbtImpact quickfix items, with the column reach
+  local impact = require("cogitator.commands").impact_items({
+    models = { { name = "customers", uri = "file:///p/models/customers.sql", depth = 1 } },
+    columnHits = { { model = "customers", column = "customer_id" } },
+    reach = {
+      tests = { { model = "customers", column = "customer_id", test = "unique" } },
+      semanticItems = {
+        {
+          semanticModel = "sm",
+          list = "entity",
+          name = "customer",
+          uri = "file:///p/models/sm.yml",
+          range = { start = { line = 4, character = 8 } },
+        },
+      },
+      exposures = { { name = "weekly", level = "node" } },
+      dashboards = { { name = "Board", level = "column", url = "https://x" } },
+    },
+  })
+  H.check(
+    #impact == 6
+      and impact[1].filename == "/p/models/customers.sql"
+      and impact[4].text == "semantic model sm: entity customer"
+      and impact[4].lnum == 5
+      and impact[5].text == "exposure weekly (node level)"
+      and impact[6].text == "dashboard Board (column level) https://x",
+    "commands: impact_items list the models, hits and the column reach",
+    vim.inspect(impact)
+  )
+
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")
