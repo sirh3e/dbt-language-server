@@ -5,12 +5,13 @@
 
 use std::path::Path;
 
+use cogitator_ir::schema::ProjectSchemas;
+
 use sqlparser::ast::{Expr, Query, Select, SelectItem, SelectItemQualifiedWildcardKind, SetExpr};
 
 use super::super::super::column_info::ColumnOf;
-use super::super::super::snippets::ModelHints;
 use super::super::{cte_columns, RelationTarget};
-use super::{walk, Relation, Scoped, SqlScope};
+use super::{resolve, walk, Relation, Scoped, SqlScope};
 use crate::context::DbtContext;
 use crate::Document;
 
@@ -37,8 +38,9 @@ pub(crate) struct Lookup<'a> {
     pub(crate) ctx: &'a DbtContext,
     pub(crate) doc: &'a Document,
     pub(crate) read: &'a dyn Fn(&Path) -> Option<String>,
-    /// The shell's caches: a model's inferred columns its YAML lacks.
-    pub(crate) hints: &'a ModelHints,
+    /// The project's published column schemas, what the resolver reads
+    /// first; `None` before the first schema job.
+    pub(crate) schemas: Option<&'a ProjectSchemas>,
 }
 
 impl SqlScope<'_> {
@@ -197,9 +199,13 @@ fn relabel(columns: Vec<Column>, relation: &str) -> Vec<Column> {
         .collect()
 }
 
-/// A model's documented columns; without any, what its lineage says it
-/// produces (an unexpanded `*` is left out, never guessed).
+/// A model's columns as the project's schema job resolved them; before it
+/// has, its documented columns, else what its own lineage says it produces
+/// (an unexpanded `*` is left out, never guessed).
 fn model_columns(lookup: &Lookup<'_>, name: &str) -> Vec<Column> {
+    if let Some(columns) = resolve::model(lookup, name) {
+        return columns;
+    }
     let Some(model) = lookup.ctx.model_detail_map.get(name) else {
         return Vec::new();
     };
@@ -210,37 +216,20 @@ fn model_columns(lookup: &Lookup<'_>, name: &str) -> Vec<Column> {
         description,
         of: Some(ColumnOf::Model(name.to_string())),
     };
-    // what the schema job infers the model gives, for the columns its
-    // YAML does not list
-    let inferred = lookup
-        .hints
-        .snapshot
-        .as_deref()
-        .and_then(|s| crate::features::column_types::column_types(lookup.ctx, s, name));
-    let with_inferred = |mut columns: Vec<Column>| {
-        for c in inferred.iter().flat_map(|t| &t.columns) {
-            if !columns.iter().any(|k| k.name.eq_ignore_ascii_case(&c.name)) {
-                let ty = crate::features::column_types::is_stated(&c.sql_type)
-                    .then(|| c.data_type.clone().unwrap_or_else(|| c.description.clone()));
-                columns.push(column(c.name.clone(), ty, String::new()));
-            }
-        }
-        columns
-    };
     if !model.columns.is_empty() {
-        return with_inferred(
-            model
-                .columns
-                .iter()
-                .map(|c| column(c.name.clone(), c.data_type.clone(), c.description.clone()))
-                .collect(),
-        );
+        return model
+            .columns
+            .iter()
+            .map(|c| column(c.name.clone(), c.data_type.clone(), c.description.clone()))
+            .collect();
     }
-    let lineage = (lookup.read)(&model.uri)
-        .and_then(|text| {
-            cogitator_parser::pipeline::parse_document(&text, &lookup.ctx.dialect).ok()
-        })
-        .and_then(|parsed| crate::lineage::column_lineage(&parsed, &lookup.ctx.dialect))
+    let Some(text) = (lookup.read)(&model.uri) else {
+        return Vec::new();
+    };
+    let Ok(parsed) = cogitator_parser::pipeline::parse_document(&text, &lookup.ctx.dialect) else {
+        return Vec::new();
+    };
+    crate::lineage::column_lineage(&parsed, &lookup.ctx.dialect)
         .map(|lineage| {
             lineage
                 .columns
@@ -249,8 +238,7 @@ fn model_columns(lookup: &Lookup<'_>, name: &str) -> Vec<Column> {
                 .map(|c| column(c.name, None, String::new()))
                 .collect()
         })
-        .unwrap_or_default();
-    with_inferred(lineage)
+        .unwrap_or_default()
 }
 
 /// The columns of a relation the token scope found (no parse to read a
@@ -274,6 +262,9 @@ pub(crate) fn target_columns(lookup: &Lookup<'_>, target: &RelationTarget) -> Ve
 }
 
 fn source_columns(lookup: &Lookup<'_>, source: &str, table: &str) -> Vec<Column> {
+    if let Some(columns) = resolve::source(lookup, source, table) {
+        return columns;
+    }
     lookup
         .ctx
         .source_detail_map

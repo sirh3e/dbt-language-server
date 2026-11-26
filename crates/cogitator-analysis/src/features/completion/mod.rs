@@ -49,7 +49,21 @@ pub fn completion_with(
     read: &dyn Fn(&std::path::Path) -> Option<String>,
     hints: &ModelHints,
 ) -> Vec<CompletionItem> {
-    let mut items = engine(ctx, doc, pos, read, hints);
+    let schemas = hints.snapshot.as_deref().map(|s| &*s.schemas);
+    complete(ctx, doc, pos, read, hints, schemas)
+}
+
+/// The items at `pos`: the engine's, then the model-aware snippets, then
+/// every item's details.
+fn complete(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+    hints: &ModelHints,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
+) -> Vec<CompletionItem> {
+    let mut items = engine(ctx, doc, pos, read, schemas);
     if let Some((snippets, exclusive)) = model_snippets(ctx, doc, pos, hints) {
         if exclusive {
             return snippets; // inside `{% if `: nothing else fits
@@ -85,12 +99,26 @@ fn model_snippets(
     (!items.is_empty()).then_some((items, exclusive))
 }
 
+/// [`completion_with`] over the project's published column schemas: the
+/// columns of a model or source in scope are resolved through the whole
+/// project (upstream `select *`, CTEs, catalog and YAML fill-in) with their
+/// types, rather than read off that one relation's YAML or lineage.
+pub fn completion_resolving(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
+) -> Vec<CompletionItem> {
+    complete(ctx, doc, pos, read, &ModelHints::default(), schemas)
+}
+
 fn engine(
     ctx: &DbtContext,
     doc: &Document,
     pos: Position,
     read: &dyn Fn(&std::path::Path) -> Option<String>,
-    hints: &ModelHints,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
 ) -> Vec<CompletionItem> {
     let lines: Vec<&str> = doc.text.split('\n').collect();
     let Some(&line) = lines.get(pos.line as usize) else {
@@ -142,7 +170,7 @@ fn engine(
         ctx,
         doc,
         read,
-        hints,
+        schemas,
     };
     let scopes = || column_items::in_scope(&lookup, parsed.as_ref());
     let classified = context::classify(doc, pos, before);

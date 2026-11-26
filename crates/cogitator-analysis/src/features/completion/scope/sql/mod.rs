@@ -6,6 +6,7 @@
 //! scope of [`super::ScopeIndex`].
 
 mod columns;
+mod resolve;
 mod text;
 mod walk;
 

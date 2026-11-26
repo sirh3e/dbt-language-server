@@ -216,8 +216,11 @@ impl Dispatcher {
                 Some(d) if crate::server::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
                 }
-                // a model whose YAML documents no columns is asked its lineage
+                // columns resolved through the project's published schemas
+                // (never runs the job); without them a model whose YAML
+                // documents no columns is asked its lineage
                 Some(d) => {
+                    // the hints hold the published snapshot (the resolver's)
                     let hints = super::completion_hints::hints(ctx, &derived, uri);
                     features::completion_with(
                         ctx,

@@ -83,7 +83,7 @@ pub use compiled_map::{
     compiled_definition, compiled_hover, compiled_line_map, compiled_source_path, SourceLines,
 };
 pub use completion::{
-    completion, completion_with, resolve_completion_documentation,
+    completion, completion_resolving, completion_with, resolve_completion_documentation,
     resolve_completion_documentation_with, ModelHints,
 };
 pub use cte_preview::{
