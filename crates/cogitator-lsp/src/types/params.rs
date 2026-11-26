@@ -88,6 +88,16 @@ impl InitializeParams<'_> {
             .unwrap_or(false)
     }
 
+    /// workspace.inlayHint.refreshSupport: the server may ask the client
+    /// to re-request inlay hints (workspace/inlayHint/refresh).
+    pub fn inlay_hint_refresh(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .and_then(|c| c.pointer("/workspace/inlayHint/refreshSupport"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
     fn init_option_str(&self, keys: &[&str]) -> Option<&str> {
         let opts = self.initialization_options.as_ref()?;
         keys.iter()

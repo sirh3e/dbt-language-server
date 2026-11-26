@@ -63,8 +63,11 @@ Defaults shown: >lua
       },
       keymaps = true,             -- the buffer-local <leader>d maps below
       semantic_tokens = true,
-      inlay_hints = false,        -- true: relations after ref(), the value
-                                  -- of each var() (= 'jaffle'), macro params
+      inlay_hints = true,         -- false: no inlay hints; on, the column
+                                  -- lineage after each output column
+                                  -- (← stg_payments.amount), relations
+                                  -- after ref(), the value of each var()
+                                  -- (= 'jaffle'), macro params
       highlight = {               -- |cogitator-nvim-highlight|
         server = "auto",          -- "always" | false: colours from the server
         layers = { yaml = true, sql = true, jinja = true, dbt = true },

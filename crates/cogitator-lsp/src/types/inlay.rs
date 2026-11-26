@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::core::{Position, Range};
+use super::core::{Location, Position, Range};
 use super::params::TextDocumentIdentifier;
 
 #[derive(Debug, Deserialize)]
@@ -35,12 +35,15 @@ pub struct InlayHint {
 }
 
 /// One part of a parted inlay label (LSP 3.17 `InlayHintLabelPart`):
-/// its own tooltip, and a command a click runs.
-#[derive(Debug, Clone, Serialize)]
+/// its own tooltip, where it points (go-to on the part), and a command a
+/// click runs.
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct InlayHintLabelPart {
     pub value: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tooltip: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<Location>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<super::results::Command>,
 }

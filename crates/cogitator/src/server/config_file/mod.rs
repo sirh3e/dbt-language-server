@@ -55,6 +55,10 @@ pub struct InlaySection {
     pub env_vars: Option<bool>,
     /// What short `{{ … }}` expressions render to (default off).
     pub jinja: Option<bool>,
+    /// Inline column lineage after each output column (default on).
+    pub lineage: Option<bool>,
+    /// Inline column lineage label cap in characters (default 60).
+    pub lineage_max_len: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -252,7 +256,7 @@ const LINT_KEYS: &[&str] = &[
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
-const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
+const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja", "lineage", "lineage_max_len"];
 const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[

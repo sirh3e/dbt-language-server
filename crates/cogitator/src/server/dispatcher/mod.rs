@@ -372,6 +372,9 @@ impl Dispatcher {
         *self.primary_root.lock().expect("primary root lock") = self.root_path.clone();
         self.progress_supported
             .store(params.work_done_progress(), Ordering::Relaxed);
+        self.toggles
+            .inlay_refresh
+            .store(params.inlay_hint_refresh(), Ordering::Relaxed);
         {
             let mut cfg = self.profiles.lock().expect("profiles config lock");
             if let Some(dir) = params.profiles_dir() {

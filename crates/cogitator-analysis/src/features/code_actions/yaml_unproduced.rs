@@ -173,6 +173,7 @@ mod tests {
                     name: n.to_string(),
                     sources: Vec::new(),
                     direct: false,
+                    ..Default::default()
                 })
                 .collect(),
             origin: None,
