@@ -9,6 +9,12 @@ use cogitator_ir::mir::{
 };
 use cogitator_ir::Span;
 
+mod grain;
+mod keys;
+
+pub(crate) use grain::unique_on;
+pub(crate) use keys::{column_is_unique, equi_keys, scan_of};
+
 /// The `HirRef` behind `id`, following `Derived` chains like
 /// `ProvTable::span`, bounded by the table size.
 pub(crate) fn hir_ref(mir: &Mir, id: ProvId) -> Option<HirRef> {

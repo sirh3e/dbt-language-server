@@ -416,6 +416,39 @@ names what already exists in the codebase.
             `unit-test-value-type` hints on impossible unit-test row values,
             the type on hover (YAML column, SQL output column), and
             `columnTypes` in dbt.modelInfo
+- [x] **Uniqueness beyond tests** (`cogitator-schemas/src/properties/keys.rs`,
+      `features/plan/schemas/merge.rs`, `schemas/keys.rs`): column and
+      model-level `constraints` (`primary_key`, `unique`, `not_null`),
+      strict `unique_combination_of_columns` tests and an incremental
+      `unique_key` make columns (or column sets, `ModelSchema::unique_sets`)
+      unique; `SchemaCol::proven_type` says a type rests on proven evidence
+- [x] **Typed column completion** (docs/column-completion.md,
+      `features/completion/column_info.rs`, `details.rs`): `labelDetails`
+      with the type (YAML → catalog → inferred) and relation, Markdown
+      documentation shared with the column hover, filled lazily through
+      `CompletionData::Column`; CTE columns inherit type and description;
+      models, sources, macros and functions say what they are; nvim-cmp's
+      `format()` shows `labelDetails`
+- [x] **Model-aware snippets** (docs/snippets.md,
+      `features/completion/snippets.rs`): `is_inc…` / `{% if ` offer an
+      `is_incremental()` block on the model's event_time, a declared upstream
+      delta column or a named guess (a tab stop), with the incrementality
+      rewrite's filter (`rules/incr/watermark.rs`); `conf…` an incremental
+      `config()` with the merge key from constraints and tests;
+      `insertTextFormat`/`labelDetails`/Markdown fitted to the client
+      (`cogitator_lsp::adapt`, `CompletionSupport`)
+- [x] **Type checks under every profile** (docs/type-checks.md):
+      `type.text_temporal_compare`, `type.aggregate_text` and
+      `join.key_type_mismatch` (`cogitator-rules/src/rules/types/`), Warning
+      only when both types are proven, codes `type-*`, run by the schema job
+      (`features/plan/schemas/checks.rs`) and read off its snapshot on pull;
+      `types.checks`; `inlay.types` hints after each select item
+      (`features/column_types/inlay.rs`)
+- [x] **Join fan-out** (docs/join-fanout.md): `join.fanout`
+      (`rules/join/fanout.rs`, `support/grain.rs`, `fanout_fix.rs`), a Hint
+      on by default, with "Add a unique test on …" (YAML,
+      `code_actions/unique_test.rs`, through `Diagnostic.data.subject`) and
+      "Deduplicate … on …" (a CTE)
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
 - [x] **Inline plan hints** (specs/ir-pipeline/06): each CTE's row count as

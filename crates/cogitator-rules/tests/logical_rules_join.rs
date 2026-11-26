@@ -133,7 +133,8 @@ fn types(a: Type, b: Type) -> Vec<Finding> {
 #[test]
 fn key_mismatch_flags_incompatible_families_as_a_risk() {
     let found = only(types(Type::Int, Type::Text));
-    assert_eq!(found.severity, Severity::Info);
+    // both key types are proven: a Warning
+    assert_eq!(found.severity, Severity::Warning);
     assert!(found.message.contains("prun"), "{}", found.message);
 }
 

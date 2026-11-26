@@ -9,6 +9,7 @@ use cogitator_ir::schema::ProjectSchemas;
 
 use sqlparser::ast::{Expr, Query, Select, SelectItem, SelectItemQualifiedWildcardKind, SetExpr};
 
+use super::super::super::column_info::ColumnOf;
 use super::super::{cte_columns, RelationTarget};
 use super::{resolve, walk, Relation, Scoped, SqlScope};
 use crate::context::DbtContext;
@@ -26,6 +27,10 @@ pub(crate) struct Column {
     pub(crate) relation: String,
     pub(crate) data_type: Option<String>,
     pub(crate) description: String,
+    /// The model or source table the column is one of, for its facts
+    /// (`column_info`); none for a CTE's or a derived table's, whose type
+    /// and description are what they pass through.
+    pub(crate) of: Option<ColumnOf>,
 }
 
 /// The read-only things a column lookup needs.
@@ -114,6 +119,7 @@ impl SqlScope<'_> {
             relation: String::new(),
             data_type: from.as_ref().and_then(|c| c.data_type.clone()),
             description: from.map(|c| c.description).unwrap_or_default(),
+            of: None,
         };
         let mut out: Vec<Column> = Vec::new();
         for item in &select.projection {
@@ -185,6 +191,9 @@ fn relabel(columns: Vec<Column>, relation: &str) -> Vec<Column> {
         .into_iter()
         .map(|c| Column {
             relation: relation.to_string(),
+            // a CTE's or derived table's column: what it passes through
+            // is in its type and description, not in its own facts
+            of: None,
             ..c
         })
         .collect()
@@ -205,6 +214,7 @@ fn model_columns(lookup: &Lookup<'_>, name: &str) -> Vec<Column> {
         relation: name.to_string(),
         data_type,
         description,
+        of: Some(ColumnOf::Model(name.to_string())),
     };
     if !model.columns.is_empty() {
         return model
@@ -242,6 +252,7 @@ pub(crate) fn target_columns(lookup: &Lookup<'_>, target: &RelationTarget) -> Ve
                 relation: format!("{name} (CTE)"),
                 data_type: None,
                 description: String::new(),
+                of: None,
             })
             .collect(),
         RelationTarget::Model(name) => model_columns(lookup, name),
@@ -267,6 +278,10 @@ fn source_columns(lookup: &Lookup<'_>, source: &str, table: &str) -> Vec<Column>
                     relation: format!("{source}.{table}"),
                     data_type: c.data_type.clone(),
                     description: c.description.clone(),
+                    of: Some(ColumnOf::Source {
+                        source: source.to_string(),
+                        table: table.to_string(),
+                    }),
                 })
                 .collect()
         })

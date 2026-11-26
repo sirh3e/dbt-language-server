@@ -158,7 +158,21 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Show what short single-line {{ … }} expressions render to (default false).",
                 "bool",
             ),
+            key(
+                "types",
+                "Show each output column's inferred type after its select item (default false).",
+                "bool",
+            ),
         ],
+    },
+    SectionSchema {
+        name: "types",
+        doc: "Type checks: text compared with dates, sums over text, mismatched join keys (type-* diagnostics).",
+        keys: &[key(
+            "checks",
+            "Report the type.* checks and join.key_type_mismatch under every perf profile (default true); a Warning only when both types are proven.",
+            "bool",
+        )],
     },
     SectionSchema {
         name: "vars",
@@ -193,6 +207,9 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("limit.no_scan_reduction", "LIMIT does not reduce bytes read.", RULE_SEVERITIES),
             key("incr.no_unique_key", "Merge strategy without a unique_key.", RULE_SEVERITIES),
             key("incr.could_be_incremental", "A table that could be built incrementally.", RULE_SEVERITIES),
+            key("join.fanout", "This join may duplicate rows: the key is not known to be unique (on by default).", RULE_SEVERITIES),
+            key("type.text_temporal_compare", "Text compared with a date or time (types.checks).", RULE_SEVERITIES),
+            key("type.aggregate_text", "A numeric aggregate over text (types.checks).", RULE_SEVERITIES),
         ],
     },
     SectionSchema {

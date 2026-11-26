@@ -80,6 +80,7 @@ impl Detect<Hir> for NoUniqueKey {
             message: claim.message(),
             evidence: claim.evidence(plan_evidence(cx.hir)),
             fixes: Vec::new(),
+            subject: None,
         });
     }
 }

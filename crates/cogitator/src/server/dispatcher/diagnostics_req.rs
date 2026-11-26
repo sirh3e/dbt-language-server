@@ -202,6 +202,12 @@ impl Dispatcher {
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(column_actions(&snap, &derived, &uri, artifact_cap));
+                    // join.fanout's YAML fix: the relation's key a unique test
+                    extra.extend(features::unique_test_actions(
+                        &snap.ctx,
+                        &diagnostics,
+                        &read,
+                    ));
                     extra.extend(
                         features::declare_missing_actions(&snap.ctx, doc, &uri, range, &read)
                             .into_iter()
@@ -363,7 +369,12 @@ impl Dispatcher {
             items.extend(crate::server::diagnostics::breaking_diagnostics(
                 &derived, &uri,
             ));
-            if perf.active() {
+            if let Some(doc) = snap.doc.as_deref() {
+                items.extend(crate::server::diagnostics::check_diagnostics(
+                    &snap.ctx, &derived, doc, &uri, &perf,
+                ));
+            }
+            if perf.plan_needed() {
                 if let (Some(doc), Some(plan)) = (
                     snap.doc.as_deref(),
                     crate::server::handlers::plan::document_plan(

@@ -411,6 +411,9 @@ inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked
   jinja: false             # what short {{ … }} expressions render to
+  types: false             # each output column's inferred type (docs/type-checks.md)
+types:
+  checks: true             # type-* checks under every perf profile
 preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
   rows: 20                 # rows when the call names no limit
   max_rows: 1000           # larger limits are capped

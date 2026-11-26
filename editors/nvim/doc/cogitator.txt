@@ -626,7 +626,8 @@ back the way it came. Or call `require("cogitator.select").expand()` /
 
                                                       *cogitator-nvim-cmp*
 For nvim-cmp, `cogitator.completion` orders cogitator's items by the
-server's sortText and shows an item's detail in the menu: >lua
+server's sortText and shows an item's labelDetails (a column's type and
+relation, a model's materialization) or else its detail in the menu: >lua
 
     local dbt = require("cogitator.completion")
     cmp.setup({

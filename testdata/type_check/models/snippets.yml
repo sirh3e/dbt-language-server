@@ -1,0 +1,14 @@
+version: 2
+# invented: what the model-aware snippets read
+models:
+  - name: late_events
+    config:
+      event_time: ordered_on
+    columns:
+      - name: order_id
+        constraints:
+          - type: primary_key
+  - name: events_feed
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [event_id, created_at]

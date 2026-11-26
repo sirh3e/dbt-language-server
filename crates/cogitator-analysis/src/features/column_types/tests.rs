@@ -14,7 +14,7 @@ use crate::features::plan::schemas::{
 };
 use crate::{build_context, DbtContext};
 
-pub(super) fn fixture_root() -> PathBuf {
+pub(crate) fn fixture_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata/type_check")
 }
 
@@ -30,7 +30,7 @@ impl SavedFiles for Disk {
 }
 
 /// The fixture's context (duckdb) and its schema snapshot.
-pub(super) fn project() -> (DbtContext, Arc<SchemaSnapshot>) {
+pub(crate) fn project() -> (DbtContext, Arc<SchemaSnapshot>) {
     let mut ctx = build_context(fixture_root().to_str().expect("utf-8 path"));
     ctx.dialect = Dialect::new("duckdb");
     let never = || false;

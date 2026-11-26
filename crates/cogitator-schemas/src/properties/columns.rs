@@ -13,6 +13,7 @@ pub(super) struct ColumnSide {
     name_pos: Position,
     data_type: Option<String>,
     tests: Vec<ColumnTest>,
+    constraints: Vec<String>,
 }
 
 pub(super) fn columns_of(columns: &[ColumnProperties], sides: &[ColumnSide]) -> Vec<ColumnEntry> {
@@ -27,6 +28,7 @@ pub(super) fn columns_of(columns: &[ColumnProperties], sides: &[ColumnSide]) -> 
                 name_pos: side.name_pos,
                 data_type: side.data_type,
                 tests: side.tests,
+                constraints: side.constraints,
             }
         })
         .collect()
@@ -46,6 +48,7 @@ pub(super) fn column_sides(entry: &saphyr::MarkedYaml<'_>) -> Vec<ColumnSide> {
                         .filter(|text| !text.trim().is_empty())
                         .map(str::to_string),
                     tests: column_tests(column),
+                    constraints: super::keys::constraint_types(column),
                 })
                 .collect()
         })

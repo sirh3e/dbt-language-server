@@ -35,9 +35,11 @@ use cogitator_ir::schema::ProjectSchemas;
 
 use crate::graph::NodeKind;
 
+pub mod checks;
 mod cross_sites;
 mod dag;
 mod infer;
+mod keys;
 pub(super) mod merge;
 mod model_facts;
 mod reads;
@@ -48,6 +50,8 @@ mod tests;
 mod tests_cross;
 #[cfg(test)]
 mod tests_demand;
+#[cfg(test)]
+mod tests_keys;
 #[cfg(test)]
 mod tests_limits;
 mod types;
@@ -130,7 +134,17 @@ pub fn run_schema_job(input: &JobInput<'_>, state: &mut JobState) -> Option<Arc<
         .iter()
         .filter_map(|(name, i)| Some((name.clone(), i.as_ref()?.typed.clone())))
         .collect();
-    Some(publish(state, walk.schemas, index, walk.report, outputs))
+    let checks = inferred
+        .iter()
+        .filter_map(|(name, i)| Some((name.clone(), i.as_ref()?.checks.clone())))
+        .collect();
+    Some(publish(
+        state,
+        walk.schemas,
+        index,
+        walk.report,
+        (outputs, checks),
+    ))
 }
 
 /// The cached or rebuilt inference for one model, with its degradations.
@@ -218,14 +232,17 @@ fn build_one(
 }
 
 fn add_schema(input: &JobInput<'_>, model: &Arc<str>, result: Option<&Inferred>, walk: &mut Walk) {
-    let yaml = input
-        .models
-        .get(model.as_ref())
-        .map_or(&[][..], |d| d.columns.as_slice());
+    let details = input.models.get(model.as_ref());
     let catalog = input.catalog.and_then(|c| c.models.get(model.as_ref()));
+    let facts = merge::ModelFacts {
+        yaml: details.map_or(&[][..], |d| d.columns.as_slice()),
+        contract: details.is_some_and(|d| d.contract_enforced),
+        keys: keys::declared_keys(details, input.manifest, model),
+        upstream: &walk.schemas,
+    };
     let built = merge::model_schema(
         result,
-        yaml,
+        &facts,
         catalog,
         input.dialect,
         input.limits.max_columns,
@@ -266,6 +283,13 @@ fn insert_sources(input: &JobInput<'_>, schemas: &mut ProjectSchemas) {
     }
 }
 
+/// What the job publishes per model beside the schemas: the typed
+/// outputs and the correctness checks.
+type PerModel = (
+    HashMap<Arc<str>, Arc<[crate::features::column_types::RawColumn]>>,
+    HashMap<Arc<str>, Arc<checks::ModelChecks>>,
+);
+
 /// Assigns the revision: unchanged content keeps the previous one, so a
 /// refresh that changed nothing does not invalidate cached plans.
 fn publish(
@@ -273,7 +297,7 @@ fn publish(
     mut schemas: ProjectSchemas,
     dag: DagIndex,
     report: JobReport,
-    outputs: HashMap<Arc<str>, Arc<[crate::features::column_types::RawColumn]>>,
+    (outputs, checks): PerModel,
 ) -> Arc<SchemaSnapshot> {
     let content = content_hash(&schemas, &dag);
     let previous = state.previous.as_ref();
@@ -290,6 +314,7 @@ fn publish(
         dag,
         report,
         outputs,
+        checks,
         content,
     });
     state.previous = Some(snapshot.clone());

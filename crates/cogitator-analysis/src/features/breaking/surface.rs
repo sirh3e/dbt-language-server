@@ -97,6 +97,7 @@ fn diagnostic(report: &BreakingReport, impact: &ColumnImpact, file: &str) -> Dia
             },
             token_range: edit.range,
             suggestions: Vec::new(),
+            subject: None,
         });
     }
     d

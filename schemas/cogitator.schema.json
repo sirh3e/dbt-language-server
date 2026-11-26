@@ -41,6 +41,10 @@
           "description": "Show what short single-line {{ … }} expressions render to (default false). (bool)",
           "type": "boolean"
         },
+        "types": {
+          "description": "Show each output column's inferred type after its select item (default false). (bool)",
+          "type": "boolean"
+        },
         "vars": {
           "description": "Show the value each var() resolves to (default true). (bool)",
           "type": "boolean"
@@ -304,6 +308,16 @@
             "warning"
           ]
         },
+        "join.fanout": {
+          "description": "This join may duplicate rows: the key is not known to be unique (on by default). (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
         "join.key_type_mismatch": {
           "description": "Join keys have different types. (off|hint|info|warning)",
           "type": "string",
@@ -393,6 +407,26 @@
             "info",
             "warning"
           ]
+        },
+        "type.aggregate_text": {
+          "description": "A numeric aggregate over text (types.checks). (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
+        },
+        "type.text_temporal_compare": {
+          "description": "Text compared with a date or time (types.checks). (off|hint|info|warning)",
+          "type": "string",
+          "enum": [
+            "off",
+            "hint",
+            "info",
+            "warning"
+          ]
         }
       }
     },
@@ -468,6 +502,17 @@
         },
         "tree_sitter": {
           "description": "Tree-sitter document backend (false: phase-1 pipeline). (bool)",
+          "type": "boolean"
+        }
+      }
+    },
+    "types": {
+      "description": "Type checks: text compared with dates, sums over text, mismatched join keys (type-* diagnostics).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "description": "Report the type.* checks and join.key_type_mismatch under every perf profile (default true); a Warning only when both types are proven. (bool)",
           "type": "boolean"
         }
       }

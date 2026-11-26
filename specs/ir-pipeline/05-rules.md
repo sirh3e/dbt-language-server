@@ -58,6 +58,18 @@ preferred or included in `source.fixAll`.
 |---|---|---|---|---|---|
 | `incr.could_be_incremental` | MIR | This table could be built incrementally (I declared, H inferred) | DBSP (SIGMOD Record 53(1) 2024; PVLDB 16(7) 2023); see 10 | Mat | config + `is_incremental()` filter (N) |
 
+## Tranche 4 — correctness (reported under every profile, 08)
+
+| Rule | Level | Developer sees | Upstream / evidence | Needs | Fix |
+|---|---|---|---|---|---|
+| `join.fanout` | MIR | This join may duplicate rows of a: k is not known to be unique in b (H) | D `join_elimination.cpp` (uniqueness from keys); tests, constraints, combination tests, `unique_key` | none (unknown is not unique) | dedup CTE (N); YAML `unique` test (built from `Diagnostic.data.subject`) |
+| `type.text_temporal_compare` | MIR | Text compared with a date or time (W proven, I declared) | DF `analyzer/type_coercion.rs` (implicit casts) | none (unknown types are silent) | no |
+| `type.aggregate_text` | MIR | sum()/avg() over text (W proven, I declared) | DF `analyzer/type_coercion.rs` | none | no |
+
+`join.key_type_mismatch` reports with these (W when both key types are
+proven, I otherwise). All four run in the project schema job
+(`schemas/checks.rs`); a pull reads them off the snapshot.
+
 ## Deliberately no advice
 
 Engines do these better: join order, build/probe side, common aggregates,

@@ -20,6 +20,7 @@ fn col(name: &str, ty: SqlType) -> SchemaCol {
         name: Arc::from(name),
         ty: ColType::new(ty, Nullability::Unknown),
         unique: false,
+        proven_type: true,
     }
 }
 
@@ -28,6 +29,7 @@ fn model(cols: Vec<SchemaCol>) -> Arc<ModelSchema> {
         columns: Arc::from(cols),
         completeness: Completeness::Closed,
         fingerprint: 0,
+        unique_sets: Vec::new(),
     })
 }
 

@@ -103,6 +103,7 @@ fn examine(
             .to_owned(),
         evidence: Evidence::Exact,
         fixes: Vec::new(),
+        subject: None,
     })
 }
 

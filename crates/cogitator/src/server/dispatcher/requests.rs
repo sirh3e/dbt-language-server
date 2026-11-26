@@ -218,9 +218,10 @@ impl Dispatcher {
                 return;
             }
         }
+        let support = self.completion_support;
         let derived = self.derived.clone();
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
-            match doc {
+            let items = match doc {
                 // the server's own config file: schema-table completion
                 Some(d) if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) => {
                     cogitator_analysis::yaml_cogitator::cogitator_completion(&d.text, pos)
@@ -233,17 +234,22 @@ impl Dispatcher {
                 // (never runs the job); without them a model whose YAML
                 // documents no columns is asked its lineage
                 Some(d) => {
-                    let snapshot = super::yaml_types::snapshot(ctx, &derived);
-                    features::completion_resolving(
+                    // the hints hold the published snapshot (the resolver's)
+                    let hints = super::completion_hints::hints(ctx, &derived, uri);
+                    features::completion_with(
                         ctx,
                         d,
                         pos,
                         &|p| std::fs::read_to_string(p).ok(),
-                        snapshot.as_ref().map(|s| &*s.schemas),
+                        &hints,
                     )
                 }
                 None => Vec::new(),
-            }
+            };
+            items
+                .into_iter()
+                .map(|item| cogitator_lsp::adapt(item, support))
+                .collect::<Vec<_>>()
         });
     }
 
@@ -259,12 +265,18 @@ impl Dispatcher {
         };
         let mut item = item.get("params").cloned().unwrap_or(item);
         let ctx = self.snapshot();
-        if let Some(docs) = item
+        let hints = super::completion_hints::hints(&ctx, &self.derived, "");
+        if let Some((docs, markdown)) = item
             .get("data")
-            .and_then(|data| features::resolve_completion_documentation(&ctx, data))
+            .and_then(|data| features::resolve_completion_documentation_with(&ctx, data, &hints))
         {
+            let value = if markdown && self.completion_support.markdown {
+                serde_json::json!({"kind": "markdown", "value": docs})
+            } else {
+                serde_json::Value::String(docs)
+            };
             if let Some(map) = item.as_object_mut() {
-                map.insert("documentation".into(), serde_json::Value::String(docs));
+                map.insert("documentation".into(), value);
             }
         }
         self.send(&ResultResponse::new(id, item));
@@ -401,6 +413,11 @@ impl Dispatcher {
             .inlay_jinja
             .load(std::sync::atomic::Ordering::Relaxed)
             && uri.ends_with(".sql");
+        let types = self
+            .toggles
+            .inlay_types
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && uri.ends_with(".sql");
         let perf = self.perf_settings();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         // offloaded: the relation labels read the profiles inventory
@@ -421,6 +438,11 @@ impl Dispatcher {
                             crate::server::handlers::commands::preview_inputs(&snap, &derived);
                         let renderer = features::InlineRenderer::new(&inputs);
                         hints.extend(features::jinja_inlay_hints(doc, range, &renderer));
+                    }
+                    if types {
+                        hints.extend(super::yaml_types::inlay_hints(
+                            &snap.ctx, &derived, doc, &uri, range,
+                        ));
                     }
                     hints
                 }

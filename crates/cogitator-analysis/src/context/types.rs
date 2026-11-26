@@ -36,6 +36,10 @@ pub struct ModelDetails {
     pub contract_enforced: bool,
     /// `event_time` of the YAML entry: the column that only grows.
     pub event_time: Option<String>,
+    /// Column sets the YAML entry declares unique (model-level
+    /// `constraints` and `unique_combination_of_columns` tests), each
+    /// lower-cased and sorted.
+    pub unique_keys: Vec<Vec<String>>,
 }
 
 /// One entry of the project-root `selectors.yml` (selector search).

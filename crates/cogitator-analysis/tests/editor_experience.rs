@@ -32,7 +32,9 @@ fn column_hover_shows_description_and_lineage() {
             character: col + 1,
         },
     );
-    assert!(hover.starts_with("Column of customers"), "{hover}");
+    // the same text the column's completion item documents
+    assert!(hover.starts_with("`customer_id`"), "{hover}");
+    assert!(hover.contains("Column of customers"), "{hover}");
     assert!(hover.contains("unique identifier"), "{hover}");
     assert!(hover.contains("Lineage: customers.customer_id"), "{hover}");
 }

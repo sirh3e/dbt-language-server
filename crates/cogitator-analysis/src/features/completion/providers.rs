@@ -222,21 +222,38 @@ pub fn local_identifier_items(doc: &Document, pos: Position) -> Vec<CompletionIt
 pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
     let mut seen = std::collections::BTreeSet::new();
     let mut items = Vec::new();
-    let mut add = |relation: &str, column: &cogitator_schemas::ColumnEntry| {
-        if seen.insert((relation.to_string(), column.name.clone())) {
-            items.push(item(
-                column.name.clone(),
-                match &column.data_type {
-                    Some(t) if !t.is_empty() => format!("{relation} · {t}"),
-                    _ => relation.to_string(),
-                },
-                column.description.clone(),
-                completion_kind::FIELD,
-                column.name.clone(),
-                'a',
-            ));
-        }
-    };
+    let mut add =
+        |relation: &str, source: Option<&str>, column: &cogitator_schemas::ColumnEntry| {
+            let shown = match source {
+                Some(source) => format!("{source}.{relation}"),
+                None => relation.to_string(),
+            };
+            if seen.insert((shown.clone(), column.name.clone())) {
+                let mut field = item(
+                    column.name.clone(),
+                    match &column.data_type {
+                        Some(t) if !t.is_empty() => format!("{relation} · {t}"),
+                        _ => relation.to_string(),
+                    },
+                    column.description.clone(),
+                    completion_kind::FIELD,
+                    column.name.clone(),
+                    'a',
+                );
+                // its type from every place one is known, its documentation
+                // resolved as Markdown (`details`)
+                field.data = Some(
+                    CompletionData::Column {
+                        relation: relation.to_string(),
+                        source: source.map(str::to_string),
+                        cte: false,
+                        column: column.name.clone(),
+                    }
+                    .into_value(),
+                );
+                items.push(field);
+            }
+        };
 
     for token in &doc.parsed.tokens {
         match token.kind {
@@ -244,7 +261,7 @@ pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<Completion
                 let name = doc.parsed.literal(token);
                 if let Some(model) = ctx.model_detail_map.get(name) {
                     for column in &model.columns {
-                        add(name, column);
+                        add(name, None, column);
                     }
                 }
             }
@@ -253,7 +270,7 @@ pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<Completion
                 for source in ctx.source_detail_map.values() {
                     if let Some(table) = source.tables.get(table_name) {
                         for column in &table.columns {
-                            add(table_name, column);
+                            add(table_name, Some(&source.name), column);
                         }
                     }
                 }

@@ -8,7 +8,7 @@ use cogitator_ir::mir::Mir;
 use crate::canon::{predicates, required_columns, simplify};
 use crate::meta::RuleMeta;
 use crate::rule::{Canonicalize, Detect};
-use crate::rules::{cross, filter, incr, join, limit, model, order, set, subq};
+use crate::rules::{cross, filter, incr, join, limit, model, order, set, subq, types};
 
 /// One rule's meta and the phases it implements.
 pub struct Registered {
@@ -160,6 +160,21 @@ pub static REGISTRY: &[Registered] = &[
         ..EMPTY
     },
     Registered {
+        meta: &join::fanout::META,
+        mir: Some(&join::fanout::Fanout),
+        ..EMPTY
+    },
+    Registered {
+        meta: &types::text_temporal_compare::META,
+        mir: Some(&types::text_temporal_compare::TextTemporalCompare),
+        ..EMPTY
+    },
+    Registered {
+        meta: &types::aggregate_text::META,
+        mir: Some(&types::aggregate_text::AggregateText),
+        ..EMPTY
+    },
+    Registered {
         meta: &incr::could_be_incremental::META,
         mir: Some(&incr::could_be_incremental::CouldBeIncremental),
         ..EMPTY
@@ -206,6 +221,14 @@ mod tests {
     /// specs/ir-pipeline/10: incrementality.
     const TRANCHE_THREE: [&str; 1] = ["incr.could_be_incremental"];
 
+    /// Correctness checks that report outside the perf profile
+    /// (specs/ir-pipeline/08): join grain and the `type.*` checks.
+    const TRANCHE_FOUR: [&str; 3] = [
+        "join.fanout",
+        "type.text_temporal_compare",
+        "type.aggregate_text",
+    ];
+
     #[test]
     fn registry_covers_both_tranches_exactly() {
         let mut ids: Vec<&str> = REGISTRY.iter().map(|r| r.meta.id.as_str()).collect();
@@ -215,6 +238,7 @@ mod tests {
         let mut expected = TRANCHE_ONE.to_vec();
         expected.extend(TRANCHE_TWO);
         expected.extend(TRANCHE_THREE);
+        expected.extend(TRANCHE_FOUR);
         expected.sort_unstable();
         assert_eq!(ids, expected);
     }

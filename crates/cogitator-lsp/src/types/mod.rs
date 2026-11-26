@@ -3,6 +3,7 @@
 //! and the initialize response.
 
 mod actions;
+mod completion;
 mod core;
 mod diagnostics;
 mod file_ops;
@@ -18,6 +19,7 @@ mod workspace;
 mod workspace_diag;
 
 pub use actions::*;
+pub use completion::*;
 pub use core::*;
 pub use diagnostics::*;
 pub use file_ops::*;

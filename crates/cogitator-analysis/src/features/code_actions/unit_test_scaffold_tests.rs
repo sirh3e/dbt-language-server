@@ -11,6 +11,7 @@ fn column(name: &str) -> ColumnEntry {
         name_pos: Default::default(),
         data_type: None,
         tests: Vec::new(),
+        constraints: Vec::new(),
     }
 }
 
