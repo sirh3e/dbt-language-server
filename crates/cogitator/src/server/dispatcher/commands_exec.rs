@@ -71,6 +71,9 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.costReport" => return self.cost_report(req.id),
+            "dbt.diffAt" => return self.diff_at(req.id, uri, arg),
+            "dbt.profileColumn" => return self.profile_column(req.id, uri, arg),
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;

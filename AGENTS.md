@@ -138,7 +138,16 @@ editor integrations live under `editors/`.
   dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
   columns, descriptions inherited down `ColumnLineage::direct` lineage;
   `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
-  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every
+  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`),
+  dbt.diffAt (the model against a git revision or the last run, as SQL,
+  rendered SQL or column lineage; `features/diff_at/`, the git shell
+  `server/git.rs`), dbt.costReport (the last run's models by time and
+  adapter bytes, the critical path, "make it incremental";
+  `features/cost/`, also the cost parts of the last-run lens),
+  dbt.profileColumn (a sampled column profile from the warehouse, off
+  unless `warehouse.profile`; `features/profile/`, the job
+  `server/profile.rs`; the hover and the "Profile column" code action
+  read its cache). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).

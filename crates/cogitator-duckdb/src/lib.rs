@@ -242,6 +242,58 @@ pub mod catalog {
         Ok(rows.flatten().collect())
     }
 
+    /// The answer of [`query`]: column names, and each cell as text
+    /// (`None` for NULL).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct QueryResult {
+        pub columns: Vec<String>,
+        pub rows: Vec<Vec<Option<String>>>,
+    }
+
+    /// Runs one read-only statement (dbt.profileColumn's profile query)
+    /// on a read-only connection that can never mutate the warehouse.
+    pub fn query(db_path: &Path, sql: &str) -> Result<QueryResult, Guidance> {
+        let fail = |err: duckdb::Error| open_error(db_path, &err.to_string());
+        let config = duckdb::Config::default()
+            .access_mode(duckdb::AccessMode::ReadOnly)
+            .map_err(fail)?;
+        let conn = duckdb::Connection::open_with_flags(db_path, config).map_err(fail)?;
+        let mut statement = conn.prepare(sql).map_err(fail)?;
+        let mut rows = statement.query([]).map_err(fail)?;
+        let columns: Vec<String> = rows.as_ref().map(|s| s.column_names()).unwrap_or_default();
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().map_err(fail)? {
+            let mut cells = Vec::with_capacity(columns.len());
+            for i in 0..columns.len() {
+                let value: duckdb::types::Value = row.get(i).map_err(fail)?;
+                cells.push(cell_text(value));
+            }
+            out.push(cells);
+        }
+        Ok(QueryResult { columns, rows: out })
+    }
+
+    fn cell_text(value: duckdb::types::Value) -> Option<String> {
+        use duckdb::types::Value as V;
+        Some(match value {
+            V::Null => return None,
+            V::Text(text) => text,
+            V::Boolean(b) => b.to_string(),
+            V::TinyInt(n) => n.to_string(),
+            V::SmallInt(n) => n.to_string(),
+            V::Int(n) => n.to_string(),
+            V::BigInt(n) => n.to_string(),
+            V::HugeInt(n) => n.to_string(),
+            V::UTinyInt(n) => n.to_string(),
+            V::USmallInt(n) => n.to_string(),
+            V::UInt(n) => n.to_string(),
+            V::UBigInt(n) => n.to_string(),
+            V::Float(n) => n.to_string(),
+            V::Double(n) => n.to_string(),
+            other => format!("{other:?}"),
+        })
+    }
+
     fn open_error(path: &Path, detail: &str) -> Guidance {
         let mut guidance = Guidance::new("warehouse introspection failed.")
             .at(path.display().to_string())
@@ -285,6 +337,16 @@ pub mod catalog {
             assert_eq!(names, vec!["id", "amount"]);
             assert!(columns[1].data_type.to_lowercase().contains("decimal"));
             assert!(table_columns(&db, "raw", "nope").unwrap().is_empty());
+            let answer = query(&db, "select 'a' as kind, 2::bigint as n, null as v").unwrap();
+            assert_eq!(answer.columns, ["kind", "n", "v"]);
+            assert_eq!(
+                answer.rows,
+                vec![vec![Some("a".to_string()), Some("2".to_string()), None]]
+            );
+            assert!(
+                query(&db, "create table raw.x (a int)").is_err(),
+                "read-only"
+            );
             std::fs::remove_dir_all(&dir).ok();
         }
     }

@@ -59,6 +59,9 @@
 "dbt.lineageSite" = { kind = "user" }
 "dbt.syncYaml" = { kind = "user" }
 "dbt.modelDependencies" = { kind = "user" }
+"dbt.costReport" = { kind = "user" }
+"dbt.diffAt" = { kind = "user" }
+"dbt.profileColumn" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

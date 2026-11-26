@@ -29,6 +29,8 @@ pub enum Change {
     InlayJinja(bool),
     PreviewRows(u64),
     PreviewMaxRows(u64),
+    /// cost.query_history / warehouse.profile*.
+    Analytics(super::AnalyticsSettings),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -90,7 +92,7 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.lint != new.lint {
         out.push(Change::LintFlags(new.lint.flags(baseline.lint_flags)));
     }
-    if old.warehouse != new.warehouse {
+    if old.warehouse.columns != new.warehouse.columns {
         out.push(Change::WarehouseColumns(
             new.warehouse.columns.unwrap_or(baseline.warehouse_columns),
         ));
@@ -122,6 +124,9 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
         out.push(Change::PreviewMaxRows(
             new.preview.max_rows.unwrap_or(baseline.preview_max_rows),
         ));
+    }
+    if old.analytics() != new.analytics() {
+        out.push(Change::Analytics(new.analytics()));
     }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
@@ -161,7 +166,8 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayEnvVars(_)
             | Change::InlayJinja(_)
             | Change::PreviewRows(_)
-            | Change::PreviewMaxRows(_) => true,
+            | Change::PreviewMaxRows(_)
+            | Change::Analytics(_) => true,
         })
         .collect()
 }
@@ -261,6 +267,11 @@ pub fn apply(
             Change::PreviewMaxRows(rows) => {
                 limits.preview_max_rows.store(*rows, Ordering::Relaxed);
                 applied.push("preview.max_rows");
+            }
+            Change::Analytics(settings) => {
+                *toggles.analytics.write().expect("analytics settings lock") =
+                    std::sync::Arc::new(settings.clone());
+                applied.push("cost/warehouse.profile");
             }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc

@@ -26,6 +26,10 @@ pub struct RunResult {
     /// Seconds; `None` when absent, negative or not a number.
     pub execution_time: Option<f64>,
     pub message: Option<String>,
+    /// What the warehouse reported (`adapter_response`), leniently read.
+    pub adapter: super::adapter_response::AdapterStats,
+    /// The SQL dbt ran, when the run recorded it.
+    pub compiled_code: Option<String>,
 }
 
 impl RunResults {
@@ -77,6 +81,8 @@ pub fn parse(text: &str, path: &Path) -> Result<RunResults, Guidance> {
                         .and_then(|value| value.as_f64())
                         .filter(|seconds| *seconds >= 0.0),
                     message: result.message,
+                    adapter: super::adapter_response::adapter_stats(&result.adapter_response),
+                    compiled_code: result.compiled_code,
                 })
             })
             .collect(),
@@ -104,6 +110,11 @@ mod tests {
         assert_eq!(rr.results.len(), 2);
         assert_eq!(rr.results[0].status, "success");
         assert_eq!(rr.results[1].execution_time, None);
+        assert_eq!(
+            rr.results[0].adapter.rows_affected,
+            Some(9),
+            "`rows` is an alias"
+        );
         assert_eq!(rr.metadata.dbt_version, None);
     }
 

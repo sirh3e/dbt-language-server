@@ -261,6 +261,27 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none; with `show: true` writes `target/.cogitator/incremental/<model>.diff` and opens it via showDocument. Incremental models (the file's `config(materialized=…)`, else the manifest's) carry the code lens "Compare incremental / full refresh" — :DbtIncrementalDiff
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.diffAt`
+
+- **Argument**: `{uri, rev?, what?, show?}` — the model; `rev` a git revision (default `HEAD`: a branch, a tag, a sha, `main~3`) or `"last-run"`; `what` is `sql` (default), `compiled` or `lineage`; `show: true` also opens the diff as a document
+- **Result**: `{model, rev, what, before, after, diff, identical, columns?, note?}` — `before`/`after` are the two texts compared (templates, renders or one line per column `name <- sources`), `diff` the unified diff rev → now, `columns` (lineage only) `{added, removed, changed: [{name, before, after}], unknown?}`; failures are InvalidParams Guidance
+- **Side effects**: runs `git show <rev>:<path>` (10 s timeout) for a git revision; `last-run` reads target/manifest.json's `raw_code`, and for `compiled` target/compiled/<package>/<path> (else the code run_results.json or the manifest recorded). The compiled view renders both sides in-process with dbt.expandJinja's stubs (the last run's side is what dbt compiled). With `show: true` writes `target/.cogitator/diff/<model>@<rev>.<what>.diff` and opens it — :DbtDiffAt. See [diff-at.md](diff-at.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.costReport`
+
+- **Argument**: `{}`
+- **Result**: `{generatedAt, totalSeconds, models, criticalPath: {models, seconds}, historyRows, text}` — every model of the last run, slowest first, with its execution time, the adapter's `bytesProcessed`, `bytesBilled`, `slotMs`, `rowsAffected` and `queryId`, its `slowestPercent`, whether it is on the critical path (the longest time-weighted chain of refs), and `suggestion: "make it incremental"` for slow table models the query plan says could be built incrementally; `text` is the report as plain text
+- **Side effects**: none; reads target/run_results.json and, when set, the `cost.query_history` JSON export. The "last run" lens adds the same figures (`· 3.2 GB scanned · slowest 5%`). See [cost.md](cost.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.profileColumn`
+
+- **Argument**: `{uri, position?, column?}` — the model and the output column under `position` (or named by `column`)
+- **Result**: `{profile: {model, column, relation, rows, distinct, nulls, nullRate, min, max, top: [{value, count}], engine, stamp, sql}, hover}`; RequestFailed Guidance when profiling is off, no output column is under the cursor, or the query fails
+- **Side effects**: **queries the warehouse** — off unless cogitator.yml `warehouse.profile: true`. A sampled query (`warehouse.profile_sample_rows`, default 10 000) over the model's relation, through DuckDB's read-only connection (duckdb adapter, `duckdb-parser` build) or `dbt show --inline` as a job (`dbt.cancel` token, $/progress). The answer fills a cache the hover reads; the code action "Profile column 'x'" runs it. See [profile.md](profile.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
 ### `dbt.expandJinja`
 
 - **Argument**: `{uri}` — the document the command is about

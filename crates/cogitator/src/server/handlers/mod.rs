@@ -5,6 +5,8 @@
 //! path; their logic is already pure in `cogitator_analysis::features`.
 
 pub mod commands;
+pub mod cost;
+pub mod diff_at;
 pub mod doctor;
 pub mod incremental;
 pub mod lineage;

@@ -18,6 +18,9 @@
 | [breaking-changes.md](breaking-changes.md) | The breaking-change preview: a model's columns against its last built schema, and what that breaks downstream |
 | [preview.md](preview.md) | The rows of one CTE: the "Preview rows" lenses, which SQL runs, the row limits, cancelling, per editor |
 | [lineage-site.md](lineage-site.md) | The column-lineage dashboard: `cogitator lineage-site` (a self-contained HTML page) and the live view in VS Code, what is traced, what is marked unknown, and why |
+| [diff-at.md](diff-at.md) | Comparing a model with a git revision or the last dbt run: the template, the rendered SQL, or the column lineage (`dbt.diffAt`) |
+| [cost.md](cost.md) | What a build costs: bytes and slots in the last-run lens, `dbt.costReport` with the critical path and "make it incremental", the optional query-history export |
+| [profile.md](profile.md) | Profiling a column (off by default): the sampled query per adapter, DuckDB or `dbt show`, the profile in the hover |
 | [commands.md](commands.md) | Every `dbt.*` workspace command: argument, result, side effects, and which editors expose it |
 | [editor-parity.md](editor-parity.md) | Contributors: how a new command reaches every editor, and the test that holds it |
 | [go-to-schema.md](go-to-schema.md) | `dbt.goToSchema` in detail, with a JSON-RPC example |

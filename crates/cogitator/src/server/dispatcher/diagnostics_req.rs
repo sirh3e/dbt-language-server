@@ -105,6 +105,7 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let profiling = self.analytics_settings().profile;
         let entry_models = if crate::server::diagnostics::is_yaml(&uri) {
             self.yaml_entry_models(&uri)
         } else {
@@ -228,6 +229,14 @@ impl Dispatcher {
                         ));
                     }
                     extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
+                    if profiling {
+                        extra.extend(crate::server::profile::action(
+                            &snap,
+                            &derived,
+                            &uri,
+                            range.start,
+                        ));
+                    }
                     extra.extend(
                         crate::server::handlers::plan::split_plan_of(
                             &snap,

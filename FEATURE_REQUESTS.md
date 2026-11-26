@@ -273,6 +273,36 @@ names what already exists in the codebase.
       `:DbtLineageSite` and Emacs `cogitator-lineage-site`. Declined
       models and unexpanded stars are marked, never guessed
       (docs/lineage-site.md).
+- [x] **Time travel on a model** (`dbt.diffAt`, `features/diff_at/`, the
+      git shell `server/git.rs`, the handler `server/handlers/diff_at.rs`):
+      the model now against a git revision (default `HEAD`, via
+      `git show` under a timeout) or the last dbt run (`rev: "last-run"`:
+      `artifacts/manifest_code.rs` reads `raw_code`/`compiled_code` on
+      demand, `target/compiled/` first), as the template, both sides
+      rendered in-process, or the column lineage (added, removed, changed
+      sources); `show: true` opens the diff. Neovim `:DbtDiffAt`, Emacs
+      `cogitator-diff-at`, VS Code "dbt: Compare this model with a git
+      revision or the last run" (docs/diff-at.md). No git baseline for the
+      breaking-change preview yet.
+- [x] **Cost and performance lens** (`artifacts/adapter_response.rs`,
+      `features/cost/`, `ProjectGraph::critical_path`, `server/handlers/cost.rs`):
+      `adapter_response` read leniently (bytes processed/billed, slot ms,
+      rows, query id); the last-run lens adds "3.2 GB scanned · slowest
+      5%"; `dbt.costReport` ranks the run's models, walks the critical path
+      and suggests "make it incremental" for slow tables
+      `incr.could_be_incremental` fires on; `cost.query_history` fills gaps
+      from a JSON export (no CSV). Neovim `:DbtCostReport`, Emacs
+      `cogitator-cost-report`, VS Code "dbt: Cost report of the last run"
+      (docs/cost.md). No slow-node marks in `:DbtDag` (no annotation hook).
+- [x] **Column profile on hover** (`features/profile/`, `server/profile.rs`,
+      `cogitator_duckdb::catalog::query`): off by default
+      (`warehouse.profile`); `dbt.profileColumn` / the "Profile column" code
+      action run a sampled profile query (per-adapter sampling) on DuckDB
+      read-only or through `dbt show --inline` as a job, and fill a cache
+      keyed by model and column and stamped with the run; the hover only
+      reads it (distinct, null %, min/max, a sparkline of the top values).
+      Neovim `:DbtProfileColumn`, Emacs `cogitator-profile-column`, VS Code
+      "dbt: Profile the column under the cursor" (docs/profile.md).
 
 ## P2 — quality of life
 

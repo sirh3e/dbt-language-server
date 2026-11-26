@@ -6,6 +6,17 @@
   "type": "object",
   "additionalProperties": false,
   "properties": {
+    "cost": {
+      "description": "dbt.costReport and the cost lens: optional figures beyond target/run_results.json.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query_history": {
+          "description": "A JSON (array or JSON lines) export of the warehouse's query history; fills bytes and slots dbt did not record. (path)",
+          "type": "string"
+        }
+      }
+    },
     "inlay": {
       "description": "Which inlay hints the server sends.",
       "type": "object",
@@ -464,6 +475,14 @@
         "columns": {
           "description": "Complete source columns from the warehouse when the YAML has none. (bool)",
           "type": "boolean"
+        },
+        "profile": {
+          "description": "Offer dbt.profileColumn (a sampled profile query against the warehouse; default off). (bool)",
+          "type": "boolean"
+        },
+        "profile_sample_rows": {
+          "description": "Rows a column profile samples (default 10000). (rows)",
+          "type": "string"
         }
       }
     }

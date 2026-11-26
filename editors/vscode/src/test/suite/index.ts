@@ -16,6 +16,7 @@ import {
   columnPosition,
   lineageFocus,
   lineageHtml,
+  diffAtText,
   incrementalDiffText,
   incrementalityLabel,
   languageOf,
@@ -202,6 +203,19 @@ export async function run(): Promise<void> {
     "vscode: dbt.incrementalDiff renders both ways",
     diff
   );
+  check(
+    diffAtText({
+      model: "m",
+      rev: "HEAD",
+      what: "lineage",
+      diff: "--- a\n+++ b\n",
+      identical: false,
+      columns: { added: ["status"], removed: [], changed: [] },
+    }).startsWith("-- + column status\n--- a"),
+    "vscode: diffAtText lists the columns, then the diff"
+  );
+  const cost = (await exec("dbt.costReport", {})) as { text?: string } | null;
+  check(typeof cost?.text === "string", "vscode: dbt.costReport answers a report", cost);
   check(
     incrementalDiffText({
       model: "m",

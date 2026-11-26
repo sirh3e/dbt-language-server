@@ -414,6 +414,12 @@ inlay:
 preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
   rows: 20                 # rows when the call names no limit
   max_rows: 1000           # larger limits are capped
+warehouse:
+  columns: false           # duckdb: complete undeclared source columns
+  profile: false           # dbt.profileColumn may query the warehouse (docs/profile.md)
+  profile_sample_rows: 10000
+cost:
+  query_history: ""        # a JSON query-history export for dbt.costReport (docs/cost.md)
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
 ```
