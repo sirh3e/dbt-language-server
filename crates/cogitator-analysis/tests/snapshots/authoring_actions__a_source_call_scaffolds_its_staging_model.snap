@@ -1,0 +1,48 @@
+---
+source: crates/cogitator-analysis/tests/authoring_actions.rs
+expression: applied(&action)
+---
+title: Scaffold staging model stg_bakery__bakes
+kind: Some("refactor")
+
+=== models/staging/bakery/stg_bakery__bakes.sql (created)
+with
+
+source as (
+
+    select * from {{ source('bakery', 'bakes') }}
+
+),
+
+renamed as (
+
+    select
+        cast(id as integer) as bake_id,
+        cast("bakedAt" as timestamp) as baked_at,
+        "Flour Kind" as flour_kind,
+        cast(is_sourdough as boolean) as is_sourdough
+
+    from source
+
+)
+
+select * from renamed
+
+=== models/staging/bakery/stg_bakery__bakes.yml (created)
+version: 2
+
+models:
+  - name: stg_bakery__bakes
+    description: "One row per bake."
+    columns:
+      - name: bake_id
+        description: "The loaf's id."
+        data_tests:
+          - unique
+          - not_null
+      - name: baked_at
+        description: "{{ doc('baked_at') }}"
+      - name: flour_kind
+        description: "The flour the loaf was made of."
+      - name: is_sourdough
+        description: ""

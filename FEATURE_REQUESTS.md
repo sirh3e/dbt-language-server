@@ -257,6 +257,21 @@ names what already exists in the codebase.
       changes)", `cogitator yaml-sync [--check]` for CI, Neovim
       `:DbtSyncYaml`, Emacs `cogitator-sync-yaml`, VS Code "dbt: Sync schema
       YAML" (docs/yaml-sync.md).
+- [x] **Authoring actions** (docs/authoring-actions.md): "Scaffold
+      staging model stg_<source>__<table>" on a `source()`/`ref()` or a
+      source table's YAML entry — the style guide's `source`/`renamed` SQL,
+      columns from the catalog, YAML or inferred types, deterministic
+      renames, casts where a type is known, a paired YAML entry with
+      inherited descriptions and key tests
+      (`code_actions/staging_scaffold.rs`, `staging_render.rs`); "Extract
+      CTE" now carries the parent's pass-through column docs into a new
+      entry (`extract_cte_yaml.rs`); "Inline model 'x' as a CTE", the
+      reverse, deleting x's file with a `DeleteFile` resource operation
+      (`inline_model.rs`); "Inherit description of 'col' from …" on a YAML
+      column or a SQL select item, over the yaml-sync walk (direct lineage,
+      multi-hop, sources), copying `{{ doc() }}` as the call
+      (`inherit_docs.rs`, `raw_description.rs`; the shell in
+      `server/dispatcher/authoring.rs`).
 - [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
       `target/run/…`, hover shows the Jinja source lines a compiled line came
       from (a link to them) above the SQL hover, and definition jumps there

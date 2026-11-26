@@ -54,6 +54,34 @@ impl CreateFile {
     }
 }
 
+/// A `DeleteFile` resource operation (LSP 3.13): the client removes
+/// `uri`. Sent only with the edits that make the file unneeded.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteFile {
+    pub kind: &'static str,
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<DeleteFileOptions>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeleteFileOptions {
+    #[serde(rename = "ignoreIfNotExists")]
+    pub ignore_if_not_exists: bool,
+}
+
+impl DeleteFile {
+    pub fn new(uri: String) -> Self {
+        Self {
+            kind: "delete",
+            uri,
+            options: Some(DeleteFileOptions {
+                ignore_if_not_exists: true,
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RenameFile {
     pub kind: &'static str,
@@ -82,6 +110,7 @@ pub enum DocumentChange {
     Edit(TextDocumentEdit),
     Create(CreateFile),
     Rename(RenameFile),
+    Delete(DeleteFile),
 }
 
 #[derive(Debug, Clone, Serialize)]
