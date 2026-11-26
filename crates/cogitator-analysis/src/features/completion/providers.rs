@@ -6,6 +6,7 @@ use cogitator_lsp::{completion_kind, CompletionData, CompletionItem, Position};
 use cogitator_parser::{Keyword, TokenKind};
 
 use super::scope::{cte_columns, RelationTarget, ScopeIndex};
+use super::snippets::ModelHints;
 use super::{DbtContext, Document};
 
 pub(super) use super::dbt_calls::{
@@ -43,6 +44,7 @@ pub fn qualifier_column_items(
     doc: &Document,
     scope: &ScopeIndex,
     qualifier: &str,
+    hints: &ModelHints,
 ) -> Vec<CompletionItem> {
     let target = scope.resolve(qualifier).cloned().or_else(|| {
         doc.parsed
@@ -51,7 +53,7 @@ pub fn qualifier_column_items(
             .then(|| RelationTarget::Cte(qualifier.to_string()))
     });
     match target {
-        Some(target) => target_column_items(ctx, doc, &target, '0'),
+        Some(target) => target_column_items(ctx, doc, &target, '0', hints),
         None => Vec::new(),
     }
 }
@@ -114,12 +116,13 @@ pub fn column_position_items(
     ctx: &DbtContext,
     doc: &Document,
     pos: Position,
+    hints: &ModelHints,
 ) -> Vec<CompletionItem> {
     let scope = ScopeIndex::build(doc);
     let mut items = Vec::new();
     let mut seen = std::collections::BTreeSet::new();
     for target in scope.targets() {
-        for column in target_column_items(ctx, doc, target, 'a') {
+        for column in target_column_items(ctx, doc, target, 'a', hints) {
             if seen.insert((column.label.clone(), column.detail.clone())) {
                 items.push(column);
             }
@@ -166,33 +169,71 @@ pub fn general_items(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<Com
 // Shared providers
 // ---------------------------------------------------------------------------
 
+fn column_item(
+    name: &str,
+    detail: String,
+    docs: &str,
+    tier: char,
+    data: CompletionData,
+) -> CompletionItem {
+    let mut column = item(name, detail, docs, completion_kind::FIELD, name, tier);
+    column.data = Some(data.into_value());
+    column
+}
+
 fn target_column_items(
     ctx: &DbtContext,
     doc: &Document,
     target: &RelationTarget,
     tier: char,
+    hints: &ModelHints,
 ) -> Vec<CompletionItem> {
+    let data =
+        |relation: &str, source: Option<&str>, cte: bool, column: &str| CompletionData::Column {
+            relation: relation.to_string(),
+            source: source.map(str::to_string),
+            cte,
+            column: column.to_string(),
+        };
     match target {
-        RelationTarget::Model(name) => ctx
-            .model_detail_map
-            .get(name)
-            .map(|model| {
-                model
-                    .columns
-                    .iter()
-                    .map(|c| {
-                        item(
-                            c.name.clone(),
-                            format!("Column of {name}"),
-                            c.description.clone(),
-                            completion_kind::FIELD,
-                            c.name.clone(),
-                            tier,
-                        )
-                    })
-                    .collect()
-            })
-            .unwrap_or_default(),
+        RelationTarget::Model(name) => {
+            let mut items: Vec<CompletionItem> = ctx
+                .model_detail_map
+                .get(name)
+                .map(|model| {
+                    model
+                        .columns
+                        .iter()
+                        .map(|c| {
+                            column_item(
+                                &c.name,
+                                format!("Column of {name}"),
+                                "",
+                                tier,
+                                data(name, None, false, &c.name),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            // inferred columns the YAML does not list
+            let inferred = hints
+                .snapshot
+                .as_deref()
+                .and_then(|s| crate::features::column_types::column_types(ctx, s, name));
+            for c in inferred.iter().flat_map(|t| &t.columns) {
+                if !items.iter().any(|i| i.label.eq_ignore_ascii_case(&c.name)) {
+                    items.push(column_item(
+                        &c.name,
+                        format!("Column of {name}"),
+                        "",
+                        tier,
+                        data(name, None, false, &c.name),
+                    ));
+                }
+            }
+            items
+        }
         RelationTarget::SourceTable { source, table } => ctx
             .source_detail_map
             .get(source)
@@ -201,13 +242,12 @@ fn target_column_items(
                 t.columns
                     .iter()
                     .map(|c| {
-                        item(
-                            c.name.clone(),
+                        column_item(
+                            &c.name,
                             format!("Column of {source}.{table}"),
-                            c.description.clone(),
-                            completion_kind::FIELD,
-                            c.name.clone(),
+                            "",
                             tier,
+                            data(table, Some(source), false, &c.name),
                         )
                     })
                     .collect()
@@ -216,13 +256,12 @@ fn target_column_items(
         RelationTarget::Cte(name) => cte_columns(doc, name)
             .into_iter()
             .map(|column| {
-                item(
-                    column.clone(),
+                column_item(
+                    &column,
                     format!("Column of {name} (CTE)"),
                     "",
-                    completion_kind::FIELD,
-                    column,
                     tier,
+                    data(name, None, true, &column),
                 )
             })
             .collect(),
@@ -297,18 +336,27 @@ pub fn local_identifier_items(doc: &Document, pos: Position) -> Vec<CompletionIt
 pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<CompletionItem> {
     let mut seen = std::collections::BTreeSet::new();
     let mut items = Vec::new();
-    let mut add = |relation: &str, column: &cogitator_schemas::ColumnEntry| {
-        if seen.insert((relation.to_string(), column.name.clone())) {
-            items.push(item(
-                column.name.clone(),
-                format!("Column of {relation}"),
-                column.description.clone(),
-                completion_kind::FIELD,
-                column.name.clone(),
-                'a',
-            ));
-        }
-    };
+    let mut add =
+        |relation: &str, source: Option<&str>, column: &cogitator_schemas::ColumnEntry| {
+            let label = match source {
+                Some(source) => format!("{source}.{relation}"),
+                None => relation.to_string(),
+            };
+            if seen.insert((label.clone(), column.name.clone())) {
+                items.push(column_item(
+                    &column.name,
+                    format!("Column of {relation}"),
+                    "",
+                    'a',
+                    CompletionData::Column {
+                        relation: relation.to_string(),
+                        source: source.map(str::to_string),
+                        cte: false,
+                        column: column.name.clone(),
+                    },
+                ));
+            }
+        };
 
     for token in &doc.parsed.tokens {
         match token.kind {
@@ -316,7 +364,7 @@ pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<Completion
                 let name = doc.parsed.literal(token);
                 if let Some(model) = ctx.model_detail_map.get(name) {
                     for column in &model.columns {
-                        add(name, column);
+                        add(name, None, column);
                     }
                 }
             }
@@ -325,7 +373,7 @@ pub fn relation_column_items(ctx: &DbtContext, doc: &Document) -> Vec<Completion
                 for source in ctx.source_detail_map.values() {
                     if let Some(table) = source.tables.get(table_name) {
                         for column in &table.columns {
-                            add(table_name, column);
+                            add(table_name, Some(&source.name), column);
                         }
                     }
                 }

@@ -67,17 +67,18 @@ pub fn adapt(mut item: CompletionItem, support: CompletionSupport) -> Completion
         item.insert_text_format = None;
     }
     if !support.label_details {
+        // the type and where it is from, in `detail`; a bare description
+        // (no type) leaves the item's own detail
         if let Some(details) = item.label_details.take() {
-            let parts: Vec<String> = [
-                details.detail.map(|d| d.trim().to_string()),
-                details.description,
-            ]
-            .into_iter()
-            .flatten()
-            .filter(|p| !p.is_empty())
-            .collect();
-            if !parts.is_empty() {
-                item.detail = parts.join(" · ");
+            if let Some(ty) = details
+                .detail
+                .map(|d| d.trim().to_string())
+                .filter(|d| !d.is_empty())
+            {
+                item.detail = match details.description {
+                    Some(description) => format!("{ty} · {description}"),
+                    None => ty,
+                };
             }
         }
     }

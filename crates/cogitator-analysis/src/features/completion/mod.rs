@@ -4,8 +4,10 @@
 //! FROM/JOIN scope (`scope`) and served by composable `providers` with
 //! tiered ranking.
 
+pub(crate) mod column_info;
 mod context;
 mod dbt_calls;
+mod details;
 mod providers;
 pub(crate) mod scope;
 mod snippets;
@@ -49,6 +51,7 @@ pub fn completion_with(
         }
         items.extend(snippets.0);
     }
+    details::decorate(ctx, doc, hints, &mut items);
     items
 }
 
@@ -81,7 +84,7 @@ fn engine(
     ctx: &DbtContext,
     doc: &Document,
     pos: Position,
-    _hints: &ModelHints,
+    hints: &ModelHints,
 ) -> Vec<CompletionItem> {
     let lines: Vec<&str> = doc.text.split('\n').collect();
     let Some(&line) = lines.get(pos.line as usize) else {
@@ -125,14 +128,14 @@ fn engine(
     match context::classify(doc, pos, before) {
         CompletionContext::MemberAccess { qualifier } => {
             let scope = ScopeIndex::build(doc);
-            let items = providers::qualifier_column_items(ctx, doc, &scope, &qualifier);
+            let items = providers::qualifier_column_items(ctx, doc, &scope, &qualifier, hints);
             if !items.is_empty() {
                 return items;
             }
             providers::general_items(ctx, doc, pos) // unresolved alias → broad set
         }
         CompletionContext::RelationPosition => providers::relation_items(ctx, doc),
-        CompletionContext::ColumnPosition => providers::column_position_items(ctx, doc, pos),
+        CompletionContext::ColumnPosition => providers::column_position_items(ctx, doc, pos, hints),
         CompletionContext::KeywordContinuation(words) => {
             providers::keyword_continuation_items(&words)
         }
@@ -146,7 +149,26 @@ pub fn resolve_completion_documentation(
     ctx: &DbtContext,
     data: &serde_json::Value,
 ) -> Option<String> {
-    match serde_json::from_value::<cogitator_lsp::CompletionData>(data.clone()).ok()? {
+    resolve_completion_documentation_with(ctx, data, &ModelHints::default()).map(|(docs, _)| docs)
+}
+
+/// [`resolve_completion_documentation`] with the caches' facts, and
+/// whether the text is Markdown (columns, dialect functions).
+pub fn resolve_completion_documentation_with(
+    ctx: &DbtContext,
+    data: &serde_json::Value,
+    hints: &ModelHints,
+) -> Option<(String, bool)> {
+    let parsed = serde_json::from_value::<cogitator_lsp::CompletionData>(data.clone()).ok()?;
+    if let Some(docs) = details::resolve_column(ctx, hints, &parsed) {
+        return Some((docs, true));
+    }
+    let markdown = matches!(parsed, cogitator_lsp::CompletionData::Function { .. });
+    resolve_plain(ctx, parsed).map(|docs| (docs, markdown))
+}
+
+fn resolve_plain(ctx: &DbtContext, data: cogitator_lsp::CompletionData) -> Option<String> {
+    match data {
         cogitator_lsp::CompletionData::Model { name } => ctx
             .model_detail_map
             .get(&name)
@@ -184,5 +206,7 @@ pub fn resolve_completion_documentation(
         cogitator_lsp::CompletionData::Function { name } => {
             ctx.dialect.function_doc(&name).map(str::to_string)
         }
+        // a CTE column's documentation was filled with the item
+        cogitator_lsp::CompletionData::Column { .. } => None,
     }
 }

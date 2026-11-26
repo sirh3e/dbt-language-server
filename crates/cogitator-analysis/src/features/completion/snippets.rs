@@ -20,13 +20,17 @@ use super::super::column_types::ModelColumnTypes;
 use super::{DbtContext, Document};
 use crate::graph::NodeKind;
 
-/// What the shell knows of the model beyond the context.
+/// What the shell knows of the project beyond the context: caches only.
 #[derive(Debug, Clone, Default)]
 pub struct ModelHints {
-    /// The model's inferred output columns (the schema snapshot's).
+    /// The open model's inferred output columns (the schema snapshot's).
     pub outputs: Option<ModelColumnTypes>,
-    /// `config.event_time` from the manifest.
-    pub manifest_event_time: Option<String>,
+    /// The published schema snapshot, for every relation's inferred types.
+    pub snapshot: Option<std::sync::Arc<crate::features::plan::schemas::SchemaSnapshot>>,
+    /// `target/manifest.json`, for configs (event_time, materialized).
+    pub manifest: Option<std::sync::Arc<crate::artifacts::manifest::ManifestIndex>>,
+    /// `target/catalog.json`, for warehouse column types.
+    pub catalog: Option<std::sync::Arc<crate::artifacts::catalog::CatalogIndex>>,
 }
 
 /// Where the column came from: a declared one is written as it is.
@@ -62,10 +66,16 @@ pub(crate) fn incremental_column(
     hints: &ModelHints,
 ) -> Column {
     let details = ctx.model_detail_map.get(model);
-    if let Some(own) = details
-        .and_then(|d| d.event_time.clone())
-        .or_else(|| hints.manifest_event_time.clone())
-    {
+    if let Some(own) = details.and_then(|d| d.event_time.clone()).or_else(|| {
+        hints
+            .manifest
+            .as_deref()?
+            .models
+            .get(model)?
+            .config
+            .event_time
+            .clone()
+    }) {
         return Column::Declared(own);
     }
     // inferred outputs, else the open text's own select list, else YAML

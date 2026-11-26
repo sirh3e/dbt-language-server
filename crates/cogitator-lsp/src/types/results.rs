@@ -111,6 +111,17 @@ pub enum CompletionData {
     Function {
         name: String,
     },
+    /// A column of a model (`relation` its name), a source table
+    /// (`relation` the table, `source` set) or a CTE of the document
+    /// (`cte`: its documentation is filled eagerly).
+    Column {
+        relation: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        cte: bool,
+        column: String,
+    },
 }
 
 impl CompletionData {

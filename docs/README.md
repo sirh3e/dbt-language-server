@@ -15,6 +15,7 @@
 | [file-operations.md](file-operations.md) | Renaming, moving, deleting and creating model files from the editor's file tree, and declaration vs definition (YAML entry vs SQL) |
 | [lint-and-format.md](lint-and-format.md) | Jinja and SQL syntax errors as you type (and when they decline), `cogitator lint` and `cogitator format` for CI: what runs, output formats, exit codes |
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |
+| [column-completion.md](column-completion.md) | Column completion with each column's type and relation beside it and its description in the documentation panel (shared with the hover); details for models, sources, macros and functions |
 | [snippets.md](snippets.md) | Model-aware snippets: an `is_incremental()` block on the model's real growing column, an incremental `config()` with its real merge key, clients without snippet support |
 | [type-checks.md](type-checks.md) | Type checks under every profile (text compared with dates, sums over text, mismatched join keys), proven vs declared severities, the type inlay hints |
 | [join-fanout.md](join-fanout.md) | `join.fanout`: joins that may duplicate rows, what proves a key unique (tests, constraints, combination tests), and the two quick fixes |

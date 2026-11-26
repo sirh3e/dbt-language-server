@@ -342,6 +342,13 @@ names what already exists in the codebase.
       strict `unique_combination_of_columns` tests and an incremental
       `unique_key` make columns (or column sets, `ModelSchema::unique_sets`)
       unique; `SchemaCol::proven_type` says a type rests on proven evidence
+- [x] **Typed column completion** (docs/column-completion.md,
+      `features/completion/column_info.rs`, `details.rs`): `labelDetails`
+      with the type (YAML → catalog → inferred) and relation, Markdown
+      documentation shared with the column hover, filled lazily through
+      `CompletionData::Column`; CTE columns inherit type and description;
+      models, sources, macros and functions say what they are; nvim-cmp's
+      `format()` shows `labelDetails`
 - [x] **Model-aware snippets** (docs/snippets.md,
       `features/completion/snippets.rs`): `is_inc…` / `{% if ` offer an
       `is_incremental()` block on the model's event_time, a declared upstream

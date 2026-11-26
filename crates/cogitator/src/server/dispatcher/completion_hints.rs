@@ -10,23 +10,20 @@ use cogitator_analysis::DbtContext;
 use crate::server::derived_cache::DerivedCache;
 
 pub(super) fn hints(ctx: &DbtContext, derived: &DerivedCache, uri: &str) -> ModelHints {
-    let (Some(root), Some(model)) = (
-        ctx.project_root.as_deref(),
-        features::model_name_from_uri(uri),
-    ) else {
+    let Some(root) = ctx.project_root.as_deref() else {
         return ModelHints::default();
     };
-    let outputs = derived
-        .project_schemas(root)
-        .and_then(|snapshot| column_types::column_types(ctx, &snapshot, &model));
-    let manifest_event_time = derived
-        .artifacts_cached(root)
-        .manifest
-        .as_deref()
-        .and_then(|m| m.models.get(&model))
-        .and_then(|node| node.config.event_time.clone());
+    let snapshot = derived.project_schemas(root);
+    let artifacts = derived.artifacts_cached(root);
+    let outputs = features::model_name_from_uri(uri).and_then(|model| {
+        snapshot
+            .as_deref()
+            .and_then(|s| column_types::column_types(ctx, s, &model))
+    });
     ModelHints {
         outputs,
-        manifest_event_time,
+        snapshot,
+        manifest: artifacts.manifest,
+        catalog: artifacts.catalog,
     }
 }

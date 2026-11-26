@@ -241,12 +241,18 @@ impl Dispatcher {
         };
         let mut item = item.get("params").cloned().unwrap_or(item);
         let ctx = self.snapshot();
-        if let Some(docs) = item
+        let hints = super::completion_hints::hints(&ctx, &self.derived, "");
+        if let Some((docs, markdown)) = item
             .get("data")
-            .and_then(|data| features::resolve_completion_documentation(&ctx, data))
+            .and_then(|data| features::resolve_completion_documentation_with(&ctx, data, &hints))
         {
+            let value = if markdown && self.completion_support.markdown {
+                serde_json::json!({"kind": "markdown", "value": docs})
+            } else {
+                serde_json::Value::String(docs)
+            };
             if let Some(map) = item.as_object_mut() {
-                map.insert("documentation".into(), serde_json::Value::String(docs));
+                map.insert("documentation".into(), value);
             }
         }
         self.send(&ResultResponse::new(id, item));
