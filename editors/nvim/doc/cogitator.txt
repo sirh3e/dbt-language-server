@@ -456,7 +456,11 @@ header, a var, a column, a CTE — or else the file's own model;
 then shows the whole edit before anything changes: "apply" with the
 diff of every file, "cancel", and the changes one file at a time. A
 model rename also renames its file; a macro of an installed package is
-refused with the reason. The edited buffers are left unsaved (`:wall`).
+refused with the reason. A column renames the model and every consumer
+that keeps the name; when its lineage says it comes from an upstream
+model, a second choice "apply up- and downstream" renames it from there
+(`dbt.renameColumn` with `direction = "both"`), so every model it passes
+through keeps one name. The edited buffers are left unsaved (`:wall`).
 With `ui.picker = false`, `grr` and `grn` stay Neovim's own.
 
                                                       *cogitator-nvim-dialogs*

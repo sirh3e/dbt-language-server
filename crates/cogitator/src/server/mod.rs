@@ -25,6 +25,7 @@ mod node_info;
 mod offload;
 mod preview_cte;
 mod refresh;
+mod rename_column;
 mod reply;
 pub(crate) mod selectors;
 mod semantic_yaml;

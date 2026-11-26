@@ -343,6 +343,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none (read-only)
 - **Editors**: Neovim ✓ (`:DbtDependencies [model]`, `<leader>dp`, "This model" in the code-action menu) · Emacs ✓ (`M-x cogitator-model-dependencies`) · VS Code ✓ (`dbt: Model dependencies`)
 
+### `dbt.renameColumn`
+
+- **Argument**: `{uri, position, newName, direction?, apply?}` — the model column under the cursor (a SQL word of the model's file or its YAML `columns:` entry, as textDocument/rename finds it); `direction` is `"down"` (the default) or `"both"`
+- **Result**: `{model, column, newName, direction, origin: {model, column, chain, stop}, models, edit}`. `"down"` is textDocument/rename's edit: the model and every consumer, at any depth, that keeps the name (`a.old`, bare `old`, through aliases, CTEs and `select *`), stopping where `old as other` re-names it; their YAML columns, tests, unit-test rows and semantic models; a column the model passes through from upstream gets `old as new` there. `"both"` first climbs the column's lineage (`ColumnLineage::direct`: a bare reference under the same name, through CTEs, derived tables and `select *`) to the model that defines it — `origin.chain` lists the models climbed, `origin.stop` why it stopped (an alias or expression; a source or seed, whose column stays and whose reader gets the alias; an installed package's model) — and renames downstream from there, so every model in the chain keeps one name. `models` are the models whose output column is renamed, the origin first; `edit` the WorkspaceEdit. `null` off a column. A refusal is an error naming the file and the reason: Jinja control blocks, the name passed to Jinja in a string, SQL that does not parse, a column two relations may provide, `select *` over several relations, a collision with an existing column
+- **Side effects**: none, unless `apply: true`: then the edit is also sent as `workspace/applyEdit` (label `Rename column <model>.<column> → <new> (<direction>)`)
+- **Editors**: Neovim ✓ (`:DbtRename` on a column: the confirmation offers "apply up- and downstream" when the column comes from upstream) · Emacs ✓ (`M-x cogitator-rename-column`) · VS Code ✓ (`dbt: Rename column up- and downstream…`)
+
 ## Profiles, configuration and health
 
 ### `dbt.profiles`

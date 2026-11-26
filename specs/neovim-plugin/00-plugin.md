@@ -120,7 +120,7 @@ writer wins).
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
   `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`,
-  `dbt.modelDependencies`
+  `dbt.modelDependencies`, `dbt.renameColumn`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -193,6 +193,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.select` | `{selector, count, counts: {resourceType: n}, nodes: [{uri, name, label, kind, resourceType, uniqueId, version, package, path, tags, range, graphId}], issues, error: {message, start, end} \| null, vocabulary?: {methods, values: {method: [value]}}}` — what `dbt ls --select … --exclude …` lists, by resource type then name; an error lists no node | none (read-only): `{select, exclude?, vocabulary?}` (`selector` for `select`, as the selectors.yml lenses send it); `select` may carry its own `--exclude …`; error offsets are bytes into `select` (or `exclude`); docs/selectors.md — `:DbtSelect`, the navigator's `f` and `/` |
 | `dbt.lineageSite` | `{site, counts}` (`site`: format 1 — the `dbt.projectGraph` nodes/edges with each node's details and columns, each traced column's `inputs` one hop up and its `transform`); with `assets: true` also `assets: {script, style}`; with `write: true` `{written: {path, uri}, counts}` instead of `site`; `null` with no project | `{uri?, assets?, write?}`; `write` writes `<root>/target/cogitator-lineage/index.html` + `lineage.json` — :DbtLineageSite, `cogitator lineage-site` (docs/lineage-site.md) |
 | `dbt.syncYaml` | `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` | `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?: "model"\|"folder", apply?}`: the schema-YAML sync plan (docs/yaml-sync.md); with `apply: true` the server sends it as workspace/applyEdit (label "Sync schema YAML") — :DbtSyncYaml |
+| `dbt.renameColumn` | `{model, column, newName, direction, origin: {model, column, chain, stop}, models, edit}` | `{uri, position, newName, direction?: "down"\|"both", apply?}`: the column under the cursor renamed downstream (the default, what textDocument/rename does: a pass-through gets `old as new`) or, with `"both"`, from the model its lineage says defines it (`origin`; `chain` the models climbed) and then downstream from there; `edit` is the WorkspaceEdit, `models` the models whose output column it renames; with `apply: true` the server sends it as workspace/applyEdit (label "Rename column …"); `null` off a column; a refusal is an error with the reason — :DbtRename (its confirmation offers "apply up- and downstream") |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -509,7 +510,7 @@ vim.lsp.enable("cogitator")
 | `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
 | `:DbtReferences[!]` | `textDocument/references` | every use of what the cursor names (`!`: the file's own model), in the yazi-style dialog, a group per file and a line per use with its preview; the first entry renames it — **Neovim only** |
 | `:DbtMacros` | `workspace/symbol`, `textDocument/references` | every macro in the yazi-style dialog; choosing one shows where it is called (asked at its header, which the server reads from disk when the file is not open) — **Neovim only** |
-| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
+| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename`, `dbt.renameColumn` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply"; on a column its lineage traces to an upstream model, a second item "apply up- and downstream" (from `dbt.renameColumn` with `direction: "both"`) previews and applies the rename from that model instead — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |

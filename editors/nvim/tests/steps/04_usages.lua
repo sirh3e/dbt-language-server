@@ -99,6 +99,35 @@ return function(ctx)
     "rename: apply, cancel, then a diff per change",
     vim.inspect(confirm[1])
   )
+  -- a column renamed from upstream: the second item, before cancel
+  local both = rename.upstream({
+    model = "b",
+    origin = { model = "a", column = "x", chain = { "b", "a" } },
+    edit = edit,
+  }, nil, "utf-16")
+  local with_both = rename.items(edit, "x", "y", "utf-16", both)
+  H.check(
+    with_both[2].value == "apply_both"
+      and with_both[2].label == "apply up- and downstream: from a.x"
+      and with_both[2].detail:find("b ← a", 1, true) ~= nil
+      and with_both[3].value == "cancel",
+    "rename: up- and downstream is offered second",
+    vim.inspect(with_both[2])
+  )
+  H.check(
+    rename.upstream({ model = "a", origin = { model = "a", column = "x" }, edit = edit }, nil, "utf-16")
+        == nil
+      and rename.upstream(vim.NIL, nil, "utf-16") == nil
+      and rename.upstream(nil, { message = "other" }, "utf-16") == nil,
+    "rename: nothing upstream, no item"
+  )
+  local refused =
+    rename.upstream(nil, { message = "`b.x` cannot be traced upstream: why.\nSolution: …" }, "utf-16")
+  H.check(
+    refused ~= nil and refused.disabled == "`b.x` cannot be traced upstream: why.",
+    "rename: a refused climb says why, disabled",
+    vim.inspect(refused)
+  )
 
   -- :DbtReferences! from stg_orders: its call sites, grouped by file
   vim.cmd.edit(vim.fs.joinpath(ctx.fixture, "models", "staging", "stg_orders.sql"))
@@ -189,5 +218,24 @@ return function(ctx)
       and not vim.bo[stg].modified,
     "rename: cancelled, nothing changed"
   )
+  -- :DbtRename on customers.customer_id offers the rename from stg_customers
+  vim.cmd.edit(vim.fs.joinpath(ctx.fixture, "models", "customers.sql"))
+  local customers_buf = vim.api.nvim_get_current_buf()
+  vim.fn.search("customers.customer_id,")
+  vim.cmd("normal! 10l")
+  rename.rename({ args = "cust_id" })
+  H.wait("rename: the column's confirmation dialog opens", 15000, function()
+    return picker._state ~= nil and picker._state.opts.title:find("cust_id", 1, true) ~= nil
+  end)
+  local second = picker._state.stack[1].items[2]
+  H.check(
+    second.value == "apply_both" and second.label:find("from stg_customers.customer_id", 1, true) ~= nil,
+    "rename: a column from upstream offers up- and downstream",
+    vim.inspect(second)
+  )
+  local up_diff = table.concat(second.preview().lines, "\n")
+  H.check(up_diff:find("+.*as cust_id") ~= nil, "rename: its preview renames stg_customers", up_diff)
+  picker.close()
+  H.check(not vim.bo[customers_buf].modified, "rename: closed, nothing changed")
   vim.api.nvim_set_current_buf(bufnr)
 end

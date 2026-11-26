@@ -84,6 +84,7 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-column-lineage-graph` | the column lineage around a column of this model across the project, up, down or both (`dbt.columnLineageGraph`, one request from the server's lineage cache), an edge a line |
 | `M-x cogitator-lineage-site` | the project's column-lineage page (`dbt.lineageSite`), written to `target/cogitator-lineage/index.html` and opened in the browser |
 | `M-x cogitator-sync-yaml` | bring the models' schema YAML in line with their SQL (`dbt.syncYaml`): missing entries and columns added, descriptions inherited down the column lineage; the plan opens as a diff and is applied on confirm; with `C-u`, only this buffer's model (`cogitator-sync-yaml-prune`, `cogitator-sync-yaml-inherit-types`) |
+| `M-x cogitator-rename-column` | rename the model column at point up- and downstream (`dbt.renameColumn`, direction `both`): from the model its lineage says defines it, through every model that passes it on, their YAML, tests and semantic models; previewed, applied on confirm; with `C-u`, downstream only |
 | `M-x cogitator-ast-grep` | structural search with ast-grep (`dbt.astGrep`): `{{ ref($M) }}` over the project's dbt files, `sql:select $$$C from $T` over the compiled SQL; matches in a grep buffer; `pattern => rewrite` rewrites every match after asking |
 
 Suggested bindings:

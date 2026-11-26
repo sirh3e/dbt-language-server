@@ -5,7 +5,7 @@
 //! upstream model is never touched. CTE-internal names above that item
 //! change only because the walk carries the new name up to the root.
 
-use cogitator_ir::hir::{Body, QueryId, SelectItem};
+use cogitator_ir::hir::{Body, FromId, QueryId, SelectItem};
 
 use super::sql::{Found, SqlEdit, Walk};
 
@@ -18,14 +18,45 @@ enum Provides {
         Option<QueryId>,
         cogitator_ir::hir::Ident,
         cogitator_ir::Span,
+        Option<FromId>,
     ),
     Star(QueryId),
-    /// Through `*` over a relation outside the model.
-    UpstreamStar,
+    /// Through `*` over a relation outside the model: the FROM item.
+    UpstreamStar(FromId),
+}
+
+/// Where a model's output column comes from, for an upstream rename.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Defined {
+    /// An item of the model names it (an alias, or a bare column whose
+    /// FROM item, when it is outside the model, is given).
+    Item(Option<FromId>),
+    /// Only `*` over these FROM items outside the model passes it.
+    Stars(Vec<FromId>),
 }
 
 impl Walk<'_> {
     pub(super) fn find_output(&self, query: QueryId) -> Result<Found, String> {
+        match self.define(query)? {
+            (Some(found), _) => Ok(found),
+            (None, _) => Err(format!(
+                "`{}` comes in through `select *` from an upstream relation; rename it there",
+                self.column
+            )),
+        }
+    }
+
+    /// How the model's output defines the column, for an upstream rename.
+    pub(super) fn defined(&self, query: QueryId) -> Result<Defined, String> {
+        Ok(match self.define(query)? {
+            (Some(_), Defined::Item(from)) => Defined::Item(from),
+            (_, defined) => defined,
+        })
+    }
+
+    /// The defining item (none when only an upstream `*` passes it) and
+    /// what it reads.
+    fn define(&self, query: QueryId) -> Result<(Option<Found>, Defined), String> {
         let column = self.column;
         let mut depth = 0;
         let mut query = query;
@@ -37,36 +68,43 @@ impl Walk<'_> {
             let provided = self.provides(query)?;
             let explicit: Vec<&Provides> = provided
                 .iter()
-                .filter(|p| !matches!(p, Provides::UpstreamStar))
+                .filter(|p| !matches!(p, Provides::UpstreamStar(_)))
                 .collect();
             match explicit.as_slice() {
                 [] if !provided.is_empty() => {
-                    return Err(format!(
-                        "`{column}` comes in through `select *` from an upstream relation; rename it there"
-                    ))
+                    let stars = provided
+                        .iter()
+                        .filter_map(|p| match p {
+                            Provides::UpstreamStar(from) => Some(*from),
+                            _ => None,
+                        })
+                        .collect();
+                    return Ok((None, Defined::Stars(stars)));
                 }
                 [] => return Err(format!("it outputs no column named `{column}`")),
                 [one] => match one {
                     Provides::Alias(item, alias) => {
-                        return Ok(Found {
+                        let found = Found {
                             query,
                             item: *item,
                             site: self.site(*alias, SqlEdit::Name),
-                        })
+                        };
+                        return Ok((Some(found), Defined::Item(None)));
                     }
-                    Provides::Bare(_, Some(inner), _, _) | Provides::Star(inner) => {
+                    Provides::Bare(_, Some(inner), _, _, _) | Provides::Star(inner) => {
                         query = *inner;
                     }
-                    Provides::Bare(item, None, name, span) => {
+                    Provides::Bare(item, None, name, span, from) => {
                         let mut site = self.site(*name, SqlEdit::AliasAfter);
                         site.span = *span;
-                        return Ok(Found {
+                        let found = Found {
                             query,
                             item: *item,
                             site,
-                        });
+                        };
+                        return Ok((Some(found), Defined::Item(*from)));
                     }
-                    Provides::UpstreamStar => unreachable!("filtered out above"),
+                    Provides::UpstreamStar(_) => unreachable!("filtered out above"),
                 },
                 _ => return Err(format!("it outputs `{column}` more than once")),
             }
@@ -91,10 +129,11 @@ impl Walk<'_> {
                     let Some(col) = self.bare_col(*expr).filter(|c| self.is(c.name)) else {
                         continue;
                     };
-                    let inner = Self::direct(col.res.as_ref())
+                    let from = Self::direct(col.res.as_ref());
+                    let inner = from
                         .and_then(|f| self.inner_query(f))
                         .filter(|q| self.outputs(*q, 0));
-                    out.push(Provides::Bare(index, inner, col.name, col.span));
+                    out.push(Provides::Bare(index, inner, col.name, col.span, from));
                 }
                 SelectItem::Star { from, .. } => {
                     for target in self.star_targets(query, *from) {
@@ -102,8 +141,12 @@ impl Walk<'_> {
                             Some(inner) if self.outputs(inner, 0) => {
                                 out.push(Provides::Star(inner))
                             }
-                            Some(_) => {}
-                            None => out.push(Provides::UpstreamStar),
+                            Some(inner) => out.extend(
+                                self.upstream_stars(inner, 0)
+                                    .into_iter()
+                                    .map(Provides::UpstreamStar),
+                            ),
+                            None => out.push(Provides::UpstreamStar(target)),
                         }
                     }
                 }
@@ -111,6 +154,29 @@ impl Walk<'_> {
             }
         }
         Ok(out)
+    }
+
+    /// The relations outside the model an in-model query's `*` items
+    /// reach, through CTEs and derived tables that do not name the column.
+    pub(super) fn upstream_stars(&self, query: QueryId, depth: u32) -> Vec<FromId> {
+        let Some(Body::Select(select)) = self.hir.queries.get(query).map(|q| &q.body) else {
+            return Vec::new();
+        };
+        if depth > 64 {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for item in &select.items {
+            if let SelectItem::Star { from, .. } = item {
+                for target in self.star_targets(query, *from) {
+                    match self.inner_query(target) {
+                        Some(inner) => out.extend(self.upstream_stars(inner, depth + 1)),
+                        None => out.push(target),
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// Whether an in-model query names the column in its output.

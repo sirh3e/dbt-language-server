@@ -131,6 +131,10 @@
         "title": "dbt: Sync schema YAML"
       },
       {
+        "command": "cogitator.renameColumn",
+        "title": "dbt: Rename column up- and downstream…"
+      },
+      {
         "command": "cogitator.status",
         "title": "dbt: Language server status"
       },

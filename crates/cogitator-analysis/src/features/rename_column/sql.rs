@@ -20,7 +20,7 @@ use cogitator_dialects::Dialect;
 use cogitator_ir::hir::{
     Body, ColRef, FromId, FromKind, Hir, Ident, QueryId, RelTarget, Resolution, SelectItem,
 };
-use cogitator_ir::{DegradationKind, Span};
+use cogitator_ir::{DegradationKind, Lowered, Span};
 use cogitator_parser::ParsedDocument;
 use cogitator_sql_front::{build_hir, SchemaEnv};
 
@@ -69,21 +69,8 @@ pub(crate) fn analyse(
     seed: Seed<'_>,
     column: &str,
 ) -> Result<DocWalk, String> {
-    if has_control_block(parsed) {
-        return Err("its Jinja control blocks hide which columns it reads".into());
-    }
-    let lowered = build_hir(&template_input(parsed, dialect), &SchemaEnv::default());
-    let incomplete = lowered.degraded.iter().any(|d| {
-        matches!(
-            d.kind,
-            DegradationKind::ParseHole | DegradationKind::CapExceeded
-        )
-    });
-    let hir = match (&lowered.value, incomplete) {
-        (Some(hir), false) => hir,
-        _ => return Err("its SQL does not parse completely".into()),
-    };
-    let root = hir.root.ok_or("its SQL has no query")?;
+    let lowered = lower(parsed, dialect)?;
+    let (hir, root) = bound(&lowered)?;
     let mut walk = Walk::new(hir, &parsed.text, column);
     match seed {
         Seed::Own => {
@@ -120,6 +107,33 @@ pub(crate) fn analyse(
     })
 }
 
+/// The document's bound HIR, or why a rename cannot trust it.
+pub(super) fn lower(parsed: &ParsedDocument, dialect: &Dialect) -> Result<Lowered<Hir>, String> {
+    if has_control_block(parsed) {
+        return Err("its Jinja control blocks hide which columns it reads".into());
+    }
+    let lowered = build_hir(&template_input(parsed, dialect), &SchemaEnv::default());
+    let incomplete = lowered.degraded.iter().any(|d| {
+        matches!(
+            d.kind,
+            DegradationKind::ParseHole | DegradationKind::CapExceeded
+        )
+    });
+    match (&lowered.value, incomplete) {
+        (Some(_), false) => Ok(lowered),
+        _ => Err("its SQL does not parse completely".into()),
+    }
+}
+
+/// The HIR of a [`lower`]ed document and its root query.
+pub(super) fn bound(lowered: &Lowered<Hir>) -> Result<(&Hir, QueryId), String> {
+    let hir = lowered
+        .value
+        .as_ref()
+        .ok_or("its SQL does not parse completely")?;
+    Ok((hir, hir.root.ok_or("its SQL has no query")?))
+}
+
 /// The item that defines the column in the model being renamed.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Found {
@@ -139,7 +153,7 @@ pub(super) struct Walk<'h> {
 }
 
 impl<'h> Walk<'h> {
-    fn new(hir: &'h Hir, text: &'h str, column: &'h str) -> Self {
+    pub(super) fn new(hir: &'h Hir, text: &'h str, column: &'h str) -> Self {
         Walk {
             hir,
             text,

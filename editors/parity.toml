@@ -60,6 +60,7 @@
 "dbt.lineageSite" = { kind = "user" }
 "dbt.syncYaml" = { kind = "user" }
 "dbt.modelDependencies" = { kind = "user" }
+"dbt.renameColumn" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"

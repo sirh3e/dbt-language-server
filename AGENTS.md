@@ -142,7 +142,7 @@ editor integrations live under `editors/`.
   dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
   columns, descriptions inherited down `ColumnLineage::direct` lineage;
   `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
-  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every
+  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`), dbt.renameColumn (the column under the cursor renamed downstream, as textDocument/rename does, or with `direction: "both"` from the model its column lineage says defines it and then downstream; `features/rename_column/upstream.rs`, the shell `server/rename_column.rs`; `apply: true` sends the edit as workspace/applyEdit). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).

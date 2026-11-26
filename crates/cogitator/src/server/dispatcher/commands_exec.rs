@@ -316,6 +316,15 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.renameColumn" => {
+                let pos = arg_position(arg);
+                let snap = self.snapshot_for(&uri);
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.renameColumn", move || {
+                    crate::server::rename_column::reply(&snap, &uri, pos, &arg)
+                });
+                return;
+            }
             "dbt.syncYaml" => {
                 self.sync_yaml(req.id, uri, arg);
                 return;

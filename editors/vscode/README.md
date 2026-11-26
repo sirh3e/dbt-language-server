@@ -104,7 +104,11 @@ and clicking a file opens it at the column), `dbt: Sync
 schema YAML` (the project's or this model's schema YAML brought in line
 with its SQL by `dbt.syncYaml` — missing entries and columns added,
 descriptions inherited down the column lineage; a summary, the plan as a
-diff on request, then applied on confirm), `dbt:
+diff on request, then applied on confirm), `dbt: Rename column up- and
+downstream…` (the model column at the cursor renamed by `dbt.renameColumn`:
+from the model its lineage says defines it, through every model that
+passes it on, or downstream only as F2 does; a summary, the edits on
+request, then applied on confirm), `dbt:
 Structural search (ast-grep)` (`{{ ref($M) }}` over the project's dbt
 files, `sql:select $$$C from $T` over the compiled SQL; `pattern =>
 rewrite` rewrites every match after asking), `dbt: Language server status`,
