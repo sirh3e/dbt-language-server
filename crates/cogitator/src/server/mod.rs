@@ -21,6 +21,7 @@ pub(crate) mod handlers;
 mod highlight;
 mod jobs;
 mod lineage_graph;
+mod lineage_source;
 mod multi_root;
 mod node_info;
 mod offload;

@@ -4,35 +4,25 @@
 //! `features::impact` / `features::column_reach` do the rest. Offloaded
 //! callers only.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use cogitator_analysis::artifacts::bi_manifest::{self, BiManifest};
 use cogitator_analysis::features::{self, column_reach};
-use cogitator_analysis::lineage::ModelLineage;
 
 use super::super::derived_cache::DerivedCache;
+use super::super::lineage_source::LineageSource;
 use super::super::reply::Reply;
 use super::super::snapshot::Snapshot;
-use super::lineage::TypedLineage;
 
 /// The largest BI manifest read (a dashboard list, not an artifact).
 const BI_MANIFEST_CAP: u64 = 16 * 1024 * 1024;
 
-/// The downstream models' typed lineages, each read and parsed from disk.
-pub fn downstream_lineages(
-    typed: &TypedLineage<'_>,
-    snap: &Snapshot,
-    model: &str,
-) -> HashMap<String, ModelLineage> {
-    let mut lineages = HashMap::new();
-    for (name, path) in features::impact_targets(&snap.ctx, model) {
-        let uri = cogitator_lsp::fs_path_to_uri(&path);
-        if let Some(lineage) = typed.for_saved_file(&uri) {
-            lineages.insert(name, lineage);
-        }
-    }
-    lineages
+/// The downstream models dbt.impact reads lineage of (capped like it).
+pub fn downstream(snap: &Snapshot, model: &str) -> Vec<String> {
+    features::impact_targets(&snap.ctx, model)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
 }
 
 /// The BI manifest at `rel` under the project root: `Ok(None)` when none
@@ -77,11 +67,9 @@ pub fn impact_reply(
     model: &str,
     column: Option<&str>,
 ) -> Reply {
-    // typed lineage per downstream model, capped: each file is read and
-    // parsed from disk, stars expand against the project schemas,
-    // control flow only from fresh SQL
-    let typed = TypedLineage::new(snap, derived, artifact_cap);
-    let lineages = downstream_lineages(&typed, snap, model);
+    // typed lineage per downstream model, capped, from the lineage store
+    let source = LineageSource::new(snap, derived, artifact_cap);
+    let lineages = source.lineages(downstream(snap, model).iter().map(String::as_str));
     let report = features::impact(&snap.ctx, model, column, &lineages);
     if column.is_none() {
         return Reply::result(&report);
@@ -111,15 +99,15 @@ pub fn model_reach(
     if !snap.ctx.model_detail_map.contains_key(&model) {
         return None;
     }
-    let typed = TypedLineage::new(snap, derived, artifact_cap);
-    let own = typed.for_saved_file(uri)?;
+    let source = LineageSource::new(snap, derived, artifact_cap);
+    let own = (*source.lineage(&model)).clone()?;
     let columns: Vec<String> = own
         .columns
         .iter()
         .filter(|c| !c.name.contains('*'))
         .map(|c| c.name.clone())
         .collect();
-    let lineages = downstream_lineages(&typed, snap, &model);
+    let lineages = source.lineages(downstream(snap, &model).iter().map(String::as_str));
     let bi = bi_manifest(snap.ctx.project_root.as_deref(), bi_path)
         .ok()
         .flatten();

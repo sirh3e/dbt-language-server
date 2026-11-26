@@ -117,12 +117,9 @@ pub fn report(
     let mut lineages = HashMap::new();
     let mut corpus = None;
     if breaks(&changed) || edit_diff.as_ref().is_some_and(breaks) {
-        for (name, path) in features::impact_targets(&snap.ctx, &model) {
-            let uri = cogitator_lsp::fs_path_to_uri(&path);
-            if let Some(lineage) = typed.for_saved_file(&uri) {
-                lineages.insert(name, lineage);
-            }
-        }
+        let source = super::lineage_source::LineageSource::new(snap, derived, artifact_cap);
+        let downstream = super::handlers::impact::downstream(snap, &model);
+        lineages = source.lineages(downstream.iter().map(String::as_str));
         corpus = Some(column_reach::Corpus::read(&snap.ctx, &|p| {
             std::fs::read_to_string(p).ok()
         }));

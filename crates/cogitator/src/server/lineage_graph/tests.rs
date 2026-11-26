@@ -150,3 +150,47 @@ fn the_store_is_written_when_its_queue_runs_dry_and_read_back() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// What a feature asks of the store now (dbt.impact, breaking changes, YAML
+/// sync): computed once, on the caller's thread, then answered from the
+/// cache by any later request, and kept on disk once flushed.
+#[test]
+fn a_lineage_asked_for_now_is_computed_once_and_kept() {
+    let dir = root("now");
+    let store = Arc::new(Store::open(dir.clone(), 2));
+    let (compute, seen) = counting();
+    let a = keyed("a", 3);
+    let first = store.get_or_compute(&a, |uri| compute(uri));
+    let again = store.get_or_compute(&a, |uri| compute(uri));
+    assert!(
+        Arc::ptr_eq(&first, &again),
+        "the second ask is the cached answer"
+    );
+    assert_eq!(seen.lock().unwrap().len(), 1, "computed once");
+    // a changed file is a new key: computed again
+    store.get_or_compute(&keyed("a", 4), |uri| compute(uri));
+    assert_eq!(seen.lock().unwrap().len(), 2);
+    // a worker's queue sees the same entry: nothing to queue
+    assert!(store.ensure([keyed("a", 4)], &compute, true).is_empty());
+
+    assert!(
+        !persist::cache_path(&dir).exists(),
+        "nothing written before a flush"
+    );
+    store.flush();
+    let reopened = Store::open(dir.clone(), 2);
+    assert!(
+        reopened
+            .valid(
+                "a",
+                &ModelKey {
+                    base: 4,
+                    compiled: 0
+                }
+            )
+            .is_some(),
+        "flushed to disk"
+    );
+    reopened.clear();
+    let _ = std::fs::remove_dir_all(&dir);
+}

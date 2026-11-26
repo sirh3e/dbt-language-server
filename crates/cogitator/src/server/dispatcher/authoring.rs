@@ -12,14 +12,13 @@ use cogitator_analysis::Document;
 use cogitator_lsp::{CodeAction, Range};
 
 use crate::server::derived_cache::DerivedCache;
-use crate::server::handlers::lineage::TypedLineage;
 use crate::server::snapshot::Snapshot;
 
 /// What every authoring action reads, built once per request.
 pub(super) struct Authoring<'a> {
     snap: &'a Snapshot,
     derived: &'a DerivedCache,
-    typed: TypedLineage<'a>,
+    lineages: crate::server::lineage_source::LineageSource<'a>,
     artifact_cap: u64,
 }
 
@@ -28,19 +27,18 @@ impl<'a> Authoring<'a> {
         Authoring {
             snap,
             derived,
-            typed: TypedLineage::new(snap, derived, artifact_cap),
+            lineages: crate::server::lineage_source::LineageSource::new(
+                snap,
+                derived,
+                artifact_cap,
+            ),
             artifact_cap,
         }
     }
 
     /// A model's typed lineage; the snapshot's document for its own uri.
-    fn lineage(&self, uri: &str, model: &str) -> Option<ModelLineage> {
-        let details = self.snap.ctx.model_detail_map.get(model)?;
-        let model_uri = cogitator_lsp::fs_path_to_uri(&details.uri);
-        match self.snap.doc.as_deref() {
-            Some(doc) if model_uri == uri => (*self.typed.for_open_document(doc, uri)).clone(),
-            _ => self.typed.for_saved_file(&model_uri),
-        }
+    fn lineage(&self, model: &str) -> Option<ModelLineage> {
+        (*self.lineages.lineage(model)).clone()
     }
 
     /// The staging scaffold at the cursor (a SQL call or a source entry).
@@ -75,7 +73,7 @@ impl<'a> Authoring<'a> {
         read: &dyn Fn(&Path) -> Option<String>,
     ) -> Vec<CodeAction> {
         let ctx = &self.snap.ctx;
-        let lineage = |model: &str| self.lineage(uri, model);
+        let lineage = |model: &str| self.lineage(model);
         let mut out = Vec::new();
         out.extend(self.scaffold(doc, uri, range, read));
         out.extend(features::inline_model_action(ctx, doc, uri, range, read));
@@ -94,7 +92,7 @@ impl<'a> Authoring<'a> {
         details: &cogitator_analysis::context::ModelDetails,
         read: &dyn Fn(&Path) -> Option<String>,
     ) -> Vec<CodeAction> {
-        let lineage = |name: &str| self.lineage("", name);
+        let lineage = |name: &str| self.lineage(name);
         features::inherit_description_actions(
             &self.snap.ctx,
             text,

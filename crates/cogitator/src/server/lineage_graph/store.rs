@@ -235,6 +235,50 @@ impl Store {
         }
     }
 
+    /// The lineage of `keyed`'s model: the entry when it holds, else
+    /// computed here, on the caller's thread, and kept like a worker's
+    /// answer. For callers that need the answer now; [`Self::flush`]
+    /// writes what they added.
+    pub fn get_or_compute(
+        &self,
+        keyed: &Keyed,
+        compute: impl FnOnce(&str) -> (Option<ModelLineage>, bool),
+    ) -> Arc<Option<ModelLineage>> {
+        if let Some(lineage) = self.valid(&keyed.model, &keyed.key) {
+            return lineage;
+        }
+        let span = tracing::debug_span!("lineage model", model = %keyed.model);
+        let (lineage, compiled) = span.in_scope(|| compute(&keyed.uri));
+        self.stats.computed.fetch_add(1, Ordering::Relaxed);
+        let lineage = Arc::new(lineage);
+        let mut state = self.lock();
+        state.entries.insert(
+            keyed.model.clone(),
+            Entry {
+                base: keyed.key.base,
+                compiled: compiled.then_some(keyed.key.compiled),
+                lineage: lineage.clone(),
+            },
+        );
+        state.dirty = true;
+        drop(state);
+        self.changed.notify_all();
+        lineage
+    }
+
+    /// Writes the store now when it changed and no worker runs (a worker
+    /// that is still busy writes it when its queue runs dry).
+    pub fn flush(&self) {
+        let mut state = self.lock();
+        let idle = state.workers == 0 && state.running.is_empty();
+        let save = (idle && state.dirty).then(|| self.take_save(&mut state));
+        drop(state);
+        if let Some(entries) = save {
+            persist::save(&self.root, &entries);
+            self.stats.saves.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
     /// The entries to write, models that left the project dropped.
     fn take_save(&self, state: &mut State) -> Vec<(String, Entry)> {
         state.dirty = false;

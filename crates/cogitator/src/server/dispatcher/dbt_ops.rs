@@ -226,7 +226,7 @@ impl Dispatcher {
         let options = crate::server::yaml_sync::options_of(&snap, &uri, arg);
         let apply = arg.get("apply").and_then(|v| v.as_bool()) == Some(true);
         self.offload_blocking(id, "dbt.syncYaml", move || {
-            let plan = crate::server::yaml_sync::plan(&snap, &derived, cap, &open, &uri, &options);
+            let plan = crate::server::yaml_sync::plan(&snap, &derived, cap, &open, &options);
             crate::server::yaml_sync::sync_yaml(&snap, &derived, &plan, apply)
         });
     }
