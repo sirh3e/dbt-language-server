@@ -164,6 +164,7 @@ pub struct ServerInfo {
 pub const COMMANDS: &[&str] = &[
     "dbt.goToSchema",
     "dbt.columnLineage",
+    "dbt.columnLineageGraph",
     "dbt.openSchema",
     "dbt.showLineage",
     "dbt.run",

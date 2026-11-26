@@ -108,7 +108,7 @@ writer wins).
   (document pull diagnostics)
 - `codeLensProvider: { resolveProvider: false }`
 - `executeCommandProvider.commands`:
-  `dbt.goToSchema`, `dbt.columnLineage`, `dbt.openSchema`, `dbt.showLineage`,
+  `dbt.goToSchema`, `dbt.columnLineage`, `dbt.columnLineageGraph`, `dbt.openSchema`, `dbt.showLineage`,
   `dbt.run`, `dbt.test`, `dbt.compile`, `dbt.modelGraph`, `dbt.profiles`,
   `dbt.setTarget`, `dbt.extractModelYaml`, `dbt.modelTests`,
   `dbt.goToTests`, `dbt.status`, `dbt.projectGraph`, `dbt.modelInfo`,
@@ -151,6 +151,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.goToSchema` | `Location` or `null` | none (client jumps) |
 | `dbt.openSchema` | `null` | `window/showDocument` or warning |
 | `dbt.columnLineage` | lineage JSON or `null` | none |
+| `dbt.columnLineageGraph` | `{nodes, edges, start, cached, stale?, missing, truncated}` or `null` | none; `{uri, column?, direction?, depth?}`, the column walk of §5.3b in one answer from the server's project-wide lineage cache (persisted to `target/.cogitator-lineage-cache`) |
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
 | `dbt.run` / `dbt.test` / `dbt.compile` | `{token}` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument; the token feeds `dbt.cancel` |
 | `dbt.parse` | `{token}` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |

@@ -952,6 +952,66 @@ async function breakingChanges(): Promise<void> {
   await vscode.window.showTextDocument(doc, { preview: true });
 }
 
+/** A dbt.columnLineageGraph answer. */
+export interface LineageGraph {
+  nodes: Array<{ id: string; name: string; kind: string }>;
+  edges: Array<{ from: string; to: string; kind?: string }>;
+  start?: string | null;
+  cached: boolean;
+  stale?: string[];
+  missing?: string[];
+}
+
+/** The lines dbt.columnLineageGraph's answer reads as, an edge a line. */
+export function lineageGraphLines(graph: LineageGraph): string[] {
+  const names = new Map(graph.nodes.map((n) => [n.id, n.name] as const));
+  const name = (id: string) => names.get(id) ?? id;
+  const lines = [
+    `${graph.nodes.length} columns, ${graph.edges.length} edges` +
+      (graph.cached ? " (from the cache)" : ""),
+  ];
+  if (graph.stale && graph.stale.length > 0) {
+    lines.push(`still being computed: ${graph.stale.join(", ")}`);
+  }
+  if (graph.missing && graph.missing.length > 0) {
+    lines.push(`no lineage: ${graph.missing.join(", ")}`);
+  }
+  lines.push("");
+  for (const edge of graph.edges) {
+    lines.push(`${name(edge.from)} → ${name(edge.to)}${edge.kind ? ` (${edge.kind})` : ""}`);
+  }
+  return lines;
+}
+
+/** dbt.columnLineageGraph: the column lineage around a column, as text. */
+async function columnLineageGraph(): Promise<void> {
+  const column = await vscode.window.showInputBox({
+    prompt: "Column (empty: every column of the model)",
+  });
+  if (column === undefined) {
+    return;
+  }
+  const direction = await vscode.window.showQuickPick(["both", "up", "down"], {
+    placeHolder: "Which way to walk",
+  });
+  if (!direction) {
+    return;
+  }
+  const graph = (await execDbt("dbt.columnLineageGraph", {
+    column: column || undefined,
+    direction,
+  })) as LineageGraph | null | undefined;
+  if (!graph) {
+    void vscode.window.showInformationMessage("dbt: no column lineage for this file");
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "plaintext",
+    content: lineageGraphLines(graph).join("\n"),
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
 /** dbt.lineageSite: the lineage view, fed by the server (lineageView.ts). */
 function lineageView(context: vscode.ExtensionContext): Promise<void> {
   return showLineageView(context, async (uri, assets) => {
@@ -1104,6 +1164,7 @@ export async function activate(
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
     ["cogitator.lineageView", () => lineageView(context)],
+    ["cogitator.columnLineageGraph", columnLineageGraph],
     ["cogitator.syncYaml", syncYaml],
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],

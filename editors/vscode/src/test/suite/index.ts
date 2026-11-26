@@ -15,6 +15,7 @@ import {
   captureColor,
   columnPosition,
   lineageFocus,
+  lineageGraphLines,
   lineageHtml,
   incrementalDiffText,
   incrementalityLabel,
@@ -465,6 +466,36 @@ export async function run(): Promise<void> {
       ]),
     "vscode: a breaking change and its downstream reads are lines"
   );
+  check(
+    JSON.stringify(
+      lineageGraphLines({
+        nodes: [
+          { id: "model:a::id", name: "a.id", kind: "model" },
+          { id: "model:b::id", name: "b.id", kind: "model" },
+        ],
+        edges: [{ from: "model:a::id", to: "model:b::id", kind: "direct" }],
+        cached: true,
+        stale: ["c"],
+      })
+    ) ===
+      JSON.stringify([
+        "2 columns, 1 edges (from the cache)",
+        "still being computed: c",
+        "",
+        "a.id → b.id (direct)",
+      ]),
+    "vscode: a lineage graph reads as an edge a line"
+  );
+  const lineageGraph = (await exec("dbt.columnLineageGraph", {
+    uri: document.uri.toString(),
+    column: "customer_id",
+    direction: "up",
+  })) as { nodes?: unknown[]; edges?: unknown[] } | null;
+  check(
+    Array.isArray(lineageGraph?.nodes) && Array.isArray(lineageGraph?.edges),
+    "vscode: dbt.columnLineageGraph answers nodes and edges",
+    lineageGraph
+  );
   const breakingResult = (await exec("dbt.breakingChanges", {
     uri: document.uri.toString(),
   })) as { status?: string } | null;
@@ -552,6 +583,7 @@ export async function run(): Promise<void> {
       "cogitator.select",
       "cogitator.unresolved",
       "cogitator.breakingChanges",
+      "cogitator.columnLineageGraph",
     ].every((c) =>
       commands.includes(c)
     ),

@@ -14,6 +14,7 @@
 [commands]
 "dbt.goToSchema" = { kind = "user" }
 "dbt.columnLineage" = { kind = "user" }
+"dbt.columnLineageGraph" = { kind = "user" }
 "dbt.openSchema" = { kind = "internal", via = "code lens and code action 'Go to schema' (features/lenses.rs, code_actions/mod.rs)" }
 "dbt.showLineage" = { kind = "user" }
 "dbt.run" = { kind = "user" }

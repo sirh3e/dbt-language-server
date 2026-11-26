@@ -1452,6 +1452,57 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
   (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
 
 ;; ---------------------------------------------------------------------------
+;; the column-lineage graph (dbt.columnLineageGraph)
+
+(defun cogitator--lineage-graph-lines (result)
+  "The lines a dbt.columnLineageGraph RESULT reads as, an edge a line."
+  (let ((names (make-hash-table :test #'equal)))
+    (seq-doseq (node (plist-get result :nodes))
+      (puthash (plist-get node :id) (plist-get node :name) names))
+    (let* ((name (lambda (id) (gethash id names id)))
+           (edges (append (plist-get result :edges) nil))
+           (stale (append (plist-get result :stale) nil))
+           (lines (list (format "%d columns, %d edges%s"
+                                (length (plist-get result :nodes)) (length edges)
+                                (if (eq (plist-get result :cached) t)
+                                    " (from the cache)" "")))))
+      (when stale
+        (push (format "still being computed: %s" (string-join stale ", ")) lines))
+      (push "" lines)
+      (dolist (edge edges)
+        (push (format "%s -> %s%s"
+                      (funcall name (plist-get edge :from))
+                      (funcall name (plist-get edge :to))
+                      (if (plist-get edge :kind)
+                          (format " (%s)" (plist-get edge :kind)) ""))
+              lines))
+      (nreverse lines))))
+
+;;;###autoload
+(defun cogitator-column-lineage-graph (column direction)
+  "The column lineage around COLUMN of this model, walked DIRECTION.
+One request (dbt.columnLineageGraph) answers the whole walk from the
+server's project-wide lineage cache.  An empty COLUMN is every column."
+  (interactive
+   (list (read-string "Column (empty: every column): ")
+         (completing-read "Direction: " '("both" "up" "down") nil t nil nil "both")))
+  (cogitator--execute
+   "dbt.columnLineageGraph"
+   (append (cogitator--command-argument)
+           (unless (string-empty-p column) (list :column column))
+           (list :direction direction))
+   (lambda (result)
+     (if (not (listp result))
+         (message "cogitator: no column lineage for this file")
+       (let ((buf (get-buffer-create "*cogitator-lineage-graph*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (mapconcat #'identity (cogitator--lineage-graph-lines result) "\n") "\n"))
+           (special-mode))
+         (display-buffer buf))))))
+
+;; ---------------------------------------------------------------------------
 ;; the lineage page (dbt.lineageSite)
 
 (defun cogitator--lineage-site-message (result)

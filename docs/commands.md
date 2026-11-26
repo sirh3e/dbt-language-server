@@ -188,6 +188,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none
 - **Editors**: Neovim ✓ · Emacs — · VS Code —
 
+### `dbt.columnLineageGraph`
+
+- **Argument**: `{uri, column?, direction?, depth?, budgetMs?}` — the model of `uri`; `column` the start column (absent: every column of the model); `direction` `"up"`, `"down"` or `"both"` (default); `depth` hops each way (default 3); `budgetMs` how long to wait for lineages still being computed (default 10 000)
+- **Result**: `{nodes, edges, start, cached, stale?, missing, truncated}` — the graph the Neovim plugin's `column_lineage.walk` assembles from one `dbt.columnLineage` per hop, in one answer: nodes `{id, name, kind, uri, tags, columns, model?, column, layer, compiledUri?}` (ids `model:<m>::<col>`, `source:<s>.<t>::<col>`, `unknown:<name>::<col>`; `layer` as the DAG lays it out), edges `{from, to, kind}` with `kind` `"direct"` (the column passes its input through unchanged) or `"derived"`; `cached` when every lineage came from the cache, `stale` the models still being computed when the budget ran out (ask again), `missing` the models whose lineage declined. `null` outside a project. An unknown direction is an `InvalidParams` error with the fix
+- **Side effects**: every model's lineage is computed once, by the server's own worker threads, and kept per model keyed by its file's stamp, the dialect, the inferred schemas of what it reads and (for templates with control flow) the compiled file and manifest — an edit recomputes the edited model only. The rest of the project is computed behind the request. The cache is written to `target/.cogitator-lineage-cache` beside the scan cache (versioned; a file of another build is ignored) so a restart computes nothing that did not change. `dbt.cache {action: "clear"}` forgets it; `dbt.cache`/`dbt.status` report it as `lineage_graph`
+- **Editors**: Neovim ✓ (`cogitator.lineage_graph.fetch`, for the column-lineage view) · Emacs ✓ (`M-x cogitator-column-lineage-graph`) · VS Code ✓ (`dbt: Column lineage graph`)
+
 ### `dbt.showLineage`
 
 - **Argument**: `{uri}` — the document the command is about
