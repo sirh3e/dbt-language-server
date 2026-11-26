@@ -104,7 +104,11 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 .unwrap_or(fallback)
         }
         _ => {
-            // CTE jump within the file (03 §9.2 default arm) …
+            // a CTE, table alias or column alias, bound in its scope …
+            if let Some(local) = super::local_definition(ctx, doc, uri, pos) {
+                return local;
+            }
+            // … else a CTE by its written name (03 §9.2 default arm) …
             if let Some(def) = parsed.def_tokens.get(literal) {
                 return Location {
                     uri: uri.to_string(),
@@ -250,6 +254,10 @@ pub fn function_doc_target(ctx: &DbtContext, doc: &Document, pos: Position) -> O
     }
     let literal = parsed.literal(token);
     if parsed.def_tokens.contains_key(literal) {
+        return None;
+    }
+    // a column alias named `count`: its declaration, not the built-in
+    if super::local_definition(ctx, doc, &doc.uri, pos).is_some() {
         return None;
     }
     if super::completion::scope::resolve_column(ctx, doc, literal)

@@ -35,6 +35,8 @@ pub(crate) struct SqlLocals {
     pub qualifiers: Vec<(String, Span)>,
     /// Folded names every FROM item answers to, by the scope spans it is in.
     pub from_names: Vec<(String, Vec<Span>)>,
+    /// Select-list aliases and CTE column names, for navigation only.
+    pub columns: Vec<super::columns::SqlColumn>,
 }
 
 fn name_of(hir: &Hir, ident: &Ident) -> String {
