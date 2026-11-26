@@ -42,6 +42,20 @@ pub fn completion_with(
     pos: Position,
     read: &dyn Fn(&std::path::Path) -> Option<String>,
 ) -> Vec<CompletionItem> {
+    completion_resolving(ctx, doc, pos, read, None)
+}
+
+/// [`completion_with`] over the project's published column schemas: the
+/// columns of a model or source in scope are resolved through the whole
+/// project (upstream `select *`, CTEs, catalog and YAML fill-in) with their
+/// types, rather than read off that one relation's YAML or lineage.
+pub fn completion_resolving(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
+) -> Vec<CompletionItem> {
     let lines: Vec<&str> = doc.text.split('\n').collect();
     let Some(&line) = lines.get(pos.line as usize) else {
         return Vec::new(); // Go panicked here (Q8-adjacent); degrade instead
@@ -88,7 +102,12 @@ pub fn completion_with(
         .sum::<usize>()
         + cursor;
     let parsed = sql::analyze(doc, &ctx.dialect, offset);
-    let lookup = Lookup { ctx, doc, read };
+    let lookup = Lookup {
+        ctx,
+        doc,
+        read,
+        schemas,
+    };
     let scopes = || column_items::in_scope(&lookup, parsed.as_ref());
     let classified = context::classify(doc, pos, before);
     if let CompletionContext::MemberAccess { qualifier } = &classified {

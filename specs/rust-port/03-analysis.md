@@ -527,15 +527,23 @@ nothing parses, the token classification (`context.rs`) and the token
 scope (`ScopeIndex`) decide as before.
 
 Relations in scope are the FROM items of the cursor's SELECT, by alias,
-else by their own name (a ref's model, a source's table). Their columns:
-a model's from its properties YAML, else from its column lineage (the
-model file read through the shell's `read`; names with `*` left out); a
-source table's from its YAML; a CTE's or derived table's from its select
+else by their own name (a ref's model, a source's table). Their columns
+come from the **column name resolver** (`scope/sql/resolve.rs`): a model's
+or a source table's are the ones the published project schema snapshot
+holds (`features::plan::schemas`, the background job: each model's SQL
+through its upstream models, `select *` chains included, then catalog
+and YAML fill-in), in its order, typed with the type it resolved, else
+the YAML's, and described by the YAML. The request reads the snapshot and
+never runs the job. Without one (before the first job, or a relation it
+does not know): a model's from its properties YAML, else from its column
+lineage (the model file read through the shell's `read`; names with `*`
+left out); a source table's from its YAML. A CTE's or derived table's from its select
 list, `*` and `t.*` expanded through the relations it reads (CTEs up to
 8 deep), descriptions and types passing through bare references.
 
 Items: kind Field, detail = the relation (`customers`, `shop.orders`,
-`recent (CTE)`) and ` · {data_type}` when the YAML has one, documentation
+`recent (CTE)`) and ` · {data_type}` when one is known (the resolver's,
+or the YAML's), documentation
 = the column description. sortText tiers below every global:
 
 | sortText | item |

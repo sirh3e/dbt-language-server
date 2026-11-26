@@ -91,7 +91,9 @@ pub use compiled::{compiled_target, CompiledSql};
 pub use compiled_map::{
     compiled_definition, compiled_hover, compiled_line_map, compiled_source_path, SourceLines,
 };
-pub use completion::{completion, completion_with, resolve_completion_documentation};
+pub use completion::{
+    completion, completion_resolving, completion_with, resolve_completion_documentation,
+};
 pub use cte_preview::{
     choose_source, cte_at, cte_preview_lenses, parse_show, preview_file_name, preview_query,
     render_markdown, CtePreview, PreviewSource, ShowTable,
