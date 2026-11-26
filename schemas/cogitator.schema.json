@@ -19,6 +19,15 @@
           "description": "Show what short single-line {{ … }} expressions render to (default false). (bool)",
           "type": "boolean"
         },
+        "lineage": {
+          "description": "Show after each output column of a model's final select which upstream column it comes from (default true). (bool)",
+          "type": "boolean"
+        },
+        "lineage_max_len": {
+          "description": "The longest column lineage hint before it is cut with … (default 60). (chars)",
+          "type": "integer",
+          "minimum": 0
+        },
         "vars": {
           "description": "Show the value each var() resolves to (default true). (bool)",
           "type": "boolean"

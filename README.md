@@ -55,7 +55,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Write assist**: local CTE/alias scope index, model and source columns
   from schema YAML as completion with documentation
 - **Column lineage** (`dbt.columnLineage` / `dbt.showLineage`):
-  CTE-transitive with `select *` substitution, down to staging columns
+  CTE-transitive with `select *` substitution, down to staging columns;
+  inline in the model too, as an inlay hint after each output column of
+  the final select (`o.amount * 100 as amount_cents, ← stg_payments.amount
+  · derived`), each upstream column a label part that goes to its
+  definition (`inlay.lineage`, `inlay.lineage_max_len`)
 - **Column hover and go-to-definition**: YAML description plus lineage on
   hover, jump from a column to its schema-YAML entry
 - Structured **signature help** for macros (real parameter objects with
@@ -411,6 +415,8 @@ inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked
   jinja: false             # what short {{ … }} expressions render to
+  lineage: true            # where each output column comes from (← stg.col)
+  lineage_max_len: 60      # longer lineage hints are cut with …
 preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
   rows: 20                 # rows when the call names no limit
   max_rows: 1000           # larger limits are capped

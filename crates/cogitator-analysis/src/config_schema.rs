@@ -146,6 +146,16 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Show what short single-line {{ … }} expressions render to (default false).",
                 "bool",
             ),
+            key(
+                "lineage",
+                "Show after each output column of a model's final select which upstream column it comes from (default true).",
+                "bool",
+            ),
+            key(
+                "lineage_max_len",
+                "The longest column lineage hint before it is cut with … (default 60).",
+                "chars",
+            ),
         ],
     },
     SectionSchema {
@@ -277,7 +287,7 @@ pub mod json {
     fn key_json(doc: &KeyDoc) -> Key {
         let (ty, minimum, variants, items) = match doc.value_hint {
             "bool" => ("boolean", None, None, None),
-            "MiB" | "ms" => ("integer", Some(0), None, None),
+            "MiB" | "ms" | "chars" => ("integer", Some(0), None, None),
             "[names]" => ("array", None, None, Some(Items { ty: "string" })),
             hint if hint.contains('|') => ("string", None, Some(hint.split('|').collect()), None),
             _ => ("string", None, None, None),

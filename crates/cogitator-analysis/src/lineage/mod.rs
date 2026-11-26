@@ -33,7 +33,7 @@ pub enum SourceRef {
     Unknown { name: String, column: String },
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ColumnLineage {
     pub name: String,
     pub sources: Vec<SourceRef>,
@@ -44,6 +44,16 @@ pub struct ColumnLineage {
     /// not on the wire.
     #[serde(skip)]
     pub direct: bool,
+    /// The value is computed somewhere on its way here (an expression,
+    /// a literal, a set operation): not a column reference at every hop,
+    /// renames allowed. The inline lineage hints mark it; not on the wire.
+    #[serde(skip)]
+    pub derived: bool,
+    /// The byte offset in the template where the select item producing
+    /// this column ends; `None` on the compiled route, whose spans index
+    /// the compiled SQL. Where the inline hint goes; not on the wire.
+    #[serde(skip)]
+    pub end: Option<u32>,
 }
 
 /// Where an answer that was not read off the live template came from.

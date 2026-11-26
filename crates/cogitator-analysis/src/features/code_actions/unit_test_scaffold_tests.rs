@@ -102,6 +102,7 @@ fn lineage_narrows_inputs_and_names_outputs() {
                 column: "order_id".into(),
             }],
             direct: true,
+            ..Default::default()
         }],
         origin: None,
     };

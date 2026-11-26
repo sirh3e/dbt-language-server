@@ -31,6 +31,7 @@ mod jinja_inline;
 mod jinja_preview;
 mod lenses;
 pub mod lineage_graph;
+pub mod lineage_inlay;
 pub mod lineage_site;
 mod linked_editing;
 pub mod lint;

@@ -18,7 +18,7 @@ M.defaults = {
   lens = { enabled = true, events = { "BufEnter", "CursorHold", "InsertLeave" } },
   keymaps = true,
   semantic_tokens = true,
-  inlay_hints = false, -- true → vim.lsp.inlay_hint on attach
+  inlay_hints = true, -- vim.lsp.inlay_hint on attach (column lineage, ref relations, vars)
   -- column lineage graphs: hops each way, dbt.columnLineage calls at most
   lineage = { depth = 3, max_requests = 60 },
   -- :DbtDag: hops shown around the selection when focused (f, +/-),

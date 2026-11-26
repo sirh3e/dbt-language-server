@@ -27,6 +27,8 @@ pub enum Change {
     InlayVars(bool),
     InlayEnvVars(bool),
     InlayJinja(bool),
+    InlayLineage(bool),
+    InlayLineageMaxLen(u64),
     PreviewRows(u64),
     PreviewMaxRows(u64),
 }
@@ -113,6 +115,15 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.inlay.jinja != new.inlay.jinja {
         out.push(Change::InlayJinja(new.inlay.jinja.unwrap_or(false)));
     }
+    if old.inlay.lineage != new.inlay.lineage {
+        out.push(Change::InlayLineage(new.inlay.lineage.unwrap_or(true)));
+    }
+    if old.inlay.lineage_max_len != new.inlay.lineage_max_len {
+        // 0 is the built-in cap
+        out.push(Change::InlayLineageMaxLen(
+            new.inlay.lineage_max_len.unwrap_or(0),
+        ));
+    }
     if old.preview.rows != new.preview.rows {
         out.push(Change::PreviewRows(
             new.preview.rows.unwrap_or(baseline.preview_rows),
@@ -160,6 +171,8 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayVars(_)
             | Change::InlayEnvVars(_)
             | Change::InlayJinja(_)
+            | Change::InlayLineage(_)
+            | Change::InlayLineageMaxLen(_)
             | Change::PreviewRows(_)
             | Change::PreviewMaxRows(_) => true,
         })
@@ -253,6 +266,14 @@ pub fn apply(
             Change::InlayJinja(on) => {
                 toggles.inlay_jinja.store(*on, Ordering::Relaxed);
                 applied.push("inlay.jinja");
+            }
+            Change::InlayLineage(on) => {
+                toggles.inlay_lineage_off.store(!*on, Ordering::Relaxed);
+                applied.push("inlay.lineage");
+            }
+            Change::InlayLineageMaxLen(len) => {
+                toggles.inlay_lineage_max_len.store(*len, Ordering::Relaxed);
+                applied.push("inlay.lineage_max_len");
             }
             Change::PreviewRows(rows) => {
                 limits.preview_rows.store(*rows, Ordering::Relaxed);

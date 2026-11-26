@@ -280,7 +280,7 @@ defaults:
   lens = { enabled = true, events = { "BufEnter", "CursorHold", "InsertLeave" } },
   keymaps = true,
   semantic_tokens = true,
-  inlay_hints = false, -- true: relations after ref(), var() values, macro params
+  inlay_hints = true,  -- column lineage, relations after ref(), var() values, macro params
   lineage = { depth = 3, max_requests = 60 },
   dag = { focus_depth = 2, follow = false, refresh_on_save = true },
   grammar = { highlight = true, auto_install = false },

@@ -9,6 +9,7 @@ pub mod doctor;
 pub mod incremental;
 pub mod lineage;
 pub mod lineage_graph;
+pub mod lineage_hints;
 pub mod lineage_site;
 pub mod navigation;
 pub mod plan;

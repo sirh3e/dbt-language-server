@@ -2,6 +2,7 @@
 
 use cogitator_ir::hir::{Body, ExprId, ExprKind, FromId, Ident, QueryId, SelectItem};
 
+use super::direct::Hop;
 use super::{unique, Ctx, Row, Star, Walker};
 use crate::lineage::SourceRef;
 
@@ -18,10 +19,16 @@ impl Walker<'_> {
                 };
                 let mut rows = Vec::with_capacity(select.items.len());
                 for item in &select.items {
-                    match self.star_columns(item, ctx) {
-                        Some(columns) => rows.extend(columns),
-                        None => rows.extend(self.item_row(item, ctx, id)),
-                    }
+                    let end = item_end(self.hir, item);
+                    let made = match self.star_columns(item, ctx) {
+                        Some(columns) => columns,
+                        None => self.item_row(item, ctx, id).into_iter().collect(),
+                    };
+                    // a star's column keeps where an in-file CTE made it
+                    rows.extend(made.into_iter().map(|row| Row {
+                        end: row.end.or(end),
+                        ..row
+                    }));
                 }
                 rows
             }
@@ -109,7 +116,7 @@ impl Walker<'_> {
                     label: Some(label),
                     star: Some(star),
                     sources: self.star_sources(&targets, ctx),
-                    direct: false,
+                    ..Row::default()
                 })
             }
             // A placeholder item keeps positions aligned for column lists
@@ -133,7 +140,8 @@ impl Walker<'_> {
         query: QueryId,
     ) -> Row {
         let sources = self.expr_sources(expr, ctx);
-        let direct = self.expr_direct(expr, alias);
+        let direct = self.expr_direct(expr, alias, Hop::Unchanged);
+        let passes = self.expr_direct(expr, alias, Hop::Renamed);
         let named = match alias {
             Some(alias) => Some((alias.folded, self.surface(alias))),
             None => self.implicit_name(expr, query),
@@ -145,6 +153,8 @@ impl Walker<'_> {
                 star: None,
                 sources,
                 direct,
+                passes,
+                end: None,
             },
             None => Row {
                 sources,
@@ -207,6 +217,18 @@ impl Walker<'_> {
     }
 }
 
+/// Where a select item ends: past its alias when it has one.
+fn item_end(hir: &cogitator_ir::hir::Hir, item: &SelectItem) -> Option<u32> {
+    match item {
+        SelectItem::Expr { expr, alias } => {
+            let expr = hir.exprs.get(*expr).map(|e| e.span.end);
+            expr.max(alias.map(|a| a.span.end))
+        }
+        SelectItem::Star { span, .. } => Some(span.end),
+        SelectItem::Jinja(_) | SelectItem::Hole(_) => None,
+    }
+}
+
 /// A set operation outputs by position; the left arm names the columns.
 fn merge_by_position(left: &[Row], right: &[Row]) -> Vec<Row> {
     let width = left.len().max(right.len());
@@ -247,7 +269,8 @@ fn merged(l: &Row, r: &Row) -> Row {
         label: named.label.clone(),
         star,
         sources: unique(sources),
-        direct: false,
+        end: l.end.or(r.end),
+        ..Row::default()
     }
 }
 
