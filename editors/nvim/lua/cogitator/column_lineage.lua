@@ -108,12 +108,21 @@ function M.graph()
     end
     return { nodes = dag_data.relayer(nodes, g.edges), edges = g.edges }
   end
+  --- What is known so far, unlayered (a progress snapshot).
+  function g.partial()
+    local nodes = {}
+    for _, id in ipairs(g.order) do
+      nodes[#nodes + 1] = g.nodes[id]
+    end
+    return { nodes = nodes, edges = vim.list_slice(g.edges) }
+  end
   return g
 end
 
 ---@class cogitator.column_lineage.Opts
 ---@field depth integer hops to follow each way (at least 1)
 ---@field max_requests integer dbt.columnLineage calls at most
+---@field progress fun(partial: {nodes: table[], edges: table[]}, start: string?)? called after each lineage arrives
 
 ---@class cogitator.column_lineage.Result
 ---@field data {nodes: table[], edges: table[]} the payload to draw
@@ -175,6 +184,9 @@ function M.walk(project, start, fetch, opts, done)
         missing[#missing + 1] = model
       end
       cb(ok and lineage or nil)
+      if opts.progress then
+        opts.progress(g.partial(), start_id)
+      end
     end)
   end
 
