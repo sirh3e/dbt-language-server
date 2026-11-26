@@ -1,0 +1,35 @@
+---
+source: crates/cogitator-analysis/tests/authoring_actions.rs
+expression: applied(&action)
+---
+title: Scaffold staging model stg_crust_hops_more (columns unknown: select *)
+kind: Some("refactor")
+
+=== models/marts/stg_crust_hops_more.sql (created)
+-- columns unknown (no YAML columns, catalog or inferred types): select *
+
+with
+
+source as (
+
+    select * from {{ ref('crust_hops_more') }}
+
+),
+
+renamed as (
+
+    select
+        *
+
+    from source
+
+)
+
+select * from renamed
+
+=== models/marts/stg_crust_hops_more.yml (created)
+version: 2
+
+models:
+  - name: stg_crust_hops_more
+    description: "The crusts again, a hop further."

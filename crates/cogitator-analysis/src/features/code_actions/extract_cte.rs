@@ -4,6 +4,10 @@
 //! `{{ ref('x') }}` instead, aliased `x` where it had no alias, so
 //! columns qualified `x.col` still resolve.
 //!
+//! The parent's documented pass-through columns the CTE produces go
+//! along into a new properties entry beside the parent's
+//! ([`super::extract_cte_yaml`]).
+//!
 //! Refused where the result would not stand on its own: a body that
 //! reads another CTE of this file (it would dangle in the new model), a
 //! name a model already has, a CTE with a column list, or a name that is
@@ -25,6 +29,7 @@ pub fn extract_cte_action(
     doc: &Document,
     uri: &str,
     range: Range,
+    read: &dyn Fn(&Path) -> Option<String>,
 ) -> Option<CodeAction> {
     let parsed = &doc.parsed;
     let at = parsed.find_token_at_cursor(range.start.line, range.start.character)?;
@@ -35,6 +40,9 @@ pub fn extract_cte_action(
     let extraction = extraction(doc, name, name)?;
     let path = cogitator_lsp::uri_to_fs_path(uri)?;
     let new_uri = file_uri(&Path::new(&path).parent()?.join(format!("{name}.sql")));
+    let yaml = super::super::model_name_from_uri(uri).and_then(|parent| {
+        super::extract_cte_yaml::carried_entry(ctx, &parent, parsed, &extraction.body, name, read)
+    });
     Some(CodeAction {
         title: format!("Extract CTE '{name}' to a model"),
         kind: Some("refactor.extract"),
@@ -53,7 +61,10 @@ pub fn extract_cte_action(
                     }],
                 )),
                 DocumentChange::Edit(TextDocumentEdit::new(uri.to_string(), extraction.edits)),
-            ],
+            ]
+            .into_iter()
+            .chain(yaml)
+            .collect(),
         }),
         command: None,
         is_preferred: None,
@@ -140,7 +151,7 @@ pub fn extraction(doc: &Document, cte: &str, model: &str) -> Option<Extraction> 
 /// it when it is the last of several; with its `with` when it is the
 /// only one. Each range ends where the next token starts, so the
 /// layout around it stays as it was.
-fn cte_removal(tokens: &[Token], def_i: usize, close_i: usize) -> Option<Range> {
+pub(crate) fn cte_removal(tokens: &[Token], def_i: usize, close_i: usize) -> Option<Range> {
     let next = tokens.get(close_i + 1)?;
     if next.kind == TokenKind::Symbol(',') {
         let after = tokens.get(close_i + 2)?;
@@ -155,7 +166,7 @@ fn cte_removal(tokens: &[Token], def_i: usize, close_i: usize) -> Option<Range> 
 }
 
 /// The token at the matching close of the paren at `open`.
-fn matching_paren(tokens: &[Token], open: usize) -> Option<usize> {
+pub(crate) fn matching_paren(tokens: &[Token], open: usize) -> Option<usize> {
     let mut depth = 0i32;
     for (i, t) in tokens.iter().enumerate().skip(open) {
         match t.kind {

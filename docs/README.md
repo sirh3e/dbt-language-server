@@ -12,6 +12,7 @@
 | [selectors.md](selectors.md) | dbt's node-selection language in cogitator: `dbt.select`, selectors.yml completion, diagnostics, hover and lenses, what is supported and what is not |
 | [properties-yaml.md](properties-yaml.md) | Properties files (`schema.yml`…): schema-driven completion of keys, values, tests and columns, the unproduced-column warning, adding missing columns |
 | [yaml-sync.md](yaml-sync.md) | Syncing schema YAML with the SQL project-wide (`dbt.syncYaml`, `cogitator yaml-sync`): missing entries and columns, descriptions inherited down the column lineage, stale columns, the CI check |
+| [authoring-actions.md](authoring-actions.md) | Writing models faster: scaffold a staging model from a source or ref, extract a CTE with its documentation, inline a model as a CTE, inherit a column's description from upstream |
 | [file-operations.md](file-operations.md) | Renaming, moving, deleting and creating model files from the editor's file tree, and declaration vs definition (YAML entry vs SQL) |
 | [lint-and-format.md](lint-and-format.md) | Jinja and SQL syntax errors as you type (and when they decline), `cogitator lint` and `cogitator format` for CI: what runs, output formats, exit codes |
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |

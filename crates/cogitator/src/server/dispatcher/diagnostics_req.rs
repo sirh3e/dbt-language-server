@@ -159,11 +159,10 @@ impl Dispatcher {
                                 (*lineage).as_ref(),
                             )
                         }));
-                        if let Some(lineage) = (*lineage).as_ref() {
-                            extra.extend(features::inherit_description_actions(
-                                &snap.ctx, &doc.text, &uri, details, lineage,
-                            ));
-                        }
+                        extra.extend(
+                            super::authoring::Authoring::new(&snap, &derived, artifact_cap)
+                                .inherit_in_yaml(&doc.text, &uri, model, details, &read),
+                        );
                         extra.extend(entry_column_action(
                             &snap,
                             &derived,
@@ -183,6 +182,11 @@ impl Dispatcher {
                             model,
                         ));
                     }
+                    // a source table's entry: scaffold its staging model
+                    extra.extend(
+                        super::authoring::Authoring::new(&snap, &derived, artifact_cap)
+                            .scaffold(doc, &uri, range, &read),
+                    );
                     extra[entry_start..]
                         .iter_mut()
                         .for_each(CodeAction::mark_at_cursor);
@@ -212,7 +216,13 @@ impl Dispatcher {
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(
-                        features::extract_cte_action(&snap.ctx, doc, &uri, range)
+                        features::extract_cte_action(&snap.ctx, doc, &uri, range, &read)
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        super::authoring::Authoring::new(&snap, &derived, artifact_cap)
+                            .sql_actions(doc, &uri, range, &read)
+                            .into_iter()
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));

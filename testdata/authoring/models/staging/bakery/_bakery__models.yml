@@ -1,0 +1,12 @@
+version: 2
+
+models:
+  - name: stg_bakery__crusts
+    description: Crusts of the loaves.
+    columns:
+      - name: crust_id
+        description: "{{ doc('crust_id') }}"
+      - name: loaf_id
+        description: The loaf the crust is on.
+      - name: crunch
+        description: How loud the crust is.

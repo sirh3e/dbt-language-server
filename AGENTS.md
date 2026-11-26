@@ -153,7 +153,13 @@ editor integrations live under `editors/`.
   columns, drop contracted ones — offered from the YAML entry too;
   `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
   rename/remove fixes; `refactors.rs`: expand a star, extract
-  schema YAML; `extract_cte.rs`: CTE → model; "Sync schema YAML of 'm'"
+  schema YAML; `extract_cte.rs`: CTE → model, with the parent's
+  pass-through column docs (`extract_cte_yaml.rs`); `inline_model.rs`:
+  model → CTE, deleting its file (`DeleteFile`); `staging_scaffold.rs`:
+  a staging model + YAML from a source/ref; `inherit_docs.rs`: inherit a
+  column description (YAML column or SQL select item) over the yaml-sync
+  walk, doc() calls kept — shell `dispatcher/authoring.rs`,
+  docs/authoring-actions.md; "Sync schema YAML of 'm'"
   from `features::yaml_sync`, on the model's SQL and its YAML entry). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion

@@ -1,0 +1,17 @@
+---
+source: crates/cogitator-analysis/tests/authoring_actions.rs
+expression: applied(&action)
+---
+title: Inline model 'lonely' as a CTE
+kind: Some("refactor.inline")
+
+=== models/marts/inline_plain.sql (edited)
+with lonely as (
+
+    select 1 as n
+
+)
+
+select n from lonely
+
+=== models/marts/lonely.sql (deleted)

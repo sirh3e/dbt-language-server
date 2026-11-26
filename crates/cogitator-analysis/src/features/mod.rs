@@ -68,13 +68,18 @@ pub use code_actions::declare_missing::declare_missing_actions;
 pub use code_actions::define_missing::define_missing_actions;
 pub use code_actions::extract_cte::extract_cte_action;
 pub use code_actions::governance_fixes::private_ref_actions;
+pub use code_actions::inherit_docs::{
+    inherit_description_actions, inherit_description_sql_action, LineageOf,
+};
+pub use code_actions::inline_model::inline_model_action;
 pub use code_actions::refactors::{expand_star_action, extract_yaml_action};
 pub use code_actions::split_model::split_action;
+pub use code_actions::staging_scaffold::{staging_scaffold_action, ScaffoldInputs};
 pub use code_actions::unit_test_scaffold::unit_test_scaffold_action;
 pub use code_actions::yaml_columns::{
     add_missing_columns_action, remove_unproduced_columns_action,
 };
-pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_action};
+pub use code_actions::yaml_fixes::scaffold_tests_action;
 pub use code_actions::yaml_unproduced::unproduced_column_diagnostics;
 pub use code_actions::{code_actions, model_entry_at, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};

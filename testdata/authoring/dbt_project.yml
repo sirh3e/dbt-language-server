@@ -1,0 +1,4 @@
+name: authoring
+version: '1.0'
+profile: authoring
+model-paths: ['models']
