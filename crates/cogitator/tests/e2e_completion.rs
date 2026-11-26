@@ -81,3 +81,56 @@ fn columns_in_scope_rank_qualified_where_ambiguous() {
     assert_eq!(labels(&undocumented, 2), ["order_id", "total"]);
     lsp.shutdown();
 }
+
+/// The column name resolver over the wire: once the schema job has
+/// published, a model that is `select *` of an undocumented `select *` of
+/// a model offers the columns at the bottom of the chain, with their
+/// types — what its own lineage (`*` left unexpanded) never could.
+#[test]
+fn columns_resolve_through_a_chain_of_select_stars() {
+    let project = jaffle();
+    for (name, sql) in [
+        ("star_payments", "select * from {{ ref('stg_payments') }}\n"),
+        ("star_star", "select * from {{ ref('star_payments') }}\n"),
+    ] {
+        std::fs::write(project.root.join(format!("models/{name}.sql")), sql).unwrap();
+    }
+    let (mut lsp, _) = project.booted();
+    let probe = cogitator_lsp::fs_path_to_uri(&project.root.join("models/probe3.sql"));
+    let text = "select t. from {{ ref('star_star') }} t";
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": probe, "languageId": "sql", "version": 1, "text": text}}),
+    );
+    let columns = lsp.wait_until("the schema job resolves star_star's columns", |lsp| {
+        let answer = lsp.request(
+            "textDocument/completion",
+            json!({"textDocument": {"uri": probe}, "position": {"line": 0, "character": 9}}),
+        );
+        let fields: Vec<Value> = answer["result"]
+            .as_array()?
+            .iter()
+            .filter(|i| i["kind"] == 5)
+            .cloned()
+            .collect();
+        (!fields.is_empty()).then_some(fields)
+    });
+    let mut columns = columns;
+    columns.sort_by(|a, b| {
+        a["sortText"]
+            .as_str()
+            .unwrap_or_default()
+            .cmp(b["sortText"].as_str().unwrap_or_default())
+    });
+    assert_eq!(
+        labels(&columns, 4),
+        ["payment_id", "order_id", "payment_method", "amount"]
+    );
+    assert!(
+        columns.iter().all(|c| c["detail"]
+            .as_str()
+            .is_some_and(|d| d.starts_with("star_star"))),
+        "every column is of the relation in scope: {columns:?}"
+    );
+    lsp.shutdown();
+}

@@ -204,6 +204,7 @@ impl Dispatcher {
                 return;
             }
         }
+        let derived = self.derived.clone();
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
             match doc {
                 // the server's own config file: schema-table completion
@@ -214,9 +215,18 @@ impl Dispatcher {
                 Some(d) if crate::server::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
                 }
-                // a model whose YAML documents no columns is asked its lineage
+                // columns resolved through the project's published schemas
+                // (never runs the job); without them a model whose YAML
+                // documents no columns is asked its lineage
                 Some(d) => {
-                    features::completion_with(ctx, d, pos, &|p| std::fs::read_to_string(p).ok())
+                    let snapshot = super::yaml_types::snapshot(ctx, &derived);
+                    features::completion_resolving(
+                        ctx,
+                        d,
+                        pos,
+                        &|p| std::fs::read_to_string(p).ok(),
+                        snapshot.as_ref().map(|s| &*s.schemas),
+                    )
                 }
                 None => Vec::new(),
             }

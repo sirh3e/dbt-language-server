@@ -1,0 +1,6 @@
+version: 2
+models:
+  - name: enriched
+    columns:
+      - name: active
+        description: Whether the customer still has an account.
