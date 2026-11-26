@@ -1,0 +1,4 @@
+name: column_resolver
+version: '1.0'
+profile: column_resolver
+model-paths: ['models']

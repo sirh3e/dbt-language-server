@@ -5,10 +5,12 @@
 
 use std::path::Path;
 
+use cogitator_ir::schema::ProjectSchemas;
+
 use sqlparser::ast::{Expr, Query, Select, SelectItem, SelectItemQualifiedWildcardKind, SetExpr};
 
 use super::super::{cte_columns, RelationTarget};
-use super::{walk, Relation, Scoped, SqlScope};
+use super::{resolve, walk, Relation, Scoped, SqlScope};
 use crate::context::DbtContext;
 use crate::Document;
 
@@ -31,6 +33,9 @@ pub(crate) struct Lookup<'a> {
     pub(crate) ctx: &'a DbtContext,
     pub(crate) doc: &'a Document,
     pub(crate) read: &'a dyn Fn(&Path) -> Option<String>,
+    /// The project's published column schemas, what the resolver reads
+    /// first; `None` before the first schema job.
+    pub(crate) schemas: Option<&'a ProjectSchemas>,
 }
 
 impl SqlScope<'_> {
@@ -185,9 +190,13 @@ fn relabel(columns: Vec<Column>, relation: &str) -> Vec<Column> {
         .collect()
 }
 
-/// A model's documented columns; without any, what its lineage says it
-/// produces (an unexpanded `*` is left out, never guessed).
+/// A model's columns as the project's schema job resolved them; before it
+/// has, its documented columns, else what its own lineage says it produces
+/// (an unexpanded `*` is left out, never guessed).
 fn model_columns(lookup: &Lookup<'_>, name: &str) -> Vec<Column> {
+    if let Some(columns) = resolve::model(lookup, name) {
+        return columns;
+    }
     let Some(model) = lookup.ctx.model_detail_map.get(name) else {
         return Vec::new();
     };
@@ -242,6 +251,9 @@ pub(crate) fn target_columns(lookup: &Lookup<'_>, target: &RelationTarget) -> Ve
 }
 
 fn source_columns(lookup: &Lookup<'_>, source: &str, table: &str) -> Vec<Column> {
+    if let Some(columns) = resolve::source(lookup, source, table) {
+        return columns;
+    }
     lookup
         .ctx
         .source_detail_map
