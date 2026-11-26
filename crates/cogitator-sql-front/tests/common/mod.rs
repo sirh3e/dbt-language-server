@@ -147,6 +147,7 @@ pub fn env_with(model: &str, columns: &[&str], closed: bool) -> SchemaEnv {
             name: Arc::from(*name),
             ty: ColType::UNKNOWN,
             unique: false,
+            proven_type: false,
         })
         .collect();
     let schema = ModelSchema {

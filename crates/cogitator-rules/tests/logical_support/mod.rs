@@ -87,6 +87,7 @@ pub fn model(columns: &[Col]) -> Arc<ModelSchema> {
             name: Arc::from(c.name),
             ty: ColType::new(c.ty.sql(), c.null),
             unique: c.unique,
+            proven_type: true,
         })
         .collect();
     Arc::new(ModelSchema {

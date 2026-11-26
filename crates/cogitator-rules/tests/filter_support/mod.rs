@@ -107,6 +107,7 @@ fn column(name: &str, ty: SqlType) -> SchemaCol {
         name: Arc::from(name),
         ty: ColType::new(ty, Nullability::Unknown),
         unique: false,
+        proven_type: true,
     }
 }
 

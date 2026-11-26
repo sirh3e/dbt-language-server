@@ -49,6 +49,8 @@ mod tests_cross;
 #[cfg(test)]
 mod tests_demand;
 #[cfg(test)]
+mod tests_keys;
+#[cfg(test)]
 mod tests_limits;
 mod types;
 mod upstream;
@@ -218,14 +220,17 @@ fn build_one(
 }
 
 fn add_schema(input: &JobInput<'_>, model: &Arc<str>, result: Option<&Inferred>, walk: &mut Walk) {
-    let yaml = input
-        .models
-        .get(model.as_ref())
-        .map_or(&[][..], |d| d.columns.as_slice());
+    let details = input.models.get(model.as_ref());
     let catalog = input.catalog.and_then(|c| c.models.get(model.as_ref()));
+    let facts = merge::ModelFacts {
+        yaml: details.map_or(&[][..], |d| d.columns.as_slice()),
+        contract: details.is_some_and(|d| d.contract_enforced),
+        keys: single_keys(details, input.manifest, model),
+        upstream: &walk.schemas,
+    };
     let built = merge::model_schema(
         result,
-        yaml,
+        &facts,
         catalog,
         input.dialect,
         input.limits.max_columns,
@@ -241,6 +246,36 @@ fn add_schema(input: &JobInput<'_>, model: &Arc<str>, result: Option<&Inferred>,
     walk.schemas
         .models
         .insert(model.clone(), Arc::new(built.schema));
+}
+
+/// Columns one single-column key makes unique: a model-level constraint
+/// or combination test of one column, or the manifest's `unique_key` of
+/// an incremental model (the template's own is read at inference).
+fn single_keys(
+    details: Option<&crate::ModelDetails>,
+    manifest: Option<&crate::artifacts::manifest::ManifestIndex>,
+    model: &str,
+) -> Vec<String> {
+    let mut keys: Vec<String> = details
+        .map(|d| d.unique_keys.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter(|k| k.len() == 1)
+        .map(|k| k[0].clone())
+        .collect();
+    if let Some(config) = manifest
+        .and_then(|m| m.models.get(model))
+        .map(|n| &n.config)
+    {
+        let incremental = config
+            .materialized
+            .as_deref()
+            .is_some_and(|m| m.eq_ignore_ascii_case("incremental"));
+        if incremental && config.unique_key.len() == 1 {
+            keys.push(config.unique_key[0].to_ascii_lowercase());
+        }
+    }
+    keys
 }
 
 fn insert_sources(input: &JobInput<'_>, schemas: &mut ProjectSchemas) {

@@ -272,5 +272,6 @@ fn col(name: &str, raw_type: Option<&str>, input: &PlanInput<'_>) -> SchemaCol {
         name: Arc::from(name),
         ty: ColType::new(ty, Nullability::Unknown),
         unique: false,
+        proven_type: false,
     }
 }

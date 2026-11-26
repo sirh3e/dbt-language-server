@@ -7,31 +7,48 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
 use cogitator_dialects::Dialect;
-use cogitator_ir::schema::{Completeness, ModelSchema, SchemaCol};
+use cogitator_ir::schema::{Completeness, ModelSchema, ProjectSchemas, SchemaCol};
 use cogitator_ir::{ColType, Nullability, SqlType};
 use cogitator_schemas::ColumnEntry;
 use cogitator_sql_front::parse_sql_type;
 
 use super::infer::Inferred;
 use crate::artifacts::catalog::{CatalogColumn, CatalogTable};
+use crate::features::column_types::Relation;
 
 pub(super) struct BuiltSchema {
     pub(super) schema: ModelSchema,
     pub(super) capped: bool,
 }
 
+/// What the model's own entry adds to its inferred columns.
+pub(super) struct ModelFacts<'a> {
+    pub(super) yaml: &'a [ColumnEntry],
+    /// `contract: {enforced: true}`: a YAML `data_type` is then proven.
+    pub(super) contract: bool,
+    /// Columns a single-column key makes unique (model-level constraint,
+    /// combination test of one column, an incremental `unique_key`),
+    /// lower-cased.
+    pub(super) keys: Vec<String>,
+    /// The schemas built so far: every upstream model and source.
+    pub(super) upstream: &'a ProjectSchemas,
+}
+
 /// SQL inference when there is one; otherwise whatever YAML and the
 /// catalog list, which is never a complete list.
 pub(super) fn model_schema(
     inferred: Option<&Inferred>,
-    yaml: &[ColumnEntry],
+    facts: &ModelFacts<'_>,
     catalog: Option<&CatalogTable>,
     dialect: &Dialect,
     cap: usize,
 ) -> Option<BuiltSchema> {
+    let yaml = facts.yaml;
     let catalog_cols = catalog.map_or(&[][..], |c| c.columns.as_slice());
     let Some(inferred) = inferred else {
-        return listed(yaml, catalog_cols, dialect, cap, Completeness::Open);
+        let mut built = listed(yaml, catalog_cols, dialect, cap, Completeness::Open)?;
+        mark_keys(&mut built, &facts.keys, facts.contract);
+        return Some(built);
     };
     let by_catalog = catalog_index(catalog_cols);
     let by_yaml = yaml_index(yaml);
@@ -39,18 +56,24 @@ pub(super) fn model_schema(
     for col in &inferred.columns {
         let key = col.name.to_lowercase();
         let mut ty = col.ty.clone(); // boundary: the schema owns its types
+        let mut proven =
+            ty.ty != SqlType::Unknown && feeds_proven(inferred, &col.name, facts.upstream);
         if ty.ty == SqlType::Unknown {
             if let Some(found) = by_catalog.get(&key) {
                 ty.ty = parse_sql_type(&found.data_type, dialect);
+                proven = ty.ty != SqlType::Unknown;
             }
         }
         let entry = by_yaml.get(&key).copied();
         if ty.ty == SqlType::Unknown {
             if let Some(raw) = entry.and_then(|e| e.data_type.as_deref()) {
                 ty.ty = parse_sql_type(raw, dialect);
+                proven = facts.contract && ty.ty != SqlType::Unknown;
             }
         }
-        columns.push(with_tests(col.name.clone(), ty, entry));
+        let mut column = with_tests(col.name.clone(), ty, entry);
+        column.proven_type = proven;
+        columns.push(column);
     }
     let completeness = if inferred.open {
         append_listed(&mut columns, yaml, catalog_cols, dialect);
@@ -58,7 +81,67 @@ pub(super) fn model_schema(
     } else {
         Completeness::Closed
     };
-    Some(finish(columns, completeness, cap))
+    let mut built = finish(columns, completeness, cap);
+    let keys: Vec<String> = facts
+        .keys
+        .iter()
+        .cloned()
+        .chain(single(&inferred.template_unique_key))
+        .collect();
+    mark_keys(&mut built, &keys, false);
+    Some(built)
+}
+
+/// The one column of a single-column key.
+fn single(key: &[String]) -> Option<String> {
+    match key {
+        [one] => Some(one.clone()),
+        _ => None,
+    }
+}
+
+/// Marks the key columns unique (and, under an enforced contract, the
+/// YAML-typed ones proven), refreshing the fingerprint.
+fn mark_keys(built: &mut BuiltSchema, keys: &[String], contract: bool) {
+    let mut columns: Vec<SchemaCol> = built.schema.columns.to_vec();
+    for column in &mut columns {
+        if keys.iter().any(|k| k.eq_ignore_ascii_case(&column.name)) {
+            column.unique = true;
+        }
+        if contract && column.ty.ty != SqlType::Unknown {
+            column.proven_type = true;
+        }
+    }
+    let mut hasher = DefaultHasher::new();
+    columns.hash(&mut hasher);
+    built.schema.completeness.hash(&mut hasher);
+    built.schema.fingerprint = hasher.finish();
+    built.schema.columns = Arc::from(columns);
+}
+
+/// True when every upstream column the output column's type rests on is
+/// itself proven in the schemas built so far (casts and literals rest on
+/// nothing and are proven by themselves).
+fn feeds_proven(inferred: &Inferred, name: &str, upstream: &ProjectSchemas) -> bool {
+    let Some(raw) = inferred
+        .typed
+        .iter()
+        .find(|c| c.name.eq_ignore_ascii_case(name))
+    else {
+        return false;
+    };
+    raw.feeds.iter().all(|feed| {
+        let schema = match &feed.relation {
+            Relation::Model { name } => upstream.model(name),
+            Relation::Source { source, table } => upstream.source(source, table),
+            Relation::This | Relation::Other => None,
+        };
+        schema.is_some_and(|s| {
+            s.columns
+                .iter()
+                .any(|c| c.proven_type && c.name.eq_ignore_ascii_case(&feed.column))
+        })
+    })
 }
 
 /// Catalog columns are the whole list; YAML adds tests and type gaps but
@@ -95,16 +178,19 @@ fn listed(
         .map(|c| {
             let entry = by_yaml.get(&c.name.to_lowercase()).copied();
             let mut ty = parse_sql_type(&c.data_type, dialect);
+            let proven = ty != SqlType::Unknown;
             if ty == SqlType::Unknown {
                 if let Some(raw) = entry.and_then(|e| e.data_type.as_deref()) {
                     ty = parse_sql_type(raw, dialect);
                 }
             }
-            with_tests(
+            let mut column = with_tests(
                 Arc::from(c.name.as_str()),
                 ColType::new(ty, Nullability::Unknown),
                 entry,
-            )
+            );
+            column.proven_type = proven;
+            column
         })
         .collect();
     if completeness == Completeness::Open {
@@ -132,6 +218,7 @@ fn append_listed(
                     Nullability::Unknown,
                 ),
                 unique: false,
+                proven_type: true,
             });
         }
     }
@@ -150,7 +237,8 @@ fn append_listed(
     }
 }
 
-/// `unique` marks the column; `not_null` makes it `NotNull`.
+/// `unique` marks the column (a strict test or a `unique` /
+/// `primary_key` constraint); `not_null` makes it `NotNull`.
 pub(in crate::features::plan) fn with_tests(
     name: Arc<str>,
     mut ty: ColType,
@@ -160,7 +248,12 @@ pub(in crate::features::plan) fn with_tests(
     if entry.is_some_and(|e| e.proven_by("not_null")) {
         ty.null = Nullability::NotNull;
     }
-    SchemaCol { name, ty, unique }
+    SchemaCol {
+        name,
+        ty,
+        unique,
+        proven_type: false,
+    }
 }
 
 fn catalog_index(columns: &[CatalogColumn]) -> HashMap<String, &CatalogColumn> {

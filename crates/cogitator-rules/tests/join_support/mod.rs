@@ -27,6 +27,7 @@ pub fn model(columns: &[(&str, bool)]) -> Arc<ModelSchema> {
             name: Arc::from(*name),
             ty: ColType::new(SqlType::Int { bits: None }, Nullability::Unknown),
             unique: *unique,
+            proven_type: true,
         })
         .collect();
     Arc::new(ModelSchema {

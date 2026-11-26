@@ -21,6 +21,10 @@ pub struct SchemaCol {
     pub ty: ColType,
     /// Backed by a `unique` test or constraint.
     pub unique: bool,
+    /// The type rests on evidence that holds: SQL inference over proven
+    /// inputs, the catalog, or an enforced contract — not a YAML
+    /// `data_type` nothing enforces (`type.*` rules warn only on these).
+    pub proven_type: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
