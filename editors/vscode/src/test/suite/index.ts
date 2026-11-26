@@ -12,6 +12,8 @@ import type { CogitatorApi } from "../../extension";
 import {
   astGrepLabel,
   breakingLines,
+  impactLines,
+  searchSummary,
   captureColor,
   columnPosition,
   lineageFocus,
@@ -474,6 +476,54 @@ export async function run(): Promise<void> {
     breakingResult
   );
 
+  check(
+    JSON.stringify(
+      impactLines({
+        summary: "s",
+        models: [{ name: "customers", depth: 1 }],
+        reach: {
+          semanticItems: [{ semanticModel: "sm", list: "entity", name: "customer" }],
+          dashboards: [{ name: "Board", level: "column", url: "https://x" }],
+        },
+      })
+    ) ===
+      JSON.stringify([
+        "model customers (depth 1)",
+        "semantic model sm: entity customer",
+        "dashboard Board (column level) https://x",
+      ]),
+    "vscode: an impact report and its column reach are lines"
+  );
+  const impactResult = (await exec("dbt.impact", {
+    uri: document.uri.toString(),
+    column: "customer_id",
+  })) as { summary?: string } | null;
+  check(
+    typeof impactResult?.summary === "string",
+    "vscode: dbt.impact answers a summary",
+    impactResult
+  );
+
+  check(
+    searchSummary({
+      matches: [],
+      models: ["customers"],
+      searched: 4,
+      notSearched: [{ model: "orders", why: "Jinja control blocks" }],
+      truncated: false,
+    }) === "0 matches in 1 models (4 searched); 1 not searched",
+    "vscode: a structural search's summary"
+  );
+  const searchResult = (await exec("dbt.search", {
+    uri: "",
+    query: "reads stg_customers",
+  })) as { models?: string[] } | null;
+  check(
+    searchResult?.models?.includes("customers") === true,
+    "vscode: dbt.search finds the models that read stg_customers",
+    searchResult
+  );
+
   const selectResult = (await exec("dbt.select", {
     uri: document.uri.toString(),
     selector: "tag:nightly",
@@ -552,6 +602,8 @@ export async function run(): Promise<void> {
       "cogitator.select",
       "cogitator.unresolved",
       "cogitator.breakingChanges",
+      "cogitator.impact",
+      "cogitator.search",
     ].every((c) =>
       commands.includes(c)
     ),

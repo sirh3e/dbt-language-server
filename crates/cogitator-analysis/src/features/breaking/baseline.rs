@@ -14,6 +14,8 @@ pub enum BaselineSource {
     Catalog,
     /// `target/manifest.json`: the columns as documented at the last parse.
     Manifest,
+    /// The model's file as last saved: what the open buffer's edit changes.
+    Saved,
 }
 
 impl BaselineSource {
@@ -21,6 +23,7 @@ impl BaselineSource {
         match self {
             BaselineSource::Catalog => "target/catalog.json",
             BaselineSource::Manifest => "target/manifest.json",
+            BaselineSource::Saved => "the saved file",
         }
     }
 }
@@ -83,4 +86,19 @@ pub fn baseline(model: &str, artifacts: &ArtifactSet) -> Option<Baseline> {
             })
             .collect(),
     })
+}
+
+/// The saved file's columns as a baseline (the edit-time comparison).
+pub fn saved_baseline(columns: &[super::CurrentColumn]) -> Baseline {
+    Baseline {
+        source: BaselineSource::Saved,
+        generated_at: None,
+        columns: columns
+            .iter()
+            .map(|c| BaselineColumn {
+                name: c.name.clone(),
+                data_type: c.data_type.clone(),
+            })
+            .collect(),
+    }
 }

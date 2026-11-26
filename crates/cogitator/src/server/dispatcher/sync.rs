@@ -31,6 +31,7 @@ impl Dispatcher {
         }
         self.publish_static_diagnostics(&uri);
         self.spawn_breaking(&uri);
+        self.spawn_reach(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -56,6 +57,7 @@ impl Dispatcher {
         }
         self.publish_static_diagnostics(&uri);
         self.spawn_breaking(&uri);
+        self.spawn_reach(&uri);
         self.spawn_fusion(uri);
     }
 
@@ -70,6 +72,8 @@ impl Dispatcher {
             .change(&uri, &params.content_changes, &dialect);
         // syntax errors as you type: the push set is fs-free and cheap
         self.publish_static_diagnostics(&uri);
+        // what this edit breaks, after the refresh debounce
+        self.spawn_breaking_debounced(&uri);
     }
 
     /// Diagnostics for one open doc — see server::diagnostics.
@@ -85,6 +89,15 @@ impl Dispatcher {
             &self.derived,
             &self.perf_settings(),
         )
+    }
+
+    /// cogitator.yml `bi.manifest` (empty: none).
+    pub(super) fn bi_manifest_path(&self) -> String {
+        self.toggles
+            .bi_manifest
+            .read()
+            .expect("bi manifest lock")
+            .clone()
     }
 
     /// The live perf settings: a cheap Arc clone.

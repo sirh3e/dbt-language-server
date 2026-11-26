@@ -666,6 +666,58 @@ async function astGrep(): Promise<void> {
   }
 }
 
+/** A dbt.search answer, as far as the palette reads it. */
+export interface SearchResult {
+  matches: AstGrepMatch[];
+  models: string[];
+  searched: number;
+  notSearched: { model: string; why: string }[];
+  truncated: boolean;
+}
+
+/** The one-line summary of a dbt.search answer. */
+export function searchSummary(result: SearchResult): string {
+  const skipped = result.notSearched.length;
+  return (
+    `${result.matches.length} matches in ${result.models.length} models (${result.searched} searched)` +
+    (skipped > 0 ? `; ${skipped} not searched` : "") +
+    (result.truncated ? " (the first 500)" : "")
+  );
+}
+
+/** Structural search over the models' SQL (dbt.search). */
+async function structuralSearch(): Promise<void> {
+  const query = await vscode.window.showInputBox({
+    prompt: "dbt search: joins <rel> [on <col>] | select-star [from <rel>] | reads <rel> | uses column <rel>.<col>, joined by and",
+    value: "select-star from source",
+  });
+  if (!query) {
+    return;
+  }
+  const result = (await execDbt("dbt.search", { uri: "", query })) as SearchResult | undefined;
+  if (!result) {
+    return;
+  }
+  const skipped = result.notSearched.map((n) => `${n.model}: ${n.why}`);
+  if (result.matches.length === 0) {
+    void vscode.window.showInformationMessage(
+      `dbt search: ${searchSummary(result)}` + (skipped.length ? ` — ${skipped.join("; ")}` : "")
+    );
+    return;
+  }
+  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
+  const pick = await vscode.window.showQuickPick(
+    result.matches.map((m) => ({ ...astGrepLabel(m, relative), match: m })),
+    { matchOnDescription: true, placeHolder: `${query}: ${searchSummary(result)}` }
+  );
+  if (pick) {
+    const r = pick.match.range;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.match.uri), {
+      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
+    });
+  }
+}
+
 /** One node of a dbt.select answer. */
 export interface SelectedNode {
   uniqueId: string;
@@ -894,6 +946,62 @@ async function modelDependencies(): Promise<void> {
   }
 }
 
+/** A dbt.impact answer, as far as the palette reads it. */
+export interface ImpactReport {
+  summary: string;
+  models?: { name: string; depth: number }[];
+  columnHits?: { model: string; column: string }[];
+  reach?: {
+    tests?: { model: string; column: string; test: string }[];
+    semanticItems?: { semanticModel: string; list?: string; name?: string }[];
+    metrics?: { name: string; via: string }[];
+    exposures?: { name: string }[];
+    dashboards?: { name: string; level: string; url?: string }[];
+    notes?: string[];
+  };
+}
+
+/** The lines of a dbt.impact answer: the downstream models, the column
+ * hits and, for a column, what reads it. */
+export function impactLines(report: ImpactReport): string[] {
+  const reach = report.reach ?? {};
+  return [
+    ...(report.models ?? []).map((m) => `model ${m.name} (depth ${m.depth})`),
+    ...(report.columnHits ?? []).map((h) => `column ${h.model}.${h.column}`),
+    ...(reach.tests ?? []).map((t) => `test ${t.test} on ${t.model}.${t.column}`),
+    ...(reach.semanticItems ?? []).map(
+      (s) => `semantic model ${s.semanticModel}: ${s.list ?? "expr"} ${s.name ?? ""}`
+    ),
+    ...(reach.metrics ?? []).map((m) => `metric ${m.name} (via ${m.via})`),
+    ...(reach.exposures ?? []).map((e) => `exposure ${e.name} (node level)`),
+    ...(reach.dashboards ?? []).map(
+      (d) => `dashboard ${d.name} (${d.level} level)` + (d.url ? ` ${d.url}` : "")
+    ),
+    ...(reach.notes ?? []).map((n) => `note: ${n}`),
+  ];
+}
+
+/** Who reads this model or one of its columns (dbt.impact). */
+async function impact(): Promise<void> {
+  const column = await vscode.window.showInputBox({
+    prompt: "Column (empty: the whole model)",
+  });
+  if (column === undefined) {
+    return;
+  }
+  const report = (await execDbt("dbt.impact", column ? { column } : {})) as
+    | ImpactReport
+    | undefined;
+  if (!report) {
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "plaintext",
+    content: [report.summary, "", ...impactLines(report)].join("\n"),
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
 /** A dbt.breakingChanges answer, as far as the palette reads it. */
 export interface BreakingReport {
   summary: string;
@@ -1108,6 +1216,8 @@ export async function activate(
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
+    ["cogitator.impact", impact],
+    ["cogitator.search", structuralSearch],
     ["cogitator.modelDependencies", modelDependencies],
     [
       "cogitator.status",

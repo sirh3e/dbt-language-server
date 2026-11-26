@@ -113,7 +113,10 @@ editor integrations live under `editors/`.
   (showDocument navigation for the YAML-side code actions),
   dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
   dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
-  dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
+  dbt.impact (with a `column`, its reach: tests, semantic models,
+  metrics, exposures at node level, BI-manifest dashboards;
+  `features/column_reach/`, shell `server/handlers/impact.rs`, cached per
+  model on open/save for the column hover), dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
   findings and rule trace for one model; `features/plan/`), dbt.deps
   (project-wide `dbt deps`, refreshes the context; the packages.yml
   quickfix runs it), dbt.syntaxTree (the open document's tree-sitter-dbt
@@ -129,13 +132,18 @@ editor integrations live under `editors/`.
   against target/catalog.json or the manifest's documented columns, and
   what that breaks downstream; `features/breaking/`, the shell in
   `server/breaking.rs`, computed on open/save for its diagnostics and
-  lens by `dispatcher/breaking.rs`), dbt.select (the nodes a dbt selector
+  lens by `dispatcher/breaking.rs`; after the refresh debounce on change
+  too, against the saved file as well, anchored by `breaking/anchor.rs`,
+  with a "Keep '<old>' as an alias" quick fix), dbt.select (the nodes a dbt selector
   picks, as `dbt ls` lists them; the selector engine, `selectors/`),
   dbt.lineageSite (the lineage site's data and page assets, or the page
   written to `target/cogitator-lineage/`; `features/lineage_site/` pure,
   the shell `server/handlers/lineage_site.rs`, shared with the
   `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`),
-  dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
+  dbt.search (a structural query over every model's HIR —
+  `joins x on col`, `select-star from source`, `reads <rel>`, `uses column
+  <rel>.<col>` — in dbt.astGrep's match shape; `features/hir_search/`,
+  shell `server/handlers/search.rs`), dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
   columns, descriptions inherited down `ColumnLineage::direct` lineage;
   `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
   `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every

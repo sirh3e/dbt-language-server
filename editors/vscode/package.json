@@ -111,6 +111,14 @@
         "title": "dbt: Breaking changes against the last build"
       },
       {
+        "command": "cogitator.impact",
+        "title": "dbt: Who reads this column?"
+      },
+      {
+        "command": "cogitator.search",
+        "title": "dbt: Structural search over the models' SQL"
+      },
+      {
         "command": "cogitator.modelDependencies",
         "title": "dbt: Model dependencies"
       },

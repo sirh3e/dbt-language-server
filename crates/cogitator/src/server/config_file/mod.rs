@@ -38,6 +38,8 @@ pub struct FileConfig {
     pub inlay: InlaySection,
     #[serde(default)]
     pub preview: PreviewSection,
+    #[serde(default)]
+    pub bi: BiSection,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -80,6 +82,13 @@ pub struct PreviewSection {
     pub rows: Option<u64>,
     /// The most rows a call may ask for (default 1000).
     pub max_rows: Option<u64>,
+}
+
+/// BI tools at the end of the lineage (docs/column-reach.md).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct BiSection {
+    /// The BI manifest, relative to the project root.
+    pub manifest: Option<String>,
 }
 
 /// Opt-in style checks (03 §10); absent keys fall back to the launch
@@ -234,6 +243,7 @@ const ROOT_KEYS: &[&str] = &[
     "vars",
     "perf_rules",
     "preview",
+    "bi",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
 const LIMITS_KEYS: &[&str] = &["compiled_sql_mib", "artifact_mib"];
@@ -254,6 +264,7 @@ const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
 const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
 const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
+const BI_KEYS: &[&str] = &["manifest"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
     "join.left_nullified",
@@ -323,6 +334,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("perf_rules", PERF_RULE_KEYS),
         ("inlay", INLAY_KEYS),
         ("preview", PREVIEW_KEYS),
+        ("bi", BI_KEYS),
     ] {
         if let Some(node) = get(root, section) {
             for (key, _) in entries(node) {
@@ -359,6 +371,7 @@ mod tests {
             (PERF_RULE_KEYS, "perf_rules"),
             (INLAY_KEYS, "inlay"),
             (PREVIEW_KEYS, "preview"),
+            (BI_KEYS, "bi"),
         ] {
             let schema: Vec<&str> = section(name)
                 .expect(name)

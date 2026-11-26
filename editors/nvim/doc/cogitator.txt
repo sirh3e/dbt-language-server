@@ -522,6 +522,14 @@ macro's signature, callers and calls; a test's refs; a generic test's
 places in YAML; a model's neighbours. Without a kind the kinds are tried
 in order. <CR> opens the line's target, q closes.
 
+                                                     *cogitator-nvim-search*
+`:DbtSearch {query}` searches the structure of every model's SQL
+(`dbt.search`), which ast-grep's dbt grammar cannot see: `joins stg_orders
+on customer_id`, `select-star from source`, `reads source:shop.orders`,
+`uses column orders.amount`, combined with `and`. The matches fill the
+quickfix list; models whose SQL cannot be read structurally (Jinja control
+blocks, a parse error) are named as not searched. See docs/search.md.
+
                                                     *cogitator-nvim-astgrep*
 `:DbtAstGrep {{ ref($M) }}` searches the project's dbt files with ast-grep
 over tree-sitter-dbt (`dbt.astGrep`) and fills the quickfix list; `$M` is

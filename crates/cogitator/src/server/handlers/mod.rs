@@ -6,6 +6,7 @@
 
 pub mod commands;
 pub mod doctor;
+pub mod impact;
 pub mod incremental;
 pub mod lineage;
 pub mod lineage_site;
@@ -15,3 +16,4 @@ mod plan_compiled;
 pub mod plan_hints;
 pub mod preview_cte;
 pub mod profiles;
+pub mod search;

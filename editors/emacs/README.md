@@ -79,11 +79,13 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-node-info` | a node's card (`dbt.nodeInfo`): `[kind:]name` — a macro's signature, callers and calls; a test's refs; a generic test's places in YAML |
 | `M-x cogitator-select` | the nodes a dbt selection picks (`dbt.select`), as `dbt ls --select` answers it: `tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `… --exclude resource_type:test`; models, seeds, snapshots, sources, tests and exposures; choose one to visit it |
 | `M-x cogitator-breaking-changes` | this model against its last built schema (`dbt.breakingChanges`): removed, possibly renamed and retyped columns against `target/catalog.json` (else the manifest's documented columns) and what reads them downstream; also a lens and a diagnostic, refreshed on save |
+| `M-x cogitator-impact` | what this model feeds downstream (`dbt.impact`); with a column, who reads it: downstream columns, their tests, semantic-model entities/dimensions/measures, the metrics over them, exposures (node level) and the dashboards of the BI manifest (`bi.manifest` in cogitator.yml) |
 | `M-x cogitator-model-dependencies` | this model and its neighbours (`dbt.modelDependencies`): what it uses and what uses it, directly and all the way, nearest first, each with how it is built, in a grep buffer |
 | `M-x cogitator-unresolved` | every unresolved `ref`, `source`, source table, `doc`, macro and `var` of the project (`dbt.unresolved`) in a grep buffer; with `C-u`, only the kinds you name |
 | `M-x cogitator-lineage-site` | the project's column-lineage page (`dbt.lineageSite`), written to `target/cogitator-lineage/index.html` and opened in the browser |
 | `M-x cogitator-sync-yaml` | bring the models' schema YAML in line with their SQL (`dbt.syncYaml`): missing entries and columns added, descriptions inherited down the column lineage; the plan opens as a diff and is applied on confirm; with `C-u`, only this buffer's model (`cogitator-sync-yaml-prune`, `cogitator-sync-yaml-inherit-types`) |
 | `M-x cogitator-ast-grep` | structural search with ast-grep (`dbt.astGrep`): `{{ ref($M) }}` over the project's dbt files, `sql:select $$$C from $T` over the compiled SQL; matches in a grep buffer; `pattern => rewrite` rewrites every match after asking |
+| `M-x cogitator-search` | structural search over every model's SQL (`dbt.search`): `joins stg_orders on customer_id`, `select-star from source`, `reads source:shop.orders`, `uses column orders.amount`, joined by `and`; matches in a grep buffer, the models it could not search named under them |
 
 Suggested bindings:
 

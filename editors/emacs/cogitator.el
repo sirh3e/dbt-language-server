@@ -910,6 +910,48 @@ it is applied to every match after asking."
               "dbt.astGrep" (append argument (list :apply t))
               (lambda (_) (message "cogitator: rewrote %d matches" (length matches)))))))))))
 
+;; structural search over the models' HIR (dbt.search)
+;; ---------------------------------------------------------------------------
+
+(defvar cogitator-search-history nil "Queries typed into `cogitator-search'.")
+
+(defun cogitator--search-summary (result)
+  "The one-line summary of a dbt.search RESULT."
+  (let ((skipped (length (plist-get result :notSearched))))
+    (concat (format "%d matches in %d models (%s searched)"
+                    (length (plist-get result :matches))
+                    (length (plist-get result :models))
+                    (plist-get result :searched))
+            (if (> skipped 0) (format "; %d not searched" skipped) "")
+            (if (eq (plist-get result :truncated) t) " (the first 500)" ""))))
+
+;;;###autoload
+(defun cogitator-search (query)
+  "Structural search over every model's SQL (dbt.search).
+QUERY is clauses joined by `and': `joins stg_orders on customer_id',
+`select-star from source', `reads source:shop.orders', `uses column
+orders.amount'.  Matches land in a grep buffer; the models whose SQL
+could not be searched are named under them."
+  (interactive (list (read-string "dbt search: " nil 'cogitator-search-history)))
+  (when (string-empty-p (string-trim query))
+    (user-error "cogitator: give a query, e.g. joins stg_orders on customer_id"))
+  (cogitator--execute
+   "dbt.search" (list :uri "" :query query)
+   (lambda (result)
+     (let ((matches (append (plist-get result :matches) nil))
+           (buf (get-buffer-create "*cogitator-search*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt search %s: %s -*-\n\n" query (cogitator--search-summary result)))
+           (insert (mapconcat #'cogitator--ast-grep-line matches "\n") "\n")
+           (dolist (skipped (append (plist-get result :notSearched) nil))
+             (insert (format "not searched: %s — %s\n"
+                             (plist-get skipped :model) (plist-get skipped :why)))))
+         (require 'grep)
+         (grep-mode))
+       (display-buffer buf)))))
+
 ;; node selection (dbt.select): dbt's --select syntax, as `dbt ls' answers it
 ;; ---------------------------------------------------------------------------
 
@@ -1148,6 +1190,60 @@ nearest first, in a grep buffer."
            (require 'grep)
            (grep-mode))
          (display-buffer buf))))))
+
+;; downstream impact and column reach (dbt.impact)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--impact-lines (result)
+  "The lines of a dbt.impact RESULT: the downstream models, the column
+hits and, for a column, what reads it (tests, semantic models, metrics,
+exposures at node level, dashboards)."
+  (let ((reach (plist-get result :reach))
+        lines)
+    (dolist (node (append (plist-get result :models) nil))
+      (push (format "model %s (depth %s)" (plist-get node :name) (plist-get node :depth)) lines))
+    (dolist (hit (append (plist-get result :columnHits) nil))
+      (push (format "column %s.%s" (plist-get hit :model) (plist-get hit :column)) lines))
+    (when (and reach (not (eq reach :null)))
+      (dolist (test (append (plist-get reach :tests) nil))
+        (push (format "test %s on %s.%s" (plist-get test :test)
+                      (plist-get test :model) (plist-get test :column))
+              lines))
+      (dolist (item (append (plist-get reach :semanticItems) nil))
+        (push (format "semantic model %s: %s %s" (plist-get item :semanticModel)
+                      (or (plist-get item :list) "expr") (or (plist-get item :name) ""))
+              lines))
+      (dolist (metric (append (plist-get reach :metrics) nil))
+        (push (format "metric %s (via %s)" (plist-get metric :name) (plist-get metric :via)) lines))
+      (dolist (exposure (append (plist-get reach :exposures) nil))
+        (push (format "exposure %s (node level)" (plist-get exposure :name)) lines))
+      (dolist (dash (append (plist-get reach :dashboards) nil))
+        (push (format "dashboard %s (%s level)%s" (plist-get dash :name) (plist-get dash :level)
+                      (if (stringp (plist-get dash :url)) (concat " " (plist-get dash :url)) ""))
+              lines))
+      (dolist (note (append (plist-get reach :notes) nil))
+        (push (concat "note: " note) lines)))
+    (nreverse lines)))
+
+;;;###autoload
+(defun cogitator-impact (column)
+  "What this model feeds downstream (dbt.impact); with a COLUMN, who reads it:
+the downstream columns, their tests, semantic models, metrics, exposures
+and the dashboards of the BI manifest (cogitator.yml bi.manifest)."
+  (interactive (list (read-string "Column (empty: the whole model): ")))
+  (cogitator--execute
+   "dbt.impact"
+   (append (cogitator--command-argument)
+           (and column (not (string-empty-p column)) (list :column column)))
+   (lambda (result)
+     (let ((buf (get-buffer-create "*cogitator-impact*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt impact: %s -*-\n\n" (plist-get result :summary)))
+           (insert (mapconcat #'identity (cogitator--impact-lines result) "\n") "\n"))
+         (special-mode))
+       (display-buffer buf)))))
 
 ;; breaking changes (dbt.breakingChanges)
 ;; ---------------------------------------------------------------------------

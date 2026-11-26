@@ -8,6 +8,7 @@
 | [local-names.md](local-names.md) | Renaming, references and highlights of names local to a file: Jinja `set` and loop variables, macro parameters (with their keyword call sites), CTEs and table aliases; scoping and refusals |
 | [highlighting.md](highlighting.md) | Colours from the server for models, macros, tests, compiled SQL and YAML property files: the layers, dbt-aware captures, options per editor, theming; macros and tests in the explorer |
 | [ast-grep.md](ast-grep.md) | Structural search and rewrite with ast-grep over tree-sitter-dbt, your ast-grep rules as diagnostics, the ast-grep CLI for CI, and the server's highlighting |
+| [search.md](search.md) | Structural search over the models' SQL (`dbt.search`): joins, `select *`, the relations and columns a model reads, as a small query language over the HIR |
 | [column-rename.md](column-rename.md) | Renaming a model's output column across the project: what changes at every depth, where the walk stops, and when it is refused |
 | [selectors.md](selectors.md) | dbt's node-selection language in cogitator: `dbt.select`, selectors.yml completion, diagnostics, hover and lenses, what is supported and what is not |
 | [properties-yaml.md](properties-yaml.md) | Properties files (`schema.yml`…): schema-driven completion of keys, values, tests and columns, the unproduced-column warning, adding missing columns |
@@ -16,6 +17,7 @@
 | [file-operations.md](file-operations.md) | Renaming, moving, deleting and creating model files from the editor's file tree, and declaration vs definition (YAML entry vs SQL) |
 | [lint-and-format.md](lint-and-format.md) | Jinja and SQL syntax errors as you type (and when they decline), `cogitator lint` and `cogitator format` for CI: what runs, output formats, exit codes |
 | [macros.md](macros.md) | Dispatched macros (go to implementation, which implementation the active adapter picks) and the macro call checks (argument counts, unknown and duplicate keywords, dispatches without a default) |
+| [column-reach.md](column-reach.md) | Who reads a column: downstream columns, tests, semantic models, metrics, exposures and the dashboards of a BI manifest (`dbt.impact`, the column hover) |
 | [breaking-changes.md](breaking-changes.md) | The breaking-change preview: a model's columns against its last built schema, and what that breaks downstream |
 | [preview.md](preview.md) | The rows of one CTE: the "Preview rows" lenses, which SQL runs, the row limits, cancelling, per editor |
 | [lineage-site.md](lineage-site.md) | The column-lineage dashboard: `cogitator lineage-site` (a self-contained HTML page) and the live view in VS Code, what is traced, what is marked unknown, and why |

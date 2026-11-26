@@ -73,10 +73,12 @@ impl Dispatcher {
                                 lineage.as_deref().and_then(Option::as_ref),
                             );
                             // the column's inferred type, from the published snapshot
-                            with_type_line(
+                            let text = with_type_line(
                                 text,
                                 super::yaml_types::hover(ctx, &derived, d, uri, pos),
-                            )
+                            );
+                            // who reads it, from the open/save cache only
+                            with_type_line(text, reach_line(ctx, &derived, d, uri, pos))
                         }
                     })
                     .unwrap_or_default(),
@@ -514,6 +516,22 @@ fn quality_lenses(
 }
 
 /// Appends a column-type hover line after whatever the hover says.
+/// "`orders.amount` is read by 3 models, …" from the reach cache; `None`
+/// off a column or before the model's reach was computed.
+fn reach_line(
+    ctx: &cogitator_analysis::DbtContext,
+    derived: &crate::server::derived_cache::DerivedCache,
+    doc: &cogitator_analysis::Document,
+    uri: &str,
+    pos: cogitator_lsp::Position,
+) -> Option<String> {
+    use cogitator_analysis::features::column_reach;
+    let (model, column) = column_reach::column_at(ctx, doc, uri, pos)?;
+    let reach = derived.reach_cached(&model)?;
+    let found = reach.column(&column)?;
+    Some(column_reach::hover_line(&model, &column, found))
+}
+
 fn with_type_line(text: String, line: Option<String>) -> String {
     match line {
         None => text,

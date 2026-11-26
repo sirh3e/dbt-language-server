@@ -1,10 +1,13 @@
 //! The editor surfaces of a breaking-change report: one diagnostic per
 //! removed or retyped column, the summary line and the code lens.
 
-use cogitator_lsp::{diagnostic_severity, CodeLens, Command, Diagnostic, Range};
+use cogitator_lsp::{
+    diagnostic_severity, CodeLens, Command, Diagnostic, DiagnosticData,
+    DiagnosticRelatedInformation, FixKind, Location, MultiEditFix, Range,
+};
 
 use super::downstream::Severity;
-use super::{BreakingReport, ChangeKind, ColumnImpact, Status};
+use super::{BaselineSource, BreakingReport, ChangeKind, ColumnImpact, Status};
 
 pub const BREAKING_CODE: &str = "breaking-change";
 
@@ -30,33 +33,116 @@ fn describe_change(impact: &ColumnImpact) -> String {
     }
 }
 
-/// The diagnostics of a compared report (none for any other status).
+/// The diagnostics of a compared report (none for any other status):
+/// what the open buffer's edit breaks against the saved file first,
+/// then what the model breaks against the last build, a column flagged
+/// by the edit once. Each sits at its column's place in the SQL
+/// (`anchor.rs`), the top of the file when there is none.
 pub fn diagnostics(report: &BreakingReport) -> Vec<Diagnostic> {
-    if report.status != Status::Compared {
-        return Vec::new();
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    let edit = report.since_save.as_deref();
+    for r in edit.into_iter().chain(std::iter::once(report)) {
+        if r.status != Status::Compared {
+            continue;
+        }
+        let file = r.baseline.as_ref().map_or("target/", |b| b.source.file());
+        for impact in &r.impacts {
+            if seen.iter().any(|c| c.eq_ignore_ascii_case(&impact.column)) {
+                continue;
+            }
+            seen.push(impact.column.clone());
+            out.push(diagnostic(r, impact, file));
+        }
     }
-    let file = report
-        .baseline
-        .as_ref()
-        .map_or("target/", |b| b.source.file());
-    report
-        .impacts
+    out
+}
+
+fn diagnostic(report: &BreakingReport, impact: &ColumnImpact, file: &str) -> Diagnostic {
+    let severity = match impact.severity {
+        Severity::Error => diagnostic_severity::ERROR,
+        Severity::Warning => diagnostic_severity::WARNING,
+        Severity::Information => diagnostic_severity::INFO,
+    };
+    let mut d = Diagnostic::plain(
+        impact.range.unwrap_or_default(),
+        message(report, impact, file),
+        severity,
+        BREAKING_CODE,
+        "cogitator",
+    );
+    if !impact.related.is_empty() {
+        d.related_information = Some(
+            impact
+                .related
+                .iter()
+                .map(|r| DiagnosticRelatedInformation {
+                    location: Location {
+                        uri: r.uri.clone(),
+                        range: r.range,
+                    },
+                    message: r.message.clone(),
+                })
+                .collect(),
+        );
+    }
+    if let Some(edit) = &impact.keep_alias {
+        d.data = Some(DiagnosticData {
+            fix: FixKind::MultiEdit {
+                fixes: vec![MultiEditFix {
+                    title: format!("Keep '{}' as an alias", impact.column),
+                    edits: vec![edit.clone()],
+                    preserving: false,
+                }],
+            },
+            token_range: edit.range,
+            suggestions: Vec::new(),
+        });
+    }
+    d
+}
+
+fn plural(n: usize, one: &str) -> String {
+    match n {
+        1 => format!("1 {one}"),
+        n => format!("{n} {one}s"),
+    }
+}
+
+/// "breaks 3 models, 2 tests, 1 exposure": what relies on the column,
+/// counted (the related information lists each).
+pub(super) fn breaks(report: &BreakingReport, impact: &ColumnImpact) -> String {
+    let mut models: Vec<&str> = impact.downstream.iter().map(|d| d.model.as_str()).collect();
+    models.sort_unstable();
+    models.dedup();
+    let tests = impact.tests.len()
+        + impact
+            .downstream
+            .iter()
+            .map(|d| d.tests.len())
+            .sum::<usize>();
+    let mut semantic: Vec<&str> = impact
+        .semantic
         .iter()
-        .map(|impact| {
-            let severity = match impact.severity {
-                Severity::Error => diagnostic_severity::ERROR,
-                Severity::Warning => diagnostic_severity::WARNING,
-                Severity::Information => diagnostic_severity::INFO,
-            };
-            Diagnostic::plain(
-                Range::default(),
-                message(report, impact, file),
-                severity,
-                BREAKING_CODE,
-                "cogitator",
-            )
-        })
-        .collect()
+        .map(|s| s.semantic_model.as_str())
+        .collect();
+    semantic.sort_unstable();
+    semantic.dedup();
+    let parts: Vec<String> = [
+        (models.len(), "model"),
+        (tests, "test"),
+        (semantic.len(), "semantic model"),
+        (impact.metrics.len(), "metric"),
+        (report.exposures.len(), "exposure"),
+    ]
+    .into_iter()
+    .filter(|(n, _)| *n > 0)
+    .map(|(n, what)| plural(n, what))
+    .collect();
+    match parts.is_empty() {
+        true => "nothing downstream reads it".to_string(),
+        false => format!("breaks {}", parts.join(", ")),
+    }
 }
 
 fn message(report: &BreakingReport, impact: &ColumnImpact, file: &str) -> String {
@@ -80,46 +166,36 @@ fn message(report: &BreakingReport, impact: &ColumnImpact, file: &str) -> String
             }
         }
     };
-    text.push_str(&format!(" since the last build ({file})"));
-    if !impact.tests.is_empty() {
-        text.push_str(&format!("; tested: {}", impact.tests.join(", ")));
-    }
-    if !impact.downstream.is_empty() {
-        let reads: Vec<String> = impact
-            .downstream
-            .iter()
-            .map(|d| {
-                let mut tags = Vec::new();
-                if d.contracted {
-                    tags.push("contracted".to_string());
-                }
-                if d.public {
-                    tags.push("public".to_string());
-                }
-                if !d.tests.is_empty() {
-                    tags.push(format!("tested: {}", d.tests.join(", ")));
-                }
-                match tags.is_empty() {
-                    true => format!("{}.{}", d.model, d.column),
-                    false => format!("{}.{} ({})", d.model, d.column, tags.join("; ")),
-                }
-            })
-            .collect();
-        text.push_str(&format!("; read by {}", reads.join(", ")));
-    }
+    let since = match report.baseline.as_ref().map(|b| b.source) {
+        Some(BaselineSource::Saved) => " in this edit (against the saved file)".to_string(),
+        _ => format!(" since the last build ({file})"),
+    };
+    text.push_str(&since);
+    text.push_str(": ");
+    text.push_str(&breaks(report, impact));
     if report.public {
         text.push_str("; the model is public: consumers outside the project may read it");
-    }
-    if !report.exposures.is_empty() {
-        text.push_str(&format!("; exposures: {}", report.exposures.join(", ")));
     }
     text
 }
 
 /// "N breaking changes", running `dbt.breakingChanges`; none at zero.
 pub fn lens(report: &BreakingReport, uri: &str) -> Option<CodeLens> {
-    let n = report.breaking();
-    if report.status != Status::Compared || n == 0 {
+    let mut columns: Vec<String> = Vec::new();
+    let edit = report.since_save.as_deref();
+    for r in edit.into_iter().chain(std::iter::once(report)) {
+        if r.status != Status::Compared {
+            continue;
+        }
+        let names = r.diff.removed.iter().map(|c| &c.name);
+        for name in names.chain(r.diff.retyped.iter().map(|c| &c.name)) {
+            if !columns.iter().any(|c| c.eq_ignore_ascii_case(name)) {
+                columns.push(name.clone());
+            }
+        }
+    }
+    let n = columns.len();
+    if n == 0 {
         return None;
     }
     Some(CodeLens {

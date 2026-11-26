@@ -7,6 +7,7 @@
 //! mismatches trace, never reject; artifacts must degrade feature-off,
 //! never break core diagnostics.
 
+pub mod bi_manifest;
 pub mod catalog;
 mod catalog_stats;
 pub mod freshness;

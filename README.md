@@ -414,6 +414,8 @@ inlay:
 preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
   rows: 20                 # rows when the call names no limit
   max_rows: 1000           # larger limits are capped
+bi:                        # dashboards as the end of the lineage (docs/column-reach.md)
+  manifest: bi/dashboards.json   # relative to the project root
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
 ```

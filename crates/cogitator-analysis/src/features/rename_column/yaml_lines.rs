@@ -7,7 +7,7 @@ use cogitator_lsp::Range;
 
 use super::super::references::occur::span;
 
-pub(super) fn indent(line: &str) -> usize {
+pub(crate) fn indent(line: &str) -> usize {
     line.len() - line.trim_start_matches(' ').len()
 }
 
@@ -18,7 +18,7 @@ fn is_content(line: &str) -> bool {
 
 /// One `key: value` line, with a leading `- ` taken off.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct KeyLine<'a> {
+pub(crate) struct KeyLine<'a> {
     /// Column of the key.
     pub at: usize,
     pub key: &'a str,
@@ -27,7 +27,7 @@ pub(super) struct KeyLine<'a> {
     pub value_at: usize,
 }
 
-pub(super) fn key_line(line: &str) -> Option<KeyLine<'_>> {
+pub(crate) fn key_line(line: &str) -> Option<KeyLine<'_>> {
     let mut at = indent(line);
     let mut rest = &line[at..];
     if let Some(after) = rest.strip_prefix("- ") {
@@ -56,7 +56,7 @@ pub(super) fn key_line(line: &str) -> Option<KeyLine<'_>> {
 
 /// The last line of the block opened at `start`: every later content line
 /// indented deeper than `parent`.
-pub(super) fn block_end(lines: &[&str], start: usize, parent: usize) -> usize {
+pub(crate) fn block_end(lines: &[&str], start: usize, parent: usize) -> usize {
     let mut last = start;
     for (i, line) in lines.iter().enumerate().skip(start + 1) {
         if !is_content(line) {
@@ -77,7 +77,7 @@ pub(super) fn entry_indent(line: &str) -> usize {
 
 /// A scalar equal to `name` (quotes allowed, case ignored), as the range
 /// of the name inside its quotes.
-pub(super) fn scalar_at(line_no: usize, value: &str, value_at: usize, name: &str) -> Option<Range> {
+pub(crate) fn scalar_at(line_no: usize, value: &str, value_at: usize, name: &str) -> Option<Range> {
     let quoted = value.starts_with(['\'', '"']);
     let inner = if quoted {
         value.get(1..value.len().checked_sub(1)?)?

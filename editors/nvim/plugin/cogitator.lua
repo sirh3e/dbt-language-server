@@ -218,6 +218,13 @@ end, {
   desc = "ast-grep: [sql:]pattern [=> rewrite] — matches to quickfix, a rewrite after asking",
 })
 
+vim.api.nvim_create_user_command("DbtSearch", function(opts)
+  require("cogitator.search").command(opts)
+end, {
+  nargs = "+",
+  desc = "structural search over the models' SQL (dbt.search): joins x on col, select-star from source, …",
+})
+
 vim.api.nvim_create_user_command("DbtSyntaxTree", function()
   require("cogitator.syntax").toggle()
 end, { desc = "the tree-sitter-dbt syntax tree of this buffer, in a split (toggle)" })

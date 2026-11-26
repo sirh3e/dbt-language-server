@@ -223,6 +223,40 @@ names what already exists in the codebase.
       Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
       VS Code "dbt: Breaking changes against the last build". No git
       baseline (the model at `origin/main`) yet.
+- [x] **Column-level impact as you edit** (`features/breaking/`): the
+      open buffer is also compared with the file as last saved
+      (`baseline::saved_baseline`, the report's `sinceSave`), recomputed
+      after the refresh debounce on didChange (`dispatcher/breaking.rs`);
+      diagnostics sit at the column's select item, a likely rename's new
+      item or the root `select` (`breaking/anchor.rs`), say "breaks 3
+      models, 2 tests, 1 exposure" with each in related information
+      (`downstream.rs`), reach semantic models and metrics at column level
+      (`features::column_reach`), and offer "Keep '<old>' as an alias"
+      when the replacement is a bare column or literal.
+- [x] **Who reads this column?** (`dbt.impact` with a column,
+      `features/column_reach/`, docs/column-reach.md): past the downstream
+      models, the column tests of every hit, the semantic-model entities,
+      dimensions and measures whose `expr:` (or name) reads a hit
+      (`rename_column/semantic.rs::semantic_items`, shared with the
+      rename), the metrics over those measures to a fixpoint
+      (`column_reach/metrics.rs`: simple, cumulative, conversion, ratio,
+      derived), exposures at node level and the dashboards of a BI manifest
+      (`artifacts/bi_manifest.rs`, cogitator.yml `bi.manifest`). The shell
+      is `server/handlers/impact.rs`; every output column's reach is cached
+      on open/save (`dispatcher/reach.rs`, `derived_cache/reach.rs`) for a
+      hover line "`m.c` is read by N models, M tests, K semantic models, J
+      dashboards". Neovim `:DbtImpact`, Emacs `cogitator-impact`, VS Code
+      "dbt: Who reads this column?". Metric filters are not followed.
+- [x] **Structural search over the models' SQL** (`dbt.search`,
+      `features/hir_search/`, docs/search.md): a small query language
+      (`query.rs`: `joins <rel> [on <col>]`, `select-star [from <rel>]`,
+      `reads <rel>`, `uses column <rel>.<col>`, joined by `and`) evaluated
+      over each model's bound HIR (`eval.rs`: `FromKind::Join`, `RelTarget`,
+      `SelectItem::Star`, column resolutions); matches in `dbt.astGrep`'s
+      shape, models whose HIR cannot be built reported as not searched.
+      Shell `server/handlers/search.rs`; Neovim `:DbtSearch`, Emacs
+      `cogitator-search`, VS Code "dbt: Structural search over the models'
+      SQL".
 - [x] **dbt node selection** (`selectors/`, docs/selectors.md): one pure
       engine for dbt's selector language — methods (`fqn`, `tag`, `path`,
       `file`, `package`, `config.<key>`, `resource_type`, `source`,

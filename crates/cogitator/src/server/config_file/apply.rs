@@ -29,6 +29,8 @@ pub enum Change {
     InlayJinja(bool),
     PreviewRows(u64),
     PreviewMaxRows(u64),
+    /// `bi.manifest` (empty: none; no launch value to revert to).
+    BiManifest(String),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -123,6 +125,11 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
             new.preview.max_rows.unwrap_or(baseline.preview_max_rows),
         ));
     }
+    if old.bi.manifest != new.bi.manifest {
+        out.push(Change::BiManifest(
+            new.bi.manifest.clone().unwrap_or_default(),
+        ));
+    }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
         // cogitator.yml diagnostics flag the typo separately
@@ -161,7 +168,8 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayEnvVars(_)
             | Change::InlayJinja(_)
             | Change::PreviewRows(_)
-            | Change::PreviewMaxRows(_) => true,
+            | Change::PreviewMaxRows(_)
+            | Change::BiManifest(_) => true,
         })
         .collect()
 }
@@ -261,6 +269,10 @@ pub fn apply(
             Change::PreviewMaxRows(rows) => {
                 limits.preview_max_rows.store(*rows, Ordering::Relaxed);
                 applied.push("preview.max_rows");
+            }
+            Change::BiManifest(path) => {
+                *toggles.bi_manifest.write().expect("bi manifest lock") = path.clone();
+                applied.push("bi.manifest");
             }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc
