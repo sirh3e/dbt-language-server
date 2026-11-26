@@ -216,9 +216,16 @@ impl Dispatcher {
                 Some(d) if crate::server::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
                 }
+                // a model whose YAML documents no columns is asked its lineage
                 Some(d) => {
                     let hints = super::completion_hints::hints(ctx, &derived, uri);
-                    features::completion_with(ctx, d, pos, &hints)
+                    features::completion_with(
+                        ctx,
+                        d,
+                        pos,
+                        &|p| std::fs::read_to_string(p).ok(),
+                        &hints,
+                    )
                 }
                 None => Vec::new(),
             };

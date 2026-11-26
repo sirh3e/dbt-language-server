@@ -20,6 +20,7 @@ fn complete(model: &str, text: &str, line: u32, character: u32) -> Vec<Completio
         &ctx,
         docs.get(&uri).unwrap(),
         Position { line, character },
+        &|_| None,
         &features::ModelHints::default(),
     )
 }

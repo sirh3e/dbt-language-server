@@ -67,13 +67,13 @@ pub fn adapt(mut item: CompletionItem, support: CompletionSupport) -> Completion
         item.insert_text_format = None;
     }
     if !support.label_details {
-        // the type and where it is from, in `detail`; a bare description
-        // (no type) leaves the item's own detail
+        // the type and where it is from, in `detail`, only where the item
+        // says nothing there itself (a column's `relation · type` stays)
         if let Some(details) = item.label_details.take() {
             if let Some(ty) = details
                 .detail
                 .map(|d| d.trim().to_string())
-                .filter(|d| !d.is_empty())
+                .filter(|d| !d.is_empty() && item.detail.is_empty())
             {
                 item.detail = match details.description {
                     Some(description) => format!("{ty} · {description}"),
@@ -181,6 +181,15 @@ mod tests {
         assert_eq!(plain.insert_text, "id");
         assert_eq!(plain.insert_text_format, None);
         assert_eq!(plain.detail, "bigint · stg_orders");
+        // an item's own detail is never written over
+        let own = CompletionItem {
+            detail: "stg_orders · bigint".into(),
+            ..item.clone()
+        };
+        assert_eq!(
+            adapt(own, CompletionSupport::default()).detail,
+            "stg_orders · bigint"
+        );
         let json = serde_json::to_value(&plain).unwrap();
         assert!(json["documentation"].is_string(), "{json}");
         assert!(json.get("labelDetails").is_none(), "{json}");

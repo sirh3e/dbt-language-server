@@ -63,7 +63,7 @@ fn blank(bytes: &mut [u8]) {
 }
 
 /// The text with its control flow flattened, same length.
-pub(super) fn without_control_tags(text: &str) -> Option<String> {
+pub(crate) fn without_control_tags(text: &str) -> Option<String> {
     let mut out = text.as_bytes().to_vec();
     // per open `if`: where its blanked tail starts, once an else is seen
     let mut ifs: Vec<Option<usize>> = Vec::new();

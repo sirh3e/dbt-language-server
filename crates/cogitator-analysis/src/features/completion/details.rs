@@ -75,17 +75,25 @@ pub(crate) fn decorate(
         };
         if let Some((of, column)) = of_data(&data) {
             let fact = column_fact(ctx, hints, &of, column, &read);
+            let relation = of.label();
+            if let Some((ty, _)) = &fact.ty {
+                // a type only the catalog or the schema job knows: in
+                // `detail` too, in the engine's `relation · type`
+                if item.detail == relation {
+                    item.detail = format!("{relation} · {ty}");
+                }
+            }
             item.label_details = Some(LabelDetails {
                 detail: fact.ty.as_ref().map(|(t, _)| format!(" {t}")),
-                description: Some(of.label()),
+                description: Some(relation),
             });
             if let ColumnOf::Cte(_) = of {
                 item.documentation = markdown(&fact);
                 item.markdown = true;
                 item.data = None;
-            } else {
+            } else if item.documentation.is_empty() {
                 // plain until resolved: a client that never resolves
-                // still shows the description
+                // still shows the description (an inherited one too)
                 item.documentation = fact.description.clone();
             }
             continue;

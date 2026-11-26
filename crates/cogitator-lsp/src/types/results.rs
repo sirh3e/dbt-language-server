@@ -49,6 +49,12 @@ pub struct CompletionItem {
     pub label_details: Option<super::completion::LabelDetails>,
     /// `documentation` is Markdown.
     pub markdown: bool,
+    /// What the client filters on when it is not the label: a qualified
+    /// column (`o.customer_id`) filters as its bare name, so typing the
+    /// column keeps the qualified form in the list and in its rank.
+    pub filter_text: Option<String>,
+    /// The item the client should select first (the best-ranked column).
+    pub preselect: bool,
 }
 
 impl Serialize for CompletionItem {
@@ -68,6 +74,12 @@ impl Serialize for CompletionItem {
         map.serialize_entry("kind", &self.kind)?;
         map.serialize_entry("insertText", &self.insert_text)?;
         map.serialize_entry("sortText", &self.sort_text)?;
+        if let Some(filter) = &self.filter_text {
+            map.serialize_entry("filterText", filter)?;
+        }
+        if self.preselect {
+            map.serialize_entry("preselect", &true)?;
+        }
         if let Some(data) = &self.data {
             map.serialize_entry("data", data)?;
         }

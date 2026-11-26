@@ -662,9 +662,14 @@ buffers are not seen — save before renaming.
   client configuration. The plugin keeps a client-side fallback that sets
   the same characters **only when the server advertised none** (older
   server builds).
-- Ranking arrives via `sortText` tiers (`0` < `a` < `b` < `c` < `m` < `z`);
+- Ranking arrives via `sortText` tiers (`0` < `a` < `b` < `c` < `m` < `z`;
+  the in-scope columns' sub-tiers in rust-port 03 §9.4.3);
   completion engines must be left on `sortText` ordering (document that
   `cmp.config.compare.sort_text` has to stay in the comparator list).
+  `cogitator.completion` ships `compare`/`sorted` for nvim-cmp and
+  `blink_transform` for blink.cmp, whose default `fuzzy.sorts` is
+  `{ "score", "sort_text" }`: it adds `BLINK_BOOST` to the score_offset
+  of cogitator's tier-`0` items only.
 - `completionItem/resolve` fills documentation — enable
   `resolveSupport` (default in 0.11).
 - `insertText` is plain text (no snippet syntax). Do not advertise

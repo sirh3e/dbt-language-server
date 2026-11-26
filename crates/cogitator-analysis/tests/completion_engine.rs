@@ -63,7 +63,7 @@ fn member_access_resolves_alias_to_model_columns() {
         .find(|i| i.label == "customer_id")
         .expect("column via alias");
     assert_eq!(column.kind, completion_kind::FIELD);
-    assert_eq!(column.detail, "Column of customers");
+    assert_eq!(column.detail, "customers");
     assert!(column.documentation.contains("unique identifier"));
     // context-exact tier: nothing outranks the qualifier's columns
     assert!(items.iter().all(|i| i.sort_text.starts_with('0')));
@@ -72,7 +72,7 @@ fn member_access_resolves_alias_to_model_columns() {
 #[test]
 fn member_access_resolves_cte_columns() {
     let items = complete(DOC, 3, 7); // after `select ` — first check column position…
-    assert!(items.iter().any(|i| i.detail == "Column of customers"));
+    assert!(items.iter().any(|i| i.detail == "customers"));
 
     // …then `recent.` member access resolves the CTE's select list
     let text = format!("{DOC}select recent. from recent\n");
@@ -81,7 +81,7 @@ fn member_access_resolves_cte_columns() {
         .iter()
         .find(|i| i.label == "customer_id")
         .expect("cte column");
-    assert_eq!(col.detail, "Column of recent (CTE)");
+    assert_eq!(col.detail, "recent (CTE)");
 }
 
 #[test]
