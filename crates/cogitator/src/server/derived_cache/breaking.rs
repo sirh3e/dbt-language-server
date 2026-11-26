@@ -47,6 +47,12 @@ impl DerivedCache {
         Some(std::mem::replace(&mut entry.1, report))
     }
 
+    /// Whether `ticket` is still the latest handed out for `uri`.
+    pub fn breaking_is_latest(&self, uri: &str, ticket: u64) -> bool {
+        let map = self.breaking.map.lock().unwrap_or_else(|e| e.into_inner());
+        map.get(uri).is_some_and(|(latest, _)| *latest == ticket)
+    }
+
     /// Which baseline the preview has for the project at `root`, from
     /// the LAST loaded artifact set (no fs: dbt.status is inline).
     pub fn breaking_baseline(&self, root: &std::path::Path) -> &'static str {

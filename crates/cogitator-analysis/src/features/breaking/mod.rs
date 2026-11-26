@@ -9,6 +9,7 @@
 //! inferred output types can plug in without touching this module; a
 //! type change is reported only when both types are known.
 
+mod anchor;
 mod baseline;
 mod diff;
 mod downstream;
@@ -22,9 +23,10 @@ use serde::Serialize;
 use super::DbtContext;
 use crate::lineage::ModelLineage;
 
-pub use baseline::{baseline, Baseline, BaselineColumn, BaselineSource};
+pub use anchor::{Anchors, ItemAnchor};
+pub use baseline::{baseline, saved_baseline, Baseline, BaselineColumn, BaselineSource};
 pub use diff::{diff, RemovedColumn, SchemaDiff, TypeChange};
-pub use downstream::{ChangeKind, ColumnImpact, DownstreamUse};
+pub use downstream::{ChangeKind, ColumnImpact, DownstreamUse, Extras, Related};
 pub use surface::{diagnostics, lens, BREAKING_CODE};
 
 /// One column the model produces now.
@@ -94,6 +96,10 @@ pub struct BreakingReport {
     pub public: bool,
     /// The downstream lineage was capped (`IMPACT_LINEAGE_CAP`).
     pub truncated: bool,
+    /// The open buffer against the file as last saved: what THIS edit
+    /// breaks (absent while the buffer is the saved file).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since_save: Option<Box<BreakingReport>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -127,7 +133,17 @@ impl BreakingReport {
             exposures: Vec::new(),
             public: false,
             truncated: false,
+            since_save: None,
         }
+    }
+
+    /// The report with what this edit breaks attached; an edit that
+    /// breaks nothing attaches nothing.
+    pub fn with_since_save(mut self, edit: Option<BreakingReport>) -> Self {
+        self.since_save = edit
+            .filter(|e| e.status == Status::Compared && e.breaking() > 0)
+            .map(Box::new);
+        self
     }
 }
 
@@ -140,9 +156,22 @@ pub fn report(
     current: &[CurrentColumn],
     lineages: &HashMap<String, ModelLineage>,
 ) -> BreakingReport {
+    report_with(ctx, model, baseline, current, lineages, &Extras::default())
+}
+
+/// [`report`] with the model's SQL anchors and the properties corpus
+/// (semantic models and metrics at column level).
+pub fn report_with(
+    ctx: &DbtContext,
+    model: &str,
+    baseline: &Baseline,
+    current: &[CurrentColumn],
+    lineages: &HashMap<String, ModelLineage>,
+    extras: &Extras<'_>,
+) -> BreakingReport {
     let diff = diff(current, &baseline.columns);
     let closure = super::impact(ctx, model, None, lineages);
-    let impacts = downstream::impacts(ctx, model, &diff, lineages);
+    let impacts = downstream::impacts(ctx, model, &diff, lineages, extras);
     let public = ctx
         .model_detail_map
         .get(model)
@@ -157,6 +186,7 @@ pub fn report(
         exposures: closure.exposures,
         public,
         truncated: closure.truncated,
+        since_save: None,
     };
     report.summary = surface::summary(&report);
     report

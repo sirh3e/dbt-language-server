@@ -132,7 +132,9 @@ editor integrations live under `editors/`.
   against target/catalog.json or the manifest's documented columns, and
   what that breaks downstream; `features/breaking/`, the shell in
   `server/breaking.rs`, computed on open/save for its diagnostics and
-  lens by `dispatcher/breaking.rs`), dbt.select (the nodes a dbt selector
+  lens by `dispatcher/breaking.rs`; after the refresh debounce on change
+  too, against the saved file as well, anchored by `breaking/anchor.rs`,
+  with a "Keep '<old>' as an alias" quick fix), dbt.select (the nodes a dbt selector
   picks, as `dbt ls` lists them; the selector engine, `selectors/`),
   dbt.lineageSite (the lineage site's data and page assets, or the page
   written to `target/cogitator-lineage/`; `features/lineage_site/` pure,

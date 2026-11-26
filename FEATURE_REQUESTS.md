@@ -223,6 +223,16 @@ names what already exists in the codebase.
       Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
       VS Code "dbt: Breaking changes against the last build". No git
       baseline (the model at `origin/main`) yet.
+- [x] **Column-level impact as you edit** (`features/breaking/`): the
+      open buffer is also compared with the file as last saved
+      (`baseline::saved_baseline`, the report's `sinceSave`), recomputed
+      after the refresh debounce on didChange (`dispatcher/breaking.rs`);
+      diagnostics sit at the column's select item, a likely rename's new
+      item or the root `select` (`breaking/anchor.rs`), say "breaks 3
+      models, 2 tests, 1 exposure" with each in related information
+      (`downstream.rs`), reach semantic models and metrics at column level
+      (`features::column_reach`), and offer "Keep '<old>' as an alias"
+      when the replacement is a bare column or literal.
 - [x] **Who reads this column?** (`dbt.impact` with a column,
       `features/column_reach/`, docs/column-reach.md): past the downstream
       models, the column tests of every hit, the semantic-model entities,

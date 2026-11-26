@@ -72,6 +72,8 @@ impl Dispatcher {
             .change(&uri, &params.content_changes, &dialect);
         // syntax errors as you type: the push set is fs-free and cheap
         self.publish_static_diagnostics(&uri);
+        // what this edit breaks, after the refresh debounce
+        self.spawn_breaking_debounced(&uri);
     }
 
     /// Diagnostics for one open doc — see server::diagnostics.
