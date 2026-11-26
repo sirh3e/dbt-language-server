@@ -159,7 +159,12 @@ editor integrations live under `editors/`.
   from `features::yaml_sync`, on the model's SQL and its YAML entry). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion
-  capability advertises `triggerCharacters`.
+  capability advertises `triggerCharacters`. Completion items are fitted to
+  the client (`cogitator_lsp::adapt`, `CompletionSupport` read at
+  initialize): snippets (`insertTextFormat` 2, the model-aware
+  `is_incremental()` / `config()` snippets, `completion/snippets.rs`),
+  `labelDetails` (column types and relations, `completion/details.rs`) and
+  Markdown documentation, each with a plain fallback.
 - `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
 - **Selector engine** (`cogitator-analysis/src/selectors/`, docs/selectors.md):
   dbt's node-selection language, pure — `syntax` (the `--select` string),
