@@ -1,10 +1,10 @@
 //! The structural query language of `dbt.search` (docs/search.md):
-//! clauses over a model's SQL structure, joined by `and`. It is a small
+//! clauses over a model's SQL structure, combined with `and`, `or`, `not`
+//! and parentheses (their grammar is in [`super::expr`]). It is a small
 //! language of our own, read word by word — not SQL or Jinja, which only
 //! the front end reads.
 //!
 //! ```text
-//! query    := clause ("and" clause)*
 //! clause   := "joins" rel ["on" column]
 //!           | "select-star" ["from" rel]
 //!           | "reads" rel
@@ -17,6 +17,8 @@
 //! Names compare case-insensitively.
 
 use cogitator_error::guidance::Guidance;
+
+use super::expr::{words, Expr, Reader};
 
 /// What a relation pattern accepts.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,18 +94,27 @@ fn rel_text(rel: &Rel) -> String {
     }
 }
 
-/// A whole query: every clause must hold for a model to match.
+/// A whole query: its clauses, each evaluated once per model, and how
+/// they combine ([`Expr`]'s leaves index `clauses`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Query {
     pub clauses: Vec<Clause>,
+    pub expr: Expr,
+}
+
+impl Query {
+    /// The query written back canonically.
+    pub fn describe(&self) -> String {
+        self.expr.describe(&self.clauses)
+    }
 }
 
 const HELP: &str =
-    "write clauses joined by `and`: `joins <rel> [on <column>]`, `select-star [from <rel>]`, \
+    "write clauses combined with `and`, `or`, `not` and parentheses: `joins <rel> [on <column>]`, `select-star [from <rel>]`, \
      `reads <rel>`, `uses column <rel>.<column>`; a <rel> is `model`, `source`, a model name, \
      `model:<name>` or `source:<source>[.<table>]` (docs/search.md).";
 
-fn refuse(what: String) -> Guidance {
+pub(super) fn refuse(what: String) -> Guidance {
     Guidance::new("dbt.search cannot read the query.")
         .because(what)
         .fix(HELP)
@@ -144,22 +155,25 @@ pub fn parse_rel(word: &str) -> Result<Rel, Guidance> {
 }
 
 pub fn parse(text: &str) -> Result<Query, Guidance> {
-    let words: Vec<&str> = text.split_whitespace().collect();
+    let words = words(text);
     if words.is_empty() {
         return Err(refuse("the query is empty".into()));
     }
-    let mut clauses = Vec::new();
-    for part in words.split(|w| w.eq_ignore_ascii_case("and")) {
-        clauses.push(clause(part)?);
-    }
-    Ok(Query { clauses })
+    let mut reader = Reader::new(&words);
+    let expr = reader.query()?;
+    Ok(Query {
+        clauses: reader.clauses,
+        expr,
+    })
 }
 
-fn clause(words: &[&str]) -> Result<Clause, Guidance> {
+pub(super) fn clause(words: &[&str]) -> Result<Clause, Guidance> {
     let lower: Vec<String> = words.iter().map(|w| w.to_ascii_lowercase()).collect();
     let lower: Vec<&str> = lower.iter().map(String::as_str).collect();
     match lower.as_slice() {
-        [] => Err(refuse("a clause is empty (two `and`s in a row?)".into())),
+        [] => Err(refuse(
+            "a clause is empty (two operators in a row, or one at an end?)".into(),
+        )),
         ["joins", _] => Ok(Clause::Joins {
             rel: parse_rel(words[1])?,
             on: None,

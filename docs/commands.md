@@ -359,7 +359,7 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 
 ### `dbt.search`
 
-- **Argument**: `{query, uri?}` — `query`: clauses joined by `and` (`joins <rel> [on <column>]`, `select-star [from <rel>]`, `reads <rel>`, `uses column <rel>.<column>`; a `<rel>` is `model`, `source`, a model name, `model:<name>` or `source:<source>[.<table>]`); `uri`: a model's file narrows to it, `""` searches the project
+- **Argument**: `{query, uri?}` — `query`: clauses combined with `and`, `or`, `not` and parentheses (`joins <rel> [on <column>]`, `select-star [from <rel>]`, `reads <rel>`, `uses column <rel>.<column>`; a `<rel>` is `model`, `source`, a model name, `model:<name>` or `source:<source>[.<table>]`); `uri`: a model's file narrows to it, `""` searches the project
 - **Result**: `{query, searched, models, matches: [{uri, range, text, env: {clause, model}, replacement: null}], notSearched: [{model, why}], truncated}` — the matches have `dbt.astGrep`'s shape; a model matches when every clause has a site there, and every clause's sites are listed; at most 500. A query it cannot read is InvalidParams with guidance. See [search.md](search.md)
 - **Side effects**: none (read-only; reads the model files off the dispatcher)
 - **Editors**: Neovim ✓ (`:DbtSearch {query}` quickfix) · Emacs ✓ (`M-x cogitator-search`, a grep buffer) · VS Code ✓ (`dbt: Structural search over the models' SQL`)

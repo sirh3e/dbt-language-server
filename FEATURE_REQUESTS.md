@@ -250,7 +250,8 @@ names what already exists in the codebase.
 - [x] **Structural search over the models' SQL** (`dbt.search`,
       `features/hir_search/`, docs/search.md): a small query language
       (`query.rs`: `joins <rel> [on <col>]`, `select-star [from <rel>]`,
-      `reads <rel>`, `uses column <rel>.<col>`, joined by `and`) evaluated
+      `reads <rel>`, `uses column <rel>.<col>`; `expr.rs`: combined with
+      `and`, `or`, `not` and parentheses, `not` > `and` > `or`) evaluated
       over each model's bound HIR (`eval.rs`: `FromKind::Join`, `RelTarget`,
       `SelectItem::Star`, column resolutions); matches in `dbt.astGrep`'s
       shape, models whose HIR cannot be built reported as not searched.

@@ -55,3 +55,53 @@ fn queries_over_the_project() {
     let bad = search(&ctx, "find everything", None, &read).unwrap_err();
     assert!(bad.to_message().contains("cannot read the query"));
 }
+
+#[test]
+fn or_not_and_parentheses() {
+    let ctx = build_context(jaffle().to_str().unwrap());
+    let read = |p: &Path| std::fs::read_to_string(p).ok();
+    let models = |query: &str| search(&ctx, query, None, &read).expect(query).models;
+
+    // `or`: either model's readers
+    let either = models("reads raw_customers or reads raw_orders");
+    assert!(either.contains(&"stg_customers".to_string()), "{either:?}");
+    assert!(either.contains(&"stg_orders".to_string()), "{either:?}");
+    assert!(!either.contains(&"stg_payments".to_string()), "{either:?}");
+
+    // `and not`: readers of stg_orders, minus those that also read stg_customers
+    let without = models("reads stg_orders and not reads stg_customers");
+    assert!(
+        without.contains(&"customer_orders_v1".to_string()),
+        "{without:?}"
+    );
+    assert!(!without.contains(&"customers".to_string()), "{without:?}");
+
+    // parentheses change the grouping
+    let grouped = models("(reads raw_customers or reads raw_orders) and not reads raw_orders");
+    assert_eq!(grouped, ["stg_customers"]);
+
+    // only the clauses that made a model match show their sites: an `or`
+    // branch that failed does not, nor does anything under `not`
+    let report = search(
+        &ctx,
+        "reads raw_payments or reads raw_customers",
+        Some("stg_customers"),
+        &read,
+    )
+    .unwrap();
+    let clauses: Vec<&str> = report
+        .matches
+        .iter()
+        .map(|m| m.env["clause"].as_str())
+        .collect();
+    assert_eq!(clauses, ["reads raw_customers"]);
+
+    // a model the query holds in only through `not` is listed at the top
+    // of its file, naming the whole query
+    let report = search(&ctx, "not reads model", Some("stg_stripe_payments"), &read).unwrap();
+    assert_eq!(report.models, ["stg_stripe_payments"]);
+    let only = &report.matches[..];
+    assert_eq!(only.len(), 1, "{only:#?}");
+    assert_eq!(only[0].env["clause"], "not reads model");
+    assert_eq!(only[0].range, Default::default());
+}
