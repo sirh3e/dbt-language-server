@@ -141,13 +141,8 @@ fn model_lines(model: &ModelSummary) -> Vec<String> {
     }
     for inherited in &model.inherited {
         let from = match &inherited.from {
-            SourceRef::Model { name, column } => format!("{name}.{column}"),
-            SourceRef::Source {
-                source,
-                table,
-                column,
-            } => format!("source {source}.{table}.{column}"),
-            SourceRef::Unknown { name, column } => format!("{name}.{column}"),
+            source @ SourceRef::Source { .. } => format!("source {}", source.label()),
+            other => other.label(),
         };
         lines.push(format!("~ {} description from {from}", inherited.column));
     }

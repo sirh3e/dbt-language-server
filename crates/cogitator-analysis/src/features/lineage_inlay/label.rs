@@ -126,13 +126,8 @@ fn star_of(source: &SourceRef) -> SourceRef {
 /// `stg_payments.amount`, `jaffle.raw_orders.id`, `raw_table.id?`.
 pub(super) fn shown(reference: &SourceRef) -> String {
     match reference {
-        SourceRef::Model { name, column } => format!("{name}.{column}"),
-        SourceRef::Source {
-            source,
-            table,
-            column,
-        } => format!("{source}.{table}.{column}"),
-        SourceRef::Unknown { name, column } => format!("{name}.{column}?"),
+        SourceRef::Unknown { .. } => format!("{}?", reference.label()),
+        _ => reference.label(),
     }
 }
 

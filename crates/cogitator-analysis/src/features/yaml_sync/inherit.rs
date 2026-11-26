@@ -65,21 +65,14 @@ pub(crate) fn same_column<'l>(lineage: &'l ModelLineage, column: &str) -> Option
     if !col.direct {
         return None;
     }
-    let mut sources = col.sources.iter().filter(|s| !is_helper(s));
+    let mut sources = col.sources.iter().filter(|s| !s.is_placeholder());
     let (Some(source), None) = (sources.next(), sources.next()) else {
         return None;
     };
-    let upstream = match source {
-        SourceRef::Model { column, .. }
-        | SourceRef::Source { column, .. }
-        | SourceRef::Unknown { column, .. } => column,
-    };
-    upstream.eq_ignore_ascii_case(column).then_some(source)
-}
-
-/// Columns the lineage invents for relation references in Jinja.
-fn is_helper(source: &SourceRef) -> bool {
-    matches!(source, SourceRef::Model { column, .. } if column.starts_with("__dbt_rel_"))
+    source
+        .column()
+        .eq_ignore_ascii_case(column)
+        .then_some(source)
 }
 
 /// The description column `column` of `model` can inherit.

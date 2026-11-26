@@ -255,20 +255,16 @@ fn rank(flow: Flow) -> u8 {
 /// The relation and column a source names; `None` for dbt's internal
 /// relation placeholders.
 fn upstream_of(source: &SourceRef) -> Option<(Relation, &str)> {
-    let (relation, column) = match source {
-        SourceRef::Model { name, column } => (Relation::Model(name.clone()), column),
-        SourceRef::Source {
-            source,
-            table,
-            column,
-        } => (
-            Relation::Source {
-                source: source.clone(),
-                table: table.clone(),
-            },
-            column,
-        ),
-        SourceRef::Unknown { name, column } => (Relation::Unknown(name.clone()), column),
+    if source.is_placeholder() {
+        return None;
+    }
+    let relation = match source {
+        SourceRef::Model { name, .. } => Relation::Model(name.clone()),
+        SourceRef::Source { source, table, .. } => Relation::Source {
+            source: source.clone(),
+            table: table.clone(),
+        },
+        SourceRef::Unknown { name, .. } => Relation::Unknown(name.clone()),
     };
-    (!column.starts_with("__dbt_rel_")).then_some((relation, column.as_str()))
+    Some((relation, source.column()))
 }

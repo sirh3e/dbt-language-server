@@ -180,13 +180,8 @@ pub(crate) fn description_line(
 /// What the description was read from, for a title.
 pub(crate) fn upstream_label(found: &Found) -> String {
     let from = match &found.from {
-        SourceRef::Model { name, column } => format!("{name}.{column}"),
-        SourceRef::Source {
-            source,
-            table,
-            column,
-        } => format!("source {source}.{table}.{column}"),
-        SourceRef::Unknown { name, column } => format!("{name}.{column}"),
+        source @ SourceRef::Source { .. } => format!("source {}", source.label()),
+        other => other.label(),
     };
     if found.via.is_empty() {
         from

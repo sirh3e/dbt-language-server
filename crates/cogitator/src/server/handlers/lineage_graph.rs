@@ -9,7 +9,6 @@
 //! cannot wrap a command, as Zed) the walk is also written as text under
 //! `target/.cogitator/lineage/` and opened through showDocument.
 
-use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,7 +16,6 @@ use cogitator_analysis::features::lineage_graph::{
     text, walk, Direction, Known, LineageEdge, LineageNode, WalkInput,
 };
 use cogitator_analysis::features::{model_name_from_uri, project_graph_json};
-use cogitator_analysis::graph::NodeKind;
 use cogitator_analysis::DbtContext;
 use cogitator_error::guidance::Guidance;
 use cogitator_lsp::{error_codes, ShowDocumentParams};
@@ -239,41 +237,10 @@ fn computer(snap: &Snapshot, derived: &Arc<DerivedCache>, artifact_cap: u64) -> 
 /// The models within `depth` model-graph hops of `model` in `direction`:
 /// a superset of what the column walk can visit.
 fn reachable(ctx: &DbtContext, model: &str, direction: Direction, depth: usize) -> Vec<String> {
-    let mut found = vec![model.to_string()];
-    let mut seen: HashSet<String> = found.iter().cloned().collect();
-    let ups = direction != Direction::Down;
-    let downs = direction != Direction::Up;
-    for (go, up) in [(ups, true), (downs, false)] {
-        if !go {
-            continue;
-        }
-        let mut queue = VecDeque::from([(model.to_string(), 0usize)]);
-        let mut level: HashMap<String, usize> = HashMap::new();
-        while let Some((name, hops)) = queue.pop_front() {
-            if hops >= depth {
-                continue;
-            }
-            let next: Vec<String> = if up {
-                ctx.graph
-                    .upstream_of(&name)
-                    .filter(|n| n.kind == NodeKind::Model)
-                    .map(|n| n.name.clone())
-                    .collect()
-            } else {
-                ctx.graph
-                    .downstream_of(&name)
-                    .map(|n| n.name.clone())
-                    .collect()
-            };
-            for n in next {
-                if level.insert(n.clone(), hops + 1).is_none() {
-                    if seen.insert(n.clone()) {
-                        found.push(n.clone());
-                    }
-                    queue.push_back((n, hops + 1));
-                }
-            }
-        }
-    }
-    found
+    ctx.graph.models_within(
+        model,
+        direction != Direction::Down,
+        direction != Direction::Up,
+        depth,
+    )
 }

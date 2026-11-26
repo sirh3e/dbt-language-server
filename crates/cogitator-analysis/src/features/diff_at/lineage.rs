@@ -28,13 +28,9 @@ pub struct ChangedColumn {
 /// `orders.amount`, `source jaffle.payments.amount`, `? raw.x`.
 pub fn source_label(source: &SourceRef) -> String {
     match source {
-        SourceRef::Model { name, column } => format!("{name}.{column}"),
-        SourceRef::Source {
-            source,
-            table,
-            column,
-        } => format!("source {source}.{table}.{column}"),
-        SourceRef::Unknown { name, column } => format!("? {name}.{column}"),
+        SourceRef::Model { .. } => source.label(),
+        SourceRef::Source { .. } => format!("source {}", source.label()),
+        SourceRef::Unknown { .. } => format!("? {}", source.label()),
     }
 }
 

@@ -35,6 +35,38 @@ pub enum SourceRef {
     Unknown { name: String, column: String },
 }
 
+impl SourceRef {
+    /// The column it names.
+    pub fn column(&self) -> &str {
+        match self {
+            SourceRef::Model { column, .. }
+            | SourceRef::Source { column, .. }
+            | SourceRef::Unknown { column, .. } => column,
+        }
+    }
+
+    /// `model.column`, `source.table.column`, `name.column`: what every
+    /// label of a source starts from (a site adds its own `source ` or `?`).
+    pub fn label(&self) -> String {
+        match self {
+            SourceRef::Model { name, column } | SourceRef::Unknown { name, column } => {
+                format!("{name}.{column}")
+            }
+            SourceRef::Source {
+                source,
+                table,
+                column,
+            } => format!("{source}.{table}.{column}"),
+        }
+    }
+
+    /// One of dbt's internal relation placeholders (`__dbt_rel_*`), which
+    /// the lineage invents for relation references in Jinja: no column.
+    pub fn is_placeholder(&self) -> bool {
+        self.column().starts_with("__dbt_rel_")
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct ColumnLineage {
     pub name: String,
@@ -93,3 +125,37 @@ mod direct_tests;
 mod gap_tests;
 #[cfg(test)]
 mod typed_tests;
+
+#[cfg(test)]
+mod source_ref_tests {
+    use super::SourceRef;
+
+    #[test]
+    fn a_source_ref_names_its_column_and_labels_itself() {
+        let model = SourceRef::Model {
+            name: "stg".into(),
+            column: "id".into(),
+        };
+        let source = SourceRef::Source {
+            source: "shop".into(),
+            table: "orders".into(),
+            column: "amount".into(),
+        };
+        let unknown = SourceRef::Unknown {
+            name: "raw".into(),
+            column: "x".into(),
+        };
+        let labels: Vec<String> = [&model, &source, &unknown]
+            .iter()
+            .map(|s| s.label())
+            .collect();
+        assert_eq!(labels, ["stg.id", "shop.orders.amount", "raw.x"]);
+        assert_eq!(source.column(), "amount");
+        let placeholder = SourceRef::Model {
+            name: "m".into(),
+            column: "__dbt_rel_0".into(),
+        };
+        assert!(placeholder.is_placeholder());
+        assert!(!model.is_placeholder());
+    }
+}
