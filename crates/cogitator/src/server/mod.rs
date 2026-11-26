@@ -20,12 +20,14 @@ mod git;
 pub(crate) mod handlers;
 mod highlight;
 mod jobs;
+mod lineage_graph;
 mod multi_root;
 mod node_info;
 mod offload;
 mod preview_cte;
 mod profile;
 mod refresh;
+mod rename_column;
 mod reply;
 pub(crate) mod selectors;
 mod semantic_yaml;
@@ -96,6 +98,16 @@ pub struct SharedToggles {
     pub inlay_jinja: std::sync::atomic::AtomicBool,
     /// cogitator.yml `inlay.types: true` (off by default).
     pub inlay_types: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.lineage: false` (on by default).
+    pub inlay_lineage_off: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.lineage_max_len`; 0 is the built-in cap.
+    pub inlay_lineage_max_len: std::sync::atomic::AtomicU64,
+    /// initializationOptions `renameColumnDirection: "both"`:
+    /// textDocument/rename takes a model column up- and downstream, as
+    /// `dbt.renameColumn {direction: "both"}` does (default: down).
+    pub rename_column_both: std::sync::atomic::AtomicBool,
+    /// The client advertised workspace.inlayHint.refreshSupport.
+    pub inlay_refresh: std::sync::atomic::AtomicBool,
     /// `perf`/`perf_rules`: an atomic can't hold a severity per rule, so
     /// readers clone this snapshot (cheap) and a config change swaps it.
     pub perf: std::sync::RwLock<
@@ -105,6 +117,8 @@ pub struct SharedToggles {
     pub bi_manifest: std::sync::RwLock<String>,
     /// `cost.query_history`, `warehouse.profile*`: a snapshot readers clone.
     pub analytics: std::sync::RwLock<Arc<config_file::AnalyticsSettings>>,
+    /// cogitator.yml `format:`; readers clone it per formatting request.
+    pub format: std::sync::RwLock<Option<cogitator_format::Config>>,
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by
@@ -309,8 +323,15 @@ pub async fn run(
     if let Some(on) = launch.inlay.types {
         toggles.inlay_types.store(on, Ordering::Relaxed);
     }
+    if let Some(on) = launch.inlay.lineage {
+        toggles.inlay_lineage_off.store(!on, Ordering::Relaxed);
+    }
+    if let Some(len) = launch.inlay.lineage_max_len {
+        toggles.inlay_lineage_max_len.store(len, Ordering::Relaxed);
+    }
     *toggles.perf.write().expect("perf settings lock") =
         Arc::new(launch.perf_settings(&Default::default()));
+    *toggles.format.write().expect("format rules lock") = launch.format.clone();
     let refresh_limits = limits.clone();
     #[cfg(feature = "duckdb-parser")]
     let refresh_toggles = toggles.clone();

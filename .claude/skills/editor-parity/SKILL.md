@@ -21,8 +21,11 @@ LSP client runs them — so the rule is about commands.
      action (`dbt.openSchema`, `dbt.goToTests`, …). Say where with `via`.
 2. Zed cannot add commands (an extension has no command surface). It gets code
    actions and lenses for free; its README says that the rest needs an
-   executeCommand client. Name a headline feature there when it arrives as a
-   code action.
+   executeCommand client. A user command Zed reaches anyway — a lens or action
+   that sends it and shows its result as a file (`show: true` +
+   showDocument) or a message, or a setting that makes a standard request do
+   it — gets a line in `[zed]` (`via`, and `sent_in` for the file that sends
+   it) and is named in `editors/zed/README.md`; the test checks both.
 3. `[gaps.<editor>]` holds what was missing when the rule was adopted
    (2026-11-22). **It only shrinks.** Never add a line for a new command; when
    you wrap a listed one, delete its line (the test tells you to).
@@ -80,7 +83,8 @@ editor "exposes" a command when one of its files holds the quoted name.
 - The README's "Palette commands".
 - Checks in `src/test/suite/index.ts`.
 
-**Zed** — nothing to wrap; a README note when the feature is a code action.
+**Zed** — nothing to wrap; a `[zed]` line and a README note when the feature
+reaches it as a code action, a lens or a setting.
 
 **Every client**: handle a `null` result (say why there is nothing), go to a
 file from a `uri`, never assume a position the server did not send.

@@ -1,58 +1,79 @@
-//! textDocument/formatting (05 §9): sqlformat over Jinja-segmented
-//! SQL. Full-line `{% %}`/`{# #}` statements pass through verbatim,
-//! `{{ }}` expressions ride as sentinel identifiers, and ANY doubt —
-//! an inline statement, a sentinel miscount — declines with no edits.
-//! Never corrupt; prefer no-op.
+//! textDocument/formatting (05 §9) on the `cogitator-format` crate: SQL
+//! laid out on sqlfluff's parse tree, Jinja on minijinja's tokens, by the
+//! rules of `cogitator.yml`'s `format:` or the nearest
+//! `cogitator-format.toml`. A model the formatter cannot keep intact is
+//! declined: no edits, never a corrupted file.
 
-mod mask;
-mod segment;
-
+use cogitator_format::{Config, Declined, IndentUnit};
 use cogitator_lsp::{Position, Range, TextEdit};
 
-#[derive(Debug, Clone, Copy)]
+/// What a request formats by.
+#[derive(Debug, Clone, Default)]
 pub struct FormatOptions {
+    /// The editor's indent, used when no rules were configured.
     pub tab_size: u8,
     pub insert_spaces: bool,
+    /// The configured rules, if any.
+    pub rules: Option<Config>,
+    /// The project's dbt adapter (`duckdb`, `spark`): the dialect where the
+    /// rules name none.
+    pub adapter: String,
+}
+
+impl FormatOptions {
+    /// The rules this request formats by: the configured ones, else the
+    /// defaults with the editor's indent; the adapter's dialect where they
+    /// name none.
+    pub fn config(&self) -> Config {
+        let rules = self.rules.clone().unwrap_or_else(|| Config {
+            indent_unit: if self.insert_spaces {
+                IndentUnit::Space
+            } else {
+                IndentUnit::Tab
+            },
+            tab_space_size: usize::from(self.tab_size.max(1)),
+            ..Config::default()
+        });
+        rules.with_adapter(&self.adapter)
+    }
+}
+
+/// The rules of the nearest cogitator-format.toml at or above `path`, if
+/// there is one.
+pub fn rules_near(path: &std::path::Path) -> Result<Option<Config>, cogitator_format::ConfigError> {
+    cogitator_format::config::find_config(path)
+        .map(|file| {
+            std::fs::read_to_string(&file)
+                .map_err(|source| cogitator_format::ConfigError::Read {
+                    path: file.clone(),
+                    source,
+                })
+                .and_then(|text| Config::from_toml(&text, &file))
+        })
+        .transpose()
+}
+
+/// The formatted text, or why the document is left as it is.
+pub fn format_text(text: &str, options: &FormatOptions) -> Result<String, Declined> {
+    cogitator_format::format(text, &options.config())
 }
 
 /// The whole-document edit, `Some(vec![])` when already formatted,
 /// `None` when the document is not safely formattable.
-/// A file with CRLF line endings (a Windows checkout) is formatted as its
-/// LF text and keeps CRLF: line endings alone never count as a change.
 pub fn format_document(text: &str, options: &FormatOptions) -> Option<Vec<TextEdit>> {
-    if !text.contains("\r\n") {
-        return format_lf(text, options);
-    }
-    let lf = text.replace("\r\n", "\n");
-    let mut edits = format_lf(&lf, options)?;
-    for edit in &mut edits {
-        edit.new_text = edit.new_text.replace('\n', "\r\n");
-    }
-    Some(edits)
-}
-
-fn format_lf(text: &str, options: &FormatOptions) -> Option<Vec<TextEdit>> {
-    let segments = segment::split(text)?;
-    let mut out = String::with_capacity(text.len());
-    for seg in segments {
-        match seg {
-            segment::Segment::Verbatim(line) => {
-                out.push_str(line);
-            }
-            segment::Segment::Sql(sql) => {
-                let formatted = mask::format_masked(sql, options)?;
-                out.push_str(&formatted);
-                if !formatted.ends_with('\n') && !sql.trim_end_matches('\n').is_empty() {
-                    out.push('\n');
-                }
-            }
+    match format_text(text, options) {
+        Ok(out) if out == text => Some(Vec::new()),
+        Ok(out) => Some(vec![whole_document(text, out)]),
+        Err(declined) => {
+            tracing::debug!(%declined, "formatting declined");
+            None
         }
     }
-    if out.trim_end() == text.trim_end() {
-        return Some(Vec::new());
-    }
+}
+
+fn whole_document(text: &str, new_text: String) -> TextEdit {
     let end_line = text.lines().count() as u32 + 1;
-    Some(vec![TextEdit {
+    TextEdit {
         range: Range {
             start: Position::default(),
             end: Position {
@@ -60,36 +81,25 @@ fn format_lf(text: &str, options: &FormatOptions) -> Option<Vec<TextEdit>> {
                 character: 0,
             },
         },
-        new_text: out,
-    }])
+        new_text,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn crlf_endings_are_no_change_and_are_kept() {
-        let options = FormatOptions {
+    fn options() -> FormatOptions {
+        FormatOptions {
             tab_size: 4,
             insert_spaces: true,
-        };
-        let lf = "select a,b from {{ ref('x') }} where a>1\n";
-        let formatted = format_document(lf, &options).unwrap()[0].new_text.clone();
-        let crlf = formatted.replace('\n', "\r\n");
-        assert_eq!(format_document(&crlf, &options), Some(Vec::new()));
-        let messy = lf.replace('\n', "\r\n");
-        let edit = &format_document(&messy, &options).unwrap()[0].new_text;
-        assert_eq!(edit, &crlf);
-        assert!(!edit.replace("\r\n", "").contains('\n'));
+            rules: None,
+            adapter: "duckdb".into(),
+        }
     }
 
     fn fmt(text: &str) -> Option<String> {
-        let options = FormatOptions {
-            tab_size: 4,
-            insert_spaces: true,
-        };
-        format_document(text, &options).map(|edits| {
+        format_document(text, &options()).map(|edits| {
             edits
                 .first()
                 .map(|e| e.new_text.clone())
@@ -98,45 +108,78 @@ mod tests {
     }
 
     #[test]
+    fn crlf_endings_are_no_change_and_are_kept() {
+        let lf = "select a,b from {{ ref('x') }} where a>1\n";
+        let formatted = fmt(lf).unwrap();
+        let crlf = formatted.replace('\n', "\r\n");
+        assert_eq!(format_document(&crlf, &options()), Some(Vec::new()));
+        let edit = fmt(&lf.replace('\n', "\r\n")).unwrap();
+        assert_eq!(edit, crlf);
+    }
+
+    #[test]
     fn formats_and_is_idempotent_with_jinja_preserved() {
         let input =
             "{{ config(materialized='table') }}\nselect a,b from {{ ref('stg_x') }} where a>1\n";
         let once = fmt(input).expect("formats");
-        assert!(once.contains("{{ ref('stg_x') }}"), "{once}");
+        assert!(once.contains("from {{ ref('stg_x') }}"), "{once}");
         assert!(
-            once.contains("{{ config(materialized='table') }}"),
+            once.starts_with("{{ config(materialized='table') }}\n"),
             "{once}"
         );
-        assert_ne!(once, input);
-        let twice = fmt(&once).expect("formats again");
-        assert_eq!(once.trim_end(), twice.trim_end(), "idempotent");
+        assert_eq!(fmt(&once).as_deref(), Some(once.as_str()), "idempotent");
     }
 
     #[test]
-    fn full_line_statements_pass_verbatim() {
-        let input =
-            "{% set x = 1 %}\nselect {{ x }} as v\n{% if flag %}\nselect 2 as w\n{% endif %}\n";
+    fn statements_keep_their_lines_and_indent_their_blocks() {
+        let input = "{% set x = 1 %}\nselect {{ x }} as v\n{% if flag %}\nunion all\nselect 2 as w\n{% endif %}\n";
         let formatted = fmt(input).expect("formats");
         assert!(formatted.contains("{% set x = 1 %}\n"), "{formatted}");
-        assert!(formatted.contains("{% if flag %}\n"), "{formatted}");
+        assert!(
+            formatted.contains("{% if flag %}\n    union all\n"),
+            "{formatted}"
+        );
+        assert!(formatted.ends_with("{% endif %}\n"), "{formatted}");
+    }
+
+    #[test]
+    fn inline_statements_stay_inline() {
+        let formatted = fmt("select 1 {% if x %} ,2 {% endif %} from t\n").expect("formats");
+        assert!(formatted.contains("{% if x %}"), "{formatted}");
         assert!(formatted.contains("{% endif %}"), "{formatted}");
     }
 
     #[test]
-    fn inline_statements_decline() {
-        assert!(fmt("select 1 {% if x %} ,2 {% endif %} from t\n").is_none());
+    fn what_cannot_be_kept_intact_is_declined() {
+        assert_eq!(fmt("select {{ unclosed\n"), None);
     }
 
     #[test]
-    fn already_formatted_yields_no_edits() {
-        let input = "{{ config(materialized='table') }}\nselect a,b from {{ ref('stg_x') }}\n";
-        let options = FormatOptions {
-            tab_size: 4,
-            insert_spaces: true,
+    fn the_editors_indent_without_rules_and_the_rules_over_it() {
+        let tabs = FormatOptions {
+            insert_spaces: false,
+            ..options()
         };
-        let once = format_document(input, &options).unwrap();
-        let text = &once[0].new_text;
-        let again = format_document(text, &options).unwrap();
-        assert!(again.is_empty(), "{again:?}");
+        let out = format_text("select a, b from t", &tabs).unwrap();
+        assert!(out.contains("\n\ta,\n"), "{out:?}");
+        let ruled = FormatOptions {
+            rules: Some(Config {
+                tab_space_size: 2,
+                ..Config::default()
+            }),
+            ..tabs
+        };
+        let out = format_text("select a, b from t", &ruled).unwrap();
+        assert!(out.contains("\n  a,\n"), "{out:?}");
+    }
+
+    #[test]
+    fn the_adapter_names_the_dialect() {
+        let config = FormatOptions {
+            adapter: "spark".into(),
+            ..options()
+        }
+        .config();
+        assert_eq!(config.dialect_name(), "sparksql");
     }
 }

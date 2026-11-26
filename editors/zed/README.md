@@ -69,14 +69,83 @@ compiles the extension to WebAssembly (`wasm32-wasip1`) the way Zed does.
   extension predates this one and also works; this extension is the
   first-party, settings-passthrough variant.
 
+## Turn on inlay hints
+
+Zed keeps inlay hints off until you turn them on, and the server sends
+a lot through them: the inline column lineage after each output column
+(`customer_id ← stg_customers.customer_id`), `var()` and `env_var()`
+values, plan row estimates. The lineage hints are of kind *type*:
+
+```json
+{
+  "inlay_hints": { "enabled": true, "show_type_hints": true }
+}
+```
+
+(or the same under `"languages": { "SQL": { "inlay_hints": … } }` to
+keep them to SQL). A hint's tooltip says where the column comes from,
+and its upstream part carries the location of the column it names. Their length
+and whether they show at all are `inlay.lineage` and
+`inlay.lineage_max_len` in `cogitator.yml`, as in every editor.
+
+## What Zed gets, and how
+
+A Zed extension cannot add commands, panels or windows; what Zed gets
+arrives through standard LSP requests:
+
+- **SQL aliases, CTEs and column aliases**: go to definition, find
+  references, document highlights and rename on a table alias, a CTE
+  name or a `select … as x` alias, inside the file.
+- **Column completion**: `alias.column` and bare columns of what the
+  `FROM`/`JOIN` has in scope, ranked above functions and keywords by
+  `sortText`, and after `alias.` only that relation's columns. Zed
+  sorts by its own fuzzy score first and uses `sortText` only to break
+  ties, so the columns lead whenever the typed text fits them and a
+  global name equally well; a closer fuzzy match still comes first.
+- **A column's lineage graph** — `dbt.columnLineageGraph` — is a code
+  action: put the cursor on an output column of a model (in its SQL or
+  its YAML entry), open the code actions (`cmd-.`), and pick
+  **Show column lineage of model.column**. The walk, up- and
+  downstream three hops, opens as a text file under
+  `target/.cogitator/lineage/`: the columns layer by layer from the
+  sources down (the start marked ▶, each with its file), the edges
+  (`direct` when a column passes its input through, else `derived`),
+  and the models still being computed (run the action again). The
+  lineage comes from the server's project-wide cache, so the second
+  walk anywhere is instant.
+- **Rename a column up- and downstream** — `dbt.renameColumn` with
+  `direction: "both"` — is the rename you already have (`F2`), once the
+  settings ask for it:
+
+  ```json
+  { "lsp": { "cogitator": {
+      "initialization_options": { "renameColumnDirection": "both" }
+  } } }
+  ```
+
+  With `"both"`, renaming a column the model passes through renames it
+  from the model that defines it, so every model on its way keeps one
+  name; the default, `"down"`, renames it here and in its consumers
+  and aliases it (`old as new`) where it comes in. It is a setting
+  rather than a choice per rename because a rename request has no room
+  for one; restart the server after changing it.
+- **Code lenses and code actions** of a model: **Column lineage**
+  (`dbt.showLineage`, as a message), **dbt run** / **dbt test** /
+  **dbt compile** (`dbt.run`, `dbt.test`, `dbt.compile`, as
+  notifications), **Extract schema YAML** (`dbt.extractModelYaml`),
+  **Compare incremental / full refresh** (`dbt.incrementalDiff`, the
+  diff opens as a file), and in the active profiles.yml
+  **Switch target** (`dbt.setTarget`).
+
 ## Server features beyond stock LSP
 
 Formatting, inlay hints, document links, linked CTE editing, quickfix
 and refactor code actions, pull + workspace diagnostics all work in
-Zed out of the box. The `dbt.*` executeCommand surface (doctor,
-impact, deadModels, expandJinja, runSelection/cancel, …) has no
-generic Zed UI yet — use the Neovim or Emacs integrations, or any
-client that can send workspace/executeCommand.
+Zed out of the box. The rest of the `dbt.*` executeCommand surface
+(doctor, impact, deadModels, expandJinja, runSelection/cancel, the
+column-lineage dialog of Neovim, …) has no generic Zed UI — use the
+Neovim, Emacs or VS Code integrations, or any client that can send
+workspace/executeCommand.
 
 Splitting a table model at its incrementality frontier is a code
 action, so it works here: "Split 'cte' into the incremental model … and

@@ -44,6 +44,10 @@ pub struct FileConfig {
     pub bi: BiSection,
     #[serde(default)]
     pub cost: CostSection,
+    /// textDocument/formatting's rules (the `cogitator-format` crate's,
+    /// as in cogitator-format.toml); absent: that file's, else defaults.
+    #[serde(default)]
+    pub format: Option<cogitator_format::Config>,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -61,6 +65,10 @@ pub struct InlaySection {
     pub env_vars: Option<bool>,
     /// What short `{{ … }}` expressions render to (default off).
     pub jinja: Option<bool>,
+    /// Inline column lineage after each output column (default on).
+    pub lineage: Option<bool>,
+    /// Inline column lineage label cap in characters (default 60).
+    pub lineage_max_len: Option<u64>,
     /// Each output column's inferred type after its select item
     /// (default off).
     pub types: Option<bool>,
@@ -121,6 +129,8 @@ pub struct LintSection {
     pub dispatch: Option<bool>,
     /// Default on: `false` turns the Jinja and SQL syntax checks off.
     pub syntax: Option<bool>,
+    /// Default on: `false` turns the invalid-model checks off.
+    pub model: Option<bool>,
 }
 
 pub use cogitator_analysis::config_schema::lint_flags;
@@ -143,6 +153,7 @@ impl LintSection {
         bit(self.macro_calls, lint_flags::MACRO_CALLS);
         bit(self.dispatch, lint_flags::DISPATCH);
         bit(self.syntax, lint_flags::SYNTAX);
+        bit(self.model, lint_flags::MODEL);
         flags
     }
 }
@@ -266,6 +277,7 @@ const ROOT_KEYS: &[&str] = &[
     "perf",
     "inlay",
     "types",
+    "format",
     "vars",
     "perf_rules",
     "preview",
@@ -285,12 +297,20 @@ const LINT_KEYS: &[&str] = &[
     "macro_calls",
     "dispatch",
     "syntax",
+    "model",
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns", "profile", "profile_sample_rows"];
 const COST_KEYS: &[&str] = &["query_history"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
-const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja", "types"];
+const INLAY_KEYS: &[&str] = &[
+    "vars",
+    "env_vars",
+    "jinja",
+    "types",
+    "lineage",
+    "lineage_max_len",
+];
 const TYPES_KEYS: &[&str] = &["checks"];
 const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
 const BI_KEYS: &[&str] = &["manifest"];

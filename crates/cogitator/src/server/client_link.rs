@@ -53,6 +53,23 @@ impl ClientLink {
         });
     }
 
+    /// A server→client request without params (`workspace/*/refresh`):
+    /// JSON-RPC allows no `params: null`, so the member is left out.
+    pub fn send_bare_request(&self, method: &'static str) {
+        #[derive(Serialize)]
+        struct Bare {
+            jsonrpc: &'static str,
+            id: i64,
+            method: &'static str,
+        }
+        let id = self.ids.fetch_add(1, Ordering::Relaxed);
+        self.send(&Bare {
+            jsonrpc: "2.0",
+            id,
+            method,
+        });
+    }
+
     #[allow(dead_code)]
     pub fn publish_diagnostics(&self, uri: String, items: Vec<Diagnostic>) {
         self.send(&cogitator_lsp::publish_diagnostics(uri, items));

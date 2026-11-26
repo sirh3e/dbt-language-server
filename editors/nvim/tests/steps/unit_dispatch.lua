@@ -11,7 +11,7 @@ return function(ctx)
   H.check(#missing == 0, "dispatch: every routed command exists", vim.inspect(missing))
 
   H.check(
-    vim.deep_equal(dispatch.complete("c", "Dbt c"), { "cache", "cancel", "columns", "compile" }),
+    vim.deep_equal(dispatch.complete("c", "Dbt c"), { "cache", "cancel", "columns", "compile", "ctes", "ctesql" }),
     "dispatch: completes subcommands by prefix",
     vim.inspect(dispatch.complete("c", "Dbt c"))
   )

@@ -116,15 +116,30 @@ impl TestProject {
 /// The boot sequence against an arbitrary root; returns customers.sql's
 /// URI. Shared by TestProject and the few tests that build odd roots.
 pub fn boot(lsp: &mut Lsp, root: &Path, capabilities: serde_json::Value) -> String {
+    boot_with_options(lsp, root, capabilities, serde_json::json!({}))
+}
+
+/// `boot` with extra initializationOptions (merged over `profilesDir`),
+/// as an editor's settings pass them (Zed's `lsp.cogitator.initialization_options`).
+pub fn boot_with_options(
+    lsp: &mut Lsp,
+    root: &Path,
+    capabilities: serde_json::Value,
+    options: serde_json::Value,
+) -> String {
     let model = root.join("models/customers.sql");
     let text = std::fs::read_to_string(&model).unwrap();
     let uri = cogitator_lsp::fs_path_to_uri(&model);
+    let mut init = serde_json::json!({"profilesDir": root.join(".dbt").to_string_lossy()});
+    if let (Some(init), Some(extra)) = (init.as_object_mut(), options.as_object()) {
+        init.extend(extra.clone());
+    }
     let _ = lsp.request(
         "initialize",
         serde_json::json!({
             "rootUri": cogitator_lsp::fs_path_to_uri(root),
             "capabilities": capabilities,
-            "initializationOptions": {"profilesDir": root.join(".dbt").to_string_lossy()},
+            "initializationOptions": init,
         }),
     );
     lsp.notify("initialized", serde_json::json!({}));

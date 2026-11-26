@@ -94,6 +94,20 @@ fn document_links_in(ctx: &DbtContext, doc: &Document, uri: &str) -> Vec<Documen
                     tooltip: Some(format!("docs block {literal}")),
                 });
             }
+            TokenKind::Function => {
+                let Some((path, _)) = ctx
+                    .function_detail_map
+                    .get(literal)
+                    .and_then(|f| f.definition())
+                else {
+                    continue;
+                };
+                out.push(DocumentLink {
+                    range: token_range(token),
+                    target: file_uri(&path),
+                    tooltip: Some(format!("function {literal}")),
+                });
+            }
             _ => {}
         }
     }

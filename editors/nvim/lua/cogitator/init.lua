@@ -90,6 +90,20 @@ local function keymaps(bufnr, config)
   map("<leader>de", function()
     require("cogitator.rename").rename()
   end, "dbt: rename this model or macro (previewed)")
+  map("<leader>di", function()
+    require("cogitator.diagnostics").fix()
+  end, "dbt: fix the problem under the cursor")
+  map("<leader>dQ", commands.test_sql, "dbt: the SQL every test of this model runs")
+  map("<leader>dC", function()
+    require("cogitator.preview_cte").float()
+  end, "dbt: the rows of the CTE under the cursor, in a float")
+  map("<leader>dK", function()
+    require("cogitator.preview_cte").pick()
+  end, "dbt: every CTE of this model in the picker")
+  map("<leader>dM", commands.incremental_sql, "dbt: what an incremental run of this model executes")
+  map("<leader>dI", function()
+    require("cogitator.diagnostics").problems()
+  end, "dbt: this file's problems in the location list")
   if config.ui.picker then
     -- Neovim's defaults, taken over like `gra`: the dialogs above
     map("grr", function()
@@ -137,6 +151,7 @@ local function on_attach(client, bufnr, config)
   if config.keymaps then
     keymaps(bufnr, config)
   end
+  require("cogitator.diagnostics").attach(client, { keymaps = config.keymaps })
   require("cogitator.lens").attach(bufnr, config)
   require("cogitator.treesitter").attach(bufnr)
   -- after the grammar: the server paints what Neovim's parsers do not

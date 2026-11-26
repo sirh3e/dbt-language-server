@@ -10,10 +10,17 @@
 # [gaps.<editor>] lists the user commands an editor did not wrap when the rule was adopted
 # (2026-11-22). It only shrinks: a new command never gets a line here, and the test fails
 # once an editor wraps a listed command until its line is removed.
+#
+# [zed] lists the user commands Zed reaches all the same, through stock LSP: a code lens or
+# code action that sends the command (and shows its result as a file or a message), or a
+# setting that makes a standard request do what the command does. `via` says how; `sent_in`,
+# when given, is the file that sends the command, and must name it. Each one is named in
+# editors/zed/README.md. It only grows.
 
 [commands]
 "dbt.goToSchema" = { kind = "user" }
 "dbt.columnLineage" = { kind = "user" }
+"dbt.columnLineageGraph" = { kind = "user" }
 "dbt.openSchema" = { kind = "internal", via = "code lens and code action 'Go to schema' (features/lenses.rs, code_actions/mod.rs)" }
 "dbt.showLineage" = { kind = "user" }
 "dbt.run" = { kind = "user" }
@@ -48,6 +55,9 @@
 "dbt.incrementality" = { kind = "user" }
 "dbt.splitPlan" = { kind = "user" }
 "dbt.incrementalDiff" = { kind = "user" }
+"dbt.testSql" = { kind = "user" }
+"dbt.incrementalSql" = { kind = "user" }
+"dbt.cteSql" = { kind = "user" }
 "dbt.syntaxTree" = { kind = "user" }
 "dbt.highlight" = { kind = "user" }
 "dbt.astGrep" = { kind = "user" }
@@ -63,6 +73,7 @@
 "dbt.costReport" = { kind = "user" }
 "dbt.diffAt" = { kind = "user" }
 "dbt.profileColumn" = { kind = "user" }
+"dbt.renameColumn" = { kind = "user" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"
@@ -99,3 +110,14 @@
 "dbt.expandJinja" = "predates the parity rule"
 "dbt.doctor" = "predates the parity rule"
 "dbt.queryPlan" = "predates the parity rule"
+
+[zed]
+"dbt.showLineage" = { via = "code lens and code action 'Column lineage' (a window/showMessage)", sent_in = "crates/cogitator-analysis/src/features/lenses.rs" }
+"dbt.run" = { via = "code lens and code action 'dbt run' (notifications)", sent_in = "crates/cogitator-analysis/src/features/lenses.rs" }
+"dbt.test" = { via = "code lens and code action 'dbt test' (notifications)", sent_in = "crates/cogitator-analysis/src/features/lenses.rs" }
+"dbt.compile" = { via = "code lens and code action 'dbt compile' (notifications)", sent_in = "crates/cogitator-analysis/src/features/lenses.rs" }
+"dbt.extractModelYaml" = { via = "code lens and code action 'Extract schema YAML'", sent_in = "crates/cogitator-analysis/src/features/lenses.rs" }
+"dbt.setTarget" = { via = "code action 'Switch target' in the active profiles.yml", sent_in = "crates/cogitator-analysis/src/features/code_actions/mod.rs" }
+"dbt.incrementalDiff" = { via = "code lens 'Compare incremental / full refresh' (show: true opens the diff)", sent_in = "crates/cogitator-analysis/src/features/incremental_diff.rs" }
+"dbt.columnLineageGraph" = { via = "code action 'Show column lineage of m.col' (show: true opens the walk as a file)", sent_in = "crates/cogitator-analysis/src/features/lineage_graph/action.rs" }
+"dbt.renameColumn" = { via = "textDocument/rename, up- and downstream with initializationOptions.renameColumnDirection \"both\"" }

@@ -82,6 +82,83 @@ fn write_diff(snap: &Snapshot, model: &str, diff: &features::IncrementalDiff) ->
     Some(cogitator_lsp::fs_path_to_uri(&path))
 }
 
+/// `dbt.incrementalSql {uri, strategy?, show?}`: what an incremental
+/// run of the model executes for its strategy (or `strategy`), and the
+/// full refresh. With `show: true` (the code action) the text is written
+/// under `target/.cogitator/incremental/` and opened.
+#[tracing::instrument(skip_all, fields(uri = %short_uri(uri), show))]
+pub fn incremental_sql(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+    uri: &str,
+    strategy: Option<&str>,
+    show: bool,
+) -> Reply {
+    let Some(model) = features::model_name_from_uri(uri) else {
+        return invalid(
+            Guidance::new("dbt.incrementalSql needs a model's .sql file.")
+                .at(uri)
+                .fix("pass the uri of a dbt model."),
+        );
+    };
+    let text = match snap.doc.as_deref() {
+        Some(doc) => doc.text.to_string(),
+        None => {
+            let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
+            match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(_) => {
+                    return invalid(
+                        Guidance::new(format!("Could not read model '{model}'."))
+                            .at(path)
+                            .fix("open the model in the editor, or check the uri."),
+                    )
+                }
+            }
+        }
+    };
+    let columns: Vec<String> = snap
+        .ctx
+        .model_detail_map
+        .get(&model)
+        .map(|d| d.columns.iter().map(|c| c.name.clone()).collect())
+        .unwrap_or_default();
+    let mut inputs = super::commands::preview_inputs(snap, derived);
+    let answer = match features::incremental_sql(
+        &model,
+        &text,
+        snap.ctx.dialect.as_str(),
+        &columns,
+        &mut inputs,
+        strategy,
+    ) {
+        Ok(answer) => answer,
+        Err(guidance) => return invalid(guidance),
+    };
+    if !show {
+        return Reply::result(&answer);
+    }
+    let written = snap.ctx.project_root.as_deref().and_then(|root| {
+        let dir = root.join("target/.cogitator/incremental");
+        let path = dir.join(format!("{model}.{}.sql", answer.strategy.replace('+', "_")));
+        match std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &answer.text)) {
+            Ok(()) => Some(cogitator_lsp::fs_path_to_uri(&path)),
+            Err(err) => {
+                tracing::warn!(%err, "could not write the incremental SQL; returning it only");
+                None
+            }
+        }
+    });
+    match written {
+        Some(file_uri) => Reply::result(&answer).with(Effect::ShowDocument(ShowDocumentParams {
+            uri: file_uri,
+            take_focus: true,
+            selection: None,
+        })),
+        None => Reply::result(&answer),
+    }
+}
+
 fn invalid(guidance: Guidance) -> Reply {
     Reply::error(error_codes::INVALID_PARAMS, guidance.to_message())
 }

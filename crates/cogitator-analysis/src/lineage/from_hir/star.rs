@@ -1,8 +1,9 @@
 //! A star's known columns, and the `*` row standing for the rest of an
 //! open input (a CTE with a `{{ macro() }}` select item).
 
-use cogitator_ir::hir::{ExprId, FromId, Ident};
+use cogitator_ir::hir::{ExprId, FromId, FromKind, Ident, RelTarget};
 
+use super::direct::Hop;
 use super::lookup::Wanted;
 use super::{unique, Ctx, Row, Star, Walker};
 
@@ -31,11 +32,12 @@ impl Walker<'_> {
                 label: &label,
                 bound: u32::try_from(position).ok(),
             };
-            let (sources, direct) = match replaced {
-                Some((expr, _)) => (self.expr_sources(*expr, ctx), false),
+            let (sources, direct, passes) = match replaced {
+                Some((expr, _)) => (self.expr_sources(*expr, ctx), false, false),
                 None => (
                     self.item_sources(target, wanted, ctx),
-                    self.item_direct(target, col.name),
+                    self.item_direct(target, col.name, Hop::Unchanged),
+                    self.item_direct(target, col.name, Hop::Renamed),
                 ),
             };
             rows.push(Row {
@@ -44,9 +46,31 @@ impl Walker<'_> {
                 star: None,
                 sources: unique(sources),
                 direct,
+                passes,
+                end: self.produced_at(target, col.name),
             });
         }
         rows
+    }
+
+    /// Where an in-file CTE or derived table makes its column `name`, so
+    /// `select * from final` places a column at `final`'s select item.
+    fn produced_at(&mut self, target: FromId, name: cogitator_ir::Symbol) -> Option<u32> {
+        let hir = self.hir;
+        let query = match &hir.from.get(target)?.kind {
+            FromKind::Base {
+                target: RelTarget::Cte(id),
+                ..
+            } => hir.ctes.get(*id)?.query,
+            FromKind::Derived { q, .. } => *q,
+            _ => return None,
+        };
+        let rows = self.rows_of(query);
+        let mut named = rows.iter().filter(|row| row.key == Some(name));
+        match (named.next(), named.next()) {
+            (Some(row), None) => row.end,
+            _ => None,
+        }
     }
 
     /// What an open `target` outputs beyond its known columns: a `*` row
@@ -76,7 +100,7 @@ impl Walker<'_> {
             label: Some("*".to_string()),
             star: Some(star),
             sources: self.star_sources(&[target], ctx),
-            direct: false,
+            ..Row::default()
         }
     }
 }

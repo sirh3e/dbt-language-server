@@ -84,7 +84,10 @@ editor integrations live under `editors/`.
 - **Zero-copy**: tokens are byte spans into `Arc<str>` document text; inbound
   params borrow via `Cow`; a `clone()`/`to_string()` on a hot path must name
   the owner boundary it feeds (08 §1.5).
-- **No hand-written lexers**: minijinja machinery + sqlparser only (05 §4).
+- **No hand-written lexers**: minijinja machinery + sqlparser only (05 §4);
+  the formatter (`crates/cogitator-format`) also uses sqlfluff's lexer and
+  parser, vendored in `vendor/sqlfluffrs` with their generated dialects —
+  never edit it; `just vendor-sqlfluffrs [<sqlfluff commit>]` regenerates it.
 - **Files stay small**: ≤ ~300 lines per module; split by concern.
 - **Logging**: `tracing` spans/events only; nothing but LSP frames on stdout.
 - **Windows rules**: never hand-strip `file://` — URIs go through
@@ -96,13 +99,17 @@ editor integrations live under `editors/`.
 ## Server surface beyond stock LSP
 - **Consumer parity is a rule.** A new `dbt.*` command is classified in
   `editors/parity.toml` and wrapped by Neovim, Emacs and VS Code in the same
-  change (Zed gets code actions and lenses only); the checklist is the
+  change (Zed gets code actions and lenses only, listed in `[zed]`); the checklist is the
   `editor-parity` skill (`.claude/skills/editor-parity/SKILL.md`), and
   `crates/cogitator-lsp/tests/consumer_parity.rs` fails until it holds. The
   `[gaps.*]` baseline only shrinks.
 - Custom commands (advertised in `cogitator-lsp/src/types/init.rs`,
   documented in `specs/neovim-plugin/00-plugin.md` §1.6): dbt.goToSchema,
-  dbt.columnLineage, dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
+  dbt.columnLineage, dbt.columnLineageGraph (the column walk across the
+  project in one answer, from a per-model lineage cache keyed by file
+  stamp + upstream schemas, persisted to target/.cogitator-lineage-cache;
+  `features/lineage_graph/` pure, the cache `server/lineage_graph/`),
+  dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
   dbt.modelGraph, dbt.profiles, dbt.setTarget, dbt.extractModelYaml,
   dbt.modelTests, dbt.goToTests, dbt.status, dbt.projectGraph,
   dbt.modelInfo (neighbors + versions + tests + compiledUri for the
@@ -155,7 +162,7 @@ editor integrations live under `editors/`.
   dbt.profileColumn (a sampled column profile from the warehouse, off
   unless `warehouse.profile`; `features/profile/`, the job
   `server/profile.rs`; the hover and the "Profile column" code action
-  read its cache). Every
+  read its cache), dbt.renameColumn (the column under the cursor renamed downstream, as textDocument/rename does, or with `direction: "both"` from the model its column lineage says defines it and then downstream; `features/rename_column/upstream.rs`, the shell `server/rename_column.rs`; `apply: true` sends the edit as workspace/applyEdit). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).

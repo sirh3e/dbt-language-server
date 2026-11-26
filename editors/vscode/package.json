@@ -95,6 +95,18 @@
         "title": "dbt: Profile the column under the cursor"
       },
       {
+        "command": "cogitator.cteSql",
+        "title": "dbt: Show the SQL of the CTE under the cursor"
+      },
+      {
+        "command": "cogitator.testSql",
+        "title": "dbt: Show the SQL of this model's tests"
+      },
+      {
+        "command": "cogitator.incrementalSql",
+        "title": "dbt: Show the SQL of an incremental run"
+      },
+      {
         "command": "cogitator.incrementality",
         "title": "dbt: Table models that could be incremental"
       },
@@ -117,6 +129,10 @@
       {
         "command": "cogitator.unresolved",
         "title": "dbt: Unresolved references"
+      },
+      {
+        "command": "cogitator.columnLineageGraph",
+        "title": "dbt: Column lineage graph"
       },
       {
         "command": "cogitator.breakingChanges",
@@ -145,6 +161,10 @@
       {
         "command": "cogitator.syncYaml",
         "title": "dbt: Sync schema YAML"
+      },
+      {
+        "command": "cogitator.renameColumn",
+        "title": "dbt: Rename column up- and downstream…"
       },
       {
         "command": "cogitator.status",

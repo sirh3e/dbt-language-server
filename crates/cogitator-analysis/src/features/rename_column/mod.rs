@@ -8,12 +8,21 @@
 //! The cursor names the column on its `columns:` YAML entry, or on a SQL
 //! word of the model's file that is one of its output columns (or a
 //! documented column of a model the file selects from).
+//!
+//! That is [`Direction::Down`], what textDocument/rename does: a column the
+//! model passes through from upstream gets `old as new` there and its
+//! upstream model is left alone. [`Direction::Both`] (`dbt.renameColumn`)
+//! first climbs the column's lineage to the model that defines it
+//! ([`upstream::origin_of`]) and renames from there, so every model it
+//! passes through keeps one name.
 
+mod directed;
 mod refs;
 mod seed;
 pub(crate) mod semantic;
 mod snapshots;
 mod sql;
+mod upstream;
 pub(crate) mod walk;
 mod yaml;
 pub(crate) mod yaml_lines;
@@ -35,6 +44,9 @@ use super::references::occur::{contains, name_span, unquoted};
 use super::references::target::{target_at, Target};
 use super::{file_uri, model_name_from_uri, token_range, DbtContext, Document};
 use walk::{walk_column, ColumnWalk, Edit};
+
+pub use directed::{rename_column_directed, ColumnRename, Direction};
+pub use upstream::Origin;
 
 /// The column the cursor names: (model, column, the range under the cursor).
 pub(crate) fn column_at(
@@ -122,6 +134,17 @@ pub(crate) fn rename_column(
     column: &str,
     new_name: &str,
 ) -> Result<WorkspaceEdit, String> {
+    rename_walk(ctx, reader, model, column, new_name).map(|(edit, _)| edit)
+}
+
+/// The edit, and the models whose output column it renames.
+pub(super) fn rename_walk(
+    ctx: &DbtContext,
+    reader: &Reader<'_>,
+    model: &str,
+    column: &str,
+    new_name: &str,
+) -> Result<(WorkspaceEdit, Vec<String>), String> {
     if !valid_column_name(new_name) {
         return Err(
             Guidance::new(format!("`{new_name}` is not a plain column name."))
@@ -130,13 +153,14 @@ pub(crate) fn rename_column(
         );
     }
     if new_name == column {
-        return Ok(WorkspaceEdit {
+        let edit = WorkspaceEdit {
             document_changes: Vec::new(),
-        });
+        };
+        return Ok((edit, Vec::new()));
     }
     let walk = walk_column(ctx, reader, model, column);
     refuse(&walk, model, column, new_name)?;
-    Ok(workspace_edit(&walk, new_name))
+    Ok((workspace_edit(&walk, new_name), walk.models.clone()))
 }
 
 fn refuse(walk: &ColumnWalk, model: &str, column: &str, new_name: &str) -> Result<(), String> {

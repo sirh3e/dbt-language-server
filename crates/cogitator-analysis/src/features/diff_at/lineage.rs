@@ -115,6 +115,8 @@ mod tests {
                 })
                 .collect(),
             direct: false,
+            derived: false,
+            end: None,
         }
     }
 

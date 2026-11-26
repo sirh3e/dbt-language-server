@@ -63,8 +63,11 @@ Defaults shown: >lua
       },
       keymaps = true,             -- the buffer-local <leader>d maps below
       semantic_tokens = true,
-      inlay_hints = false,        -- true: relations after ref(), the value
-                                  -- of each var() (= 'jaffle'), macro params
+      inlay_hints = true,         -- false: no inlay hints; on, the column
+                                  -- lineage after each output column
+                                  -- (← stg_payments.amount), relations
+                                  -- after ref(), the value of each var()
+                                  -- (= 'jaffle'), macro params
       highlight = {               -- |cogitator-nvim-highlight|
         server = "auto",          -- "always" | false: colours from the server
         layers = { yaml = true, sql = true, jinja = true, dbt = true },
@@ -172,7 +175,9 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  the model no longer produces, `types` fills proven
                  data_type, `reorder` follows the SQL's order,
                  `folder` writes new entries to _<folder>__models.yml
-  :DbtColumnLineage [column]  column-lineage graph of this model
+  :DbtColumnLineage [column]  the column-lineage dialog of this model
+                 (|cogitator-nvim-column-dialog|), on that column;
+                 `:DbtColumnLineage graph [column]` draws it as the DAG
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtInstall    install or update the language server from this
                  repository's releases (checksum-verified install.sh),
@@ -192,6 +197,32 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   (code lens)    run the code lens on this line      <leader>dL
   (selection)    expand along selectionRange         <leader>dv
   :DbtActions    code actions, yazi-style menu       <leader>dA, gra
+  :DbtFix        apply the fix of the problem under the cursor; with
+                 several fixes, choose in the code-action menu
+                                                     <leader>di
+  :DbtProblems   this file's problems in the location list, errors
+                 first, `✚` where a fix exists       <leader>dI
+  :DbtPreviewCte! [limit]
+                 the rows of the CTE under the cursor in a float
+                 (q or <Esc> closes)                 <leader>dC
+  :DbtCtes       every CTE of this model in the picker, its columns
+                 and lineage as preview; choose rows (float or split),
+                 its SQL or a jump                   <leader>dK
+  :DbtCteSql [cte]
+                 the query that selects a CTE, Jinja resolved, no
+                 warehouse, in a SQL split
+  (hover)        K on a CTE's name: its columns and where each comes
+                 from
+  :DbtTestSql    the SQL every test of this model runs, as the query
+                 dbt executes; <CR> on a header opens the test's
+                 declaration, ]t / [t walk the tests <leader>dQ
+  :DbtIncrementalSql [strategy]
+                 what an incremental run executes for the model's
+                 strategy (or the one named), and the full refresh
+                                                     <leader>dM
+  :Dbt incremental
+                 make this model incremental, or switch its strategy:
+                 a template per strategy in the code-action menu
   :DbtReferences[!]
                  where the model, macro, source or column under the
                  cursor is used, in a dialog (`!`: the file's own
@@ -203,6 +234,22 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  file's model; `!` always it) across the project, after
                  showing the edit                    <leader>de, grn
                  shrink back (visual mode)           <leader>dV
+
+Problems ~
+                                                    *cogitator-problems*
+The server reports what is wrong with a model as you write it: syntax
+errors, refs that resolve to nothing, and invalid models — a misspelt
+materialization, config key or value, a model that refs itself or closes
+a ref cycle, `is_incremental()` in a model that is not incremental, an
+empty model. For cogitator's diagnostics the plugin shows the problem's
+first sentence inline with its suggestion and the key that applies it:
+
+    materialization 'incrementl' does not exist — did you mean
+    'incremental'? ✚ <leader>di
+
+The float (|vim.diagnostic.open_float()|, `<C-w>d`) shows the whole
+message and lists every fix by its title. Other servers' diagnostics keep
+your own settings; a `float.format` you set still applies to them.
 
 Every command is also a subcommand of *:Dbt* with completion, e.g.
 `:Dbt columns customer_id`, `:Dbt cache clear`, `:Dbt treesitter install`;
@@ -242,6 +289,34 @@ column reads, downstream through the models that read it, up to
 says when the walk stopped early). A column of a model whose template the
 server declines (Jinja control flow) has no lineage; compiling it
 (|:DbtCompile|) lets the server read the compiled SQL instead.
+
+                                               *cogitator-nvim-column-dialog*
+:DbtColumnLineage opens the column lineage as yazi-style Miller panes:
+what feeds the column under the cursor | the list (first the model's
+columns) | what reads it, and below them the dbt SQL (or a source's YAML)
+and the compiled SQL of the column's model, each scrolled to the column
+with the column marked — in the model's own buffer too when it is open.
+It opens at once and fills as the lineages arrive. Rows are
+`▦ model.column` (`◆` a source column) with tags: `⋈` feeds a join,
+`ƒ` derived, `=` passed through, `↑in ↓out` its edges. The data is
+`dbt.columnLineageGraph` where the server has it, else the walk above.
+
+  j / k …        any motion moves the cursor; the panes follow it
+  h / l          walk: what feeds (reads) the column becomes the list;
+                 back the way you came lands on the column you left
+  /              filter the list in fzf's syntax (|cogitator-pickers|);
+                 <CR> keeps it, <Esc> drops it
+  <CR>           open the column where it is defined
+  c              open the compiled SQL at the column
+  y              yank `model.column`
+  D              draw it as the DAG graph instead
+  + / - / R      walk one hop deeper / shallower / again
+  <C-d> / <C-u>  scroll the previews
+  ?              the keys
+  <Esc>          clear the filter, else close;  q  close
+
+The marks are `DbtColumnHit` and `DbtColumnHitLine`, the tags
+`DbtColumnJoin`, `DbtColumnDerived` and `DbtColumnDirect`.
 
 Counts repeat h, j, k, l, n, N, <C-o> and <C-i>. The colours are the
 `DbtDag*` highlight groups, which a colorscheme can override. Search
@@ -463,7 +538,11 @@ header, a var, a column, a CTE — or else the file's own model;
 then shows the whole edit before anything changes: "apply" with the
 diff of every file, "cancel", and the changes one file at a time. A
 model rename also renames its file; a macro of an installed package is
-refused with the reason. The edited buffers are left unsaved (`:wall`).
+refused with the reason. A column renames the model and every consumer
+that keeps the name; when its lineage says it comes from an upstream
+model, a second choice "apply up- and downstream" renames it from there
+(`dbt.renameColumn` with `direction = "both"`), so every model it passes
+through keeps one name. The edited buffers are left unsaved (`:wall`).
 With `ui.picker = false`, `grr` and `grn` stay Neovim's own.
 
                                                       *cogitator-nvim-dialogs*

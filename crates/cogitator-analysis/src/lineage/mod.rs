@@ -15,7 +15,7 @@ mod from_hir;
 mod typed;
 
 pub use from_hir::column_lineage;
-pub(crate) use from_hir::{has_control_block, template_input};
+pub(crate) use from_hir::{column_lineage_expanded, has_control_block, template_input};
 pub use typed::{needs_compiled, typed_column_lineage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
@@ -33,7 +33,7 @@ pub enum SourceRef {
     Unknown { name: String, column: String },
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ColumnLineage {
     pub name: String,
     pub sources: Vec<SourceRef>,
@@ -44,6 +44,16 @@ pub struct ColumnLineage {
     /// not on the wire.
     #[serde(skip)]
     pub direct: bool,
+    /// The value is computed somewhere on its way here (an expression,
+    /// a literal, a set operation): not a column reference at every hop,
+    /// renames allowed. The inline lineage hints mark it; not on the wire.
+    #[serde(skip)]
+    pub derived: bool,
+    /// The byte offset in the template where the select item producing
+    /// this column ends; `None` on the compiled route, whose spans index
+    /// the compiled SQL. Where the inline hint goes; not on the wire.
+    #[serde(skip)]
+    pub end: Option<u32>,
 }
 
 /// Where an answer that was not read off the live template came from.

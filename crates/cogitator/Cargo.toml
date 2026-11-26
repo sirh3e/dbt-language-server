@@ -31,6 +31,7 @@ saphyr = { workspace = true }
 cogitator-lsp = { workspace = true }
 cogitator-dialects = { workspace = true }
 cogitator-analysis = { workspace = true }
+cogitator-format = { workspace = true }
 cogitator-parser = { workspace = true }
 cogitator-duckdb = { workspace = true }
 cogitator-treesitter = { workspace = true }

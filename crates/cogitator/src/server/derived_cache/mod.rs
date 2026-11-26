@@ -79,6 +79,8 @@ pub struct CacheReport {
     pub artifacts: CacheSurface,
     pub plans: CacheSurface,
     pub highlights: CacheSurface,
+    /// The project-wide column-lineage graph (`dbt.columnLineageGraph`).
+    pub lineage_graph: super::lineage_graph::GraphCacheReport,
 }
 
 /// (path, scope fingerprint) → (stamp, parsed inventory).
@@ -131,6 +133,8 @@ pub struct DerivedCache {
     syntax_renderer: Mutex<Option<(usize, Arc<SyntaxRenderer>)>>,
     /// dbt.profileColumn's answers, which the hover reads.
     column_profiles: profile::ProfileSlot,
+    /// Every model's typed lineage per project root, on disk too.
+    pub lineage_graph: super::lineage_graph::Stores,
 }
 
 /// What a cached `dbt.highlight` answer is of: an open document at a
@@ -343,6 +347,7 @@ impl DerivedCache {
             .lock()
             .expect("highlights cache lock")
             .clear();
+        self.lineage_graph.clear();
     }
 
     pub fn report(&self) -> CacheReport {
@@ -377,6 +382,7 @@ impl DerivedCache {
                 self.highlights.lock().expect("highlights cache lock").len(),
                 &self.highlights_stats,
             ),
+            lineage_graph: self.lineage_graph.report(),
         }
     }
 }

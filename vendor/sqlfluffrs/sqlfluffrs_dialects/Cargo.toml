@@ -1,0 +1,14 @@
+[package]
+name = "sqlfluffrs_dialects"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+sqlfluffrs_types = { path = "../sqlfluffrs_types" }
+
+[lints.rust]
+# the PyO3 bridge (feature "python") is not vendored, and what only it
+# used is dead here; upstream's code is not ours to change
+unexpected_cfgs = "allow"
+dead_code = "allow"

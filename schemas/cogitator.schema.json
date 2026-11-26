@@ -28,6 +28,131 @@
         }
       }
     },
+    "format": {
+      "description": "textDocument/formatting's rules, the keys of cogitator-format.toml (sqlfluff's names); absent: that file's, else the defaults with the editor's indent.",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "case.functions": {
+          "description": "CP03 (default lower). (upper|lower|capitalise|preserve)",
+          "type": "string",
+          "enum": [
+            "upper",
+            "lower",
+            "capitalise",
+            "preserve"
+          ]
+        },
+        "case.identifiers": {
+          "description": "CP02, unquoted only (default preserve). (upper|lower|capitalise|preserve)",
+          "type": "string",
+          "enum": [
+            "upper",
+            "lower",
+            "capitalise",
+            "preserve"
+          ]
+        },
+        "case.keywords": {
+          "description": "CP01 (default lower). (upper|lower|capitalise|preserve)",
+          "type": "string",
+          "enum": [
+            "upper",
+            "lower",
+            "capitalise",
+            "preserve"
+          ]
+        },
+        "case.literals": {
+          "description": "CP04: null, true, false (default lower). (upper|lower|capitalise|preserve)",
+          "type": "string",
+          "enum": [
+            "upper",
+            "lower",
+            "capitalise",
+            "preserve"
+          ]
+        },
+        "case.types": {
+          "description": "CP05 (default lower). (upper|lower|capitalise|preserve)",
+          "type": "string",
+          "enum": [
+            "upper",
+            "lower",
+            "capitalise",
+            "preserve"
+          ]
+        },
+        "dialect": {
+          "description": "sqlfluff's dialect; default the dbt adapter's (spark: sparksql). (name)",
+          "type": "string"
+        },
+        "indent_unit": {
+          "description": "space or tab (LT02, default space). (space|tab)",
+          "type": "string",
+          "enum": [
+            "space",
+            "tab"
+          ]
+        },
+        "jinja.delimiter_spacing": {
+          "description": "{{ x }}, one space inside (default true). (bool)",
+          "type": "boolean"
+        },
+        "jinja.filter_spacing": {
+          "description": "Spaces around a filter's | (default true). (bool)",
+          "type": "boolean"
+        },
+        "jinja.indent_blocks": {
+          "description": "Lines inside {% if %} … {% endif %} one level deeper (default true). (bool)",
+          "type": "boolean"
+        },
+        "jinja.normalize_tags": {
+          "description": "A tag's inside laid out from minijinja's tokens (default true). (bool)",
+          "type": "boolean"
+        },
+        "layout.blank_line_after_cte": {
+          "description": "LT08 (default true). (bool)",
+          "type": "boolean"
+        },
+        "layout.commas": {
+          "description": "LT04 (default trailing). (trailing|leading)",
+          "type": "string",
+          "enum": [
+            "trailing",
+            "leading"
+          ]
+        },
+        "layout.indented_joins": {
+          "description": "join indented under from (default false). (bool)",
+          "type": "boolean"
+        },
+        "layout.select_targets": {
+          "description": "LT09: one_per_line (default) or fit. (one_per_line|fit)",
+          "type": "string",
+          "enum": [
+            "one_per_line",
+            "fit"
+          ]
+        },
+        "max_blank_lines": {
+          "description": "Blank lines kept where the source had more (default 1). (count)",
+          "type": "string"
+        },
+        "max_line_length": {
+          "description": "The longest line the layout aims for (LT05, default 80). (columns)",
+          "type": "string"
+        },
+        "tab_space_size": {
+          "description": "Spaces per indent (default 4). (count)",
+          "type": "string"
+        },
+        "trailing_newline": {
+          "description": "End the file with one newline (LT12, default true). (bool)",
+          "type": "boolean"
+        }
+      }
+    },
     "inlay": {
       "description": "Which inlay hints the server sends.",
       "type": "object",
@@ -40,6 +165,15 @@
         "jinja": {
           "description": "Show what short single-line {{ … }} expressions render to (default false). (bool)",
           "type": "boolean"
+        },
+        "lineage": {
+          "description": "Show after each output column of a model's final select which upstream column it comes from (default true). (bool)",
+          "type": "boolean"
+        },
+        "lineage_max_len": {
+          "description": "The longest column lineage hint before it is cut with … (default 60). (chars)",
+          "type": "integer",
+          "minimum": 0
         },
         "types": {
           "description": "Show each output column's inferred type after its select item (default false). (bool)",
@@ -69,7 +203,7 @@
       }
     },
     "lint": {
-      "description": "Style diagnostics default to off; the macro call, dispatch and syntax checks default to on.",
+      "description": "Style diagnostics default to off; the macro call, dispatch, syntax and model checks default to on.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -83,6 +217,10 @@
         },
         "macro_calls": {
           "description": "Warn on macro calls whose arguments the macro does not take (default on). (bool)",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Report invalid models as you type: unknown materializations and config, self-refs and ref cycles, an empty model (default on). (bool)",
           "type": "boolean"
         },
         "select_star": {

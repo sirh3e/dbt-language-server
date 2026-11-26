@@ -4,6 +4,7 @@
 pub mod docs;
 pub mod env;
 pub mod exposures;
+pub mod functions;
 mod macros;
 mod models;
 mod packages;
@@ -39,8 +40,12 @@ pub struct ContextBuilder {
     props: FileCache<PropertiesFile>,
     citizens: FileCache<exposures::CitizenFile>,
     macros: FileCache<Vec<RawMacro>>,
+    /// The `{% materialization %}` names of each macro file.
+    materializations: FileCache<Vec<String>>,
     snapshots: FileCache<Vec<RawSnapshot>>,
     docs: FileCache<Vec<RawDocsBlock>>,
+    /// `functions:` entries per properties file under the function paths.
+    functions: functions::FunctionsCache,
     edges: FileCache<Vec<EdgeSeed>>,
     /// `{{ config(tags=…) }}` per model file (tag search).
     sql_tags: FileCache<Vec<String>>,
@@ -81,6 +86,7 @@ impl ContextBuilder {
             self.macros.stats(),
             self.snapshots.stats(),
             self.docs.stats(),
+            self.functions.stats(),
             self.edges.stats(),
             self.sql_tags.stats(),
         ]
@@ -123,7 +129,15 @@ pub struct DbtContext {
     pub semantic_model_detail_map: HashMap<String, exposures::CitizenDetails>,
     /// `{% docs %}` blocks by name (03 §6.4): own project wins on collision.
     pub doc_detail_map: HashMap<String, docs::DocDetails>,
+    /// User-defined functions (`function('…')`, dbt 1.11+) by name: own
+    /// project wins on collision.
+    pub function_detail_map: HashMap<String, functions::FunctionDetails>,
+    /// Every function body file of the projects (`is_function_body`).
+    pub function_bodies: std::collections::HashSet<PathBuf>,
     pub graph: ProjectGraph,
+    /// The names of the `{% materialization %}` blocks of the project and
+    /// its packages (the built-in ones are not among them).
+    pub materializations: std::collections::BTreeSet<String>,
 }
 
 pub(super) struct ProjectDetails {
@@ -173,6 +187,7 @@ impl ContextBuilder {
         let mut sources = HashMap::new();
         let mut doc_details = HashMap::new();
         let mut macros = HashMap::new();
+        let mut materializations = std::collections::BTreeSet::new();
         let mut variables = HashMap::new();
         let mut package_variables = Vec::new();
         let mut graph = ProjectGraph::default();
@@ -184,6 +199,7 @@ impl ContextBuilder {
             &mut self.sql_tags,
         );
         let snapshots_cache = &mut self.snapshots;
+        let materializations_cache = &mut self.materializations;
         let var_reads_cache = &mut self.var_reads;
         let mut var_reads = var_reads::VarReads::new();
         let var_overrides = &self.var_overrides;
@@ -205,7 +221,7 @@ impl ContextBuilder {
             });
             let macros_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_macros").entered();
-                build_macro_details(&process_list, macros_cache)
+                build_macro_details(&process_list, macros_cache, materializations_cache)
             });
             let vars_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_variables").entered();
@@ -220,7 +236,7 @@ impl ContextBuilder {
                 ProjectGraph::build(&root, &project, &dialect, edges_cache)
             });
             (models, sources, doc_details) = models_sources.join().unwrap_or_default();
-            macros = macros_handle.join().unwrap_or_default();
+            (macros, materializations) = macros_handle.join().unwrap_or_default();
             (variables, package_variables) = vars_handle.join().unwrap_or_default();
             graph = graph_handle.join().unwrap_or_default();
             var_reads = reads_handle.join().unwrap_or_default();
@@ -231,6 +247,7 @@ impl ContextBuilder {
         // detection and navigation treat them as present (05 §5).
         graph.fill_model_uris(|name| models.get(name).map(|d| d.uri.clone()));
 
+        let functions = functions::build_function_details(&process_list, &mut self.functions);
         let (selector_detail_map, selectors) = load_selectors(&root);
         let declared_packages = packages::declared_packages(&root);
         let env = env::load_env(&root, &self.profiles_dir, workspace_root);
@@ -284,7 +301,10 @@ impl ContextBuilder {
             metric_detail_map,
             semantic_model_detail_map,
             doc_detail_map: doc_details,
+            function_detail_map: functions.details,
+            function_bodies: functions.bodies,
             graph,
+            materializations,
         }
     }
 }
@@ -387,6 +407,15 @@ fn list_dirs(root: &Path) -> Vec<String> {
 }
 
 impl DbtContext {
+    /// Is the file at `uri` a user-defined function's body (the project's
+    /// or a package's, an overload's too)? Its SQL is an expression, no
+    /// statement, so the model checks do not apply to it. A new body file
+    /// counts once the next refresh has seen it.
+    pub fn is_function_body(&self, uri: &str) -> bool {
+        cogitator_lsp::uri_to_fs_path(uri)
+            .is_some_and(|path| self.function_bodies.contains(Path::new(&path)))
+    }
+
     /// The installed package a file belongs to (its files see the
     /// package's vars), by path under the package's root.
     pub fn package_of_uri(&self, uri: &str) -> Option<&PackageVars> {

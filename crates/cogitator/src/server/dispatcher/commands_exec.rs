@@ -44,6 +44,10 @@ impl Dispatcher {
                 self.column_lineage(req.id, &uri);
                 return;
             }
+            "dbt.columnLineageGraph" => {
+                self.column_lineage_graph(req.id, &uri, arg);
+                return;
+            }
             "dbt.openSchema" => {
                 self.open_schema(req.id, &uri);
                 return;
@@ -74,6 +78,35 @@ impl Dispatcher {
             "dbt.costReport" => return self.cost_report(req.id),
             "dbt.diffAt" => return self.diff_at(req.id, uri, arg),
             "dbt.profileColumn" => return self.profile_column(req.id, uri, arg),
+            "dbt.incrementalSql" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let strategy = arg
+                    .get("strategy")
+                    .and_then(|s| s.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.incrementalSql", move || {
+                    crate::server::handlers::incremental::incremental_sql(
+                        &snap,
+                        &derived,
+                        &uri,
+                        strategy.as_deref(),
+                        show,
+                    )
+                });
+                return;
+            }
+            "dbt.testSql" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.testSql", move || {
+                    crate::server::handlers::test_sql::test_sql(&snap, &derived, &uri, show)
+                });
+                return;
+            }
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;
@@ -92,6 +125,21 @@ impl Dispatcher {
                 return;
             }
             "dbt.previewCte" => return self.preview_cte(req.id, uri, arg),
+            "dbt.cteSql" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let ask = crate::server::handlers::preview_cte::PreviewAsk {
+                    cte: arg.get("cte").and_then(|c| c.as_str()).map(str::to_string),
+                    position: super::arg_position(arg),
+                    uri: uri.clone(),
+                    limit: 0,
+                };
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.cteSql", move || {
+                    crate::server::handlers::preview_cte::cte_sql(&snap, &derived, &ask, show)
+                });
+                return;
+            }
             "dbt.cancel" => {
                 let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
                 match self.jobs.cancel(token) {
@@ -308,6 +356,15 @@ impl Dispatcher {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.nodeInfo", move || {
                     crate::server::node_info::reply(&ctx, &kind, &name, quiet)
+                });
+                return;
+            }
+            "dbt.renameColumn" => {
+                let pos = arg_position(arg);
+                let snap = self.snapshot_for(&uri);
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.renameColumn", move || {
+                    crate::server::rename_column::reply(&snap, &uri, pos, &arg)
                 });
                 return;
             }

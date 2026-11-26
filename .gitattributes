@@ -1,0 +1,2 @@
+# sqlfluff's generated dialect grammars (vendor/sqlfluffrs/update.sh)
+vendor/sqlfluffrs/sqlfluffrs_dialects/src/dialect/** linguist-generated=true -diff
