@@ -16,6 +16,7 @@
 //! ([`upstream::origin_of`]) and renames from there, so every model it
 //! passes through keeps one name.
 
+mod directed;
 mod refs;
 mod seed;
 mod semantic;
@@ -37,7 +38,6 @@ use cogitator_lsp::{
     DocumentChange, Position, PrepareRenameResult, Range, TextDocumentEdit, TextEdit, WorkspaceEdit,
 };
 use cogitator_parser::TokenKind;
-use serde::Serialize;
 
 use super::references::files::{is_yaml, path_of, Reader};
 use super::references::occur::{contains, name_span, unquoted};
@@ -45,6 +45,7 @@ use super::references::target::{target_at, Target};
 use super::{file_uri, model_name_from_uri, token_range, DbtContext, Document};
 use walk::{walk_column, ColumnWalk, Edit};
 
+pub use directed::{rename_column_directed, ColumnRename, Direction};
 pub use upstream::Origin;
 
 /// The column the cursor names: (model, column, the range under the cursor).
@@ -118,100 +119,6 @@ pub fn rename_column_at(
     Some(rename_column(ctx, &reader, &model, &column, new_name))
 }
 
-/// Which way a column rename reaches.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Direction {
-    /// The model and every consumer that keeps the name.
-    Down,
-    /// The model the column comes from, then every consumer from there.
-    Both,
-}
-
-impl Direction {
-    pub fn parse(word: &str) -> Option<Self> {
-        match word {
-            "down" | "downstream" => Some(Direction::Down),
-            "both" | "up" | "upstream" => Some(Direction::Both),
-            _ => None,
-        }
-    }
-}
-
-/// What `dbt.renameColumn` answers.
-#[derive(Debug, Clone, Serialize)]
-pub struct ColumnRename {
-    pub model: String,
-    pub column: String,
-    #[serde(rename = "newName")]
-    pub new_name: String,
-    pub direction: Direction,
-    /// Where an up- and downstream rename started, and why there.
-    pub origin: Origin,
-    /// Every model whose output column is renamed, the origin first.
-    pub models: Vec<String>,
-    pub edit: WorkspaceEdit,
-}
-
-/// `dbt.renameColumn`: `None` when the cursor is on no column, else the
-/// rename or the user-facing refusal.
-pub fn rename_column_directed(
-    ctx: &DbtContext,
-    doc: Option<&Document>,
-    uri: &str,
-    pos: Position,
-    new_name: &str,
-    direction: Direction,
-    read: &dyn Fn(&Path) -> Option<String>,
-) -> Option<Result<ColumnRename, String>> {
-    let (model, column, _) = column_at(ctx, doc?, uri, pos)?;
-    let reader = Reader::with(doc.map(|d| (uri, &*d.text)), read);
-    Some(directed(ctx, &reader, &model, &column, new_name, direction))
-}
-
-fn directed(
-    ctx: &DbtContext,
-    reader: &Reader<'_>,
-    model: &str,
-    column: &str,
-    new_name: &str,
-    direction: Direction,
-) -> Result<ColumnRename, String> {
-    let origin = match direction {
-        Direction::Down => Origin {
-            model: model.to_string(),
-            column: column.to_string(),
-            chain: vec![model.to_string()],
-            stop: "a downstream rename starts here".into(),
-        },
-        Direction::Both => upstream::origin_of(ctx, reader, model, column).map_err(|why| {
-            Guidance::new(format!(
-                "`{model}.{column}` cannot be traced upstream: {why}."
-            ))
-            .fix("rename it downstream only (textDocument/rename), or simplify that model.")
-            .to_message()
-        })?,
-    };
-    let (edit, models) = rename_walk(ctx, reader, &origin.model, &origin.column, new_name)?;
-    if !models.is_empty() && !models.iter().any(|m| m == model) {
-        return Err(Guidance::new(format!(
-            "renaming `{}.{}` would not reach `{model}`.",
-            origin.model, origin.column
-        ))
-        .fix("rename the column in each model by hand.")
-        .to_message());
-    }
-    Ok(ColumnRename {
-        model: model.to_string(),
-        column: column.to_string(),
-        new_name: new_name.to_string(),
-        direction,
-        origin,
-        models,
-        edit,
-    })
-}
-
 pub(crate) fn valid_column_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars
@@ -231,7 +138,7 @@ pub(crate) fn rename_column(
 }
 
 /// The edit, and the models whose output column it renames.
-fn rename_walk(
+pub(super) fn rename_walk(
     ctx: &DbtContext,
     reader: &Reader<'_>,
     model: &str,
