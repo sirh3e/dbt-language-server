@@ -34,6 +34,7 @@ pub mod lineage_site;
 mod linked_editing;
 pub mod lint;
 pub mod macro_calls;
+pub mod model_checks;
 mod model_info;
 mod navigation;
 pub mod plan;

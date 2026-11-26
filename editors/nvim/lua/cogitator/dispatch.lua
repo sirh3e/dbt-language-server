@@ -137,6 +137,11 @@ M.SUBCOMMANDS = {
   preview = { run = with_args("preview"), desc = "dbt show this model [limit]" },
   cancel = { run = plain("cancel"), desc = "cancel a dbt job" },
   actions = { run = module_call("cogitator.code_actions", "open"), desc = "code actions at the cursor" },
+  fix = { run = module_call("cogitator.diagnostics", "fix"), desc = "fix the problem under the cursor" },
+  problems = {
+    run = module_call("cogitator.diagnostics", "problems"),
+    desc = "this file's problems in the location list",
+  },
   expand = { run = plain("expand_jinja"), desc = "render this model's Jinja" },
   plan = { run = plain("plan"), desc = "this model's query plan" },
   doctor = { run = plain("doctor"), desc = "the server's health report" },
@@ -282,6 +287,8 @@ M.GROUPS = {
       "query",
       "references",
       "rename",
+      "fix",
+      "problems",
     },
   },
   {

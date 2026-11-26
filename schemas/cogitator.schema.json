@@ -43,7 +43,7 @@
       }
     },
     "lint": {
-      "description": "Style diagnostics default to off; the macro call, dispatch and syntax checks default to on.",
+      "description": "Style diagnostics default to off; the macro call, dispatch, syntax and model checks default to on.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -57,6 +57,10 @@
         },
         "macro_calls": {
           "description": "Warn on macro calls whose arguments the macro does not take (default on). (bool)",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Report invalid models as you type: unknown materializations and config, self-refs and ref cycles, an empty model (default on). (bool)",
           "type": "boolean"
         },
         "select_star": {

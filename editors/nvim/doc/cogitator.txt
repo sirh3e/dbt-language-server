@@ -182,6 +182,11 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   (code lens)    run the code lens on this line      <leader>dL
   (selection)    expand along selectionRange         <leader>dv
   :DbtActions    code actions, yazi-style menu       <leader>dA, gra
+  :DbtFix        apply the fix of the problem under the cursor; with
+                 several fixes, choose in the code-action menu
+                                                     <leader>di
+  :DbtProblems   this file's problems in the location list, errors
+                 first, `✚` where a fix exists       <leader>dI
   :DbtReferences[!]
                  where the model, macro, source or column under the
                  cursor is used, in a dialog (`!`: the file's own
@@ -193,6 +198,22 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  file's model; `!` always it) across the project, after
                  showing the edit                    <leader>de, grn
                  shrink back (visual mode)           <leader>dV
+
+Problems ~
+                                                    *cogitator-problems*
+The server reports what is wrong with a model as you write it: syntax
+errors, refs that resolve to nothing, and invalid models — a misspelt
+materialization, config key or value, a model that refs itself or closes
+a ref cycle, `is_incremental()` in a model that is not incremental, an
+empty model. For cogitator's diagnostics the plugin shows the problem's
+first sentence inline with its suggestion and the key that applies it:
+
+    materialization 'incrementl' does not exist — did you mean
+    'incremental'? ✚ <leader>di
+
+The float (|vim.diagnostic.open_float()|, `<C-w>d`) shows the whole
+message and lists every fix by its title. Other servers' diagnostics keep
+your own settings; a `float.format` you set still applies to them.
 
 Every command is also a subcommand of *:Dbt* with completion, e.g.
 `:Dbt columns customer_id`, `:Dbt cache clear`, `:Dbt treesitter install`;

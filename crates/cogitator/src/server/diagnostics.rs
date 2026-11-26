@@ -1,5 +1,6 @@
 //! Static diagnostics pipeline (FEATURE_REQUESTS P1/P3): dangling refs,
-//! dbt YAML problems and the feature-gated DuckDB 2.0 parse check. Pure over
+//! invalid models, dbt YAML problems and the feature-gated DuckDB 2.0
+//! parse check. Pure over
 //! the snapshot + documents; the dispatcher publishes.
 
 use cogitator_analysis::{features, yaml_features, DbtContext, Document};
@@ -44,6 +45,9 @@ pub fn static_diagnostics(
         }
         if lints.any() {
             items.extend(features::lint::lint(ctx, doc, uri, lints, lineage));
+        }
+        if lints.model {
+            items.extend(features::model_checks::model_diagnostics(ctx, doc, uri));
         }
         if lints.syntax {
             items.extend(features::syntax::syntax_diagnostics(

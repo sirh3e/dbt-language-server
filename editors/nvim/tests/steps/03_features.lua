@@ -336,6 +336,73 @@ return function(ctx)
   vim.api.nvim_set_current_buf(bufnr)
   vim.api.nvim_buf_delete(fix_buf, { force = true })
 
+  -- an invalid model as it is written: the problem, its suggestion
+  -- inline, and :Dbt fix applying it (fixture COPY — never saved)
+  vim.cmd.edit(vim.fs.joinpath(ctx.fixture, "models", "invalid_probe.sql"))
+  local bad_buf = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(bad_buf, 0, -1, false, {
+    "{{ config(materialized='incrementl') }}",
+    "select * from {{ ref('stg_customers') }}",
+  })
+  H.wait("invalid model: client attaches to the probe buffer", 15000, function()
+    return #vim.lsp.get_clients({ bufnr = bad_buf, name = "cogitator" }) > 0
+  end)
+  local bad
+  H.wait("invalid model: invalid-materialization published", 15000, function()
+    for _, d in ipairs(vim.diagnostic.get(bad_buf)) do
+      local lsp_d = d.user_data and d.user_data.lsp
+      if lsp_d and lsp_d.code == "invalid-materialization" then
+        bad = d
+        return true
+      end
+    end
+    return false
+  end)
+  local diagnostics = require("cogitator.diagnostics")
+  H.check(
+    bad ~= nil and bad.severity == vim.diagnostic.severity.ERROR,
+    "invalid model: a misspelt materialization is an error",
+    vim.inspect(bad)
+  )
+  H.check(
+    bad ~= nil and diagnostics.inline(bad):find("did you mean 'incremental'?", 1, true) ~= nil,
+    "invalid model: the inline text carries the suggestion",
+    bad and diagnostics.inline(bad)
+  )
+  if bad then
+    vim.api.nvim_win_set_cursor(0, { bad.lnum + 1, bad.col })
+    require("cogitator.dispatch").SUBCOMMANDS.fix.run("")
+  end
+  H.wait("invalid model: :Dbt fix applies the suggestion", 15000, function()
+    return (vim.api.nvim_buf_get_lines(bad_buf, 0, 1, false)[1] or ""):find(
+      "materialized='incremental'",
+      1,
+      true
+    ) ~= nil
+  end)
+  vim.api.nvim_buf_set_lines(bad_buf, 0, -1, false, { "select * from {{ ref('invalid_probe') }}" })
+  H.wait("invalid model: a self ref is reported", 15000, function()
+    for _, d in ipairs(vim.diagnostic.get(bad_buf)) do
+      if d.user_data and d.user_data.lsp and d.user_data.lsp.code == "ref-self" then
+        return true
+      end
+    end
+    return false
+  end)
+  vim.api.nvim_win_set_cursor(0, { 1, 23 })
+  require("cogitator.dispatch").SUBCOMMANDS.problems.run("")
+  local loc = vim.fn.getloclist(0, { title = 0, items = 0 })
+  H.check(
+    loc.title == "dbt problems · invalid_probe.sql"
+      and #loc.items > 0
+      and loc.items[1].text:find("[ref-self]", 1, true) ~= nil,
+    ":Dbt problems: the file's problems in the location list",
+    vim.inspect(loc)
+  )
+  vim.cmd.lclose()
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.api.nvim_buf_delete(bad_buf, { force = true })
+
   -- formatting: reflow through the server, Jinja untouched
   vim.cmd.edit(vim.fs.joinpath(ctx.fixture, "models", "fmt_probe.sql"))
   local fmt_buf = vim.api.nvim_get_current_buf()

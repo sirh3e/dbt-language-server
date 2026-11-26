@@ -28,6 +28,9 @@ pub struct LintOptions {
     /// Jinja and SQL syntax errors (`features::syntax`); run beside the
     /// lint checks by the diagnostics pipeline, not by [`lint`].
     pub syntax: bool,
+    /// Invalid models (`features::model_checks`); run beside the lint
+    /// checks by the diagnostics pipeline, not by [`lint`].
+    pub model: bool,
 }
 
 impl LintOptions {
@@ -41,6 +44,7 @@ impl LintOptions {
             macro_calls: flags & lint_flags::MACRO_CALLS != 0,
             dispatch: flags & lint_flags::DISPATCH != 0,
             syntax: flags & lint_flags::SYNTAX != 0,
+            model: flags & lint_flags::MODEL != 0,
         }
     }
 

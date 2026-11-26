@@ -1,12 +1,14 @@
-# Syntax errors, `cogitator lint` and `cogitator format`
+# Syntax errors, invalid models, `cogitator lint` and `cogitator format`
 
-Three things that need no `dbt compile`, no dbt Fusion and no warehouse:
+Four things that need no `dbt compile`, no dbt Fusion and no warehouse:
 
 1. **Syntax errors as you type** in every `.sql` file of the project
    (models, macros, tests, analyses, snapshots).
-2. **`cogitator lint`**: every diagnostic the editor would show, for every
+2. **Invalid models as you type**: what makes dbt refuse a model, or
+   build something other than what it says, with the fix as a quickfix.
+3. **`cogitator lint`**: every diagnostic the editor would show, for every
    file of the project, from the command line — for CI.
-3. **`cogitator format`**: the editor's formatter over every model, in
+4. **`cogitator format`**: the editor's formatter over every model, in
    place or as a check.
 
 ## Syntax errors as you type
@@ -85,6 +87,41 @@ lint:
   DuckDB's own parser reports SQL errors (source `duckdb 2.0`); cogitator
   then checks only the Jinja layer, so nothing is reported twice.
 
+## Invalid models as you type
+
+A model can parse and still be one dbt refuses, or one that builds
+something else than it says. cogitator checks every model of the project
+(a new one too, before it is saved) as it is written:
+
+| Code | Severity | What it finds | The fix it offers |
+|---|---|---|---|
+| `invalid-materialization` | Error | `materialized='incrementl'`: a near miss of dbt's materializations (`view`, `table`, `incremental`, `ephemeral`, `materialized_view`) or of a `{% materialization %}` of the project or its packages | the closest names |
+| `invalid-materialization` | Warning | a materialization that is no near miss of any of those (an adapter may still provide it; `dynamic_table`, `external` and `clone` are known) | — |
+| `unknown-config-key` | Warning | a config key that is a near miss of one dbt or a common adapter reads (`materialised`, `unique_keys`) | the closest keys |
+| `invalid-config-value` | Error / Warning | `access` outside `private`, `protected`, `public` (dbt refuses the project); `on_schema_change` outside `ignore`, `fail`, `append_new_columns`, `sync_all_columns` (dbt falls back to `ignore`); an `incremental_strategy` that is a near miss of dbt's and that no `get_incremental_<name>_sql` macro defines; `enabled='false'` and `full_refresh='false'`, strings that read as true | the closest values; the boolean |
+| `ref-self` | Error | a model that refs itself | rewrite `ref('me')` to `this` |
+| `ref-cycle` | Error | a ref whose model leads back to this one; the message names the cycle (`orders → payments → customers → orders`) | — |
+| `is-incremental-never` | Warning | `is_incremental()` in a model whose own config materializes it as a `view`, `table`, `ephemeral` or `materialized_view`: the block never runs | — |
+| `empty-model` | Warning | a model with nothing but comments and its `config(...)` | — |
+
+The confidence rule of the syntax checks holds here too: what the text
+cannot tell is never reported. A key outside the lists is reported only
+when it is a near miss of one in them (adapters add keys of their own); a
+value computed by a macro or a `var()` is not checked; a materialization
+set in `dbt_project.yml` or the properties YAML is not used for
+`is-incremental-never`. A cycle is found in the project graph as it was
+last scanned, through the refs of the buffer as it is now.
+
+Every fix rides on the diagnostic as typed data, so any LSP client offers
+it as a quickfix (Neovim: `<leader>di` / `:DbtFix`, see the plugin's
+help).
+
+```yaml
+# cogitator.yml
+lint:
+  model: false   # default true
+```
+
 ## `cogitator lint`
 
 ```sh
@@ -100,7 +137,7 @@ and `--target` before the subcommand, and `cogitator.yml`'s `profiles:`)
 and runs, over every model, macro, test, analysis and snapshot and the
 YAML that describes them (plus `selectors.yml` and `cogitator.yml`):
 
-- the syntax checks above;
+- the syntax checks and the invalid-model checks above;
 - the `lint:` checks cogitator.yml enables (`select_star`, …, and the
   default-on `macro_calls` and `dispatch`);
 - dangling `ref()` / `source()` / `doc()`, unknown vars and env vars,

@@ -75,7 +75,7 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     },
     SectionSchema {
         name: "lint",
-        doc: "Style diagnostics default to off; the macro call, dispatch and syntax checks default to on.",
+        doc: "Style diagnostics default to off; the macro call, dispatch, syntax and model checks default to on.",
         keys: &[
             key("select_star", "Warn on SELECT * outside staging models.", "bool"),
             key("unaliased_columns", "Warn on bare columns in multi-relation FROM/JOINs.", "bool"),
@@ -85,6 +85,7 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("macro_calls", "Warn on macro calls whose arguments the macro does not take (default on).", "bool"),
             key("dispatch", "Warn on adapter.dispatch calls with no default__ nor active-adapter implementation (default on).", "bool"),
             key("syntax", "Report Jinja and SQL syntax errors as you type, without dbt compile (default on).", "bool"),
+            key("model", "Report invalid models as you type: unknown materializations and config, self-refs and ref cycles, an empty model (default on).", "bool"),
         ],
     },
     SectionSchema {
@@ -207,9 +208,10 @@ pub mod lint_flags {
     pub const MACRO_CALLS: u32 = 1 << 5;
     pub const DISPATCH: u32 = 1 << 6;
     pub const SYNTAX: u32 = 1 << 7;
+    pub const MODEL: u32 = 1 << 8;
     /// The checks that are on unless cogitator.yml turns them off: they
     /// report what fails at compile or run time, not style.
-    pub const DEFAULT_ON: u32 = MACRO_CALLS | DISPATCH | SYNTAX;
+    pub const DEFAULT_ON: u32 = MACRO_CALLS | DISPATCH | SYNTAX | MODEL;
 }
 
 /// The section entry by name.

@@ -209,8 +209,8 @@ fn doctor_reports_the_whole_picture() {
     assert!(
         report["lintEnabled"]
             .as_array()
-            // select_star, plus the three checks that are on by default
-            .is_some_and(|l| l.len() == 4),
+            // select_star, plus the four checks that are on by default
+            .is_some_and(|l| l.len() == 5),
         "{report}"
     );
     assert_eq!(

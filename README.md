@@ -70,6 +70,10 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Diagnostics**: dangling `ref()` detection, dbt YAML schema validation
   (typify-generated types from [dbt-jsonschema]), pull diagnostics
   (`textDocument/diagnostic`)
+- **Invalid models as you type**: a misspelt materialization, config key
+  or value, a model that refs itself or closes a ref cycle, `is_incremental()`
+  in a model that is not incremental, an empty model — each with its
+  did-you-mean as a quickfix ([docs/lint-and-format.md](docs/lint-and-format.md))
 - **Syntax errors as you type**, no `dbt compile` first: Jinja errors
   (unclosed `{% if %}`, stray `{% endif %}`, unbalanced `{{ }}`) and SQL
   errors in the masked SQL — and incremental models, `{% for %}` loops and
@@ -407,6 +411,7 @@ lint:                      # style checks default off; macro_calls,
   macro_calls: true        # (docs/lint-and-format.md) default on
   dispatch: true
   syntax: true
+  model: true              # invalid models (docs/lint-and-format.md), default on
 inlay:
   vars: true               # the value after each var() (docs/variables.md)
   env_vars: true           # the value after each env_var(), secrets masked

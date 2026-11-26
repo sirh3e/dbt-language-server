@@ -39,6 +39,8 @@ pub struct ContextBuilder {
     props: FileCache<PropertiesFile>,
     citizens: FileCache<exposures::CitizenFile>,
     macros: FileCache<Vec<RawMacro>>,
+    /// The `{% materialization %}` names of each macro file.
+    materializations: FileCache<Vec<String>>,
     snapshots: FileCache<Vec<RawSnapshot>>,
     docs: FileCache<Vec<RawDocsBlock>>,
     edges: FileCache<Vec<EdgeSeed>>,
@@ -124,6 +126,9 @@ pub struct DbtContext {
     /// `{% docs %}` blocks by name (03 §6.4): own project wins on collision.
     pub doc_detail_map: HashMap<String, docs::DocDetails>,
     pub graph: ProjectGraph,
+    /// The names of the `{% materialization %}` blocks of the project and
+    /// its packages (the built-in ones are not among them).
+    pub materializations: std::collections::BTreeSet<String>,
 }
 
 pub(super) struct ProjectDetails {
@@ -173,6 +178,7 @@ impl ContextBuilder {
         let mut sources = HashMap::new();
         let mut doc_details = HashMap::new();
         let mut macros = HashMap::new();
+        let mut materializations = std::collections::BTreeSet::new();
         let mut variables = HashMap::new();
         let mut package_variables = Vec::new();
         let mut graph = ProjectGraph::default();
@@ -184,6 +190,7 @@ impl ContextBuilder {
             &mut self.sql_tags,
         );
         let snapshots_cache = &mut self.snapshots;
+        let materializations_cache = &mut self.materializations;
         let var_reads_cache = &mut self.var_reads;
         let mut var_reads = var_reads::VarReads::new();
         let var_overrides = &self.var_overrides;
@@ -205,7 +212,7 @@ impl ContextBuilder {
             });
             let macros_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_macros").entered();
-                build_macro_details(&process_list, macros_cache)
+                build_macro_details(&process_list, macros_cache, materializations_cache)
             });
             let vars_handle = scope.spawn(|| {
                 let _span = tracing::info_span!(parent: &parent, "build_variables").entered();
@@ -220,7 +227,7 @@ impl ContextBuilder {
                 ProjectGraph::build(&root, &project, &dialect, edges_cache)
             });
             (models, sources, doc_details) = models_sources.join().unwrap_or_default();
-            macros = macros_handle.join().unwrap_or_default();
+            (macros, materializations) = macros_handle.join().unwrap_or_default();
             (variables, package_variables) = vars_handle.join().unwrap_or_default();
             graph = graph_handle.join().unwrap_or_default();
             var_reads = reads_handle.join().unwrap_or_default();
@@ -285,6 +292,7 @@ impl ContextBuilder {
             semantic_model_detail_map,
             doc_detail_map: doc_details,
             graph,
+            materializations,
         }
     }
 }

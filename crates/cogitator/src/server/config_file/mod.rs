@@ -97,6 +97,8 @@ pub struct LintSection {
     pub dispatch: Option<bool>,
     /// Default on: `false` turns the Jinja and SQL syntax checks off.
     pub syntax: Option<bool>,
+    /// Default on: `false` turns the invalid-model checks off.
+    pub model: Option<bool>,
 }
 
 pub use cogitator_analysis::config_schema::lint_flags;
@@ -119,6 +121,7 @@ impl LintSection {
         bit(self.macro_calls, lint_flags::MACRO_CALLS);
         bit(self.dispatch, lint_flags::DISPATCH);
         bit(self.syntax, lint_flags::SYNTAX);
+        bit(self.model, lint_flags::MODEL);
         flags
     }
 }
@@ -248,6 +251,7 @@ const LINT_KEYS: &[&str] = &[
     "macro_calls",
     "dispatch",
     "syntax",
+    "model",
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];

@@ -21,6 +21,12 @@ cmd(
   "source_freshness",
   "dbt source freshness for the project (feeds the freshness lenses)"
 )
+vim.api.nvim_create_user_command("DbtFix", function()
+  require("cogitator.diagnostics").fix()
+end, { desc = "apply the fix of the problem under the cursor" })
+vim.api.nvim_create_user_command("DbtProblems", function()
+  require("cogitator.diagnostics").problems()
+end, { desc = "this file's problems in the location list" })
 vim.api.nvim_create_user_command("DbtRunSelection", function(opts)
   require("cogitator.commands").run_selection(opts)
 end, { nargs = "?", desc = "dbt run with an arbitrary selector (tag:…, state:modified+)" })
