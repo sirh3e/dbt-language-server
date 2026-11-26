@@ -27,6 +27,7 @@ pub enum Change {
     InlayVars(bool),
     InlayEnvVars(bool),
     InlayJinja(bool),
+    InlayTypes(bool),
     PreviewRows(u64),
     PreviewMaxRows(u64),
 }
@@ -96,6 +97,7 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
         ));
     }
     if old.perf != new.perf
+        || old.types != new.types
         || old.perf_rules != new.perf_rules
         || old.lint.select_star != new.lint.select_star
     {
@@ -112,6 +114,9 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     }
     if old.inlay.jinja != new.inlay.jinja {
         out.push(Change::InlayJinja(new.inlay.jinja.unwrap_or(false)));
+    }
+    if old.inlay.types != new.inlay.types {
+        out.push(Change::InlayTypes(new.inlay.types.unwrap_or(false)));
     }
     if old.preview.rows != new.preview.rows {
         out.push(Change::PreviewRows(
@@ -160,6 +165,7 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayVars(_)
             | Change::InlayEnvVars(_)
             | Change::InlayJinja(_)
+            | Change::InlayTypes(_)
             | Change::PreviewRows(_)
             | Change::PreviewMaxRows(_) => true,
         })
@@ -253,6 +259,10 @@ pub fn apply(
             Change::InlayJinja(on) => {
                 toggles.inlay_jinja.store(*on, Ordering::Relaxed);
                 applied.push("inlay.jinja");
+            }
+            Change::InlayTypes(on) => {
+                toggles.inlay_types.store(*on, Ordering::Relaxed);
+                applied.push("inlay.types");
             }
             Change::PreviewRows(rows) => {
                 limits.preview_rows.store(*rows, Ordering::Relaxed);

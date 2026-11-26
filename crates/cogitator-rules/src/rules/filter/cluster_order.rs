@@ -87,6 +87,7 @@ impl Detect<Lir> for ClusterOrder {
                     ),
                     evidence: Evidence::Unknown,
                     fixes: Vec::new(),
+                    subject: None,
                 });
             }
         }

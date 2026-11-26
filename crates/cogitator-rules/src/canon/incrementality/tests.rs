@@ -29,6 +29,7 @@ fn model(cols: Vec<SchemaCol>) -> Arc<ModelSchema> {
         columns: Arc::from(cols),
         completeness: Completeness::Closed,
         fingerprint: 0,
+        unique_sets: Vec::new(),
     })
 }
 

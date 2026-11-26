@@ -75,6 +75,7 @@ fn finding(mir: &Mir, id: ScalarId, message: String) -> Option<Finding> {
         message,
         evidence: Evidence::Exact,
         fixes: Vec::new(),
+        subject: None,
     })
 }
 

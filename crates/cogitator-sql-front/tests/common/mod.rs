@@ -158,6 +158,7 @@ pub fn env_with(model: &str, columns: &[&str], closed: bool) -> SchemaEnv {
             Completeness::Open
         },
         fingerprint: 0,
+        unique_sets: Vec::new(),
     };
     let mut schemas = ProjectSchemas::default();
     schemas.models.insert(Arc::from(model), Arc::new(schema));

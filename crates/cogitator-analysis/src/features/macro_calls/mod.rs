@@ -182,6 +182,7 @@ fn diagnostic(
             fix: FixKind::ReplaceToken,
             token_range: range,
             suggestions: guidance.suggestions,
+            subject: None,
         });
     }
     diagnostic

@@ -45,6 +45,8 @@ mod tests;
 mod tests_compiled;
 #[cfg(test)]
 mod tests_facts;
+#[cfg(test)]
+mod tests_typed;
 mod trace;
 
 pub use finding_inlay::{finding_hints, merge_plan_hints, FindingHint};

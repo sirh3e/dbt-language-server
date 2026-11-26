@@ -40,6 +40,11 @@ fn constraints_and_single_column_keys_make_columns_unique() {
     assert!(col(&snapshot, "c", "order_id").unique);
     // a two-column key proves neither column alone
     assert!(!col(&snapshot, "d", "x").unique);
+    let d = snapshot.schemas.model("d").expect("schema");
+    assert_eq!(
+        d.unique_sets,
+        vec![vec![std::sync::Arc::from("x"), std::sync::Arc::from("y")]]
+    );
 }
 
 #[test]

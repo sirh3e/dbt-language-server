@@ -31,6 +31,7 @@ fn schema(names: &[&str], completeness: Completeness) -> Arc<ModelSchema> {
         columns: Arc::from(columns),
         completeness,
         fingerprint: 1,
+        unique_sets: Vec::new(),
     })
 }
 

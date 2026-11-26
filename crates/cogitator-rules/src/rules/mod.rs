@@ -9,3 +9,4 @@ pub mod model;
 pub mod order;
 pub mod set;
 pub mod subq;
+pub mod types;

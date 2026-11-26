@@ -151,6 +151,8 @@ editor integrations live under `editors/`.
   declare a source, a source table, a docs block; `governance_fixes.rs`:
   private refs; `yaml_columns.rs`: add undocumented or undeclared
   columns, drop contracted ones — offered from the YAML entry too;
+  `unique_test.rs`: "Add a unique test on …" for `join.fanout`, from the
+  diagnostic's `data.subject`;
   `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
   rename/remove fixes; `refactors.rs`: expand a star, extract
   schema YAML; `extract_cte.rs`: CTE → model; "Sync schema YAML of 'm'"
@@ -186,7 +188,9 @@ editor integrations live under `editors/`.
 - **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
   `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
   `refresh.debounce_ms`, `perf.{profile,catalog_stats,row_hints,inline_findings}` and `perf_rules`
-  (rule id → severity or off; profile default `off`, specs/ir-pipeline/08)
+  (rule id → severity or off; profile default `off`, specs/ir-pipeline/08;
+  `join.fanout` and the `type.*` checks report under `off` too, the latter
+  gated by `types.checks`), `inlay.{vars,env_vars,jinja,types}`
   hot-reload (2 s stamp poll + didSave fast-path +
   `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch
   values; `startup.{debug,otlp,tree_sitter,fusion}` only via `--config`

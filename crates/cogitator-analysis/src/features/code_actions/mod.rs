@@ -12,6 +12,7 @@ pub(crate) mod governance_fixes;
 mod quickfix;
 pub(crate) mod refactors;
 pub(crate) mod split_model;
+pub(crate) mod unique_test;
 pub(crate) mod unit_test_scaffold;
 pub(crate) mod yaml_columns;
 pub(crate) mod yaml_fixes;

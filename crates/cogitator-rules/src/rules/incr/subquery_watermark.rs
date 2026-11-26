@@ -92,6 +92,7 @@ impl Detect<Lir> for SubqueryWatermark {
                     ),
                     evidence: plan_evidence(cx.hir),
                     fixes: Vec::new(),
+                    subject: None,
                 });
             }
         }

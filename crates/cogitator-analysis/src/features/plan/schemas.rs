@@ -35,9 +35,11 @@ use cogitator_ir::schema::ProjectSchemas;
 
 use crate::graph::NodeKind;
 
+pub mod checks;
 mod cross_sites;
 mod dag;
 mod infer;
+mod keys;
 pub(super) mod merge;
 mod model_facts;
 mod reads;
@@ -132,7 +134,17 @@ pub fn run_schema_job(input: &JobInput<'_>, state: &mut JobState) -> Option<Arc<
         .iter()
         .filter_map(|(name, i)| Some((name.clone(), i.as_ref()?.typed.clone())))
         .collect();
-    Some(publish(state, walk.schemas, index, walk.report, outputs))
+    let checks = inferred
+        .iter()
+        .filter_map(|(name, i)| Some((name.clone(), i.as_ref()?.checks.clone())))
+        .collect();
+    Some(publish(
+        state,
+        walk.schemas,
+        index,
+        walk.report,
+        (outputs, checks),
+    ))
 }
 
 /// The cached or rebuilt inference for one model, with its degradations.
@@ -225,7 +237,7 @@ fn add_schema(input: &JobInput<'_>, model: &Arc<str>, result: Option<&Inferred>,
     let facts = merge::ModelFacts {
         yaml: details.map_or(&[][..], |d| d.columns.as_slice()),
         contract: details.is_some_and(|d| d.contract_enforced),
-        keys: single_keys(details, input.manifest, model),
+        keys: keys::declared_keys(details, input.manifest, model),
         upstream: &walk.schemas,
     };
     let built = merge::model_schema(
@@ -246,36 +258,6 @@ fn add_schema(input: &JobInput<'_>, model: &Arc<str>, result: Option<&Inferred>,
     walk.schemas
         .models
         .insert(model.clone(), Arc::new(built.schema));
-}
-
-/// Columns one single-column key makes unique: a model-level constraint
-/// or combination test of one column, or the manifest's `unique_key` of
-/// an incremental model (the template's own is read at inference).
-fn single_keys(
-    details: Option<&crate::ModelDetails>,
-    manifest: Option<&crate::artifacts::manifest::ManifestIndex>,
-    model: &str,
-) -> Vec<String> {
-    let mut keys: Vec<String> = details
-        .map(|d| d.unique_keys.as_slice())
-        .unwrap_or_default()
-        .iter()
-        .filter(|k| k.len() == 1)
-        .map(|k| k[0].clone())
-        .collect();
-    if let Some(config) = manifest
-        .and_then(|m| m.models.get(model))
-        .map(|n| &n.config)
-    {
-        let incremental = config
-            .materialized
-            .as_deref()
-            .is_some_and(|m| m.eq_ignore_ascii_case("incremental"));
-        if incremental && config.unique_key.len() == 1 {
-            keys.push(config.unique_key[0].to_ascii_lowercase());
-        }
-    }
-    keys
 }
 
 fn insert_sources(input: &JobInput<'_>, schemas: &mut ProjectSchemas) {
@@ -301,6 +283,13 @@ fn insert_sources(input: &JobInput<'_>, schemas: &mut ProjectSchemas) {
     }
 }
 
+/// What the job publishes per model beside the schemas: the typed
+/// outputs and the correctness checks.
+type PerModel = (
+    HashMap<Arc<str>, Arc<[crate::features::column_types::RawColumn]>>,
+    HashMap<Arc<str>, Arc<checks::ModelChecks>>,
+);
+
 /// Assigns the revision: unchanged content keeps the previous one, so a
 /// refresh that changed nothing does not invalidate cached plans.
 fn publish(
@@ -308,7 +297,7 @@ fn publish(
     mut schemas: ProjectSchemas,
     dag: DagIndex,
     report: JobReport,
-    outputs: HashMap<Arc<str>, Arc<[crate::features::column_types::RawColumn]>>,
+    (outputs, checks): PerModel,
 ) -> Arc<SchemaSnapshot> {
     let content = content_hash(&schemas, &dag);
     let previous = state.previous.as_ref();
@@ -325,6 +314,7 @@ fn publish(
         dag,
         report,
         outputs,
+        checks,
         content,
     });
     state.previous = Some(snapshot.clone());

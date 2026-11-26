@@ -97,6 +97,7 @@ fn examine(mir: &Mir, id: RelId, cx: &Cx<'_>) -> Option<Finding> {
         ),
         evidence: Evidence::Tested { schema_revision },
         fixes: Vec::new(),
+        subject: None,
     })
 }
 

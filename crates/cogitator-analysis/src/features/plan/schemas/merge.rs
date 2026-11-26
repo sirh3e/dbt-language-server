@@ -26,10 +26,10 @@ pub(super) struct ModelFacts<'a> {
     pub(super) yaml: &'a [ColumnEntry],
     /// `contract: {enforced: true}`: a YAML `data_type` is then proven.
     pub(super) contract: bool,
-    /// Columns a single-column key makes unique (model-level constraint,
-    /// combination test of one column, an incremental `unique_key`),
+    /// Column sets the entry or the manifest declares unique (model-level
+    /// constraints, combination tests, an incremental `unique_key`),
     /// lower-cased.
-    pub(super) keys: Vec<String>,
+    pub(super) keys: Vec<Vec<String>>,
     /// The schemas built so far: every upstream model and source.
     pub(super) upstream: &'a ProjectSchemas,
 }
@@ -82,30 +82,37 @@ pub(super) fn model_schema(
         Completeness::Closed
     };
     let mut built = finish(columns, completeness, cap);
-    let keys: Vec<String> = facts
-        .keys
-        .iter()
-        .cloned()
-        .chain(single(&inferred.template_unique_key))
-        .collect();
+    let mut keys = facts.keys.clone();
+    if !inferred.template_unique_key.is_empty() {
+        keys.push(inferred.template_unique_key.clone());
+    }
     mark_keys(&mut built, &keys, false);
     Some(built)
 }
 
-/// The one column of a single-column key.
-fn single(key: &[String]) -> Option<String> {
-    match key {
-        [one] => Some(one.clone()),
-        _ => None,
-    }
-}
-
-/// Marks the key columns unique (and, under an enforced contract, the
-/// YAML-typed ones proven), refreshing the fingerprint.
-fn mark_keys(built: &mut BuiltSchema, keys: &[String], contract: bool) {
+/// Marks single-column keys' columns unique and records composite keys
+/// in `unique_sets` (and, under an enforced contract, makes the
+/// YAML-typed columns proven), refreshing the fingerprint.
+fn mark_keys(built: &mut BuiltSchema, keys: &[Vec<String>], contract: bool) {
     let mut columns: Vec<SchemaCol> = built.schema.columns.to_vec();
+    let mut sets: Vec<Vec<Arc<str>>> = Vec::new();
+    for key in keys {
+        let mut set: Vec<Arc<str>> = key
+            .iter()
+            .map(|k| Arc::from(k.to_ascii_lowercase()))
+            .collect();
+        set.sort();
+        set.dedup();
+        if set.len() > 1 && !sets.contains(&set) {
+            sets.push(set);
+        }
+    }
+    sets.sort();
     for column in &mut columns {
-        if keys.iter().any(|k| k.eq_ignore_ascii_case(&column.name)) {
+        if keys
+            .iter()
+            .any(|k| k.len() == 1 && k[0].eq_ignore_ascii_case(&column.name))
+        {
             column.unique = true;
         }
         if contract && column.ty.ty != SqlType::Unknown {
@@ -115,8 +122,12 @@ fn mark_keys(built: &mut BuiltSchema, keys: &[String], contract: bool) {
     let mut hasher = DefaultHasher::new();
     columns.hash(&mut hasher);
     built.schema.completeness.hash(&mut hasher);
+    if !sets.is_empty() {
+        sets.hash(&mut hasher);
+    }
     built.schema.fingerprint = hasher.finish();
     built.schema.columns = Arc::from(columns);
+    built.schema.unique_sets = sets;
 }
 
 /// True when every upstream column the output column's type rests on is
@@ -282,6 +293,7 @@ fn finish(mut columns: Vec<SchemaCol>, completeness: Completeness, cap: usize) -
             columns: Arc::from(columns),
             completeness,
             fingerprint: hasher.finish(),
+            unique_sets: Vec::new(),
         },
         capped,
     }

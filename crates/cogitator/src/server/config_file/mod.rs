@@ -37,6 +37,8 @@ pub struct FileConfig {
     #[serde(default)]
     pub inlay: InlaySection,
     #[serde(default)]
+    pub types: TypesSection,
+    #[serde(default)]
     pub preview: PreviewSection,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
@@ -55,6 +57,17 @@ pub struct InlaySection {
     pub env_vars: Option<bool>,
     /// What short `{{ … }}` expressions render to (default off).
     pub jinja: Option<bool>,
+    /// Each output column's inferred type after its select item
+    /// (default off).
+    pub types: Option<bool>,
+}
+
+/// The `type.*` checks (and `join.key_type_mismatch`), reported outside
+/// the perf profile (specs/ir-pipeline/08).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct TypesSection {
+    /// Default on: `false` leaves them to the perf profile.
+    pub checks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -231,6 +244,7 @@ const ROOT_KEYS: &[&str] = &[
     "warehouse",
     "perf",
     "inlay",
+    "types",
     "vars",
     "perf_rules",
     "preview",
@@ -252,7 +266,8 @@ const LINT_KEYS: &[&str] = &[
 const LOG_KEYS: &[&str] = &["client_level"];
 const WAREHOUSE_KEYS: &[&str] = &["columns"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
-const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
+const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja", "types"];
+const TYPES_KEYS: &[&str] = &["checks"];
 const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
@@ -280,6 +295,9 @@ const PERF_RULE_KEYS: &[&str] = &[
     "limit.no_scan_reduction",
     "incr.no_unique_key",
     "incr.could_be_incremental",
+    "join.fanout",
+    "type.text_temporal_compare",
+    "type.aggregate_text",
 ];
 
 /// Unknown keys warn with did-you-mean — never a hard error, so a
@@ -322,6 +340,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("perf", PERF_KEYS),
         ("perf_rules", PERF_RULE_KEYS),
         ("inlay", INLAY_KEYS),
+        ("types", TYPES_KEYS),
         ("preview", PREVIEW_KEYS),
     ] {
         if let Some(node) = get(root, section) {

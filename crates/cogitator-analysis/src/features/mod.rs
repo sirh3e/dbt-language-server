@@ -70,6 +70,7 @@ pub use code_actions::extract_cte::extract_cte_action;
 pub use code_actions::governance_fixes::private_ref_actions;
 pub use code_actions::refactors::{expand_star_action, extract_yaml_action};
 pub use code_actions::split_model::split_action;
+pub use code_actions::unique_test::unique_test_actions;
 pub use code_actions::unit_test_scaffold::unit_test_scaffold_action;
 pub use code_actions::yaml_columns::{
     add_missing_columns_action, remove_unproduced_columns_action,

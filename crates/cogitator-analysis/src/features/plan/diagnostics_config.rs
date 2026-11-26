@@ -76,6 +76,39 @@ pub const RECOMMENDED_RULES: &[&str] = &[
     "filter.non_sargable",
 ];
 
+/// The type checks: on whatever the profile (`types.checks`, default
+/// on), as a wrong type is a correctness problem, not a performance one.
+pub const TYPE_RULES: &[&str] = &[
+    "type.text_temporal_compare",
+    "type.aggregate_text",
+    "join.key_type_mismatch",
+];
+
+/// Correctness hints on by default under every profile: what they say
+/// is "not known", at Hint, so the default profile `off` keeps them.
+pub const DEFAULT_ON_RULES: &[&str] = &["join.fanout"];
+
+/// The rules the schema job runs for every model (`schemas::checks`):
+/// a pulled diagnostic reads them off the published snapshot, and plans
+/// a model only for the rest ([`PerfSettings::plan_needed`]).
+pub const SNAPSHOT_RULES: &[&str] = &[
+    "type.text_temporal_compare",
+    "type.aggregate_text",
+    "join.key_type_mismatch",
+    "join.fanout",
+];
+
+/// The code a finding's diagnostic carries: the rule id, but `type-…`
+/// for the type checks (`type.aggregate_text` → `type-aggregate-text`,
+/// `join.key_type_mismatch` → `type-join-key-mismatch`).
+pub fn diagnostic_code(id: &str) -> std::borrow::Cow<'static, str> {
+    match id {
+        "join.key_type_mismatch" => "type-join-key-mismatch".into(),
+        _ if id.starts_with("type.") => id.replace(['.', '_'], "-").into(),
+        _ => id.to_string().into(),
+    }
+}
+
 /// The registry's advice rules: the ids that can be reported and
 /// configured (canonicalisers never report).
 pub fn advice_rule_ids() -> impl Iterator<Item = &'static str> {
@@ -105,6 +138,9 @@ pub struct PerfSettings {
     /// `perf.inline_findings`: the reported findings as inlay hints too
     /// (off by default: the diagnostics already show them).
     pub inline_findings: bool,
+    /// `types.checks` (default true): [`TYPE_RULES`] report under every
+    /// profile.
+    pub types_checks: bool,
 }
 
 impl Default for PerfSettings {
@@ -115,6 +151,7 @@ impl Default for PerfSettings {
             rules: BTreeMap::new(),
             row_hints: true,
             inline_findings: false,
+            types_checks: true,
         }
     }
 }
@@ -126,6 +163,15 @@ impl PerfSettings {
         advice_rule_ids().any(|id| self.enabled(id))
     }
 
+    /// Whether a rule outside [`SNAPSHOT_RULES`] can report: only then
+    /// does a pulled diagnostic plan the model. The snapshot rules come
+    /// from the schema job, or with the plan once it runs anyway.
+    pub fn plan_needed(&self) -> bool {
+        advice_rule_ids()
+            .filter(|id| !SNAPSHOT_RULES.contains(id))
+            .any(|id| self.enabled(id))
+    }
+
     /// The number of advice rules currently enabled.
     pub fn enabled_rule_count(&self) -> usize {
         advice_rule_ids().filter(|id| self.enabled(id)).count()
@@ -135,6 +181,8 @@ impl PerfSettings {
         match self.rules.get(id) {
             Some(RuleOverride::Off) => false,
             Some(RuleOverride::On | RuleOverride::Set(_)) => true,
+            None if self.types_checks && TYPE_RULES.contains(&id) => true,
+            None if DEFAULT_ON_RULES.contains(&id) => true,
             None => match self.profile {
                 PerfProfile::Off => false,
                 PerfProfile::Recommended => RECOMMENDED_RULES.contains(&id),
@@ -171,6 +219,28 @@ mod tests {
             rules: rules.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
             row_hints: true,
             inline_findings: false,
+            types_checks: false,
+        }
+    }
+
+    #[test]
+    fn type_checks_carry_type_codes() {
+        assert_eq!(
+            diagnostic_code("type.aggregate_text"),
+            "type-aggregate-text"
+        );
+        assert_eq!(
+            diagnostic_code("type.text_temporal_compare"),
+            "type-text-temporal-compare"
+        );
+        assert_eq!(
+            diagnostic_code("join.key_type_mismatch"),
+            "type-join-key-mismatch"
+        );
+        assert_eq!(diagnostic_code("join.fanout"), "join.fanout");
+        let advice: Vec<&str> = advice_rule_ids().collect();
+        for rule in TYPE_RULES.iter().chain(DEFAULT_ON_RULES) {
+            assert!(advice.contains(rule), "{rule}");
         }
     }
 
@@ -184,16 +254,31 @@ mod tests {
     }
 
     #[test]
-    fn off_profile_reports_nothing_unless_a_rule_opts_in() {
+    fn off_profile_reports_only_the_correctness_checks_unless_a_rule_opts_in() {
         let off = PerfSettings::default();
-        assert!(!off.active());
+        assert!(off.active());
+        assert_eq!(
+            off.enabled_rule_count(),
+            TYPE_RULES.len() + DEFAULT_ON_RULES.len()
+        );
         assert_eq!(off.severity("join.cartesian", Severity::Warning), None);
+        assert_eq!(
+            off.severity("type.aggregate_text", Severity::Warning),
+            Some(Severity::Warning)
+        );
+        assert_eq!(
+            off.severity("join.fanout", Severity::Hint),
+            Some(Severity::Hint)
+        );
+        // types.checks: false and join.fanout: off silence everything
+        let silent = with(PerfProfile::Off, &[("join.fanout", RuleOverride::Off)]);
+        assert!(!silent.active());
         let opted = with(
             PerfProfile::Off,
             &[("join.cartesian", RuleOverride::Set(Severity::Hint))],
         );
         assert!(opted.active());
-        assert_eq!(opted.enabled_rule_count(), 1);
+        assert_eq!(opted.enabled_rule_count(), 1 + DEFAULT_ON_RULES.len());
         assert_eq!(
             opted.severity("join.cartesian", Severity::Warning),
             Some(Severity::Hint)
@@ -208,7 +293,10 @@ mod tests {
     fn recommended_is_a_subset_of_strict() {
         let recommended = with(PerfProfile::Recommended, &[]);
         let strict = with(PerfProfile::Strict, &[]);
-        assert_eq!(recommended.enabled_rule_count(), RECOMMENDED_RULES.len());
+        assert_eq!(
+            recommended.enabled_rule_count(),
+            RECOMMENDED_RULES.len() + DEFAULT_ON_RULES.len()
+        );
         assert_eq!(strict.enabled_rule_count(), advice_rule_ids().count());
         // the dialect-specific severity survives both
         assert_eq!(

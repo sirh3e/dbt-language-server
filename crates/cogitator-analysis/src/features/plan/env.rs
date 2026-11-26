@@ -263,6 +263,7 @@ fn schema_of(
         columns: Arc::from(columns),
         completeness: Completeness::Open,
         fingerprint: hasher.finish(),
+        unique_sets: Vec::new(),
     })
 }
 

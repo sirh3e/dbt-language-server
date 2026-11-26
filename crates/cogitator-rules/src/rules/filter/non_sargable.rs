@@ -213,6 +213,7 @@ impl Check<'_> {
             message,
             evidence,
             fixes,
+            subject: None,
         }
     }
 }

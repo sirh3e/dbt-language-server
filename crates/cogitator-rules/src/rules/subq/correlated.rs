@@ -75,6 +75,7 @@ fn examine(mir: &Mir, id: ScalarId) -> Option<Finding> {
             .to_owned(),
         evidence: Evidence::Exact,
         fixes: Vec::new(),
+        subject: None,
     })
 }
 

@@ -374,6 +374,11 @@ impl Dispatcher {
             .inlay_jinja
             .load(std::sync::atomic::Ordering::Relaxed)
             && uri.ends_with(".sql");
+        let types = self
+            .toggles
+            .inlay_types
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && uri.ends_with(".sql");
         let perf = self.perf_settings();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         // offloaded: the relation labels read the profiles inventory
@@ -394,6 +399,11 @@ impl Dispatcher {
                             crate::server::handlers::commands::preview_inputs(&snap, &derived);
                         let renderer = features::InlineRenderer::new(&inputs);
                         hints.extend(features::jinja_inlay_hints(doc, range, &renderer));
+                    }
+                    if types {
+                        hints.extend(super::yaml_types::inlay_hints(
+                            &snap.ctx, &derived, doc, &uri, range,
+                        ));
                     }
                     hints
                 }

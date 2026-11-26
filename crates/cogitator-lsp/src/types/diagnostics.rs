@@ -57,6 +57,25 @@ pub struct DiagnosticData {
     pub fix: FixKind,
     pub token_range: Range,
     pub suggestions: Vec<String>,
+    /// What the diagnostic is about, for fixes that edit another file
+    /// (`join.fanout`: a `unique` test in the relation's YAML).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<DiagnosticSubject>,
+}
+
+/// The structured subject of a diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DiagnosticSubject {
+    /// `relation.column` is not known to be unique; `source` is set for
+    /// a source table (then `relation` is the table).
+    #[serde(rename_all = "camelCase")]
+    UniqueKey {
+        relation: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+        column: String,
+    },
 }
 
 /// A client may hand back diagnostics that are not ours (other sources
@@ -126,6 +145,7 @@ mod tests {
             fix: FixKind::ReplaceToken,
             token_range: diag.range,
             suggestions: vec!["stg_orders".into()],
+            subject: None,
         });
         let wire = serde_json::to_string(&diag).unwrap();
         let back: Diagnostic = serde_json::from_str(&wire).unwrap();

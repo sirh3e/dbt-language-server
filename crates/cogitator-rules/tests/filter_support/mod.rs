@@ -116,6 +116,7 @@ fn schema(columns: Vec<SchemaCol>) -> Arc<ModelSchema> {
         columns: Arc::from(columns),
         completeness: Completeness::Closed,
         fingerprint: 0,
+        unique_sets: Vec::new(),
     })
 }
 

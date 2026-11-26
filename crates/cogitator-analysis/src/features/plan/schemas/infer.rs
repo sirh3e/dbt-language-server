@@ -50,6 +50,8 @@ pub(super) struct Inferred {
     /// also declares `materialized='incremental'`: the merge keeps one
     /// row per key.
     pub(super) template_unique_key: Vec<String>,
+    /// The correctness checks over this text (`checks`).
+    pub(super) checks: Arc<super::checks::ModelChecks>,
 }
 
 pub(super) fn storage_of(raw: &str) -> Option<Storage> {
@@ -143,7 +145,11 @@ pub(super) fn infer(text: &str, dialect: &Dialect, env: &SchemaEnv) -> Option<In
     let mut reads = model_reads(&mir);
     reads.unknown |= output_open(&hir, root);
     let typed: Arc<[RawColumn]> = Arc::from(raw_columns(&mir));
-    let facts = model_facts(&hir, &canonicalise(&hir, mir));
+    let canonical = canonicalise(&hir, mir);
+    let checks = Arc::new(super::checks::run_checks(
+        &hir, &canonical, text, dialect, env,
+    ));
+    let facts = model_facts(&hir, &canonical);
     let template_unique_key =
         if matches!(hir.config.materialized, Some(Materialization::Incremental)) {
             hir.config
@@ -155,6 +161,7 @@ pub(super) fn infer(text: &str, dialect: &Dialect, env: &SchemaEnv) -> Option<In
             Vec::new()
         };
     Some(Inferred {
+        checks,
         typed,
         template_unique_key,
         columns,
