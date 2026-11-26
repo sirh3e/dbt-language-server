@@ -19,6 +19,7 @@ mod fusion;
 pub(crate) mod handlers;
 mod highlight;
 mod jobs;
+mod lineage_graph;
 mod multi_root;
 mod node_info;
 mod offload;

@@ -72,7 +72,8 @@ included.
 `dbt: Run/Test/Compile/Preview current model`, `dbt: Preview rows of
 the CTE under the cursor` (the model run up to that CTE; the table opens
 beside it, as do the "Preview rows" lenses), `dbt: Parse project`,
-`dbt: Show column lineage`, `dbt: Split model at its incrementality
+`dbt: Show column lineage`, `dbt: Column lineage graph` (the lineage around a column across
+the project, an edge a line, from `dbt.columnLineageGraph`'s cache), `dbt: Split model at its incrementality
 frontier` (the plan as an S-expression beside the model, with an
 "Apply split" button), `dbt: Compare incremental / full refresh` (the
 model rendered with `is_incremental()` false and true, as a unified diff

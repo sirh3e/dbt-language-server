@@ -102,7 +102,11 @@ editor integrations live under `editors/`.
   `[gaps.*]` baseline only shrinks.
 - Custom commands (advertised in `cogitator-lsp/src/types/init.rs`,
   documented in `specs/neovim-plugin/00-plugin.md` §1.6): dbt.goToSchema,
-  dbt.columnLineage, dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
+  dbt.columnLineage, dbt.columnLineageGraph (the column walk across the
+  project in one answer, from a per-model lineage cache keyed by file
+  stamp + upstream schemas, persisted to target/.cogitator-lineage-cache;
+  `features/lineage_graph/` pure, the cache `server/lineage_graph/`),
+  dbt.openSchema, dbt.showLineage, dbt.run/test/compile,
   dbt.modelGraph, dbt.profiles, dbt.setTarget, dbt.extractModelYaml,
   dbt.modelTests, dbt.goToTests, dbt.status, dbt.projectGraph,
   dbt.modelInfo (neighbors + versions + tests + compiledUri for the

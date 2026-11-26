@@ -107,6 +107,10 @@
         "title": "dbt: Unresolved references"
       },
       {
+        "command": "cogitator.columnLineageGraph",
+        "title": "dbt: Column lineage graph"
+      },
+      {
         "command": "cogitator.breakingChanges",
         "title": "dbt: Breaking changes against the last build"
       },

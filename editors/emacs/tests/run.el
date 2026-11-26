@@ -69,6 +69,15 @@
 (check (null (cogitator--lineage-site-message nil))
        "lineage-site: no page, no message")
 
+;; unit: the column-lineage graph's lines
+(check (equal (cogitator--lineage-graph-lines
+               '(:nodes [(:id "model:a::id" :name "a.id") (:id "model:b::id" :name "b.id")]
+                 :edges [(:from "model:a::id" :to "model:b::id" :kind "direct")]
+                 :cached t :stale ["c"]))
+              '("2 columns, 1 edges (from the cache)" "still being computed: c" ""
+                "a.id -> b.id (direct)"))
+       "lineage-graph: an edge a line, with what is still being computed")
+
 ;; ---------------------------------------------------------------------------
 ;; integration: eglot against the live server and a fixture COPY
 ;; ---------------------------------------------------------------------------
@@ -147,6 +156,14 @@
   (check (and (plist-get caches :profiles)
               (numberp (plist-get (plist-get caches :profiles) :entries)))
          "integration: dbt.cache reports the derived-cache surfaces" caches))
+
+;; integration: dbt.columnLineageGraph walks the lineage in one request
+(let ((graph (run--exec "dbt.columnLineageGraph"
+                        (append (cogitator--command-argument)
+                                '(:column "customer_id" :direction "up")))))
+  (check (and (> (length (plist-get graph :nodes)) 0)
+              (equal (plist-get graph :start) "model:customers::customer_id"))
+         "integration: dbt.columnLineageGraph answers the walk" graph))
 
 ;; integration: dbt.lineageSite writes the page under target/
 (let ((site (run--exec "dbt.lineageSite"

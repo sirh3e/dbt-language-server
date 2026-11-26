@@ -44,6 +44,10 @@ impl Dispatcher {
                 self.column_lineage(req.id, &uri);
                 return;
             }
+            "dbt.columnLineageGraph" => {
+                self.column_lineage_graph(req.id, &uri, arg);
+                return;
+            }
             "dbt.openSchema" => {
                 self.open_schema(req.id, &uri);
                 return;
