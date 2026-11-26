@@ -4,6 +4,7 @@
 
 ```yaml
 perf: { profile: off, catalog_stats: true, row_hints: true, inline_findings: false }   # off | recommended | strict
+types: { checks: true }    # the type.* checks under every profile
 perf_rules: { join.cartesian: warning, filter.non_sargable: off }
 ```
 
@@ -50,7 +51,18 @@ second planning; a document that wants neither does not plan for hints.
 | `join.left_nullified`, `join.cartesian`, `model.unused_cte`, `incr.missing_guard`, `incr.subquery_watermark`, `filter.non_sargable` | on | on |
 | `join.distinct_fanout`, `set.union_distinct`, `cross.select_star_chain` | off | on |
 
-`off` enables nothing. `recommended` is the rules whose findings are claims;
+| `join.fanout` | on (also under `off`) | on |
+| `type.text_temporal_compare`, `type.aggregate_text`, `join.key_type_mismatch` | on with `types.checks` (default true, also under `off`) | on |
+
+`off` enables nothing but the correctness checks above: `join.fanout` (a Hint
+on what is *not known*, never a performance claim) and the type checks
+(`types: {checks: false}` leaves those to the profile). Their diagnostics
+carry the codes `type-text-temporal-compare`, `type-aggregate-text`,
+`type-join-key-mismatch` (`join.fanout` keeps its id); suppression still names
+the rule id. They run in the project schema job, over the saved file, so a
+pull plans a model only when a rule outside them is on
+(`PerfSettings::plan_needed`); planning per pull for them doubled the pull's
+latency on the jaffle fixture. `recommended` is the rules whose findings are claims;
 the rest wait for measured false positives. A rule added to the registry
 appears only under `strict` until listed here (`RECOMMENDED_RULES`).
 

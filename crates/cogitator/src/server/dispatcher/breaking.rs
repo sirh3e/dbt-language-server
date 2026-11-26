@@ -1,10 +1,11 @@
 //! The breaking-change preview's dispatcher side: the background job
-//! that computes a model's report on open/save (never per keystroke)
-//! and republishes its push diagnostics when the report's findings
-//! changed, and the `dbt.breakingChanges` command.
+//! that computes a model's report on open/save and, after the refresh
+//! debounce, on change, and republishes its push diagnostics when the
+//! report's findings changed; and the `dbt.breakingChanges` command.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use cogitator_analysis::features;
 use cogitator_lsp::{error_codes, Diagnostic};
@@ -17,6 +18,18 @@ impl Dispatcher {
     /// Recompute the saved model's report off this task. Fusion owns
     /// the publishes when enabled (07 §3), so the job then only stores.
     pub(super) fn spawn_breaking(&mut self, uri: &str) {
+        self.spawn_breaking_from(uri, Source::Disk, None);
+    }
+
+    /// On didChange: the buffer's report (against the build and the
+    /// saved file), after the refresh debounce; a later keystroke's
+    /// ticket makes this one stand down before it computes anything.
+    pub(super) fn spawn_breaking_debounced(&mut self, uri: &str) {
+        let ms = self.limits.refresh_debounce_ms.load(Ordering::Relaxed);
+        self.spawn_breaking_from(uri, Source::Buffer, Some(Duration::from_millis(ms)));
+    }
+
+    fn spawn_breaking_from(&mut self, uri: &str, source: Source, delay: Option<Duration>) {
         if !uri.ends_with(".sql") || features::model_name_from_uri(uri).is_none() {
             return;
         }
@@ -36,8 +49,14 @@ impl Dispatcher {
         let span = tracing::info_span!("breaking_changes", %uri);
         tokio::spawn(
             async move {
+                if let Some(delay) = delay {
+                    tokio::time::sleep(delay).await;
+                    if !derived.breaking_is_latest(&uri, ticket) {
+                        return; // typed on: a newer job owns this uri
+                    }
+                }
                 let job = move || {
-                    let fresh = report(&snap, &derived, &uri, cap, Source::Disk).map(Arc::new);
+                    let fresh = report(&snap, &derived, &uri, cap, source).map(Arc::new);
                     let new = fresh.as_deref().map(features::breaking::diagnostics);
                     let Some(previous) = derived.breaking_finish(&uri, ticket, fresh) else {
                         return; // a newer save took over
@@ -88,10 +107,10 @@ impl Dispatcher {
 
 /// Same findings: no republish needed.
 fn same(a: Option<&[Diagnostic]>, b: Option<&[Diagnostic]>) -> bool {
-    let key = |d: Option<&[Diagnostic]>| -> Vec<(i32, String)> {
+    let key = |d: Option<&[Diagnostic]>| -> Vec<(i32, String, cogitator_lsp::Range)> {
         d.unwrap_or_default()
             .iter()
-            .map(|d| (d.severity, d.message.clone()))
+            .map(|d| (d.severity, d.message.clone(), d.range))
             .collect()
     };
     key(a) == key(b)

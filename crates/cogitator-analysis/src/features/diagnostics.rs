@@ -131,6 +131,7 @@ fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Opt
             fix: cogitator_lsp::FixKind::ReplaceToken,
             token_range: range,
             suggestions: guidance.suggestions,
+            subject: None,
         });
     }
     Some(diagnostic)

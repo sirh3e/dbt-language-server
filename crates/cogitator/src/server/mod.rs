@@ -16,6 +16,7 @@ pub(crate) mod diagnostics;
 mod dispatcher;
 mod function_docs;
 mod fusion;
+mod git;
 pub(crate) mod handlers;
 mod highlight;
 mod jobs;
@@ -24,6 +25,7 @@ mod multi_root;
 mod node_info;
 mod offload;
 mod preview_cte;
+mod profile;
 mod refresh;
 mod rename_column;
 mod reply;
@@ -94,6 +96,8 @@ pub struct SharedToggles {
     pub inlay_env_vars_off: std::sync::atomic::AtomicBool,
     /// cogitator.yml `inlay.jinja: true` (off by default).
     pub inlay_jinja: std::sync::atomic::AtomicBool,
+    /// cogitator.yml `inlay.types: true` (off by default).
+    pub inlay_types: std::sync::atomic::AtomicBool,
     /// cogitator.yml `inlay.lineage: false` (on by default).
     pub inlay_lineage_off: std::sync::atomic::AtomicBool,
     /// cogitator.yml `inlay.lineage_max_len`; 0 is the built-in cap.
@@ -109,6 +113,10 @@ pub struct SharedToggles {
     pub perf: std::sync::RwLock<
         Arc<cogitator_analysis::features::plan::diagnostics_config::PerfSettings>,
     >,
+    /// cogitator.yml `bi.manifest` (empty: none), relative to the root.
+    pub bi_manifest: std::sync::RwLock<String>,
+    /// `cost.query_history`, `warehouse.profile*`: a snapshot readers clone.
+    pub analytics: std::sync::RwLock<Arc<config_file::AnalyticsSettings>>,
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by
@@ -300,6 +308,7 @@ pub async fn run(
     if let Some(on) = launch.warehouse.columns {
         toggles.warehouse_columns.store(on, Ordering::Relaxed);
     }
+    *toggles.analytics.write().expect("analytics settings lock") = Arc::new(launch.analytics());
     if let Some(on) = launch.inlay.vars {
         toggles.inlay_vars_off.store(!on, Ordering::Relaxed);
     }
@@ -308,6 +317,9 @@ pub async fn run(
     }
     if let Some(on) = launch.inlay.jinja {
         toggles.inlay_jinja.store(on, Ordering::Relaxed);
+    }
+    if let Some(on) = launch.inlay.types {
+        toggles.inlay_types.store(on, Ordering::Relaxed);
     }
     if let Some(on) = launch.inlay.lineage {
         toggles.inlay_lineage_off.store(!on, Ordering::Relaxed);

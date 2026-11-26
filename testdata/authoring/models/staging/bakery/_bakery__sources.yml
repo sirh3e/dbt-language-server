@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: bakery
+    description: The made-up bakery's raw tables.
+    tables:
+      - name: bakes
+        description: One row per bake.
+        columns:
+          - name: id
+            data_type: integer
+            description: The loaf's id.
+          - name: bakedAt
+            data_type: timestamp
+            description: "{{ doc('baked_at') }}"
+          - name: Flour Kind
+            description: The flour the loaf was made of.
+          - name: is_sourdough
+            data_type: boolean
+      - name: ovens
+        description: The ovens, without columns.

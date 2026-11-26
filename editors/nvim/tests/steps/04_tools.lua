@@ -143,6 +143,18 @@ return function(ctx)
   H.check(took < 1000, "health: :checkhealth does not wait on the server", took)
   vim.cmd("bwipeout!")
 
+  -- structural search over the models' HIR
+  vim.api.nvim_set_current_buf(bufnr)
+  local searched = H.exec_cmd(client, bufnr, "dbt.search", {
+    uri = "",
+    query = "reads stg_customers",
+  }, "search: dbt.search")
+  H.check(
+    type(searched) == "table" and vim.tbl_contains(searched.models or {}, "customers"),
+    "search: dbt.search finds the models that read stg_customers",
+    vim.inspect(searched and searched.models)
+  )
+
   -- ast-grep through the server: the command, :DbtAstGrep, the picker
   vim.api.nvim_set_current_buf(bufnr)
   local found = H.exec_cmd(client, bufnr, "dbt.astGrep", {

@@ -1,0 +1,22 @@
+rule = "join.fanout"
+fix = "Deduplicate customers on id (a QUALIFY row_number() CTE)"
+safety = "N"
+description = "The CTE keeps one customers row per id, so an order joins at most once. Equal only where id is already unique in customers."
+
+[[fixtures]]
+name = "a_customer_listed_twice"
+seed = "seed.sql"
+role = "witness"
+covers = ["duplicates"]
+
+[[fixtures]]
+name = "ids_already_unique"
+seed = "seed_precondition.sql"
+role = "precondition"
+covers = ["nulls"]
+
+[[fixtures]]
+name = "empty_customers"
+seed = "seed_empty.sql"
+role = "precondition"
+covers = ["empty"]

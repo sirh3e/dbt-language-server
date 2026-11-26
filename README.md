@@ -417,9 +417,20 @@ inlay:
   jinja: false             # what short {{ … }} expressions render to
   lineage: true            # where each output column comes from (← stg.col)
   lineage_max_len: 60      # longer lineage hints are cut with …
+  types: false             # each output column's inferred type (docs/type-checks.md)
+types:
+  checks: true             # type-* checks under every perf profile
 preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/preview.md)
   rows: 20                 # rows when the call names no limit
   max_rows: 1000           # larger limits are capped
+bi:                        # dashboards as the end of the lineage (docs/column-reach.md)
+  manifest: bi/dashboards.json   # relative to the project root
+warehouse:
+  columns: false           # duckdb: complete undeclared source columns
+  profile: false           # dbt.profileColumn may query the warehouse (docs/profile.md)
+  profile_sample_rows: 10000
+cost:
+  query_history: ""        # a JSON query-history export for dbt.costReport (docs/cost.md)
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
 ```

@@ -122,7 +122,18 @@ fn breaking_changes_end_to_end() {
     assert!(diags[0]
         .message
         .contains("possibly renamed to 'given_name'"));
-    assert!(diags[0].message.contains("people.first_name"));
+    assert!(
+        diags[0].message.contains("breaks 1 model, 1 test"),
+        "{}",
+        diags[0].message
+    );
+    let related = diags[0].related_information.as_ref().expect("related");
+    assert!(
+        related
+            .iter()
+            .any(|r| r.message.starts_with("read by people.first_name")),
+        "{related:?}"
+    );
     let lens = breaking::lens(&report, "file:///x.sql").expect("lens");
     assert_eq!(lens.command.title, "2 breaking changes");
 

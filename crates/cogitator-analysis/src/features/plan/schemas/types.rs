@@ -91,6 +91,9 @@ pub struct SchemaSnapshot {
     /// Each model's SQL-inferred output columns with their provenance,
     /// before YAML or catalog fill-in (`features::column_types`).
     pub outputs: HashMap<Arc<str>, Arc<[RawColumn]>>,
+    /// Each model's correctness checks (`join.fanout`, `type.*`), run by
+    /// the job so a pull never plans for them (`schemas::checks`).
+    pub checks: HashMap<Arc<str>, Arc<super::checks::ModelChecks>>,
     pub(super) content: u64,
 }
 

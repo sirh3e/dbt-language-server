@@ -27,10 +27,15 @@ pub enum Change {
     InlayVars(bool),
     InlayEnvVars(bool),
     InlayJinja(bool),
+    InlayTypes(bool),
     InlayLineage(bool),
     InlayLineageMaxLen(u64),
     PreviewRows(u64),
     PreviewMaxRows(u64),
+    /// `bi.manifest` (empty: none; no launch value to revert to).
+    BiManifest(String),
+    /// cost.query_history / warehouse.profile*.
+    Analytics(super::AnalyticsSettings),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -92,12 +97,13 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.lint != new.lint {
         out.push(Change::LintFlags(new.lint.flags(baseline.lint_flags)));
     }
-    if old.warehouse != new.warehouse {
+    if old.warehouse.columns != new.warehouse.columns {
         out.push(Change::WarehouseColumns(
             new.warehouse.columns.unwrap_or(baseline.warehouse_columns),
         ));
     }
     if old.perf != new.perf
+        || old.types != new.types
         || old.perf_rules != new.perf_rules
         || old.lint.select_star != new.lint.select_star
     {
@@ -114,6 +120,9 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     }
     if old.inlay.jinja != new.inlay.jinja {
         out.push(Change::InlayJinja(new.inlay.jinja.unwrap_or(false)));
+    }
+    if old.inlay.types != new.inlay.types {
+        out.push(Change::InlayTypes(new.inlay.types.unwrap_or(false)));
     }
     if old.inlay.lineage != new.inlay.lineage {
         out.push(Change::InlayLineage(new.inlay.lineage.unwrap_or(true)));
@@ -133,6 +142,14 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
         out.push(Change::PreviewMaxRows(
             new.preview.max_rows.unwrap_or(baseline.preview_max_rows),
         ));
+    }
+    if old.bi.manifest != new.bi.manifest {
+        out.push(Change::BiManifest(
+            new.bi.manifest.clone().unwrap_or_default(),
+        ));
+    }
+    if old.analytics() != new.analytics() {
+        out.push(Change::Analytics(new.analytics()));
     }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
@@ -171,10 +188,13 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayVars(_)
             | Change::InlayEnvVars(_)
             | Change::InlayJinja(_)
+            | Change::InlayTypes(_)
             | Change::InlayLineage(_)
             | Change::InlayLineageMaxLen(_)
             | Change::PreviewRows(_)
-            | Change::PreviewMaxRows(_) => true,
+            | Change::PreviewMaxRows(_)
+            | Change::BiManifest(_)
+            | Change::Analytics(_) => true,
         })
         .collect()
 }
@@ -267,6 +287,10 @@ pub fn apply(
                 toggles.inlay_jinja.store(*on, Ordering::Relaxed);
                 applied.push("inlay.jinja");
             }
+            Change::InlayTypes(on) => {
+                toggles.inlay_types.store(*on, Ordering::Relaxed);
+                applied.push("inlay.types");
+            }
             Change::InlayLineage(on) => {
                 toggles.inlay_lineage_off.store(!*on, Ordering::Relaxed);
                 applied.push("inlay.lineage");
@@ -282,6 +306,15 @@ pub fn apply(
             Change::PreviewMaxRows(rows) => {
                 limits.preview_max_rows.store(*rows, Ordering::Relaxed);
                 applied.push("preview.max_rows");
+            }
+            Change::BiManifest(path) => {
+                *toggles.bi_manifest.write().expect("bi manifest lock") = path.clone();
+                applied.push("bi.manifest");
+            }
+            Change::Analytics(settings) => {
+                *toggles.analytics.write().expect("analytics settings lock") =
+                    std::sync::Arc::new(settings.clone());
+                applied.push("cost/warehouse.profile");
             }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc

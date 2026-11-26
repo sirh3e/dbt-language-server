@@ -33,6 +33,7 @@ fn complete(ctx: &DbtContext, marked: &str) -> Vec<CompletionItem> {
         docs.get(uri).unwrap(),
         Position { line, character },
         &read,
+        &features::ModelHints::default(),
     );
     items.sort_by(|a, b| a.sort_text.cmp(&b.sort_text));
     items

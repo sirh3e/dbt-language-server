@@ -229,3 +229,61 @@ fn lens_counts_removed_and_retyped() {
     assert_eq!(lens.command.title, "2 breaking changes");
     assert_eq!(lens.command.command, "dbt.breakingChanges");
 }
+
+#[test]
+fn the_edit_report_comes_first_and_each_column_once() {
+    let mut build = BreakingReport::without("m", Status::Compared, None);
+    build.diff = diff(&now(&[("id", None)]), &built(&[("id", None), ("a", None)]));
+    build.impacts = vec![impact_of("a")];
+    let mut edit = BreakingReport::without("m", Status::Compared, None);
+    edit.baseline = Some(saved_baseline(&now(&[("a", None), ("b", None)])).info());
+    edit.diff = diff(&now(&[]), &built(&[("a", None), ("b", None)]));
+    edit.impacts = vec![impact_of("a"), impact_of("b")];
+    let report = build.with_since_save(Some(edit));
+    let diags = diagnostics(&report);
+    assert_eq!(diags.len(), 2);
+    assert!(
+        diags.iter().all(|d| d.message.contains("in this edit")),
+        "{diags:?}"
+    );
+    assert_eq!(
+        lens(&report, "file:///m.sql").unwrap().command.title,
+        "2 breaking changes"
+    );
+    // nothing broken by the edit attaches nothing
+    let quiet = BreakingReport::without("m", Status::Compared, None)
+        .with_since_save(Some(BreakingReport::without("m", Status::Compared, None)));
+    assert!(quiet.since_save.is_none());
+}
+
+fn impact_of(column: &str) -> ColumnImpact {
+    ColumnImpact {
+        column: column.to_string(),
+        change: ChangeKind::Removed,
+        severity: Severity::Warning,
+        tests: vec!["unique".into()],
+        downstream: vec![use_of(false, false)],
+        semantic: Vec::new(),
+        metrics: Vec::new(),
+        range: None,
+        keep_alias: None,
+        related: Vec::new(),
+    }
+}
+
+#[test]
+fn the_message_counts_what_breaks() {
+    let mut report = BreakingReport::without("m", Status::Compared, None);
+    report.exposures = vec!["weekly".into()];
+    assert_eq!(
+        super::surface::breaks(&report, &impact_of("a")),
+        "breaks 1 model, 1 test, 1 exposure"
+    );
+    let mut lone = impact_of("a");
+    lone.tests.clear();
+    lone.downstream.clear();
+    assert_eq!(
+        super::surface::breaks(&BreakingReport::without("m", Status::Compared, None), &lone),
+        "nothing downstream reads it"
+    );
+}

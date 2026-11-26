@@ -223,6 +223,41 @@ names what already exists in the codebase.
       Neovim `:DbtBreakingChanges`, Emacs `cogitator-breaking-changes`,
       VS Code "dbt: Breaking changes against the last build". No git
       baseline (the model at `origin/main`) yet.
+- [x] **Column-level impact as you edit** (`features/breaking/`): the
+      open buffer is also compared with the file as last saved
+      (`baseline::saved_baseline`, the report's `sinceSave`), recomputed
+      after the refresh debounce on didChange (`dispatcher/breaking.rs`);
+      diagnostics sit at the column's select item, a likely rename's new
+      item or the root `select` (`breaking/anchor.rs`), say "breaks 3
+      models, 2 tests, 1 exposure" with each in related information
+      (`downstream.rs`), reach semantic models and metrics at column level
+      (`features::column_reach`), and offer "Keep '<old>' as an alias"
+      when the replacement is a bare column or literal.
+- [x] **Who reads this column?** (`dbt.impact` with a column,
+      `features/column_reach/`, docs/column-reach.md): past the downstream
+      models, the column tests of every hit, the semantic-model entities,
+      dimensions and measures whose `expr:` (or name) reads a hit
+      (`rename_column/semantic.rs::semantic_items`, shared with the
+      rename), the metrics over those measures to a fixpoint
+      (`column_reach/metrics.rs`: simple, cumulative, conversion, ratio,
+      derived), exposures at node level and the dashboards of a BI manifest
+      (`artifacts/bi_manifest.rs`, cogitator.yml `bi.manifest`). The shell
+      is `server/handlers/impact.rs`; every output column's reach is cached
+      on open/save (`dispatcher/reach.rs`, `derived_cache/reach.rs`) for a
+      hover line "`m.c` is read by N models, M tests, K semantic models, J
+      dashboards". Neovim `:DbtImpact`, Emacs `cogitator-impact`, VS Code
+      "dbt: Who reads this column?". Metric filters are not followed.
+- [x] **Structural search over the models' SQL** (`dbt.search`,
+      `features/hir_search/`, docs/search.md): a small query language
+      (`query.rs`: `joins <rel> [on <col>]`, `select-star [from <rel>]`,
+      `reads <rel>`, `uses column <rel>.<col>`; `expr.rs`: combined with
+      `and`, `or`, `not` and parentheses, `not` > `and` > `or`) evaluated
+      over each model's bound HIR (`eval.rs`: `FromKind::Join`, `RelTarget`,
+      `SelectItem::Star`, column resolutions); matches in `dbt.astGrep`'s
+      shape, models whose HIR cannot be built reported as not searched.
+      Shell `server/handlers/search.rs`; Neovim `:DbtSearch`, Emacs
+      `cogitator-search`, VS Code "dbt: Structural search over the models'
+      SQL".
 - [x] **dbt node selection** (`selectors/`, docs/selectors.md): one pure
       engine for dbt's selector language — methods (`fqn`, `tag`, `path`,
       `file`, `package`, `config.<key>`, `resource_type`, `source`,
@@ -257,6 +292,21 @@ names what already exists in the codebase.
       changes)", `cogitator yaml-sync [--check]` for CI, Neovim
       `:DbtSyncYaml`, Emacs `cogitator-sync-yaml`, VS Code "dbt: Sync schema
       YAML" (docs/yaml-sync.md).
+- [x] **Authoring actions** (docs/authoring-actions.md): "Scaffold
+      staging model stg_<source>__<table>" on a `source()`/`ref()` or a
+      source table's YAML entry — the style guide's `source`/`renamed` SQL,
+      columns from the catalog, YAML or inferred types, deterministic
+      renames, casts where a type is known, a paired YAML entry with
+      inherited descriptions and key tests
+      (`code_actions/staging_scaffold.rs`, `staging_render.rs`); "Extract
+      CTE" now carries the parent's pass-through column docs into a new
+      entry (`extract_cte_yaml.rs`); "Inline model 'x' as a CTE", the
+      reverse, deleting x's file with a `DeleteFile` resource operation
+      (`inline_model.rs`); "Inherit description of 'col' from …" on a YAML
+      column or a SQL select item, over the yaml-sync walk (direct lineage,
+      multi-hop, sources), copying `{{ doc() }}` as the call
+      (`inherit_docs.rs`, `raw_description.rs`; the shell in
+      `server/dispatcher/authoring.rs`).
 - [x] **Hover/definition on compiled SQL**: in `target/compiled/…` or
       `target/run/…`, hover shows the Jinja source lines a compiled line came
       from (a link to them) above the SQL hover, and definition jumps there
@@ -273,6 +323,36 @@ names what already exists in the codebase.
       `:DbtLineageSite` and Emacs `cogitator-lineage-site`. Declined
       models and unexpanded stars are marked, never guessed
       (docs/lineage-site.md).
+- [x] **Time travel on a model** (`dbt.diffAt`, `features/diff_at/`, the
+      git shell `server/git.rs`, the handler `server/handlers/diff_at.rs`):
+      the model now against a git revision (default `HEAD`, via
+      `git show` under a timeout) or the last dbt run (`rev: "last-run"`:
+      `artifacts/manifest_code.rs` reads `raw_code`/`compiled_code` on
+      demand, `target/compiled/` first), as the template, both sides
+      rendered in-process, or the column lineage (added, removed, changed
+      sources); `show: true` opens the diff. Neovim `:DbtDiffAt`, Emacs
+      `cogitator-diff-at`, VS Code "dbt: Compare this model with a git
+      revision or the last run" (docs/diff-at.md). No git baseline for the
+      breaking-change preview yet.
+- [x] **Cost and performance lens** (`artifacts/adapter_response.rs`,
+      `features/cost/`, `ProjectGraph::critical_path`, `server/handlers/cost.rs`):
+      `adapter_response` read leniently (bytes processed/billed, slot ms,
+      rows, query id); the last-run lens adds "3.2 GB scanned · slowest
+      5%"; `dbt.costReport` ranks the run's models, walks the critical path
+      and suggests "make it incremental" for slow tables
+      `incr.could_be_incremental` fires on; `cost.query_history` fills gaps
+      from a JSON export (no CSV). Neovim `:DbtCostReport`, Emacs
+      `cogitator-cost-report`, VS Code "dbt: Cost report of the last run"
+      (docs/cost.md). No slow-node marks in `:DbtDag` (no annotation hook).
+- [x] **Column profile on hover** (`features/profile/`, `server/profile.rs`,
+      `cogitator_duckdb::catalog::query`): off by default
+      (`warehouse.profile`); `dbt.profileColumn` / the "Profile column" code
+      action run a sampled profile query (per-adapter sampling) on DuckDB
+      read-only or through `dbt show --inline` as a job, and fill a cache
+      keyed by model and column and stamped with the run; the hover only
+      reads it (distinct, null %, min/max, a sparkline of the top values).
+      Neovim `:DbtProfileColumn`, Emacs `cogitator-profile-column`, VS Code
+      "dbt: Profile the column under the cursor" (docs/profile.md).
 
 ## P2 — quality of life
 
@@ -336,6 +416,39 @@ names what already exists in the codebase.
             `unit-test-value-type` hints on impossible unit-test row values,
             the type on hover (YAML column, SQL output column), and
             `columnTypes` in dbt.modelInfo
+- [x] **Uniqueness beyond tests** (`cogitator-schemas/src/properties/keys.rs`,
+      `features/plan/schemas/merge.rs`, `schemas/keys.rs`): column and
+      model-level `constraints` (`primary_key`, `unique`, `not_null`),
+      strict `unique_combination_of_columns` tests and an incremental
+      `unique_key` make columns (or column sets, `ModelSchema::unique_sets`)
+      unique; `SchemaCol::proven_type` says a type rests on proven evidence
+- [x] **Typed column completion** (docs/column-completion.md,
+      `features/completion/column_info.rs`, `details.rs`): `labelDetails`
+      with the type (YAML → catalog → inferred) and relation, Markdown
+      documentation shared with the column hover, filled lazily through
+      `CompletionData::Column`; CTE columns inherit type and description;
+      models, sources, macros and functions say what they are; nvim-cmp's
+      `format()` shows `labelDetails`
+- [x] **Model-aware snippets** (docs/snippets.md,
+      `features/completion/snippets.rs`): `is_inc…` / `{% if ` offer an
+      `is_incremental()` block on the model's event_time, a declared upstream
+      delta column or a named guess (a tab stop), with the incrementality
+      rewrite's filter (`rules/incr/watermark.rs`); `conf…` an incremental
+      `config()` with the merge key from constraints and tests;
+      `insertTextFormat`/`labelDetails`/Markdown fitted to the client
+      (`cogitator_lsp::adapt`, `CompletionSupport`)
+- [x] **Type checks under every profile** (docs/type-checks.md):
+      `type.text_temporal_compare`, `type.aggregate_text` and
+      `join.key_type_mismatch` (`cogitator-rules/src/rules/types/`), Warning
+      only when both types are proven, codes `type-*`, run by the schema job
+      (`features/plan/schemas/checks.rs`) and read off its snapshot on pull;
+      `types.checks`; `inlay.types` hints after each select item
+      (`features/column_types/inlay.rs`)
+- [x] **Join fan-out** (docs/join-fanout.md): `join.fanout`
+      (`rules/join/fanout.rs`, `support/grain.rs`, `fanout_fix.rs`), a Hint
+      on by default, with "Add a unique test on …" (YAML,
+      `code_actions/unique_test.rs`, through `Diagnostic.data.subject`) and
+      "Deduplicate … on …" (a CTE)
 - [x] **Pull diagnostics** — `textDocument/diagnostic` (full report, same
       static set as the push pipeline); `workspace/diagnostic` still open.
 - [x] **Inline plan hints** (specs/ir-pipeline/06): each CTE's row count as

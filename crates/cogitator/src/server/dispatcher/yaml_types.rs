@@ -23,6 +23,27 @@ pub(crate) fn lookup<'a>(
     move |model| column_types::column_types(ctx, snapshot, model)
 }
 
+/// `inlay.types`: the inferred type after each output column of an
+/// open model, from the published snapshot (never runs the job).
+pub(super) fn inlay_hints(
+    ctx: &DbtContext,
+    derived: &DerivedCache,
+    doc: &Document,
+    uri: &str,
+    range: Range,
+) -> Vec<cogitator_lsp::InlayHint> {
+    let Some(model) = cogitator_analysis::features::model_name_from_uri(uri) else {
+        return Vec::new();
+    };
+    let Some(snapshot) = snapshot(ctx, derived) else {
+        return Vec::new();
+    };
+    let Some(types) = column_types::column_types(ctx, &snapshot, &model) else {
+        return Vec::new();
+    };
+    column_types::type_inlay_hints(&doc.parsed, &ctx.dialect, &types, range)
+}
+
 /// `column-type-mismatch` and `unit-test-value-type` of a properties file.
 pub(super) fn diagnostics(
     ctx: &DbtContext,

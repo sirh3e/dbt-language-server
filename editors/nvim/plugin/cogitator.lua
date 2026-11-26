@@ -32,6 +32,11 @@ vim.api.nvim_create_user_command("DbtPreviewCte", function(opts)
 end, { nargs = "?", desc = "rows of the CTE under the cursor (optional row limit, default preview.rows)" })
 cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
 cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, as a diff in a split")
+vim.api.nvim_create_user_command("DbtDiffAt", function(opts)
+  require("cogitator.commands").diff_at(opts)
+end, { nargs = "*", desc = "this model against a git revision or the last run [rev] [sql|compiled|lineage]" })
+cmd("DbtCostReport", "cost_report", "the last run's models by cost, critical path, suggestions")
+cmd("DbtProfileColumn", "profile_column", "profile the output column under the cursor (warehouse.profile)")
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
@@ -232,6 +237,13 @@ vim.api.nvim_create_user_command("DbtAstGrep", function(opts)
 end, {
   nargs = "*",
   desc = "ast-grep: [sql:]pattern [=> rewrite] — matches to quickfix, a rewrite after asking",
+})
+
+vim.api.nvim_create_user_command("DbtSearch", function(opts)
+  require("cogitator.search").command(opts)
+end, {
+  nargs = "+",
+  desc = "structural search over the models' SQL (dbt.search): joins x on col, select-star from source, …",
 })
 
 vim.api.nvim_create_user_command("DbtSyntaxTree", function()

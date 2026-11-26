@@ -81,6 +81,7 @@ pub(super) fn build_model_details(
                     group: schema.and_then(|m| m.group.clone()),
                     contract_enforced: schema.is_some_and(|m| m.contract_enforced),
                     event_time: schema.and_then(|m| m.event_time.clone()),
+                    unique_keys: schema.map(|m| m.unique_keys.clone()).unwrap_or_default(),
                 },
             );
         }
@@ -162,6 +163,7 @@ pub(super) struct SchemaModel {
     pub(super) columns: Vec<cogitator_schemas::ColumnEntry>,
     pub(super) tags: Vec<String>,
     pub(super) event_time: Option<String>,
+    pub(super) unique_keys: Vec<Vec<String>>,
 }
 
 /// Properties YAML files under the model paths (03 §6.2): cached per file;
@@ -205,6 +207,7 @@ fn schema_entries(
                         columns: expand_columns(&model.columns, &expand),
                         tags: model.tags.clone(),
                         event_time: model.event_time.clone(),
+                        unique_keys: model.unique_keys.clone(),
                     },
                 );
             }

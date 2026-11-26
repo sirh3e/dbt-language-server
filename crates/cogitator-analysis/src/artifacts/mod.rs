@@ -7,10 +7,13 @@
 //! mismatches trace, never reject; artifacts must degrade feature-off,
 //! never break core diagnostics.
 
+pub mod adapter_response;
+pub mod bi_manifest;
 pub mod catalog;
 mod catalog_stats;
 pub mod freshness;
 pub mod manifest;
+pub mod manifest_code;
 mod manifest_columns;
 mod manifest_config;
 pub mod run_results;

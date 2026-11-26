@@ -210,6 +210,10 @@ pub const COMMANDS: &[&str] = &[
     "dbt.lineageSite",
     "dbt.syncYaml",
     "dbt.modelDependencies",
+    "dbt.search",
+    "dbt.costReport",
+    "dbt.diffAt",
+    "dbt.profileColumn",
     "dbt.renameColumn",
 ];
 

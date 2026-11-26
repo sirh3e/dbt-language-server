@@ -105,6 +105,27 @@ function M.blink_transform(inner)
   end
 end
 
+--- The menu text of an item: its labelDetails (a column's type and
+--- relation, a model's materialization) when the server sent them, else
+--- its detail.
+---@param item table an LSP CompletionItem
+---@return string?
+local function menu_text(item)
+  local details = item.labelDetails
+  if type(details) == "table" then
+    local parts = {}
+    for _, part in ipairs({ details.detail, details.description }) do
+      if type(part) == "string" and vim.trim(part) ~= "" then
+        parts[#parts + 1] = vim.trim(part)
+      end
+    end
+    if #parts > 0 then
+      return table.concat(parts, " · ")
+    end
+  end
+  return item.detail
+end
+
 --- A cmp `formatting.format` that puts a cogitator item's detail in the
 --- menu column, wrapping `formatter` (cmp's own or lspkind's) if given.
 ---@param formatter? fun(entry: table, vim_item: table): table
@@ -114,7 +135,7 @@ function M.format(formatter)
     if formatter then
       vim_item = formatter(entry, vim_item)
     end
-    local detail = M.is_dbt(entry) and (entry.completion_item or {}).detail
+    local detail = M.is_dbt(entry) and menu_text(entry.completion_item or {})
     if type(detail) == "string" and detail ~= "" then
       detail = detail:gsub("\n.*", "")
       if vim.fn.strchars(detail) > DETAIL_WIDTH then

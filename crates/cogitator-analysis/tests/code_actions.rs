@@ -418,7 +418,8 @@ fn extract(text: &str, needle: &str) -> Option<(String, String, String)> {
         line: line as u32,
         character: column as u32,
     });
-    let action = features::extract_cte_action(&ctx, docs.get(&uri).unwrap(), &uri, range)?;
+    let action =
+        features::extract_cte_action(&ctx, docs.get(&uri).unwrap(), &uri, range, &|_| None)?;
     let wire = serde_json::to_value(action.edit.as_ref().unwrap()).unwrap();
     let changes = &wire["documentChanges"];
     let created = changes[0]["uri"].as_str().unwrap().to_string();

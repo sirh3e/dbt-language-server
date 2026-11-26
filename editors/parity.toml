@@ -66,6 +66,10 @@
 "dbt.lineageSite" = { kind = "user" }
 "dbt.syncYaml" = { kind = "user" }
 "dbt.modelDependencies" = { kind = "user" }
+"dbt.search" = { kind = "user" }
+"dbt.costReport" = { kind = "user" }
+"dbt.diffAt" = { kind = "user" }
+"dbt.profileColumn" = { kind = "user" }
 "dbt.renameColumn" = { kind = "user" }
 
 [gaps.emacs]
@@ -77,7 +81,6 @@
 "dbt.cancel" = "predates the parity rule"
 "dbt.runSelection" = "predates the parity rule"
 "dbt.deadModels" = "predates the parity rule"
-"dbt.impact" = "predates the parity rule"
 "dbt.expandJinja" = "predates the parity rule"
 "dbt.preview" = "predates the parity rule"
 "dbt.queryPlan" = "predates the parity rule"
@@ -101,7 +104,6 @@
 "dbt.cancel" = "predates the parity rule"
 "dbt.runSelection" = "predates the parity rule"
 "dbt.deadModels" = "predates the parity rule"
-"dbt.impact" = "predates the parity rule"
 "dbt.expandJinja" = "predates the parity rule"
 "dbt.doctor" = "predates the parity rule"
 "dbt.queryPlan" = "predates the parity rule"

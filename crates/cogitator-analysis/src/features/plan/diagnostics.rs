@@ -35,31 +35,7 @@ pub fn plan_diagnostics(
         return Vec::new();
     }
     let table = LineTable::new(text);
-    let mut out = Vec::new();
-    for finding in plan.findings.iter().filter(|f| !f.suppressed) {
-        if !eligible(finding) {
-            continue;
-        }
-        let Some(severity) = settings.severity(finding.id, parse_severity(finding.severity)) else {
-            continue;
-        };
-        let Some(range) = span_range(text, &table, finding.span) else {
-            tracing::debug!(
-                rule = finding.id,
-                "finding span is outside the text; dropped"
-            );
-            continue;
-        };
-        let mut diagnostic = Diagnostic::plain(
-            range,
-            message(finding),
-            to_lsp(severity),
-            finding.id,
-            "cogitator",
-        );
-        diagnostic.data = fix_payload(text, &table, finding, range);
-        out.push(diagnostic);
-    }
+    let mut out = finding_diagnostics(text, &table, &plan.findings, settings);
     out.extend(suppressions.unknown.iter().filter_map(|unknown| {
         let range = span_range(text, &table, unknown.span)?;
         Some(Diagnostic::plain(
@@ -71,6 +47,86 @@ pub fn plan_diagnostics(
         ))
     }));
     out
+}
+
+/// The diagnostics of findings that are not suppressed, at the severity
+/// the settings give them.
+pub(super) fn finding_diagnostics(
+    text: &str,
+    table: &LineTable,
+    findings: &[FindingView],
+    settings: &PerfSettings,
+) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for finding in findings.iter().filter(|f| !f.suppressed) {
+        if !eligible(finding) {
+            continue;
+        }
+        let Some(severity) = settings.severity(finding.id, parse_severity(finding.severity)) else {
+            continue;
+        };
+        let Some(range) = span_range(text, table, finding.span) else {
+            tracing::debug!(
+                rule = finding.id,
+                "finding span is outside the text; dropped"
+            );
+            continue;
+        };
+        let code = super::diagnostics_config::diagnostic_code(finding.id);
+        let mut diagnostic = Diagnostic::plain(
+            range,
+            message(finding),
+            to_lsp(severity),
+            code.into_owned(),
+            "cogitator",
+        );
+        diagnostic.data = fix_payload(text, table, finding, range);
+        if let Some(subject) = &finding.subject {
+            // the YAML fix is the code action's to build, from the file
+            let data = diagnostic.data.get_or_insert_with(|| DiagnosticData {
+                fix: FixKind::MultiEdit { fixes: Vec::new() },
+                token_range: range,
+                suggestions: Vec::new(),
+                subject: None,
+            });
+            data.subject = Some(subject.clone());
+        }
+        out.push(diagnostic);
+    }
+    out
+}
+
+/// The schema job's correctness checks of `model` (`schemas::checks`) as
+/// diagnostics, when they were computed from exactly `text` and the plan
+/// is not needed anyway (then [`plan_diagnostics`] reports them).
+pub fn snapshot_diagnostics(
+    text: &str,
+    model: &str,
+    snapshot: &super::schemas::SchemaSnapshot,
+    settings: &PerfSettings,
+    dialect: &cogitator_dialects::Dialect,
+) -> Vec<Diagnostic> {
+    if settings.plan_needed() {
+        return Vec::new();
+    }
+    let Some(checks) = snapshot.checks.get(model) else {
+        return Vec::new();
+    };
+    if checks.text_hash != super::schemas::checks::text_hash(text) {
+        return Vec::new(); // unsaved edits: the findings index another text
+    }
+    let suppressions = super::suppress::scan(text, dialect);
+    let table = LineTable::new(text);
+    let findings: Vec<FindingView> = checks
+        .findings
+        .iter()
+        .map(FindingView::of)
+        .map(|mut f| {
+            f.suppressed = suppressions.suppresses(&table, f.id, f.span.start);
+            f
+        })
+        .collect();
+    finding_diagnostics(text, &table, &findings, settings)
 }
 
 pub(super) fn message(finding: &FindingView) -> String {
@@ -129,6 +185,7 @@ fn fix_payload(
         },
         token_range: range,
         suggestions: Vec::new(),
+        subject: None,
     })
 }
 

@@ -27,12 +27,14 @@ pub fn model(columns: &[(&str, bool)]) -> Arc<ModelSchema> {
             name: Arc::from(*name),
             ty: ColType::new(SqlType::Int { bits: None }, Nullability::Unknown),
             unique: *unique,
+            proven_type: true,
         })
         .collect();
     Arc::new(ModelSchema {
         columns: columns.into(),
         completeness: Completeness::Closed,
         fingerprint: 0,
+        unique_sets: Vec::new(),
     })
 }
 
@@ -77,6 +79,7 @@ pub struct Extras<'a> {
     pub mat: Option<Materialization>,
     pub dag: Option<&'a DagFacts>,
     pub no_text: bool,
+    pub dialect: Option<cogitator_ir::lir::Backend>,
 }
 
 /// `run_raw` with extra `Cx` fields.
@@ -113,6 +116,7 @@ pub fn run_raw_with(
     cx.text = (!extras.no_text).then_some(sql);
     cx.mat = extras.mat;
     cx.dag = extras.dag;
+    cx.dialect = extras.dialect;
     let pass = PassInput {
         hir: Some(&hir),
         mir,

@@ -15,7 +15,7 @@ const MAX_HOPS: usize = 32;
 
 /// A description found upstream.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Found {
+pub(crate) struct Found {
     pub description: String,
     /// The documented column it was read from.
     pub from: SourceRef,
@@ -25,7 +25,7 @@ pub(super) struct Found {
 
 /// What the walk came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Walk {
+pub(crate) enum Walk {
     Found(Found),
     /// Not the same column upstream, or no documented ancestor.
     Nothing,
@@ -34,7 +34,7 @@ pub(super) enum Walk {
 }
 
 /// Lineage per model, computed at most once per sync.
-pub(super) struct Lineages<'a> {
+pub(crate) struct Lineages<'a> {
     compute: &'a dyn Fn(&str) -> Option<ModelLineage>,
     memo: HashMap<String, Option<ModelLineage>>,
 }
@@ -57,7 +57,7 @@ impl<'a> Lineages<'a> {
 }
 
 /// The one upstream column `column` of `lineage` passes through unchanged.
-pub(super) fn same_column<'l>(lineage: &'l ModelLineage, column: &str) -> Option<&'l SourceRef> {
+pub(crate) fn same_column<'l>(lineage: &'l ModelLineage, column: &str) -> Option<&'l SourceRef> {
     let col: &ColumnLineage = lineage
         .columns
         .iter()
@@ -83,7 +83,7 @@ fn is_helper(source: &SourceRef) -> bool {
 }
 
 /// The description column `column` of `model` can inherit.
-pub(super) fn walk(
+pub(crate) fn walk(
     ctx: &DbtContext,
     lineages: &mut Lineages<'_>,
     model: &str,

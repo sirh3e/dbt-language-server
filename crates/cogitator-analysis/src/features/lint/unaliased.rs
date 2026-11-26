@@ -61,6 +61,7 @@ pub fn check(ctx: &DbtContext, doc: &Document) -> Vec<Diagnostic> {
                         fix: FixKind::MultiEdit { fixes },
                         token_range: range,
                         suggestions: Vec::new(),
+                        subject: None,
                     });
                 }
                 out.push(diagnostic);

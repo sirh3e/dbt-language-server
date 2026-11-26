@@ -24,6 +24,10 @@ return function(ctx)
   )
   local item = completion.format()(entry("cogitator", "1", "models/customers.sql\nmore"), { abbr = "x" })
   H.check(item.menu == "models/customers.sql", "completion: format shows the detail's first line", item.menu)
+  local typed = entry("cogitator", "1", "Column of customers")
+  typed.completion_item.labelDetails = { detail = " bigint", description = "customers" }
+  local shown = completion.format()(typed, { abbr = "x" })
+  H.check(shown.menu == "bigint · customers", "completion: format prefers labelDetails", shown.menu)
   local untouched = completion.format()(entry("lua_ls", "1", "detail"), { menu = "[LSP]" })
   H.check(untouched.menu == "[LSP]", "completion: format leaves other sources alone")
 

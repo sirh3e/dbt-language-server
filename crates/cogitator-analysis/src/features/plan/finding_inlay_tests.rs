@@ -23,6 +23,7 @@ fn finding(id: &'static str, span: Span, severity: &'static str) -> FindingView 
         suppressed: false,
         diagnostics_eligible: true,
         placement: Placement::Template,
+        subject: None,
     }
 }
 
@@ -53,6 +54,7 @@ fn on(profile: PerfProfile) -> PerfSettings {
     PerfSettings {
         profile,
         inline_findings: true,
+        types_checks: true,
         ..PerfSettings::default()
     }
 }

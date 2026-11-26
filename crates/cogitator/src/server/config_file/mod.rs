@@ -37,7 +37,13 @@ pub struct FileConfig {
     #[serde(default)]
     pub inlay: InlaySection,
     #[serde(default)]
+    pub types: TypesSection,
+    #[serde(default)]
     pub preview: PreviewSection,
+    #[serde(default)]
+    pub bi: BiSection,
+    #[serde(default)]
+    pub cost: CostSection,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -59,6 +65,17 @@ pub struct InlaySection {
     pub lineage: Option<bool>,
     /// Inline column lineage label cap in characters (default 60).
     pub lineage_max_len: Option<u64>,
+    /// Each output column's inferred type after its select item
+    /// (default off).
+    pub types: Option<bool>,
+}
+
+/// The `type.*` checks (and `join.key_type_mismatch`), reported outside
+/// the perf profile (specs/ir-pipeline/08).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct TypesSection {
+    /// Default on: `false` leaves them to the perf profile.
+    pub checks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -84,6 +101,13 @@ pub struct PreviewSection {
     pub rows: Option<u64>,
     /// The most rows a call may ask for (default 1000).
     pub max_rows: Option<u64>,
+}
+
+/// BI tools at the end of the lineage (docs/column-reach.md).
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct BiSection {
+    /// The BI manifest, relative to the project root.
+    pub manifest: Option<String>,
 }
 
 /// Opt-in style checks (03 §10); absent keys fall back to the launch
@@ -149,6 +173,16 @@ pub struct LogSection {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct WarehouseSection {
     pub columns: Option<bool>,
+    /// dbt.profileColumn may query the warehouse (off by default).
+    pub profile: Option<bool>,
+    pub profile_sample_rows: Option<u64>,
+}
+
+/// `cost:` — dbt.costReport's optional inputs.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct CostSection {
+    /// Path (relative to the project root) of a query-history JSON export.
+    pub query_history: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -235,9 +269,12 @@ const ROOT_KEYS: &[&str] = &[
     "warehouse",
     "perf",
     "inlay",
+    "types",
     "vars",
     "perf_rules",
     "preview",
+    "bi",
+    "cost",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
 const LIMITS_KEYS: &[&str] = &["compiled_sql_mib", "artifact_mib"];
@@ -254,10 +291,20 @@ const LINT_KEYS: &[&str] = &[
     "syntax",
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
-const WAREHOUSE_KEYS: &[&str] = &["columns"];
+const WAREHOUSE_KEYS: &[&str] = &["columns", "profile", "profile_sample_rows"];
+const COST_KEYS: &[&str] = &["query_history"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
-const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja", "lineage", "lineage_max_len"];
+const INLAY_KEYS: &[&str] = &[
+    "vars",
+    "env_vars",
+    "jinja",
+    "types",
+    "lineage",
+    "lineage_max_len",
+];
+const TYPES_KEYS: &[&str] = &["checks"];
 const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
+const BI_KEYS: &[&str] = &["manifest"];
 // dotted ids stay plain keys here: did-you-mean works unchanged
 const PERF_RULE_KEYS: &[&str] = &[
     "join.left_nullified",
@@ -284,6 +331,9 @@ const PERF_RULE_KEYS: &[&str] = &[
     "limit.no_scan_reduction",
     "incr.no_unique_key",
     "incr.could_be_incremental",
+    "join.fanout",
+    "type.text_temporal_compare",
+    "type.aggregate_text",
 ];
 
 /// Unknown keys warn with did-you-mean — never a hard error, so a
@@ -326,7 +376,10 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("perf", PERF_KEYS),
         ("perf_rules", PERF_RULE_KEYS),
         ("inlay", INLAY_KEYS),
+        ("types", TYPES_KEYS),
         ("preview", PREVIEW_KEYS),
+        ("bi", BI_KEYS),
+        ("cost", COST_KEYS),
     ] {
         if let Some(node) = get(root, section) {
             for (key, _) in entries(node) {
@@ -337,8 +390,11 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
     out
 }
 
+mod analytics;
 mod apply;
 mod perf;
+
+pub use analytics::AnalyticsSettings;
 
 pub use apply::{apply, diff, launch_filter, Baseline};
 
@@ -363,6 +419,8 @@ mod tests {
             (PERF_RULE_KEYS, "perf_rules"),
             (INLAY_KEYS, "inlay"),
             (PREVIEW_KEYS, "preview"),
+            (BI_KEYS, "bi"),
+            (COST_KEYS, "cost"),
         ] {
             let schema: Vec<&str> = section(name)
                 .expect(name)

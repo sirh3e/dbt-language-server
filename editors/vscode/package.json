@@ -83,6 +83,18 @@
         "title": "dbt: Compare incremental / full refresh"
       },
       {
+        "command": "cogitator.diffAt",
+        "title": "dbt: Compare this model with a git revision or the last run"
+      },
+      {
+        "command": "cogitator.costReport",
+        "title": "dbt: Cost report of the last run"
+      },
+      {
+        "command": "cogitator.profileColumn",
+        "title": "dbt: Profile the column under the cursor"
+      },
+      {
         "command": "cogitator.incrementality",
         "title": "dbt: Table models that could be incremental"
       },
@@ -113,6 +125,14 @@
       {
         "command": "cogitator.breakingChanges",
         "title": "dbt: Breaking changes against the last build"
+      },
+      {
+        "command": "cogitator.impact",
+        "title": "dbt: Who reads this column?"
+      },
+      {
+        "command": "cogitator.search",
+        "title": "dbt: Structural search over the models' SQL"
       },
       {
         "command": "cogitator.modelDependencies",

@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use cogitator_analysis::features::{self, breaking};
+use cogitator_analysis::features::{self, breaking, column_reach};
 
 use super::derived_cache::DerivedCache;
 use super::handlers::lineage::TypedLineage;
@@ -66,17 +66,19 @@ pub fn report(
         ));
     };
     let artifacts = derived.artifacts(root, artifact_cap);
-    let Some(baseline) = breaking::baseline(&model, &artifacts) else {
+    let baseline = breaking::baseline(&model, &artifacts);
+    if baseline.is_none() && source == Source::Disk {
         return Some(breaking::BreakingReport::without(
             &model,
             breaking::Status::NoBaseline,
             None,
         ));
-    };
+    }
     let typed = TypedLineage::new(snap, derived, artifact_cap);
+    let saved = typed.for_saved_file(uri);
     let lineage = match (source, snap.doc.as_deref()) {
         (Source::Buffer, Some(doc)) => (*typed.for_open_document(doc, uri)).clone(),
-        _ => typed.for_saved_file(uri),
+        _ => saved.clone(),
     };
     let type_of = column_type_of(snap, derived, uri);
     let Some(current) = lineage
@@ -86,20 +88,61 @@ pub fn report(
         return Some(breaking::BreakingReport::without(
             &model,
             breaking::Status::UnknownColumns,
-            Some(&baseline),
+            baseline.as_ref(),
         ));
     };
-    let changed = breaking::diff(&current, &baseline.columns);
+    // the edit-time baseline: the file as last saved, while the buffer differs
+    let saved_columns = (source == Source::Buffer)
+        .then(|| {
+            saved
+                .as_ref()
+                .and_then(|l| breaking::current_columns(l, &type_of))
+        })
+        .flatten();
+    let edit_diff = saved_columns
+        .as_ref()
+        .map(|cols| breaking::diff(&current, &breaking::saved_baseline(cols).columns));
+    let changed = baseline
+        .as_ref()
+        .map(|b| breaking::diff(&current, &b.columns))
+        .unwrap_or_default();
+    let breaks = |d: &breaking::SchemaDiff| !d.removed.is_empty() || !d.retyped.is_empty();
     let mut lineages = HashMap::new();
-    if !changed.removed.is_empty() || !changed.retyped.is_empty() {
+    let mut corpus = None;
+    if breaks(&changed) || edit_diff.as_ref().is_some_and(breaks) {
         for (name, path) in features::impact_targets(&snap.ctx, &model) {
             let uri = cogitator_lsp::fs_path_to_uri(&path);
             if let Some(lineage) = typed.for_saved_file(&uri) {
                 lineages.insert(name, lineage);
             }
         }
+        corpus = Some(column_reach::Corpus::read(&snap.ctx, &|p| {
+            std::fs::read_to_string(p).ok()
+        }));
     }
-    Some(breaking::report(
-        &snap.ctx, &model, &baseline, &current, &lineages,
-    ))
+    // anchors index what the editor shows: the buffer, else the file
+    let anchors = match snap.doc.as_deref() {
+        Some(doc) => breaking::Anchors::of(&doc.parsed, &snap.ctx.dialect),
+        None => breaking::Anchors::default(),
+    };
+    let extras = breaking::Extras {
+        anchors,
+        corpus: corpus.as_ref(),
+    };
+    let edit = saved_columns
+        .filter(|_| edit_diff.as_ref().is_some_and(breaks))
+        .map(|cols| {
+            let base = breaking::saved_baseline(&cols);
+            breaking::report_with(&snap.ctx, &model, &base, &current, &lineages, &extras)
+        });
+    Some(match baseline {
+        Some(baseline) => {
+            breaking::report_with(&snap.ctx, &model, &baseline, &current, &lineages, &extras)
+                .with_since_save(edit)
+        }
+        // no build to compare with: what this edit breaks, or silence
+        None => edit.unwrap_or_else(|| {
+            breaking::BreakingReport::without(&model, breaking::Status::NoBaseline, None)
+        }),
+    })
 }

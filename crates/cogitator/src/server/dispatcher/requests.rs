@@ -73,9 +73,23 @@ impl Dispatcher {
                                 lineage.as_deref().and_then(Option::as_ref),
                             );
                             // the column's inferred type, from the published snapshot
-                            with_type_line(
+                            let text = with_type_line(
                                 text,
                                 super::yaml_types::hover(ctx, &derived, d, uri, pos),
+                            );
+                            // who reads it, from the open/save cache only
+                            let text = with_type_line(text, reach_line(ctx, &derived, d, uri, pos));
+                            // a dbt.profileColumn answer, from the cache only
+                            with_type_line(
+                                text,
+                                crate::server::profile::hover(
+                                    ctx,
+                                    &derived,
+                                    d,
+                                    uri,
+                                    pos,
+                                    lineage.as_deref().and_then(Option::as_ref),
+                                ),
                             )
                         }
                     })
@@ -204,8 +218,10 @@ impl Dispatcher {
                 return;
             }
         }
+        let support = self.completion_support;
+        let derived = self.derived.clone();
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
-            match doc {
+            let items = match doc {
                 // the server's own config file: schema-table completion
                 Some(d) if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) => {
                     cogitator_analysis::yaml_cogitator::cogitator_completion(&d.text, pos)
@@ -214,12 +230,26 @@ impl Dispatcher {
                 Some(d) if crate::server::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
                 }
-                // a model whose YAML documents no columns is asked its lineage
+                // columns resolved through the project's published schemas
+                // (never runs the job); without them a model whose YAML
+                // documents no columns is asked its lineage
                 Some(d) => {
-                    features::completion_with(ctx, d, pos, &|p| std::fs::read_to_string(p).ok())
+                    // the hints hold the published snapshot (the resolver's)
+                    let hints = super::completion_hints::hints(ctx, &derived, uri);
+                    features::completion_with(
+                        ctx,
+                        d,
+                        pos,
+                        &|p| std::fs::read_to_string(p).ok(),
+                        &hints,
+                    )
                 }
                 None => Vec::new(),
-            }
+            };
+            items
+                .into_iter()
+                .map(|item| cogitator_lsp::adapt(item, support))
+                .collect::<Vec<_>>()
         });
     }
 
@@ -235,12 +265,18 @@ impl Dispatcher {
         };
         let mut item = item.get("params").cloned().unwrap_or(item);
         let ctx = self.snapshot();
-        if let Some(docs) = item
+        let hints = super::completion_hints::hints(&ctx, &self.derived, "");
+        if let Some((docs, markdown)) = item
             .get("data")
-            .and_then(|data| features::resolve_completion_documentation(&ctx, data))
+            .and_then(|data| features::resolve_completion_documentation_with(&ctx, data, &hints))
         {
+            let value = if markdown && self.completion_support.markdown {
+                serde_json::json!({"kind": "markdown", "value": docs})
+            } else {
+                serde_json::Value::String(docs)
+            };
             if let Some(map) = item.as_object_mut() {
-                map.insert("documentation".into(), serde_json::Value::String(docs));
+                map.insert("documentation".into(), value);
             }
         }
         self.send(&ResultResponse::new(id, item));
@@ -377,6 +413,11 @@ impl Dispatcher {
             .inlay_jinja
             .load(std::sync::atomic::Ordering::Relaxed)
             && uri.ends_with(".sql");
+        let types = self
+            .toggles
+            .inlay_types
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && uri.ends_with(".sql");
         let perf = self.perf_settings();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
         let lineage = self.lineage_for_hints(&uri, &snap, cap);
@@ -399,6 +440,11 @@ impl Dispatcher {
                             crate::server::handlers::commands::preview_inputs(&snap, &derived);
                         let renderer = features::InlineRenderer::new(&inputs);
                         hints.extend(features::jinja_inlay_hints(doc, range, &renderer));
+                    }
+                    if types {
+                        hints.extend(super::yaml_types::inlay_hints(
+                            &snap.ctx, &derived, doc, &uri, range,
+                        ));
                     }
                     hints
                 }
@@ -550,6 +596,22 @@ fn quality_lenses(
 }
 
 /// Appends a column-type hover line after whatever the hover says.
+/// "`orders.amount` is read by 3 models, …" from the reach cache; `None`
+/// off a column or before the model's reach was computed.
+fn reach_line(
+    ctx: &cogitator_analysis::DbtContext,
+    derived: &crate::server::derived_cache::DerivedCache,
+    doc: &cogitator_analysis::Document,
+    uri: &str,
+    pos: cogitator_lsp::Position,
+) -> Option<String> {
+    use cogitator_analysis::features::column_reach;
+    let (model, column) = column_reach::column_at(ctx, doc, uri, pos)?;
+    let reach = derived.reach_cached(&model)?;
+    let found = reach.column(&column)?;
+    Some(column_reach::hover_line(&model, &column, found))
+}
+
 fn with_type_line(text: String, line: Option<String>) -> String {
     match line {
         None => text,

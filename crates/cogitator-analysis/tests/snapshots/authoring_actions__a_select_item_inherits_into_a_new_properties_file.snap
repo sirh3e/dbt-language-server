@@ -1,0 +1,15 @@
+---
+source: crates/cogitator-analysis/tests/authoring_actions.rs
+expression: applied(&action)
+---
+title: Inherit description of 'crust_id' from stg_bakery__crusts.crust_id
+kind: Some("quickfix")
+
+=== models/marts/crust_hops.yml (created)
+version: 2
+
+models:
+  - name: crust_hops
+    columns:
+      - name: crust_id
+        description: "{{ doc('crust_id') }}"

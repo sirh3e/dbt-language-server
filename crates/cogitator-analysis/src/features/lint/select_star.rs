@@ -36,6 +36,7 @@ pub fn check(ctx: &DbtContext, doc: &Document, uri: &str) -> Vec<Diagnostic> {
                 fix: FixKind::ReplaceToken,
                 token_range: range,
                 suggestions: vec![columns],
+                subject: None,
             });
         }
         out.push(diagnostic);

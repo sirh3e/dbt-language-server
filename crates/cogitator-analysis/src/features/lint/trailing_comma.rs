@@ -52,6 +52,7 @@ pub fn check(ctx: &DbtContext, doc: &Document) -> Vec<Diagnostic> {
             },
             token_range: range,
             suggestions: Vec::new(),
+            subject: None,
         });
         out.push(diagnostic);
     }

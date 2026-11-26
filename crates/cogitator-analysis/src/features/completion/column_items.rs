@@ -14,7 +14,9 @@
 //! client that matches the typed word keeps it beside the bare item and
 //! orders the two by `sortText` alone; the best item is `preselect`ed.
 
-use cogitator_lsp::{completion_kind, CompletionItem};
+use cogitator_lsp::{completion_kind, CompletionData, CompletionItem, LabelDetails};
+
+use super::column_info::ColumnOf;
 
 use super::scope::sql::{self, Column, Lookup, SqlScope};
 use super::scope::ScopeIndex;
@@ -63,6 +65,28 @@ fn detail(column: &Column) -> String {
     }
 }
 
+/// A model's or source table's column says which, so that `details`
+/// fills its type from every place one is known and resolves its
+/// documentation as Markdown; a CTE's carries what it passes through.
+fn data(column: &Column) -> Option<serde_json::Value> {
+    let data = match column.of.as_ref()? {
+        ColumnOf::Model(model) => CompletionData::Column {
+            relation: model.clone(),
+            source: None,
+            cte: false,
+            column: column.name.clone(),
+        },
+        ColumnOf::Source { source, table } => CompletionData::Column {
+            relation: table.clone(),
+            source: Some(source.clone()),
+            cte: false,
+            column: column.name.clone(),
+        },
+        ColumnOf::Cte(_) => return None,
+    };
+    Some(data.into_value())
+}
+
 fn field(label: String, column: &Column, sort: String) -> CompletionItem {
     CompletionItem {
         insert_text: label.clone(),
@@ -72,6 +96,15 @@ fn field(label: String, column: &Column, sort: String) -> CompletionItem {
         documentation: column.description.clone(),
         kind: completion_kind::FIELD,
         sort_text: sort,
+        label_details: Some(LabelDetails {
+            detail: column
+                .data_type
+                .as_ref()
+                .filter(|t| !t.is_empty())
+                .map(|t| format!(" {t}")),
+            description: Some(column.relation.clone()).filter(|r| !r.is_empty()),
+        }),
+        data: data(column),
         ..Default::default()
     }
 }
@@ -151,6 +184,7 @@ mod tests {
             relation: relation.into(),
             data_type: None,
             description: String::new(),
+            of: None,
         }
     }
 

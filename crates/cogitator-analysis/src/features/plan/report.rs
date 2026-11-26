@@ -189,6 +189,27 @@ pub struct FindingView {
     /// A suppression comment covers this finding: it stays here but is
     /// not published as a diagnostic (specs/ir-pipeline/08).
     pub suppressed: bool,
+    /// What the finding is about, for fixes in another file; rides the
+    /// diagnostic's `data`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject: Option<cogitator_lsp::DiagnosticSubject>,
+}
+
+fn subject_view(subject: &cogitator_rules::Subject) -> cogitator_lsp::DiagnosticSubject {
+    use cogitator_rules::{RelationName, Subject};
+    match subject {
+        Subject::UniqueKey { relation, column } => {
+            let (relation, source) = match relation {
+                RelationName::Model(name) => (name.clone(), None),
+                RelationName::Source { source, table } => (table.clone(), Some(source.clone())),
+            };
+            cogitator_lsp::DiagnosticSubject::UniqueKey {
+                relation,
+                source,
+                column: column.clone(),
+            }
+        }
+    }
 }
 
 fn severity(value: Severity) -> &'static str {
@@ -237,6 +258,7 @@ impl FindingView {
             evidence: EvidenceView::of(&finding.evidence),
             fixes: finding.fixes.iter().map(fix_view).collect(),
             suppressed: false,
+            subject: finding.subject.as_ref().map(subject_view),
         }
     }
 }

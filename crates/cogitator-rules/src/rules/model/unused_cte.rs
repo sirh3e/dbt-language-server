@@ -95,6 +95,7 @@ fn finding(
         message,
         evidence,
         fixes,
+        subject: None,
     })
 }
 

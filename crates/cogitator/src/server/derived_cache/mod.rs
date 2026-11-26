@@ -23,6 +23,8 @@ mod artifacts;
 mod breaking;
 mod lineage;
 mod plan;
+mod profile;
+mod reach;
 mod schemas;
 
 pub use plan::CachedPlan;
@@ -124,9 +126,13 @@ pub struct DerivedCache {
     highlights_stats: Counters,
     /// The last breaking-change report per model uri (on open/save).
     breaking: breaking::BreakingSlot,
+    /// The last column reach per model name (on open/save).
+    reach: reach::ReachSlot,
     /// The syntax check's renderer of ONE context snapshot (the pointer
     /// identity of the Arc): the project's macros, vars and relations.
     syntax_renderer: Mutex<Option<(usize, Arc<SyntaxRenderer>)>>,
+    /// dbt.profileColumn's answers, which the hover reads.
+    column_profiles: profile::ProfileSlot,
     /// Every model's typed lineage per project root, on disk too.
     pub lineage_graph: super::lineage_graph::Stores,
 }

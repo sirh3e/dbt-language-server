@@ -73,6 +73,7 @@ impl Detect<Mir> for EphemeralRepeat {
             ),
             evidence: Evidence::Exact,
             fixes: Vec::new(),
+            subject: None,
         });
     }
 }

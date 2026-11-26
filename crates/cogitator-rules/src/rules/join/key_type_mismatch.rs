@@ -3,23 +3,26 @@
 //!
 //! Implicit coercion means the query usually runs, so this is worded as a
 //! likely pruning or correctness risk. INT against DECIMAL is the same
-//! family, and anything `Unknown` is silent.
+//! family, and anything `Unknown` is silent. A Warning when both key
+//! types are proven (see `rules::types::proven`), an Info otherwise; it
+//! reports outside the perf profile with the `type.*` rules.
 
 use cogitator_ir::common::BinaryOp;
 use cogitator_ir::mir::{Mir, RelId, RelOp, ScalarId, ScalarKind};
 use cogitator_ir::{Level, RuleId, SqlType};
 
 use crate::cx::Cx;
-use crate::findings::{Evidence, Finding, Findings};
+use crate::findings::{Finding, Findings};
 use crate::meta::{FixSafety, Need, Needs, RuleClass, RuleLevel, RuleMeta, Severity};
 use crate::rule::{Detect, Rule};
+use crate::rules::types::{evidence, family, proven, severity};
 
 pub static META: RuleMeta = RuleMeta {
     id: RuleId("join.key_type_mismatch"),
     level: RuleLevel::Mir,
     class: RuleClass::Advice,
     needs: Needs::NONE.with(Need::Types),
-    severity: Severity::Info,
+    severity: Severity::Warning,
     fix: FixSafety::None,
 };
 
@@ -44,13 +47,13 @@ fn examine(mir: &Mir, id: RelId, cx: &Cx<'_>, out: &mut Findings) {
         return;
     };
     for conjunct in on {
-        if let Some(finding) = check_key(mir, *conjunct, cx) {
+        if let Some(finding) = check_key(mir, id, *conjunct, cx) {
             out.push(finding);
         }
     }
 }
 
-fn check_key(mir: &Mir, id: ScalarId, cx: &Cx<'_>) -> Option<Finding> {
+fn check_key(mir: &Mir, join: RelId, id: ScalarId, cx: &Cx<'_>) -> Option<Finding> {
     let scalar = mir.scalars.get(id)?;
     let ScalarKind::Binary {
         op: BinaryOp::Eq,
@@ -73,24 +76,17 @@ fn check_key(mir: &Mir, id: ScalarId, cx: &Cx<'_>) -> Option<Finding> {
         id: META.id,
         span: mir.prov.span(scalar.prov).unwrap_or_default(),
         level: Level::Mir,
-        severity: META.severity,
+        severity: severity(proven(mir, cx, join, *l) && proven(mir, cx, join, *r)),
         message: format!(
             "These join keys compare {} with {}: the implicit cast can defeat pruning or \
              misjoin values, so cast one side explicitly if this is intended",
             a.label(),
             b.label()
         ),
-        evidence: type_evidence(cx),
+        evidence: evidence(cx),
         fixes: Vec::new(),
+        subject: None,
     })
-}
-
-/// Column types come from the catalog when one was read, else from YAML.
-fn type_evidence(cx: &Cx<'_>) -> Evidence {
-    match cx.dag.and_then(|d| d.catalog_generated_at.clone()) {
-        Some(generated_at) => Evidence::Catalog { generated_at },
-        None => Evidence::Exact,
-    }
 }
 
 /// A column reference and its declared base type.
@@ -100,34 +96,4 @@ fn column_type(mir: &Mir, id: ScalarId) -> Option<(cogitator_ir::mir::ColId, &Sq
         ScalarKind::Col(col) => Some((col, &mir.cols.get(col)?.ty.ty)),
         _ => None,
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Family {
-    Number,
-    Text,
-    Bool,
-    Temporal,
-}
-
-impl Family {
-    fn label(self) -> &'static str {
-        match self {
-            Family::Number => "a number",
-            Family::Text => "text",
-            Family::Bool => "a boolean",
-            Family::Temporal => "a date or time",
-        }
-    }
-}
-
-/// The family of a type, or `None` when comparing it would prove nothing.
-fn family(ty: &SqlType) -> Option<Family> {
-    Some(match ty {
-        SqlType::Int { .. } | SqlType::Decimal { .. } | SqlType::Float { .. } => Family::Number,
-        SqlType::Text => Family::Text,
-        SqlType::Bool => Family::Bool,
-        SqlType::Date | SqlType::Time | SqlType::Timestamp { .. } => Family::Temporal,
-        _ => return None,
-    })
 }

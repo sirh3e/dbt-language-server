@@ -461,6 +461,7 @@ fn enrich_warehouse_columns(
                             name_pos: Default::default(),
                             data_type: None,
                             tests: Vec::new(),
+                            constraints: Vec::new(),
                         })
                         .collect();
                 }
@@ -510,6 +511,7 @@ fn enrich_catalog_columns(
                     name_pos: Default::default(),
                     data_type: None,
                     tests: Vec::new(),
+                    constraints: Vec::new(),
                 })
                 .collect();
         }

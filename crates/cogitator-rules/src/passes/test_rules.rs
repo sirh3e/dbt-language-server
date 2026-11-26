@@ -129,6 +129,7 @@ impl Detect<Mir> for Find {
                 message: format!("{} rels", ir.rels.len()),
                 evidence: Evidence::Exact,
                 fixes: vec![],
+                subject: None,
             });
         }
     }
@@ -150,6 +151,7 @@ impl Detect<Mir> for FindNeedy {
             message: "never".to_string(),
             evidence: Evidence::Exact,
             fixes: vec![],
+            subject: None,
         });
     }
 }

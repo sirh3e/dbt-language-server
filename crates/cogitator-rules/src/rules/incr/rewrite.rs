@@ -98,10 +98,10 @@ pub(super) fn rewrite(hir: &Hir, text: &str, verdict: &Verdict) -> Option<Fix> {
         Some(q) => format!("{q}.{name}"),
         None => name.to_string(),
     };
-    let max = format!("(select max({newest}) from {{{{ this }}}})");
+    let max = super::watermark::this_max(newest);
     let column = qualify(&input.column);
     let grows = match verdict {
-        Verdict::Append { .. } => format!("{column} > {max}"),
+        Verdict::Append { .. } => super::watermark::newer_than_built(&column, newest),
         Verdict::ByBucket { .. } => format!("{column} >= {max}"),
         Verdict::ByKey { keys, .. } => {
             // every row of a group a new row touches, so the group is

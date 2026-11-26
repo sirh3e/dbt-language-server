@@ -205,15 +205,15 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 ### `dbt.impact`
 
 - **Argument**: `{uri, model?, column?}` — the buffer's model, or `model`; `column` narrows to one column
-- **Result**: `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated}`
-- **Side effects**: none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models)
-- **Editors**: Neovim ✓ · Emacs — · VS Code —
+- **Result**: `{model, column, summary, models: [{name, uri, depth}], exposures, columnHits, truncated, reach?}`. With a `column`, `reach` says who reads it past the models (docs/column-reach.md): `{summary, models, tests: [{model, column, test}], semanticItems: [{semanticModel, model, column, list?, name?, uri, range}], semanticModels, metrics: [{name, uri, range, via}], exposures: [{name, level: "node"}], dashboards: [{name, url?, level: "column"|"node", model, column?}], notes?}`, and `summary` ends in "read by N models, M tests, K semantic models, J dashboards"
+- **Side effects**: none (column hits are an under-approximation: `*` and unresolved lineage stay out; lineage fan-out capped at 200 models; exposures are node level only; metric filters are not followed). On open/save the server caches every output column's reach of the model for the column hover
+- **Editors**: Neovim ✓ (`:DbtImpact [column]` quickfix) · Emacs ✓ (`M-x cogitator-impact`) · VS Code ✓ (`dbt: Who reads this column?`)
 
 ### `dbt.breakingChanges`
 
 - **Argument**: `{uri}` — a model's `.sql` buffer
-- **Result**: `{model, status, baseline?: {source, generatedAt?}, summary, diff: {removed: [{name, dataType?, possiblyRenamedTo?}], added: [{name, dataType?}], retyped: [{name, from, to}]}, impacts: [{column, change, severity, tests, downstream: [{model, column, tests, contracted, public}]}], exposures, public, truncated}`. `status` is `compared`, `noBaseline` (no `target/catalog.json` or `target/manifest.json` entry with columns: nothing is reported) or `unknownColumns` (an unexpanded `*`, unparseable SQL). The current columns come from the open buffer's typed lineage; the baseline is `target/catalog.json` (warehouse columns and types), else the manifest's documented columns. `possiblyRenamedTo` pairs a removed column with an added one of a similar name — a hint, never asserted. Type changes are reported only when both types are known (the current side's types are the inferred output-column types of the saved files, and only a proven type with an exact spelling counts; any other column is compared by name). `severity`: `error` for a removed column a test or a contracted downstream model relies on, `warning` when anything reads it (downstream columns, a public model, exposures), `information` otherwise
-- **Side effects**: none. On open and save the server also computes the saved file's report off the request path; its findings are `breaking-change` diagnostics (push and pull) and a lens `N breaking changes` that runs this command
+- **Result**: `{model, status, baseline?: {source, generatedAt?}, summary, diff: {removed: [{name, dataType?, possiblyRenamedTo?}], added: [{name, dataType?}], retyped: [{name, from, to}]}, impacts: [{column, change, severity, tests, downstream: [{model, column, tests, contracted, public}], semantic?, metrics?, range?, keepAlias?}], exposures, public, truncated, sinceSave?}`. `sinceSave` is the same report of the open buffer against the file as last saved (baseline source `saved`), present while the edit breaks something; `range` is where the column's diagnostic sits in the SQL; `keepAlias` the TextEdit of the "Keep '<old>' as an alias" quick fix; `semantic`/`metrics` the column-level semantic-model items and metrics (docs/column-reach.md). `status` is `compared`, `noBaseline` (no `target/catalog.json` or `target/manifest.json` entry with columns: nothing is reported) or `unknownColumns` (an unexpanded `*`, unparseable SQL). The current columns come from the open buffer's typed lineage; the baseline is `target/catalog.json` (warehouse columns and types), else the manifest's documented columns. `possiblyRenamedTo` pairs a removed column with an added one of a similar name — a hint, never asserted. Type changes are reported only when both types are known (the current side's types are the inferred output-column types of the saved files, and only a proven type with an exact spelling counts; any other column is compared by name). `severity`: `error` for a removed column a test or a contracted downstream model relies on, `warning` when anything reads it (downstream columns, a public model, exposures), `information` otherwise
+- **Side effects**: none. On open and save, and after the refresh debounce on change, the server also computes the report off the request path; its findings are `breaking-change` diagnostics (push and pull) and a lens `N breaking changes` that runs this command
 - **Editors**: Neovim ✓ (`:DbtBreakingChanges` quickfix, `:Dbt breaking`) · Emacs ✓ (`M-x cogitator-breaking-changes`) · VS Code ✓ (`dbt: Breaking changes against the last build`)
 
 ### `dbt.deadModels`
@@ -266,6 +266,27 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Argument**: `{uri, show?}` — the model; `show: true` also opens the diff as a document (what the code lens sends)
 - **Result**: `{model, fullRefresh, incremental, diff, identical}` — the model rendered with the dbt.expandJinja stubs and `is_incremental()` false (a full refresh) and true, `{{ this }}` as the model's relation, and the unified diff full refresh → incremental (empty when identical); a render error is InvalidParams Guidance
 - **Side effects**: none; with `show: true` writes `target/.cogitator/incremental/<model>.diff` and opens it via showDocument. Incremental models (the file's `config(materialized=…)`, else the manifest's) carry the code lens "Compare incremental / full refresh" — :DbtIncrementalDiff
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.diffAt`
+
+- **Argument**: `{uri, rev?, what?, show?}` — the model; `rev` a git revision (default `HEAD`: a branch, a tag, a sha, `main~3`) or `"last-run"`; `what` is `sql` (default), `compiled` or `lineage`; `show: true` also opens the diff as a document
+- **Result**: `{model, rev, what, before, after, diff, identical, columns?, note?}` — `before`/`after` are the two texts compared (templates, renders or one line per column `name <- sources`), `diff` the unified diff rev → now, `columns` (lineage only) `{added, removed, changed: [{name, before, after}], unknown?}`; failures are InvalidParams Guidance
+- **Side effects**: runs `git show <rev>:<path>` (10 s timeout) for a git revision; `last-run` reads target/manifest.json's `raw_code`, and for `compiled` target/compiled/<package>/<path> (else the code run_results.json or the manifest recorded). The compiled view renders both sides in-process with dbt.expandJinja's stubs (the last run's side is what dbt compiled). With `show: true` writes `target/.cogitator/diff/<model>@<rev>.<what>.diff` and opens it — :DbtDiffAt. See [diff-at.md](diff-at.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.costReport`
+
+- **Argument**: `{}`
+- **Result**: `{generatedAt, totalSeconds, models, criticalPath: {models, seconds}, historyRows, text}` — every model of the last run, slowest first, with its execution time, the adapter's `bytesProcessed`, `bytesBilled`, `slotMs`, `rowsAffected` and `queryId`, its `slowestPercent`, whether it is on the critical path (the longest time-weighted chain of refs), and `suggestion: "make it incremental"` for slow table models the query plan says could be built incrementally; `text` is the report as plain text
+- **Side effects**: none; reads target/run_results.json and, when set, the `cost.query_history` JSON export. The "last run" lens adds the same figures (`· 3.2 GB scanned · slowest 5%`). See [cost.md](cost.md)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
+### `dbt.profileColumn`
+
+- **Argument**: `{uri, position?, column?}` — the model and the output column under `position` (or named by `column`)
+- **Result**: `{profile: {model, column, relation, rows, distinct, nulls, nullRate, min, max, top: [{value, count}], engine, stamp, sql}, hover}`; RequestFailed Guidance when profiling is off, no output column is under the cursor, or the query fails
+- **Side effects**: **queries the warehouse** — off unless cogitator.yml `warehouse.profile: true`. A sampled query (`warehouse.profile_sample_rows`, default 10 000) over the model's relation, through DuckDB's read-only connection (duckdb adapter, `duckdb-parser` build) or `dbt show --inline` as a job (`dbt.cancel` token, $/progress). The answer fills a cache the hover reads; the code action "Profile column 'x'" runs it. See [profile.md](profile.md)
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
 ### `dbt.expandJinja`
@@ -342,6 +363,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Result**: `{model, parents, children, upstream, downstream}` — each a node `{name, kind, package, uri, line, depth, tags, config: {materialized, incrementalStrategy, uniqueKey, partitionBy, clusterBy, onSchemaChange}, columns}`; `parents` and `children` are the direct neighbours, `upstream` and `downstream` everything, nearest first (tests left out); `columns` a model's inferred output columns, else `null`. `null` when there is no such model
 - **Side effects**: none (read-only)
 - **Editors**: Neovim ✓ (`:DbtDependencies [model]`, `<leader>dp`, "This model" in the code-action menu) · Emacs ✓ (`M-x cogitator-model-dependencies`) · VS Code ✓ (`dbt: Model dependencies`)
+
+### `dbt.search`
+
+- **Argument**: `{query, uri?}` — `query`: clauses combined with `and`, `or`, `not` and parentheses (`joins <rel> [on <column>]`, `select-star [from <rel>]`, `reads <rel>`, `uses column <rel>.<column>`; a `<rel>` is `model`, `source`, a model name, `model:<name>` or `source:<source>[.<table>]`); `uri`: a model's file narrows to it, `""` searches the project
+- **Result**: `{query, searched, models, matches: [{uri, range, text, env: {clause, model}, replacement: null}], notSearched: [{model, why}], truncated}` — the matches have `dbt.astGrep`'s shape; a model matches when every clause has a site there, and every clause's sites are listed; at most 500. A query it cannot read is InvalidParams with guidance. See [search.md](search.md)
+- **Side effects**: none (read-only; reads the model files off the dispatcher)
+- **Editors**: Neovim ✓ (`:DbtSearch {query}` quickfix) · Emacs ✓ (`M-x cogitator-search`, a grep buffer) · VS Code ✓ (`dbt: Structural search over the models' SQL`)
 
 ### `dbt.renameColumn`
 

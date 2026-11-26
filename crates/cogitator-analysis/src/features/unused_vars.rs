@@ -109,6 +109,7 @@ fn unused(text: &str, name: &str, range: Range, why: &str) -> Diagnostic {
         },
         token_range: range,
         suggestions: Vec::new(),
+        subject: None,
     });
     d
 }

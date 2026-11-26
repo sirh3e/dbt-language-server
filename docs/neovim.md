@@ -132,9 +132,14 @@ reads, twice: `alias.col` and the bare `col`. A name two relations share
 ranks its qualified forms first (`c.customer_id`, `o.customer_id`), and
 the bare one says `ambiguous: o, c`. After `alias.` only that relation's
 columns are offered; after `from` / `join`, CTE names come first, then
-`ref()` and `source()` snippets. The columns come from the properties
-YAML, a CTE's or subquery's select list (`*` expanded through what it
-reads), and, for a model whose YAML documents none, its column lineage.
+`ref()` and `source()` snippets. A model's or source's columns are
+resolved through the whole project, from what the server's background
+schema job published: a model that is `select *` of another, however
+deep, offers the columns at the bottom of the chain, each with its type
+(proven from the SQL, else the catalog's or the YAML's) and its YAML
+description. A CTE's or subquery's columns come from its select list (`*`
+expanded through what it reads). Until the first job has run, a model's
+come from its properties YAML, else its own column lineage.
 
 The server ranks with `sortText` and marks the best item `preselect`; a
 qualified column filters as its bare name (`filterText`), so typing

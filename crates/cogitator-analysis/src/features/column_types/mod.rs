@@ -15,27 +15,32 @@
 //!
 //! Checks: [`type_mismatch_diagnostics`] (`column-type-mismatch`, YAML
 //! side), [`unit_test_value_diagnostics`] (`unit-test-value-type`),
-//! [`fill_data_types_action`], and the hovers [`sql_column_hover`] /
+//! [`fill_data_types_action`], the `inlay.types` hints
+//! [`type_inlay_hints`], and the hovers [`sql_column_hover`] /
 //! [`yaml_column_hover`].
 
 mod basis;
 mod checks;
 mod compare;
 mod hover;
+mod inlay;
 mod provenance;
 mod unit_values;
 mod yaml_columns;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 #[cfg(test)]
 mod tests_checks;
 #[cfg(test)]
 mod tests_compare;
+#[cfg(test)]
+mod tests_inlay;
 
 pub use basis::{column_types, Basis, ColumnType, Feed, ModelColumnTypes, Origin};
 pub use checks::{fill_data_types_action, type_mismatch_diagnostics, yaml_column_hover, MISMATCH};
 pub use compare::{compare, describe, render, Verdict};
 pub use hover::{sql_column_hover, type_line};
+pub use inlay::type_inlay_hints;
 pub use provenance::{is_stated, raw_columns, Provenance, RawColumn, Relation, UpstreamColumn};
 pub use unit_values::{unit_test_value_diagnostics, VALUE_TYPE};

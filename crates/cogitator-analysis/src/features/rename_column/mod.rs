@@ -19,13 +19,13 @@
 mod directed;
 mod refs;
 mod seed;
-mod semantic;
+pub(crate) mod semantic;
 mod snapshots;
 mod sql;
 mod upstream;
 pub(crate) mod walk;
 mod yaml;
-mod yaml_lines;
+pub(crate) mod yaml_lines;
 
 #[cfg(test)]
 mod tests;

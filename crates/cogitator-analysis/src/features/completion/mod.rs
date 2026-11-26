@@ -4,11 +4,14 @@
 //! FROM/JOIN scope (`scope`) and served by composable `providers` with
 //! tiered ranking.
 
+pub(crate) mod column_info;
 mod column_items;
 mod context;
 mod dbt_calls;
+mod details;
 mod providers;
 pub(crate) mod scope;
+mod snippets;
 
 use std::sync::LazyLock;
 
@@ -18,6 +21,7 @@ use regex::Regex;
 use super::{display_value, DbtContext, Document};
 use context::CompletionContext;
 use scope::sql::{self, Clause, Lookup};
+pub use snippets::ModelHints;
 
 // Q1 fixed: `[a-zA-Z0-9_]` instead of Go's `[a-zA-z]` typo.
 static REF_RE: LazyLock<Regex> =
@@ -30,17 +34,91 @@ static DOC_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"\bdoc\(('|")[a-zA-Z0-9_]*$"#).unwrap());
 
 pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<CompletionItem> {
-    completion_with(ctx, doc, pos, &|_| None)
+    completion_with(ctx, doc, pos, &|_| None, &ModelHints::default())
 }
 
-/// [`completion`] with a way to read a file: the models a column position
+/// [`completion`] with a way to read a file (the models a column position
 /// reads, when their YAML documents no columns, are asked their column
-/// lineage.
+/// lineage) and what the shell knows of the project from its caches (the
+/// inferred columns, the manifest's config, the catalog) for the
+/// model-aware snippets and the columns' types.
 pub fn completion_with(
     ctx: &DbtContext,
     doc: &Document,
     pos: Position,
     read: &dyn Fn(&std::path::Path) -> Option<String>,
+    hints: &ModelHints,
+) -> Vec<CompletionItem> {
+    let schemas = hints.snapshot.as_deref().map(|s| &*s.schemas);
+    complete(ctx, doc, pos, read, hints, schemas)
+}
+
+/// The items at `pos`: the engine's, then the model-aware snippets, then
+/// every item's details.
+fn complete(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+    hints: &ModelHints,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
+) -> Vec<CompletionItem> {
+    let mut items = engine(ctx, doc, pos, read, schemas);
+    if let Some((snippets, exclusive)) = model_snippets(ctx, doc, pos, hints) {
+        if exclusive {
+            return snippets; // inside `{% if `: nothing else fits
+        }
+        items.extend(snippets);
+    }
+    details::decorate(ctx, doc, hints, &mut items);
+    items
+}
+
+/// The snippets at `pos`, and whether they are all that fits there.
+fn model_snippets(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    hints: &ModelHints,
+) -> Option<(Vec<CompletionItem>, bool)> {
+    let model = super::model_name_from_uri(&doc.uri)?;
+    let line = doc.text.split('\n').nth(pos.line as usize)?;
+    let cursor = (pos.character as usize).min(line.len());
+    let cursor = (0..=cursor).rev().find(|&i| line.is_char_boundary(i))?;
+    let offset = doc
+        .text
+        .split('\n')
+        .take(pos.line as usize)
+        .map(|l| l.len() + 1)
+        .sum::<usize>()
+        + cursor;
+    let (before, after) = line.split_at(cursor);
+    let items = snippets::snippet_items(ctx, doc, &model, before, after, offset, hints);
+    // inside `{% if …`: the snippet completes the tag, nothing else fits
+    let exclusive = before.rfind("{%") > before.rfind("%}");
+    (!items.is_empty()).then_some((items, exclusive))
+}
+
+/// [`completion_with`] over the project's published column schemas: the
+/// columns of a model or source in scope are resolved through the whole
+/// project (upstream `select *`, CTEs, catalog and YAML fill-in) with their
+/// types, rather than read off that one relation's YAML or lineage.
+pub fn completion_resolving(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
+) -> Vec<CompletionItem> {
+    complete(ctx, doc, pos, read, &ModelHints::default(), schemas)
+}
+
+fn engine(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+    schemas: Option<&cogitator_ir::schema::ProjectSchemas>,
 ) -> Vec<CompletionItem> {
     let lines: Vec<&str> = doc.text.split('\n').collect();
     let Some(&line) = lines.get(pos.line as usize) else {
@@ -88,7 +166,12 @@ pub fn completion_with(
         .sum::<usize>()
         + cursor;
     let parsed = sql::analyze(doc, &ctx.dialect, offset);
-    let lookup = Lookup { ctx, doc, read };
+    let lookup = Lookup {
+        ctx,
+        doc,
+        read,
+        schemas,
+    };
     let scopes = || column_items::in_scope(&lookup, parsed.as_ref());
     let classified = context::classify(doc, pos, before);
     if let CompletionContext::MemberAccess { qualifier } = &classified {
@@ -153,7 +236,26 @@ pub fn resolve_completion_documentation(
     ctx: &DbtContext,
     data: &serde_json::Value,
 ) -> Option<String> {
-    match serde_json::from_value::<cogitator_lsp::CompletionData>(data.clone()).ok()? {
+    resolve_completion_documentation_with(ctx, data, &ModelHints::default()).map(|(docs, _)| docs)
+}
+
+/// [`resolve_completion_documentation`] with the caches' facts, and
+/// whether the text is Markdown (columns, dialect functions).
+pub fn resolve_completion_documentation_with(
+    ctx: &DbtContext,
+    data: &serde_json::Value,
+    hints: &ModelHints,
+) -> Option<(String, bool)> {
+    let parsed = serde_json::from_value::<cogitator_lsp::CompletionData>(data.clone()).ok()?;
+    if let Some(docs) = details::resolve_column(ctx, hints, &parsed) {
+        return Some((docs, true));
+    }
+    let markdown = matches!(parsed, cogitator_lsp::CompletionData::Function { .. });
+    resolve_plain(ctx, parsed).map(|docs| (docs, markdown))
+}
+
+fn resolve_plain(ctx: &DbtContext, data: cogitator_lsp::CompletionData) -> Option<String> {
+    match data {
         cogitator_lsp::CompletionData::Model { name } => ctx
             .model_detail_map
             .get(&name)
@@ -191,5 +293,7 @@ pub fn resolve_completion_documentation(
         cogitator_lsp::CompletionData::Function { name } => {
             ctx.dialect.function_doc(&name).map(str::to_string)
         }
+        // a CTE column's documentation was filled with the item
+        cogitator_lsp::CompletionData::Column { .. } => None,
     }
 }
