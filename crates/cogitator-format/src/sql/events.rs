@@ -13,7 +13,10 @@ pub enum Event<'n> {
     Leaf(Leaf<'n>),
     /// `implicit`: sqlfluff's "the line may go on after it"; `forced`: the
     /// group it opens breaks whatever its width (LT09).
-    Indent { implicit: bool, forced: bool },
+    Indent {
+        implicit: bool,
+        forced: bool,
+    },
     Dedent,
     Enter(&'n str),
     Exit(&'n str),
@@ -38,7 +41,9 @@ fn indents_before_comments(events: Vec<Event<'_>>) -> Vec<Event<'_>> {
         // the own-line comments just before it, and where they start
         let start = out
             .iter()
-            .rposition(|e| !matches!(e, Event::Leaf(l) if l.keeps_its_line() && l.newlines_before > 0))
+            .rposition(
+                |e| !matches!(e, Event::Leaf(l) if l.keeps_its_line() && l.newlines_before > 0),
+            )
             .map_or(0, |at| at + 1);
         if indent && start < out.len() {
             out.insert(start, event);

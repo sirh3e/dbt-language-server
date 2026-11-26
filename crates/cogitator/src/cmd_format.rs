@@ -1,13 +1,16 @@
 //! `cogitator format`: `textDocument/formatting` over every model SQL
 //! file of the project (or the given paths). In place by default;
 //! `--check` only reports the files that would change (exit 1), and
-//! `--diff` adds the unified diff. A file the formatter declines (05 §9:
-//! inline statements, a sentinel miscount, any doubt) is reported as
-//! skipped and never changed.
+//! `--diff` adds the unified diff. The rules are `--config`'s, else the
+//! nearest cogitator-format.toml's, else the defaults with `--indent`; the
+//! dialect is the rules', else the project's adapter's. A file the
+//! formatter declines (05 §9: SQL it cannot parse, Jinja it cannot keep
+//! intact) is reported as skipped, with why, and never changed.
 
 use std::path::{Path, PathBuf};
 
-use cogitator_analysis::features::formatting::{format_document, FormatOptions};
+use cogitator_analysis::features::formatting::{format_text, rules_near, FormatOptions};
+use cogitator_format::Declined;
 
 use crate::cmd_common;
 
@@ -22,9 +25,12 @@ pub struct FormatArgs {
     /// With --check, print the unified diff of each file that would change.
     #[arg(long, requires = "check")]
     diff: bool,
-    /// Indentation width in spaces.
+    /// Indentation width in spaces, without a config.
     #[arg(long = "indent", default_value_t = 4)]
     indent: u8,
+    /// The formatter's rules (a cogitator-format.toml), for every file.
+    #[arg(long)]
+    config: Option<PathBuf>,
     /// Model files or directories to format (default: every model).
     paths: Vec<PathBuf>,
 }
@@ -35,7 +41,7 @@ enum Outcome {
     Unchanged,
     /// The formatted text.
     Changed(String),
-    Declined,
+    Declined(Declined),
 }
 
 pub fn run(args: &FormatArgs, profiles_dir: Option<&str>, target: Option<&str>) -> i32 {
@@ -59,9 +65,31 @@ pub fn run(args: &FormatArgs, profiles_dir: Option<&str>, target: Option<&str>) 
         Ok(files) => files,
         Err(guidance) => return cmd_common::fail(&guidance),
     };
-    let options = FormatOptions {
-        tab_size: args.indent,
-        insert_spaces: true,
+    let fixed = match &args.config {
+        Some(path) => match std::fs::read_to_string(path)
+            .map_err(|e| e.to_string())
+            .and_then(|text| {
+                cogitator_format::Config::from_toml(&text, path).map_err(|e| e.to_string())
+            }) {
+            Ok(rules) => Some(rules),
+            Err(err) => {
+                eprintln!("cogitator: {}: {err}", path.display());
+                return cmd_common::USAGE;
+            }
+        },
+        None => None,
+    };
+    let options_for = |path: &Path| -> Result<FormatOptions, String> {
+        let rules = match &fixed {
+            Some(rules) => Some(rules.clone()),
+            None => rules_near(path).map_err(|e| e.to_string())?,
+        };
+        Ok(FormatOptions {
+            tab_size: args.indent,
+            insert_spaces: true,
+            rules,
+            adapter: project.ctx.dialect.as_str().to_string(),
+        })
     };
     let (mut changed, mut skipped) = (0, 0);
     for path in &files {
@@ -73,14 +101,18 @@ pub fn run(args: &FormatArgs, profiles_dir: Option<&str>, target: Option<&str>) 
             skipped += 1;
             continue;
         };
-        match format_text(&text, &options) {
+        let options = match options_for(path) {
+            Ok(options) => options,
+            Err(err) => {
+                eprintln!("cogitator: {err}");
+                return cmd_common::USAGE;
+            }
+        };
+        match outcome(&text, &options) {
             Outcome::Unchanged => {}
-            Outcome::Declined => {
+            Outcome::Declined(why) => {
                 skipped += 1;
-                eprintln!(
-                    "skipped {} (the formatter declines it: Jinja it cannot keep intact)",
-                    cmd_common::shown(path)
-                );
+                eprintln!("skipped {} ({why})", cmd_common::shown(path));
             }
             Outcome::Changed(formatted) => {
                 changed += 1;
@@ -117,13 +149,11 @@ fn is_sql(path: &Path) -> bool {
     path.extension().and_then(|e| e.to_str()) == Some("sql")
 }
 
-fn format_text(text: &str, options: &FormatOptions) -> Outcome {
-    match format_document(text, options) {
-        None => Outcome::Declined,
-        Some(edits) => match edits.into_iter().next() {
-            Some(edit) if edit.new_text != text => Outcome::Changed(edit.new_text),
-            _ => Outcome::Unchanged,
-        },
+fn outcome(text: &str, options: &FormatOptions) -> Outcome {
+    match format_text(text, options) {
+        Err(why) => Outcome::Declined(why),
+        Ok(out) if out == text => Outcome::Unchanged,
+        Ok(out) => Outcome::Changed(out),
     }
 }
 
@@ -139,22 +169,26 @@ fn unified_diff(path: &Path, before: &str, after: &str) -> String {
 mod tests {
     use super::*;
 
-    const OPTIONS: FormatOptions = FormatOptions {
-        tab_size: 4,
-        insert_spaces: true,
-    };
+    fn options() -> FormatOptions {
+        FormatOptions {
+            tab_size: 4,
+            insert_spaces: true,
+            rules: None,
+            adapter: "duckdb".into(),
+        }
+    }
 
     #[test]
     fn outcomes() {
         let messy = "select a,b from {{ ref('x') }} where a>1\n";
-        let Outcome::Changed(once) = format_text(messy, &OPTIONS) else {
+        let Outcome::Changed(once) = outcome(messy, &options()) else {
             panic!("formats");
         };
-        assert_eq!(format_text(&once, &OPTIONS), Outcome::Unchanged);
-        assert_eq!(
-            format_text("select 1 {% if x %} , 2 {% endif %}\n", &OPTIONS),
-            Outcome::Declined
-        );
+        assert_eq!(outcome(&once, &options()), Outcome::Unchanged);
+        assert!(matches!(
+            outcome("select 1 from {{ unclosed\n", &options()),
+            Outcome::Declined(Declined::Jinja(_))
+        ));
     }
 
     #[test]

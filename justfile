@@ -109,6 +109,13 @@ check: fmt-check lint test
 gen-config-schema:
     cargo run -q -p cogitator --bin cogitator -- schema > schemas/cogitator.schema.json
 
+# vendor sqlfluff's Rust lexer and parser at a commit (default: the one
+# vendor/sqlfluffrs/VENDORED.toml names), its dialects generated; needs
+# git, uv and Python 3.10+, which building cogitator never does
+[group('schemas')]
+vendor-sqlfluffrs commit="":
+    vendor/sqlfluffrs/update.sh {{commit}}
+
 # ---------------------------------------------------------- perf & fuzz
 
 # run the criterion benches (parser pipeline, context build, lineage)

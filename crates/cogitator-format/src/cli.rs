@@ -65,7 +65,7 @@ fn run_args(args: &Args) -> Result<u8, String> {
         };
         match &args.dialect {
             Some(dialect) => Config {
-                dialect: dialect.clone(),
+                dialect: Some(dialect.clone()),
                 ..base
             }
             .checked()
@@ -102,7 +102,11 @@ fn run_args(args: &Args) -> Result<u8, String> {
     eprintln!(
         "cogitator-format: {} file(s) {}, {} unchanged, {} declined",
         tally.changed,
-        if args.check { "would be reformatted" } else { "reformatted" },
+        if args.check {
+            "would be reformatted"
+        } else {
+            "reformatted"
+        },
         files.len() - tally.changed - tally.declined,
         tally.declined
     );

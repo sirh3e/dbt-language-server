@@ -97,6 +97,8 @@ pub struct SharedToggles {
     pub perf: std::sync::RwLock<
         Arc<cogitator_analysis::features::plan::diagnostics_config::PerfSettings>,
     >,
+    /// cogitator.yml `format:`; readers clone it per formatting request.
+    pub format: std::sync::RwLock<Option<cogitator_format::Config>>,
 }
 
 /// Shared profiles configuration: seeded from launch flags, replaced by
@@ -299,6 +301,7 @@ pub async fn run(
     }
     *toggles.perf.write().expect("perf settings lock") =
         Arc::new(launch.perf_settings(&Default::default()));
+    *toggles.format.write().expect("format rules lock") = launch.format.clone();
     let refresh_limits = limits.clone();
     #[cfg(feature = "duckdb-parser")]
     let refresh_toggles = toggles.clone();

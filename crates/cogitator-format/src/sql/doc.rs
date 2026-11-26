@@ -74,19 +74,21 @@ pub fn print(docs: &[Doc], config: &Config) -> String {
         line_level: 0,
     };
     // a stack of what is left to print, the next on top
-    let mut stack: Vec<(usize, Mode, &Doc)> = docs.iter().rev().map(|d| (0, Mode::Broken, d)).collect();
+    let mut stack: Vec<(usize, Mode, &Doc)> =
+        docs.iter().rev().map(|d| (0, Mode::Broken, d)).collect();
     while let Some((level, mode, doc)) = stack.pop() {
         match doc {
             Doc::Text(text) => printer.text(text),
             Doc::Sep(sep) => match (mode, sep.kind) {
-                (_, Break::Hard) | (Mode::Broken, Break::Soft) => printer.newline(level, sep.blanks),
+                (_, Break::Hard) | (Mode::Broken, Break::Soft) => {
+                    printer.newline(level, sep.blanks)
+                }
                 _ => printer.text(sep.flat),
             },
             Doc::Shift(by) => printer.shift += by,
             Doc::Nest(docs) => stack.extend(docs.iter().rev().map(|d| (level + 1, mode, d))),
             Doc::Group { docs, breaks } => {
-                let flat = mode == Mode::Flat
-                    || (!breaks && fits(&printer, docs, &stack));
+                let flat = mode == Mode::Flat || (!breaks && fits(&printer, docs, &stack));
                 let inner = if flat { Mode::Flat } else { Mode::Broken };
                 // a group's lines are indented from the line it starts on,
                 // not from every group it is in (sqlfluff: a bracket closes
@@ -144,8 +146,7 @@ fn fits(printer: &Printer<'_>, docs: &[Doc], rest: &[(usize, Mode, &Doc)]) -> bo
         if left < 0 {
             return false;
         }
-        let Some((mode, doc)) = work.pop().or_else(|| rest.next().map(|(_, m, d)| (*m, *d)))
-        else {
+        let Some((mode, doc)) = work.pop().or_else(|| rest.next().map(|(_, m, d)| (*m, *d))) else {
             return true;
         };
         match doc {
@@ -179,7 +180,11 @@ mod tests {
         Doc::Text(s.into())
     }
     fn sep(flat: &'static str, kind: Break) -> Doc {
-        Doc::Sep(Sep { flat, kind, blanks: 0 })
+        Doc::Sep(Sep {
+            flat,
+            kind,
+            blanks: 0,
+        })
     }
     /// `select` and its targets, as the builder makes them.
     fn select(targets: &[&str], width: usize) -> String {
@@ -205,14 +210,21 @@ mod tests {
 
     #[test]
     fn a_group_that_does_not_fit_breaks_every_separator() {
-        assert_eq!(select(&["alpha", "beta"], 12), "select\n    alpha,\n    beta");
+        assert_eq!(
+            select(&["alpha", "beta"], 12),
+            "select\n    alpha,\n    beta"
+        );
     }
 
     #[test]
     fn a_hard_separator_breaks_its_groups_and_keeps_blank_lines() {
         let docs = vec![
             text("select 1;"),
-            Doc::Sep(Sep { flat: " ", kind: Break::Hard, blanks: 1 }),
+            Doc::Sep(Sep {
+                flat: " ",
+                kind: Break::Hard,
+                blanks: 1,
+            }),
             text("select 2;"),
         ];
         assert_eq!(print(&docs, &Config::default()), "select 1;\n\nselect 2;");
@@ -239,7 +251,12 @@ mod tests {
 
     #[test]
     fn trailing_spaces_never_end_a_line() {
-        let docs = vec![text("a"), sep(" ", Break::Fixed), sep(" ", Break::Hard), text("b")];
+        let docs = vec![
+            text("a"),
+            sep(" ", Break::Fixed),
+            sep(" ", Break::Hard),
+            text("b"),
+        ];
         assert_eq!(print(&docs, &Config::default()), "a\nb");
     }
 }

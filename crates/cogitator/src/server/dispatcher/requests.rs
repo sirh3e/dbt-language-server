@@ -437,12 +437,33 @@ impl Dispatcher {
             return;
         };
         let uri = params.text_document.uri.into_owned();
-        let options = features::formatting::FormatOptions {
+        let configured = self
+            .toggles
+            .format
+            .read()
+            .expect("format rules lock")
+            .clone();
+        let snap = self.snapshot_for(&uri);
+        let mut options = features::formatting::FormatOptions {
             tab_size: params.options.tab_size,
             insert_spaces: params.options.insert_spaces,
+            rules: configured,
+            adapter: snap.ctx.dialect.as_str().to_string(),
         };
-        let snap = self.snapshot_for(&uri);
         self.offload_blocking(req.id, "textDocument/formatting", move || {
+            // cogitator.yml's `format:` first, else the nearest
+            // cogitator-format.toml; a broken one formats nothing
+            if options.rules.is_none() {
+                let path = cogitator_lsp::uri_to_fs_path(&uri).unwrap_or_else(|| uri.clone());
+                match features::formatting::rules_near(std::path::Path::new(&path)) {
+                    Ok(rules) => options.rules = rules,
+                    Err(err) => {
+                        tracing::warn!(%err, "formatting: the formatter's config cannot be read");
+                        let none: Vec<cogitator_lsp::TextEdit> = Vec::new();
+                        return crate::server::reply::Reply::result(&none);
+                    }
+                }
+            }
             // decline-on-doubt answers an empty edit list, never an error
             let edits = snap
                 .doc

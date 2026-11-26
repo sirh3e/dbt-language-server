@@ -37,7 +37,11 @@ const MAY_START_A_LINE: [&str; 3] = ["join_on_condition", "when_clause", "else_c
 const OWN_GROUP: [&str; 3] = ["join_clause", "expression", "case_expression"];
 
 /// Segments that are a whole statement.
-const STATEMENTS: [&str; 3] = ["select_statement", "with_compound_statement", "set_expression"];
+const STATEMENTS: [&str; 3] = [
+    "select_statement",
+    "with_compound_statement",
+    "set_expression",
+];
 
 /// What a Jinja statement does to the lines after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -30,11 +30,17 @@ impl Leaf<'_> {
     }
 
     pub fn is_open(&self) -> bool {
-        matches!(self.ty, "start_bracket" | "start_square_bracket" | "start_curly_bracket")
+        matches!(
+            self.ty,
+            "start_bracket" | "start_square_bracket" | "start_curly_bracket"
+        )
     }
 
     pub fn is_close(&self) -> bool {
-        matches!(self.ty, "end_bracket" | "end_square_bracket" | "end_curly_bracket")
+        matches!(
+            self.ty,
+            "end_bracket" | "end_square_bracket" | "end_curly_bracket"
+        )
     }
 }
 
@@ -65,16 +71,23 @@ pub fn space(prev: &Leaf<'_>, next: &Leaf<'_>) -> &'static str {
 /// Punctuation, not a word, a number or a quoted thing.
 pub fn is_symbol(raw: &str) -> bool {
     !raw.is_empty()
-        && raw
-            .chars()
-            .all(|c| c.is_ascii_punctuation() && !matches!(c, '"' | '\'' | '`' | '_' | '(' | ')' | '[' | ']' | '{' | '}' | ','))
+        && raw.chars().all(|c| {
+            c.is_ascii_punctuation()
+                && !matches!(
+                    c,
+                    '"' | '\'' | '`' | '_' | '(' | ')' | '[' | ']' | '{' | '}' | ','
+                )
+        })
 }
 
 /// Whether a bracket after this token opens its arguments or subscript:
 /// `count(`, `xs[`, `)(`.
 fn is_callee(prev: &Leaf<'_>) -> bool {
     matches!(prev.ty, "function_name_identifier" | "end_square_bracket")
-        || matches!(prev.parent, "function_name" | "array_accessor" | "data_type")
+        || matches!(
+            prev.parent,
+            "function_name" | "array_accessor" | "data_type"
+        )
         || (prev.ty == "naked_identifier" && prev.parent == "array_type")
 }
 
@@ -174,8 +187,14 @@ mod tests {
             keywords: Case::Capitalise,
             ..CaseRules::default()
         };
-        assert_eq!(cased(&leaf("keyword", "SELECT", ""), &rules, |_| false), "Select");
+        assert_eq!(
+            cased(&leaf("keyword", "SELECT", ""), &rules, |_| false),
+            "Select"
+        );
         let placeholder = leaf("keyword", "CGFMT_E0", "");
-        assert_eq!(cased(&placeholder, &rules, |raw| raw.starts_with("CGFMT")), "CGFMT_E0");
+        assert_eq!(
+            cased(&placeholder, &rules, |raw| raw.starts_with("CGFMT")),
+            "CGFMT_E0"
+        );
     }
 }

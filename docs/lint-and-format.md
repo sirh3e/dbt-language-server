@@ -135,10 +135,143 @@ cogitator format                 # rewrite every model in place
 cogitator format --check         # list the files that would change; exit 1 if any
 cogitator format --check --diff  # and show the unified diff
 cogitator format models/marts --indent 2
+cogitator format --config ci/cogitator-format.toml
 ```
 
-It runs `textDocument/formatting` (sqlformat over Jinja-segmented SQL)
-on each model of the root project, or on the given files and
-directories. A file the formatter declines — inline Jinja statements, a
-sentinel miscount, any doubt — is reported on stderr as `skipped` and
-never changed. Exit 0, or 1 with `--check` when a file would change.
+It runs `textDocument/formatting` on each model of the root project, or
+on the given files and directories. A file the formatter declines is
+reported on stderr as `skipped`, with why, and never changed. Exit 0, or
+1 with `--check` when a file would change.
+
+### How it formats
+
+The formatter is the crate `cogitator-format`
+([crates/cogitator-format](../crates/cogitator-format)), which the server
+embeds and which is also a program of its own (below).
+
+- **SQL** is laid out on the parse tree of
+  [sqlfluff](https://github.com/sqlfluff/sqlfluff)'s Rust parser
+  (sqlfluffrs, vendored in [vendor/sqlfluffrs](../vendor/sqlfluffrs)), in
+  any of sqlfluff's 28 dialects. Lines break where sqlfluff's own reflow
+  breaks them: every clause (`from`, `where`, `group by`, a `join`, a
+  `union`) starts a line; a bracket, a `select`'s targets, a `case`, an
+  expression's operators and a join's condition break only when they do
+  not fit `max_line_length`; a bracket closes at the indent of the line
+  that opened it.
+- **Jinja** is read with minijinja's own tokenizer. Each tag is laid out
+  again from its tokens (`{{ref( 'x' )}}` → `{{ ref('x') }}`, `{%set
+  x=-1%}` → `{% set x = -1 %}`, `a|b` → `a | b`); a tag written over
+  several lines is kept as it is. The lines inside `{% if %}`, `{% for %}`,
+  `{% macro %}`, `{% set x %}` … go one level deeper, `{% else %}` back.
+  A tag written inside a line stays inside it; one on a line of its own
+  keeps its line.
+- **Nothing changes what a model means.** Only whitespace moves, and the
+  case of keywords and names where a rule says so: the output is lexed
+  again and must hold the same tokens in the same order, every tag must
+  come back exactly once, or the model is left as it is.
+
+### The rules
+
+Every rule has a default; the names follow sqlfluff's `.sqlfluff`.
+
+| Key | Default | sqlfluff | What |
+|---|---|---|---|
+| `dialect` | the dbt adapter's | `dialect` | `duckdb`, `snowflake`, `bigquery`, `postgres`, `sparksql`, `tsql`, … |
+| `max_line_length` | `80` | LT05 | the longest line the layout aims for |
+| `indent_unit` | `space` | LT02 | `space` or `tab` |
+| `tab_space_size` | `4` | LT02 | spaces per indent |
+| `max_blank_lines` | `1` | | blank lines kept where the source had more |
+| `trailing_newline` | `true` | LT12 | end the file with exactly one newline |
+| `case.keywords` | `lower` | CP01 | `upper`, `lower`, `capitalise` or `preserve` |
+| `case.identifiers` | `preserve` | CP02 | unquoted names; quoted ones never change |
+| `case.functions` | `lower` | CP03 | |
+| `case.literals` | `lower` | CP04 | `null`, `true`, `false` |
+| `case.types` | `lower` | CP05 | |
+| `layout.commas` | `trailing` | LT04 | `trailing` or `leading` |
+| `layout.select_targets` | `one_per_line` | LT09 | more than one target: a line each; `fit`: while they fit |
+| `layout.indented_joins` | `false` | `indented_joins` | `join` one level under `from` |
+| `layout.blank_line_after_cte` | `true` | LT08 | a blank line after each CTE |
+| `jinja.delimiter_spacing` | `true` | | one space inside `{{ }}` and `{% %}` |
+| `jinja.normalize_tags` | `true` | | a tag's inside laid out from its tokens |
+| `jinja.filter_spacing` | `true` | | spaces around a filter's `\|` |
+| `jinja.indent_blocks` | `true` | `template_blocks_indent` | the lines inside a block one level deeper |
+
+They are read from, the first that has them:
+
+1. `format:` in `cogitator.yml` (the server, hot: an edit applies to the
+   next format):
+
+   ```yaml
+   format:
+     dialect: duckdb
+     max_line_length: 100
+     case:
+       keywords: upper
+     layout:
+       commas: leading
+   ```
+
+2. the nearest `cogitator-format.toml` (or `.cogitator-format.toml`) at or
+   above the file — what the standalone program reads too:
+
+   ```toml
+   dialect = "duckdb"
+   max_line_length = 100
+
+   [case]
+   keywords = "upper"
+
+   [layout]
+   commas = "leading"
+   ```
+
+3. the defaults, with the editor's indent (`tabSize`, `insertSpaces`).
+
+Where the rules name no dialect, the dbt adapter of the active target
+names it (`spark` and `glue` → `sparksql`, `sqlserver` → `tsql`, an
+adapter sqlfluff has no dialect for → `ansi`). A key the formatter does
+not know is refused by name, in either file.
+
+### When it leaves a model as it is
+
+- **Jinja minijinja cannot read** (an unclosed `{{`).
+- **SQL the dialect's grammar cannot parse.** Jinja is masked for the
+  parser, and the masks are tried in turn, each looser than the last, so a
+  model is masked the same way every run:
+  1. a `{{ … }}` as a name, and one alone on its line before any SQL
+     (`config()`, `set` calls) as a comment, as any other tag is;
+  2. every `{{ … }}` as a name;
+  3. every `{{ … }}` alone on its line as a comment;
+  4. a `{{ … }}` alone where a statement may stand (a CTE's body, a
+     subquery, a `union`'s branch) as one, `select <name>`: a call that
+     expands to a whole query;
+  5. the SQL between tags on their own lines parsed piece by piece, which
+     `{% if %} select 1 {% else %} select 2 {% endif %}` needs. Inside a
+     block (`{% macro %}`, `{% if %}` …) a piece that is still no SQL — a
+     macro's fragment, a regular expression — is kept byte for byte, as
+     sqlfluff leaves unparsable sections; the model's own SQL must parse.
+
+  A call in a place no stand-in fills (the tail of a CTE list, `with {{
+  ctes() }}, final as (…)`) declines the model.
+- **A layout that would change a token** — a formatter bug; please report
+  it.
+
+`cogitator-format --explain <file>` says, for each way of masking the
+Jinja, what it came to.
+
+### The formatter on its own
+
+`cogitator-format` is the same formatter without the server, for a
+pre-commit hook or a project without cogitator:
+
+```sh
+cogitator-format models/                       # in place
+cogitator-format --check --diff models/        # exit 1 if a file would change
+cogitator-format --check --strict models/      # a declined file fails too
+cogitator-format - --stdin-filename models/m.sql < m.sql   # stdin to stdout
+cogitator-format --print-config models/m.sql   # the rules a file is formatted by
+cogitator-format --explain models/m.sql        # why a file was declined
+```
+
+It reads the nearest `cogitator-format.toml` (or `--config`), and
+`--dialect` sets the dialect over it; with neither it formats as `ansi`.

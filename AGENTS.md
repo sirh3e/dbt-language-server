@@ -84,7 +84,10 @@ editor integrations live under `editors/`.
 - **Zero-copy**: tokens are byte spans into `Arc<str>` document text; inbound
   params borrow via `Cow`; a `clone()`/`to_string()` on a hot path must name
   the owner boundary it feeds (08 §1.5).
-- **No hand-written lexers**: minijinja machinery + sqlparser only (05 §4).
+- **No hand-written lexers**: minijinja machinery + sqlparser only (05 §4);
+  the formatter (`crates/cogitator-format`) also uses sqlfluff's lexer and
+  parser, vendored in `vendor/sqlfluffrs` with their generated dialects —
+  never edit it; `just vendor-sqlfluffrs [<sqlfluff commit>]` regenerates it.
 - **Files stay small**: ≤ ~300 lines per module; split by concern.
 - **Logging**: `tracing` spans/events only; nothing but LSP frames on stdout.
 - **Windows rules**: never hand-strip `file://` — URIs go through

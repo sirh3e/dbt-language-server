@@ -38,6 +38,10 @@ pub struct FileConfig {
     pub inlay: InlaySection,
     #[serde(default)]
     pub preview: PreviewSection,
+    /// textDocument/formatting's rules (the `cogitator-format` crate's,
+    /// as in cogitator-format.toml); absent: that file's, else defaults.
+    #[serde(default)]
+    pub format: Option<cogitator_format::Config>,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -231,6 +235,7 @@ const ROOT_KEYS: &[&str] = &[
     "warehouse",
     "perf",
     "inlay",
+    "format",
     "vars",
     "perf_rules",
     "preview",

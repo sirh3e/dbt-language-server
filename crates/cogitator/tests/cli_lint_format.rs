@@ -94,9 +94,9 @@ fn format_check_then_format_then_clean() {
     let project = jaffle();
     let messy = project.root.join("models/messy.sql");
     std::fs::write(&messy, "select a,b from {{ ref('customers') }} where a>1\n").unwrap();
+    // SQL the dialect cannot parse (`where` with nothing after it)
     let declined = project.root.join("models/declined.sql");
-    let declined_text =
-        "select a {% if var('x', false) %}, b{% endif %} from {{ ref('customers') }}\n";
+    let declined_text = "select a from {{ ref('customers') }} where\n";
     std::fs::write(&declined, declined_text).unwrap();
 
     let check = cogitator(&project, &["format", "--check", "--diff"]);
@@ -105,7 +105,10 @@ fn format_check_then_format_then_clean() {
     assert!(out.contains("would reformat models/messy.sql"), "{out}");
     assert!(out.contains("+++ b/models/messy.sql"), "{out}");
     let stderr = String::from_utf8_lossy(&check.stderr);
-    assert!(stderr.contains("skipped models/declined.sql"), "{stderr}");
+    assert!(
+        stderr.contains("skipped models/declined.sql (its SQL cannot be parsed"),
+        "{stderr}"
+    );
     assert_eq!(
         std::fs::read_to_string(&messy).unwrap(),
         "select a,b from {{ ref('customers') }} where a>1\n",

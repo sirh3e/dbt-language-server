@@ -21,9 +21,11 @@ pub mod jinja;
 mod mask;
 pub mod sql;
 
-pub use config::{Case, CaseRules, Commas, Config, ConfigError, IndentUnit, JinjaRules};
+pub use config::{
+    dialect_for_adapter, Case, CaseRules, Commas, Config, ConfigError, IndentUnit, JinjaRules,
+};
 
-use mask::{Mode, Unit};
+use mask::{Lone, Mode, Unit};
 
 /// Why a document was left as it is.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -50,12 +52,14 @@ pub fn format(source: &str, config: &Config) -> Result<String, Declined> {
     format_lf(source, config)
 }
 
-const MODES: [Mode; 3] = [
+/// The ways of masking, in the order they are tried: each looser than
+/// the one before, so that a model is masked the same way every run.
+const MODES: [Mode; 5] = [
+    Mode::Whole { lone: Lone::Header },
+    Mode::Whole { lone: Lone::None },
+    Mode::Whole { lone: Lone::All },
     Mode::Whole {
-        header_as_tags: true,
-    },
-    Mode::Whole {
-        header_as_tags: false,
+        lone: Lone::Statements,
     },
     Mode::Segments,
 ];
@@ -91,13 +95,13 @@ pub fn explain(source: &str, config: &Config) -> Vec<String> {
     }
 }
 
+/// One way of masking, and what it came to.
+type Attempt = (Mode, Result<String, Declined>);
+
 /// The masks tried, lazily up to the first that lays out.
-fn attempts(
-    source: &str,
-    config: &Config,
-) -> Result<Vec<(Mode, Result<String, Declined>)>, Declined> {
-    let dialect =
-        sql::dialect(&config.dialect).ok_or_else(|| Declined::Dialect(config.dialect.clone()))?;
+fn attempts(source: &str, config: &Config) -> Result<Vec<Attempt>, Declined> {
+    let dialect = sql::dialect(config.dialect_name())
+        .ok_or_else(|| Declined::Dialect(config.dialect_name().to_string()))?;
     let pieces = jinja::split(source).map_err(Declined::Jinja)?;
     let written: Vec<String> = pieces
         .iter()
@@ -129,16 +133,18 @@ fn lay_out(
     keep_unparsable: bool,
 ) -> Result<String, Declined> {
     let unparsable = |reason: String| Declined::Unparsable {
-        dialect: config.dialect.clone(),
-        reason: mask::unmask_all(&reason, &masked.restore),
+        dialect: config.dialect_name().to_string(),
+        reason: shortened(&mask::unmask_all(&reason, &masked.restore)),
     };
     let trees = masked
         .units
         .iter()
-        .map(|unit| match unit {
+        .zip(&masked.depths)
+        .map(|(unit, depth)| match unit {
             Unit::Sql(text) => match sql::parse(text, dialect) {
                 Ok(tree) => Ok(Some(tree)),
-                Err(_) if keep_unparsable => Ok(None),
+                // inside a block only: a model's own SQL has to parse
+                Err(_) if keep_unparsable && *depth > 0 => Ok(None),
                 Err(reason) => Err(reason),
             },
             Unit::Tag { .. } => Ok(None),
@@ -167,11 +173,21 @@ fn lay_out(
         .zip(&kept)
         .flat_map(|((unit, tree), kept)| match (unit, tree, kept) {
             (_, Some(tree), _) => sql::events(tree, config),
-            (Unit::Tag { placeholder, newlines }, None, _) => {
+            (
+                Unit::Tag {
+                    placeholder,
+                    newlines,
+                },
+                None,
+                _,
+            ) => {
                 vec![sql::tag_leaf(placeholder, *newlines)]
             }
             (Unit::Sql(text), None, Some((placeholder, _))) => {
-                vec![sql::verbatim_leaf(placeholder, mask::leading_newlines(text))]
+                vec![sql::verbatim_leaf(
+                    placeholder,
+                    mask::leading_newlines(text),
+                )]
             }
             (Unit::Sql(_), None, None) => Vec::new(),
         })
@@ -192,9 +208,17 @@ fn lay_out(
     let got = sql::code_tokens(&printed, dialect).map_err(unparsable)?;
     if got != expected {
         if std::env::var_os("COGITATOR_FORMAT_DEBUG").is_some() {
-            let at = got.iter().zip(&expected).position(|(a, b)| a != b).unwrap_or(0);
+            let at = got
+                .iter()
+                .zip(&expected)
+                .position(|(a, b)| a != b)
+                .unwrap_or(0);
             let around = |v: &[String]| v[at.saturating_sub(2)..(at + 3).min(v.len())].to_vec();
-            eprintln!("tokens differ at {at}: {:?} for {:?}", around(&got), around(&expected));
+            eprintln!(
+                "tokens differ at {at}: {:?} for {:?}",
+                around(&got),
+                around(&expected)
+            );
         }
         return Err(Declined::Changed);
     }
@@ -214,6 +238,26 @@ fn lay_out(
         }
         Declined::Changed
     })
+}
+
+/// A reason that quotes the source, cut to the quote's first line (60
+/// characters at most), once the Jinja is back in it.
+fn shortened(reason: &str) -> String {
+    let (Some(open), Some(close)) = (reason.find('`'), reason.rfind('`')) else {
+        return reason.to_string();
+    };
+    if close <= open {
+        return reason.to_string();
+    }
+    let quoted = reason[open + 1..close].trim();
+    let line = quoted.lines().next().unwrap_or("");
+    let shown: String = line.chars().take(60).collect();
+    let more = if shown.len() < quoted.len() {
+        " …"
+    } else {
+        ""
+    };
+    format!("{}`{shown}`{more}{}", &reason[..open], &reason[close + 1..])
 }
 
 /// No space at a line's end, no blank lines at the start, and the end of

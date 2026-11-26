@@ -25,7 +25,9 @@ pub struct Pending {
 /// `end`.
 pub fn closes(leaf: &Leaf<'_>) -> bool {
     leaf.is_close()
-        || (leaf.is_keyword && leaf.parent == "case_expression" && leaf.raw.eq_ignore_ascii_case("end"))
+        || (leaf.is_keyword
+            && leaf.parent == "case_expression"
+            && leaf.raw.eq_ignore_ascii_case("end"))
 }
 
 /// The separator before `next`; `inline_tag`: a Jinja tag written inside a
@@ -44,7 +46,8 @@ pub fn separator(
         || (next.keeps_its_line() && next.newlines_before > 0)
         || (prev.keeps_its_line() && next.newlines_before > 0);
     // before an operator's first token, never inside `||`
-    let operator = (next.ty == "binary_operator" || next.parent == "binary_operator") && next.spaced;
+    let operator =
+        (next.ty == "binary_operator" || next.parent == "binary_operator") && next.spaced;
     let soft = pending.indent == Some(false)
         || (pending.dedent && closes(next))
         || (trailing && prev.ty == "comma")

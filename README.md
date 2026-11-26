@@ -80,6 +80,11 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
   editor-free diagnostic over the whole project (text, JSON or GitHub
   annotations, exit 1 on errors), and the formatter in place or as
   `--check` ([docs/lint-and-format.md](docs/lint-and-format.md))
+- **Formatting** on [sqlfluff](https://github.com/sqlfluff/sqlfluff)'s Rust
+  parser in any of its 28 dialects, with the Jinja laid out on minijinja's
+  tokens, by sqlfluff-named rules (`format:` in `cogitator.yml` or a
+  `cogitator-format.toml`); also a program of its own, `cogitator-format`
+  ([docs/lint-and-format.md](docs/lint-and-format.md#the-rules))
 - dbt **YAML intelligence**: property-name completion and schema errors in
   `schema.yml` / `dbt_project.yml`
 
@@ -416,6 +421,13 @@ preview:                   # dbt.previewCte, the "Preview rows" lenses (docs/pre
   max_rows: 1000           # larger limits are capped
 vars:                      # overrides, like dbt's --vars; passed to dbt runs
   since: '2025-06-01'
+format:                    # textDocument/formatting (docs/lint-and-format.md)
+  dialect: duckdb          # default: the dbt adapter's
+  max_line_length: 100
+  case:
+    keywords: lower        # upper | lower | capitalise | preserve
+  layout:
+    commas: trailing       # trailing | leading
 ```
 
 Hot semantics are **changed-keys-only, last writer wins**: a reload

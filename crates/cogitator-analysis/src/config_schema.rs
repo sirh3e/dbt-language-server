@@ -22,10 +22,11 @@ pub struct SectionSchema {
 }
 
 impl SectionSchema {
-    /// A section whose keys are the user's own (`vars:` names vars),
-    /// so no key of it is unknown.
+    /// A section whose keys are the user's own (`vars:` names vars), or
+    /// nest (`format:`, which the formatter's own parser holds to its keys),
+    /// so no key of it is unknown here.
     pub fn is_free_form(&self) -> bool {
-        self.name == "vars"
+        matches!(self.name, "vars" | "format")
     }
 }
 
@@ -146,6 +147,31 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Show what short single-line {{ … }} expressions render to (default false).",
                 "bool",
             ),
+        ],
+    },
+    SectionSchema {
+        name: "format",
+        doc: "textDocument/formatting's rules, the keys of cogitator-format.toml (sqlfluff's names); absent: that file's, else the defaults with the editor's indent.",
+        keys: &[
+            key("dialect", "sqlfluff's dialect; default the dbt adapter's (spark: sparksql).", "name"),
+            key("max_line_length", "The longest line the layout aims for (LT05, default 80).", "columns"),
+            key("indent_unit", "space or tab (LT02, default space).", "space|tab"),
+            key("tab_space_size", "Spaces per indent (default 4).", "count"),
+            key("max_blank_lines", "Blank lines kept where the source had more (default 1).", "count"),
+            key("trailing_newline", "End the file with one newline (LT12, default true).", "bool"),
+            key("case.keywords", "CP01 (default lower).", "upper|lower|capitalise|preserve"),
+            key("case.identifiers", "CP02, unquoted only (default preserve).", "upper|lower|capitalise|preserve"),
+            key("case.functions", "CP03 (default lower).", "upper|lower|capitalise|preserve"),
+            key("case.literals", "CP04: null, true, false (default lower).", "upper|lower|capitalise|preserve"),
+            key("case.types", "CP05 (default lower).", "upper|lower|capitalise|preserve"),
+            key("layout.commas", "LT04 (default trailing).", "trailing|leading"),
+            key("layout.select_targets", "LT09: one_per_line (default) or fit.", "one_per_line|fit"),
+            key("layout.indented_joins", "join indented under from (default false).", "bool"),
+            key("layout.blank_line_after_cte", "LT08 (default true).", "bool"),
+            key("jinja.delimiter_spacing", "{{ x }}, one space inside (default true).", "bool"),
+            key("jinja.normalize_tags", "A tag's inside laid out from minijinja's tokens (default true).", "bool"),
+            key("jinja.filter_spacing", "Spaces around a filter's | (default true).", "bool"),
+            key("jinja.indent_blocks", "Lines inside {% if %} … {% endif %} one level deeper (default true).", "bool"),
         ],
     },
     SectionSchema {

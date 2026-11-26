@@ -18,18 +18,29 @@
 use std::collections::HashMap;
 
 use crate::jinja::{self, Kind, Piece};
-use crate::sql::Placeholders;
-#[cfg(test)]
-use crate::sql::TagRole;
+use crate::sql::{Placeholders, TagRole};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// The whole document as one SQL text; `header_as_tags`: a `{{ … }}`
-    /// on its own line before any SQL becomes a comment, not an identifier.
-    Whole { header_as_tags: bool },
+    /// The whole document as one SQL text, with the `{{ … }}` alone on
+    /// their lines as the `lone` rule says.
+    Whole { lone: Lone },
     /// The SQL between tags that stand on their own lines, each parsed on
     /// its own: for documents whose Jinja branches are whole statements.
     Segments,
+}
+
+/// Which `{{ … }}` alone on their line(s) are taken as tags (a comment),
+/// not as a name: a call there usually expands to a whole statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lone {
+    /// Those before the model's first line of SQL (`config()`, `set`).
+    Header,
+    None,
+    All,
+    /// As a statement, `select <name>`, which a CTE's body, a subquery
+    /// and a branch of a `union` take: where a call expands to one.
+    Statements,
 }
 
 /// What the parser is given.
@@ -37,12 +48,18 @@ pub enum Mode {
 pub enum Unit {
     Sql(String),
     /// A tag on its own line, after `newlines` line breaks.
-    Tag { placeholder: String, newlines: usize },
+    Tag {
+        placeholder: String,
+        newlines: usize,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub struct Masked {
     pub units: Vec<Unit>,
+    /// How many Jinja blocks each unit starts inside, counting every
+    /// statement of the source, inline ones too.
+    pub depths: Vec<usize>,
     pub tags: Placeholders,
     /// Each placeholder and the tag that comes back in its place.
     pub restore: Vec<(String, String)>,
@@ -70,46 +87,111 @@ pub fn alone(source: &str, piece: &Piece<'_>) -> bool {
 pub fn mask(source: &str, pieces: &[Piece<'_>], written: &[String], mode: Mode) -> Masked {
     let prefix = prefix(source);
     let mut units: Vec<Unit> = vec![Unit::Sql(String::new())];
+    let mut depths: Vec<usize> = vec![0];
+    let mut depth = 0usize;
     let mut roles = HashMap::new();
     let mut restore = Vec::new();
-    // no SQL so far: what stands here is the model's header
-    let mut in_header = true;
+    // the SQL so far: while it is only comments, this is the header
+    let mut sql_so_far = String::new();
     for (i, (piece, text)) in pieces.iter().zip(written).enumerate() {
         let lone = alone(source, piece);
-        let header = lone && in_header;
-        in_header &= piece.kind != Kind::Sql || piece.text.trim().is_empty();
-        let as_ident = piece.kind == Kind::Expr
-            && !(header && mode != Mode::Whole { header_as_tags: false });
+        let header = lone && only_comments(&sql_so_far);
+        if piece.kind == Kind::Sql {
+            sql_so_far.push_str(piece.text);
+        }
+        let as_tag = match mode {
+            Mode::Whole { lone: Lone::Header } | Mode::Segments => header,
+            Mode::Whole { lone: Lone::None } => false,
+            Mode::Whole { lone: Lone::All } => lone,
+            Mode::Whole {
+                lone: Lone::Statements,
+            } => header,
+        };
+        let as_statement = piece.kind == Kind::Expr
+            && lone
+            && !header
+            && mode
+                == (Mode::Whole {
+                    lone: Lone::Statements,
+                })
+            && statement_position(source, piece, &sql_so_far);
+        let as_ident = piece.kind == Kind::Expr && !as_tag && !as_statement;
         let placeholder = match piece.kind {
             Kind::Sql => {
                 push_sql(&mut units, piece.text);
                 continue;
             }
+            _ if as_statement => format!("select {prefix}e{i}x"),
             _ if as_ident => identifier(&prefix, i, text),
             _ => comment(&prefix, i, if lone { 0 } else { width(text) }),
         };
-        roles.insert(placeholder.clone(), jinja::role(piece));
+        let role = jinja::role(piece);
+        roles.insert(placeholder.clone(), role);
         restore.push((placeholder.clone(), text.clone()));
+        let depth_here = depth;
+        depth = match role {
+            TagRole::Open => depth + 1,
+            TagRole::Close => depth.saturating_sub(1),
+            _ => depth,
+        };
         if mode == Mode::Segments && lone && !as_ident {
             let newlines = trailing_newlines(&units);
             units.push(Unit::Tag {
                 placeholder,
                 newlines,
             });
+            depths.push(depth_here);
             units.push(Unit::Sql(String::new()));
+            depths.push(depth);
         } else {
             push_sql(&mut units, &placeholder);
         }
     }
-    let units = units
+    let (units, depths) = units
         .into_iter()
-        .filter(|u| !matches!(u, Unit::Sql(s) if s.trim().is_empty()))
-        .collect();
+        .zip(depths)
+        .filter(|(u, _)| !matches!(u, Unit::Sql(s) if s.trim().is_empty()))
+        .unzip();
     Masked {
         units,
+        depths,
         tags: Placeholders { prefix, roles },
         restore,
     }
+}
+
+/// Whether a lone `{{ … }}` stands where a statement may: after the
+/// header, an open bracket or a set operator, and before a closing
+/// bracket, a tag or the end.
+fn statement_position(source: &str, piece: &Piece<'_>, sql_before: &str) -> bool {
+    let before = sql_before.trim_end().to_lowercase();
+    let after = source[piece.start + piece.text.len()..].trim_start();
+    let opens = only_comments(sql_before)
+        || before.ends_with('(')
+        || [
+            "union",
+            "union all",
+            "union distinct",
+            "except",
+            "intersect",
+        ]
+        .iter()
+        .any(|op| before.ends_with(op));
+    let closes = after.is_empty()
+        || after.starts_with([')', ';'])
+        || ["{%", "{{", "{#"].iter().any(|tag| after.starts_with(tag))
+        || ["union", "except", "intersect"]
+            .iter()
+            .any(|op| after.to_lowercase().starts_with(op));
+    opens && closes
+}
+
+/// Whether SQL text holds nothing but blank lines and `--` comments.
+fn only_comments(sql: &str) -> bool {
+    sql.lines().all(|line| {
+        let line = line.trim();
+        line.is_empty() || line.starts_with("--")
+    })
 }
 
 fn push_sql(units: &mut [Unit], text: &str) {
@@ -161,7 +243,9 @@ pub fn kept_placeholder(prefix: &str, i: usize, text: &str) -> String {
 
 /// Line breaks before a text's first character.
 pub fn leading_newlines(text: &str) -> usize {
-    text[..text.len() - text.trim_start().len()].matches('\n').count()
+    text[..text.len() - text.trim_start().len()]
+        .matches('\n')
+        .count()
 }
 
 /// The printed text with every tag back, or None when a placeholder is
@@ -198,9 +282,7 @@ mod tests {
     fn inline_expressions_become_identifiers_and_the_rest_comments() {
         let m = masked(
             "{{ config(m='t') }}\nselect {{ col }} from {{ ref('x') }} {% if a %}\n",
-            Mode::Whole {
-                header_as_tags: true,
-            },
+            Mode::Whole { lone: Lone::Header },
         );
         let [Unit::Sql(sql)] = m.units.as_slice() else {
             panic!("{:?}", m.units)
@@ -231,11 +313,46 @@ mod tests {
     #[test]
     fn only_the_header_takes_lone_expressions_as_tags() {
         let source = "{{ config(m='t') }}\nselect\n    {{ star() }}\nfrom t\n";
-        let m = masked(source, Mode::Whole { header_as_tags: true });
+        let m = masked(source, Mode::Whole { lone: Lone::Header });
         let [Unit::Sql(sql)] = m.units.as_slice() else {
             panic!("{:?}", m.units)
         };
-        assert!(sql.starts_with("/*cgfmt0xs0x*/\nselect\n    cgfmt0xe2x"), "{sql}");
+        assert!(
+            sql.starts_with("/*cgfmt0xs0x*/\nselect\n    cgfmt0xe2x"),
+            "{sql}"
+        );
+    }
+
+    #[test]
+    fn sql_comments_are_part_of_the_header() {
+        let source = "-- depends_on: {{ ref('a') }}\n{{ config(enabled=true) }}\nselect 1\n";
+        let m = masked(source, Mode::Whole { lone: Lone::Header });
+        let [Unit::Sql(sql)] = m.units.as_slice() else {
+            panic!("{:?}", m.units)
+        };
+        assert!(sql.contains("\n/*cgfmt0xs3x*/\nselect 1"), "{sql}");
+    }
+
+    #[test]
+    fn a_lone_call_can_stand_for_a_statement() {
+        let source = "with a as (\n    {{ build_a() }}\n)\nselect * from a\n";
+        let m = masked(
+            source,
+            Mode::Whole {
+                lone: Lone::Statements,
+            },
+        );
+        let [Unit::Sql(sql)] = m.units.as_slice() else {
+            panic!("{:?}", m.units)
+        };
+        assert!(sql.contains("(\n    select cgfmt0xe1x\n)"), "{sql}");
+        assert_eq!(
+            m.restore[0],
+            (
+                "select cgfmt0xe1x".to_string(),
+                "{{ build_a() }}".to_string()
+            )
+        );
     }
 
     #[test]

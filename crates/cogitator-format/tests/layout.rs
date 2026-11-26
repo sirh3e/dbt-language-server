@@ -8,7 +8,7 @@ use rstest::rstest;
 
 fn duckdb() -> Config {
     Config {
-        dialect: "duckdb".into(),
+        dialect: Some("duckdb".into()),
         ..Config::default()
     }
 }
@@ -114,12 +114,18 @@ from t
     "select\n\ta,\n\tcount(*) as n\nfrom t\ngroup by a\n"
 )]
 fn the_rules_change_the_layout(#[case] config: Config, #[case] expected: &str) {
-    assert_eq!(fmt("select a, count(*) as n from t group by a", &config), expected);
+    assert_eq!(
+        fmt("select a, count(*) as n from t group by a", &config),
+        expected
+    );
 }
 
 #[test]
 fn operators_lexed_as_two_tokens_stay_one() {
-    let out = fmt("select a||b as c, x::decimal(18,3) as d from t where a!=b\n", &duckdb());
+    let out = fmt(
+        "select a||b as c, x::decimal(18,3) as d from t where a!=b\n",
+        &duckdb(),
+    );
     assert!(out.contains("a || b as c"), "{out}");
     assert!(out.contains("x::decimal(18, 3) as d"), "{out}");
     assert!(out.contains("a != b"), "{out}");
@@ -139,10 +145,16 @@ fn crlf_endings_are_kept() {
 
 #[test]
 fn broken_jinja_and_unknown_dialects_are_declined() {
-    assert!(matches!(format("select {{ x", &duckdb()), Err(Declined::Jinja(_))));
+    assert!(matches!(
+        format("select {{ x", &duckdb()),
+        Err(Declined::Jinja(_))
+    ));
     let config = Config {
-        dialect: "nope".into(),
+        dialect: Some("nope".into()),
         ..Config::default()
     };
-    assert!(matches!(format("select 1", &config), Err(Declined::Dialect(_))));
+    assert!(matches!(
+        format("select 1", &config),
+        Err(Declined::Dialect(_))
+    ));
 }

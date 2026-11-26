@@ -16,8 +16,10 @@ pub const CONFIG_FILES: [&str; 2] = ["cogitator-format.toml", ".cogitator-format
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
-    /// sqlfluff's dialect name (`duckdb`, `snowflake`, `bigquery`, …).
-    pub dialect: String,
+    /// sqlfluff's dialect name (`duckdb`, `snowflake`, `bigquery`, …); when
+    /// unset, the language server takes the dbt adapter's and a standalone
+    /// run `ansi`.
+    pub dialect: Option<String>,
     /// The longest line the layout aims for (LT05).
     pub max_line_length: usize,
     /// `space` or `tab` (LT02's `indent_unit`).
@@ -36,7 +38,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            dialect: "ansi".into(),
+            dialect: None,
             max_line_length: 80,
             indent_unit: IndentUnit::Space,
             tab_space_size: 4,
@@ -191,9 +193,24 @@ impl Config {
 
     /// Refuses what cannot be formatted with: an unknown dialect.
     pub fn checked(self) -> Result<Config, ConfigError> {
-        crate::sql::dialect(&self.dialect)
-            .map(|_| self.clone())
-            .ok_or(ConfigError::Dialect(self.dialect))
+        match crate::sql::dialect(self.dialect_name()) {
+            Some(_) => Ok(self),
+            None => Err(ConfigError::Dialect(self.dialect_name().to_string())),
+        }
+    }
+
+    /// The dialect formatted in: the rules', else `ansi`.
+    pub fn dialect_name(&self) -> &str {
+        self.dialect.as_deref().unwrap_or("ansi")
+    }
+
+    /// The rules with the dbt adapter's dialect where they name none
+    /// (`spark` → `sparksql`; an adapter sqlfluff has no dialect for, `ansi`).
+    pub fn with_adapter(self, adapter: &str) -> Config {
+        let dialect = self
+            .dialect
+            .or_else(|| dialect_for_adapter(adapter).map(str::to_string));
+        Config { dialect, ..self }
     }
 
     /// The width of one indent, in columns.
@@ -208,6 +225,21 @@ impl Config {
             IndentUnit::Space => " ".repeat(levels * self.indent_width()),
         }
     }
+}
+
+/// sqlfluff's dialect for a dbt adapter (the `type:` of a profile's target).
+pub fn dialect_for_adapter(adapter: &str) -> Option<&'static str> {
+    let adapter = adapter.trim().to_ascii_lowercase();
+    let dialect = match adapter.as_str() {
+        "spark" | "glue" => "sparksql",
+        "sqlserver" | "fabric" | "synapse" | "fabricspark" => "tsql",
+        "presto" | "starburst" => "trino",
+        "postgresql" => "postgres",
+        "materialize" => "materialize",
+        "duckdb_motherduck" | "motherduck" => "duckdb",
+        other => return crate::sql::DIALECTS.iter().copied().find(|d| *d == other),
+    };
+    Some(dialect)
 }
 
 /// The nearest config file at or above `start` (a file or a directory).
@@ -254,7 +286,7 @@ mod tests {
             indent_blocks = false
         "#;
         let config = Config::from_toml(text, Path::new("x.toml")).unwrap();
-        assert_eq!(config.dialect, "duckdb");
+        assert_eq!(config.dialect.as_deref(), Some("duckdb"));
         assert_eq!(config.max_line_length, 100);
         assert_eq!(config.indent(2), "\t\t");
         assert_eq!(config.case.keywords, Case::Upper);
@@ -268,6 +300,28 @@ mod tests {
         assert!(err.to_string().contains("max_lenght"), "{err}");
         let err = Config::from_toml("dialect = \"nope\"", Path::new("x.toml")).unwrap_err();
         assert!(err.to_string().contains("unknown dialect `nope`"), "{err}");
+    }
+
+    #[test]
+    fn a_dbt_adapter_names_a_dialect() {
+        assert_eq!(dialect_for_adapter("duckdb"), Some("duckdb"));
+        assert_eq!(dialect_for_adapter("spark"), Some("sparksql"));
+        assert_eq!(dialect_for_adapter("sqlserver"), Some("tsql"));
+        assert_eq!(dialect_for_adapter("Snowflake"), Some("snowflake"));
+        assert_eq!(dialect_for_adapter("an_adapter_of_its_own"), None);
+        let set = Config {
+            dialect: Some("bigquery".into()),
+            ..Config::default()
+        };
+        assert_eq!(set.with_adapter("duckdb").dialect_name(), "bigquery");
+        assert_eq!(
+            Config::default().with_adapter("duckdb").dialect_name(),
+            "duckdb"
+        );
+        assert_eq!(
+            Config::default().with_adapter("nope").dialect_name(),
+            "ansi"
+        );
     }
 
     #[test]

@@ -22,10 +22,34 @@ pub use events::{events, tag_leaf, verbatim_leaf};
 
 /// sqlfluff's dialects, as `dialect =` names them.
 pub const DIALECTS: [&str; 28] = [
-    "ansi", "athena", "bigquery", "clickhouse", "databricks", "db2", "doris", "duckdb",
-    "exasol", "flink", "greenplum", "hive", "impala", "mariadb", "materialize", "mysql",
-    "oracle", "postgres", "redshift", "snowflake", "soql", "sparksql", "sqlite", "starrocks",
-    "teradata", "trino", "tsql", "vertica",
+    "ansi",
+    "athena",
+    "bigquery",
+    "clickhouse",
+    "databricks",
+    "db2",
+    "doris",
+    "duckdb",
+    "exasol",
+    "flink",
+    "greenplum",
+    "hive",
+    "impala",
+    "mariadb",
+    "materialize",
+    "mysql",
+    "oracle",
+    "postgres",
+    "redshift",
+    "snowflake",
+    "soql",
+    "sparksql",
+    "sqlite",
+    "starrocks",
+    "teradata",
+    "trino",
+    "tsql",
+    "vertica",
 ];
 
 pub fn dialect_names() -> Vec<&'static str> {
@@ -90,10 +114,7 @@ fn unparsable(node: &Node) -> Option<String> {
             ..
         } if ty == "unparsable" => {
             let text: String = children.iter().map(Node::raw).collect();
-            let line = text.trim().lines().next().unwrap_or("");
-            let shown: String = line.chars().take(60).collect();
-            let more = if shown.len() < text.trim().len() { " …" } else { "" };
-            Some(format!("something else than `{shown}`{more}"))
+            Some(format!("something else than `{}`", text.trim()))
         }
         Node::Segment { children, .. } => children.iter().find_map(unparsable),
         _ => None,
@@ -115,7 +136,11 @@ pub fn code_tokens(sql: &str, dialect: Dialect) -> Result<Vec<String>, String> {
             continue;
         }
         let text = if token.is_comment() {
-            raw.trim().lines().map(str::trim).collect::<Vec<_>>().join("\n")
+            raw.trim()
+                .lines()
+                .map(str::trim)
+                .collect::<Vec<_>>()
+                .join("\n")
         } else {
             raw.to_uppercase()
         };
