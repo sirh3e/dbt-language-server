@@ -1,13 +1,26 @@
---- Optional nvim-cmp helpers: order cogitator's items by the server's
---- sortText (refs before sources before macros, closest names first),
---- and show an item's detail (model path, column type, …) in the menu.
---- Nothing here requires cmp; pass the functions to your cmp setup:
+--- Optional completion-plugin helpers. The server ranks with sortText:
+--- the columns of the relations in scope first (`alias.col` before a bare
+--- name two relations share), then CTEs, buffer words, relations,
+--- functions, keywords. Neovim's built-in completion sorts by sortText
+--- as it is; nvim-cmp and blink.cmp put their fuzzy score first, so a
+--- global that fuzzy-matches the typed word as well as a column can come
+--- out above it. Nothing here requires either plugin.
+---
+--- nvim-cmp: order cogitator's items by sortText, show the detail:
 ---
 ---   local dbt = require("cogitator.completion")
 ---   cmp.setup({
 ---     sorting = { comparators = dbt.sorted(cmp.config.compare) },
 ---     formatting = { format = dbt.format() },
 ---   })
+---
+--- blink.cmp (LazyVim's default; its fuzzy.sorts default is
+--- { "score", "sort_text" }): lift the in-scope columns' score so typing
+--- keeps them on top, wrapping a transform you already have:
+---
+---   sources = { providers = { lsp = {
+---     transform_items = require("cogitator.completion").blink_transform(),
+---   } } }
 
 local M = {}
 
@@ -65,6 +78,31 @@ function M.sorted(comparators)
     end
   end
   return list
+end
+
+--- What `blink_transform` adds to the score of a column in scope: enough
+--- to beat a global's fuzzy bonus (prefix, exact case) for the same
+--- typed word, not enough to lift a column that matches it badly.
+M.BLINK_BOOST = 8
+
+--- A blink.cmp `transform_items` for the lsp provider: cogitator's items
+--- of sortText tier `0` (the columns in scope, the CTEs after FROM) get
+--- `M.BLINK_BOOST` added to their score_offset; everything else passes
+--- through `inner` (another transform), or unchanged.
+---@param inner? fun(ctx: table, items: table[]): table[]
+---@return fun(ctx: table, items: table[]): table[]
+function M.blink_transform(inner)
+  return function(ctx, items)
+    if inner then
+      items = inner(ctx, items)
+    end
+    for _, item in ipairs(items) do
+      if item.client_name == "cogitator" and (item.sortText or ""):sub(1, 1) == "0" then
+        item.score_offset = (item.score_offset or 0) + M.BLINK_BOOST
+      end
+    end
+    return items
+  end
 end
 
 --- A cmp `formatting.format` that puts a cogitator item's detail in the

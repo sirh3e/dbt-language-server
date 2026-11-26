@@ -77,6 +77,7 @@ fn item(label: &str, detail: &str, kind: i32, insert: &str) -> CompletionItem {
         insert_text: insert.to_string(),
         sort_text: label.to_string(),
         data: None,
+        ..Default::default()
     }
 }
 

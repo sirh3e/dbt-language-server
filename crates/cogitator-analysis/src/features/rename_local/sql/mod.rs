@@ -7,7 +7,7 @@
 
 mod collect;
 mod complete;
-mod mask;
+pub(crate) mod mask;
 
 #[cfg(test)]
 mod tests;
