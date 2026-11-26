@@ -149,6 +149,21 @@ fn comment(prefix: &str, i: usize, width: usize) -> String {
     format!("{name}{}*/", " ".repeat(pad))
 }
 
+/// A block comment that stands for SQL kept as written, as wide as its
+/// first line. One line: sqlfluff lexes a comment over lines as several
+/// tokens. It always stands between two lone tags, on its own lines, so
+/// what is in its other lines changes no layout around it.
+pub fn kept_placeholder(prefix: &str, i: usize, text: &str) -> String {
+    let name = format!("/*{prefix}v{i}x");
+    let pad = width(text).saturating_sub(name.len() + 2);
+    format!("{name}{}*/", " ".repeat(pad))
+}
+
+/// Line breaks before a text's first character.
+pub fn leading_newlines(text: &str) -> usize {
+    text[..text.len() - text.trim_start().len()].matches('\n').count()
+}
+
 /// The printed text with every tag back, or None when a placeholder is
 /// missing or doubled.
 pub fn unmask(printed: &str, restore: &[(String, String)]) -> Option<String> {
@@ -228,6 +243,13 @@ mod tests {
         let one = identifier("p", 1, "");
         let ten = identifier("p", 10, "");
         assert!(!ten.contains(&one) && !one.contains(&ten));
+    }
+
+    #[test]
+    fn kept_sql_stands_in_as_a_comment_of_its_first_line() {
+        let placeholder = kept_placeholder("p", 3, "a_rather_long(b,\n  c)");
+        assert_eq!(placeholder, "/*pv3x        */");
+        assert_eq!(placeholder.chars().count(), "a_rather_long(b,".len());
     }
 
     #[test]

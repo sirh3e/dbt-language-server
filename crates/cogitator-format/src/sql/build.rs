@@ -36,6 +36,9 @@ const MAY_START_A_LINE: [&str; 3] = ["join_on_condition", "when_clause", "else_c
 /// operators, a join before its condition, a `case`'s `when`s).
 const OWN_GROUP: [&str; 3] = ["join_clause", "expression", "case_expression"];
 
+/// Segments that are a whole statement.
+const STATEMENTS: [&str; 3] = ["select_statement", "with_compound_statement", "set_expression"];
+
 /// What a Jinja statement does to the lines after it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TagRole {
@@ -166,6 +169,11 @@ pub fn layout(events: &[Event<'_>], config: &Config, tags: &Placeholders) -> Vec
                 if OWN_GROUP.contains(ty) {
                     own.push((ty, None));
                 }
+                // an expression that is a statement (a subquery) hangs no
+                // indent on the statement's lines
+                if STATEMENTS.contains(ty) && own.last() == Some(&("expression", None)) {
+                    own.pop();
+                }
             }
             Event::Exit(ty) => {
                 if OWN_GROUP.contains(ty) {
@@ -205,10 +213,12 @@ pub fn layout(events: &[Event<'_>], config: &Config, tags: &Placeholders) -> Vec
                     if shift != 0 {
                         frames.push(Doc::Shift(shift));
                     }
-                    // a tag written inline stays inline, so that whether a
-                    // tag stands alone is its author's choice, every run
+                    // a statement tag written inline stays inline, so that
+                    // whether it stands alone is its author's choice, every
+                    // run (a `{{ }}` is an identifier, laid out as one)
+                    let is_tag = |l: &Leaf<'_>| l.ty == "block_comment" && tags.is(l.raw);
                     let inline_tag = leaf.newlines_before == 0
-                        && (tags.is(prev.raw) || tags.is(leaf.raw))
+                        && (is_tag(prev) || is_tag(leaf))
                         && prev.ty != "inline_comment";
                     let sep = separator(prev, leaf, &pending, config, inline_tag);
                     frames.push(Doc::Sep(sep));

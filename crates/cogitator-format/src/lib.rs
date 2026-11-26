@@ -120,7 +120,7 @@ fn attempts(
 
 /// One way of masking laid out; `keep_unparsable`: SQL between two lone
 /// tags that the parser cannot read (a macro's body is often a fragment,
-/// not a statement) is kept byte for byte, as sqlfluff leaves unparsable
+/// or not SQL at all) is kept byte for byte, as sqlfluff leaves unparsable
 /// sections, while the rest is laid out.
 fn lay_out(
     masked: &mask::Masked,
@@ -145,58 +145,75 @@ fn lay_out(
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(unparsable)?;
+    // SQL kept as written is printed as a placeholder of its shape, which
+    // the check reads instead (it may not even lex), and goes back after
+    let kept: Vec<Option<(String, String)>> = masked
+        .units
+        .iter()
+        .zip(&trees)
+        .enumerate()
+        .map(|(i, (unit, tree))| match (unit, tree) {
+            (Unit::Sql(text), None) => Some((
+                mask::kept_placeholder(&masked.tags.prefix, i, text.trim()),
+                text.trim().to_string(),
+            )),
+            _ => None,
+        })
+        .collect();
     let events: Vec<_> = masked
         .units
         .iter()
         .zip(&trees)
-        .flat_map(|(unit, tree)| match (unit, tree) {
-            (_, Some(tree)) => sql::events(tree, config),
-            (
-                Unit::Tag {
-                    placeholder,
-                    newlines,
-                },
-                None,
-            ) => vec![sql::tag_leaf(placeholder, *newlines)],
-            (Unit::Sql(text), None) => vec![sql::verbatim_leaf(text)],
+        .zip(&kept)
+        .flat_map(|((unit, tree), kept)| match (unit, tree, kept) {
+            (_, Some(tree), _) => sql::events(tree, config),
+            (Unit::Tag { placeholder, newlines }, None, _) => {
+                vec![sql::tag_leaf(placeholder, *newlines)]
+            }
+            (Unit::Sql(text), None, Some((placeholder, _))) => {
+                vec![sql::verbatim_leaf(placeholder, mask::leading_newlines(text))]
+            }
+            (Unit::Sql(_), None, None) => Vec::new(),
         })
         .collect();
     let printed = sql::print(&sql::layout(&events, config, &masked.tags), config);
-    // SQL kept as written is no part of the check: it may not even lex
-    // (a macro whose body is a regular expression), and nothing moved in it
-    let kept: Vec<(&str, String)> = masked
-        .units
-        .iter()
-        .zip(&trees)
-        .filter_map(|(unit, tree)| match (unit, tree) {
-            (Unit::Sql(text), None) => Some(text.trim()),
-            _ => None,
-        })
-        .enumerate()
-        .map(|(i, text)| (text, format!("/*{}v{i}x*/", masked.tags.prefix)))
-        .collect();
-    let mut kept_at = kept.iter();
     let expected = masked
         .units
         .iter()
-        .zip(&trees)
-        .map(|(unit, tree)| match (unit, tree) {
-            (Unit::Sql(text), Some(_)) => sql::code_tokens(text, dialect),
-            (Unit::Sql(_), None) => Ok(kept_at.next().map(|(_, p)| p.clone()).into_iter().collect()),
-            (Unit::Tag { placeholder, .. }, _) => Ok(vec![placeholder.clone()]),
+        .zip(&kept)
+        .map(|(unit, kept)| match (unit, kept) {
+            (_, Some((placeholder, _))) => Ok(vec![placeholder.clone()]),
+            (Unit::Sql(text), None) => sql::code_tokens(text, dialect),
+            (Unit::Tag { placeholder, .. }, None) => Ok(vec![placeholder.clone()]),
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(unparsable)?
         .concat();
-    let checked = kept
-        .iter()
-        .fold(printed.clone(), |out, (text, placeholder)| {
-            out.replacen(text, placeholder, 1)
-        });
-    if sql::code_tokens(&checked, dialect).map_err(unparsable)? != expected {
+    let got = sql::code_tokens(&printed, dialect).map_err(unparsable)?;
+    if got != expected {
+        if std::env::var_os("COGITATOR_FORMAT_DEBUG").is_some() {
+            let at = got.iter().zip(&expected).position(|(a, b)| a != b).unwrap_or(0);
+            let around = |v: &[String]| v[at.saturating_sub(2)..(at + 3).min(v.len())].to_vec();
+            eprintln!("tokens differ at {at}: {:?} for {:?}", around(&got), around(&expected));
+        }
         return Err(Declined::Changed);
     }
-    mask::unmask(&printed, &masked.restore).ok_or(Declined::Changed)
+    let restore: Vec<(String, String)> = kept
+        .into_iter()
+        .flatten()
+        .chain(masked.restore.iter().cloned())
+        .collect();
+    mask::unmask(&printed, &restore).ok_or_else(|| {
+        if std::env::var_os("COGITATOR_FORMAT_DEBUG").is_some() {
+            let missing: Vec<_> = restore
+                .iter()
+                .filter(|(p, _)| printed.matches(p.as_str()).count() != 1)
+                .map(|(p, _)| p)
+                .collect();
+            eprintln!("placeholders not there once: {missing:?}");
+        }
+        Declined::Changed
+    })
 }
 
 /// No space at a line's end, no blank lines at the start, and the end of

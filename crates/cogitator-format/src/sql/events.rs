@@ -61,16 +61,15 @@ pub fn tag_leaf(raw: &str, newlines: usize) -> Event<'_> {
     })
 }
 
-/// SQL the parser could not read, kept as written: its first line is
-/// indented as the layout says, the others keep their own indentation.
-pub fn verbatim_leaf(text: &str) -> Event<'_> {
-    let start = text.len() - text.trim_start().len();
+/// SQL the parser could not read, by its placeholder, kept as written: its
+/// first line is indented as the layout says, the others keep their own.
+pub fn verbatim_leaf(placeholder: &str, newlines: usize) -> Event<'_> {
     Event::Leaf(Leaf {
         ty: "verbatim",
-        raw: text.trim(),
+        raw: placeholder,
         parent: "",
         is_keyword: false,
-        newlines_before: text[..start].matches('\n').count(),
+        newlines_before: newlines,
         spaced: true,
     })
 }

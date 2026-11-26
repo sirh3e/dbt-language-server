@@ -74,7 +74,7 @@ pub fn is_symbol(raw: &str) -> bool {
 /// `count(`, `xs[`, `)(`.
 fn is_callee(prev: &Leaf<'_>) -> bool {
     matches!(prev.ty, "function_name_identifier" | "end_square_bracket")
-        || matches!(prev.parent, "function_name" | "array_accessor")
+        || matches!(prev.parent, "function_name" | "array_accessor" | "data_type")
         || (prev.ty == "naked_identifier" && prev.parent == "array_type")
 }
 
@@ -139,6 +139,7 @@ mod tests {
     #[case(("keyword", "select", "select_clause"), ("naked_identifier", "a", "column_reference"), " ")]
     #[case(("naked_identifier", "a", "expression"), ("raw_comparison_operator", ">", "comparison_operator"), " ")]
     #[case(("binary_operator", "|", "binary_operator"), ("binary_operator", "|", "binary_operator"), "")]
+    #[case(("keyword", "decimal", "data_type"), ("start_bracket", "(", "bracketed"), "")]
     fn the_space_between(
         #[case] prev: (&str, &str, &str),
         #[case] next: (&str, &str, &str),
