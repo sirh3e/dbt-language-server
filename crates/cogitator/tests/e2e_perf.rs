@@ -164,7 +164,8 @@ fn suppression_comment_keeps_the_finding_in_the_plan_only() {
 fn push_reuses_a_cached_plan_and_never_computes() {
     let (project, uri) = project_with_probe("perf:\n  profile: recommended\n", CARTESIAN);
     let (mut lsp, _) = project.booted();
-    lsp.wait_status(|s| s["perf"]["profile"] == "recommended");
+    let status = lsp.wait_status(|s| s["perf"]["profile"] == "recommended");
+    let refreshes = status["refresh"]["count"].as_u64().unwrap_or(0);
 
     // didOpen publishes before any plan exists: no finding, no compute
     open(&mut lsp, &uri, CARTESIAN);
@@ -180,6 +181,12 @@ fn push_reuses_a_cached_plan_and_never_computes() {
         0,
         "push never computes"
     );
+
+    // didOpen also schedules a context refresh (debounced). A plan is keyed
+    // by the context snapshot it read, so a refresh landing between the
+    // pull and the save would leave the push nothing to serve: on a slow
+    // runner it did (Windows and macOS CI). Let it land first.
+    lsp.wait_refresh(refreshes + 1);
 
     // a pull computes; the plan lands in the cache
     let pulled = pull(&mut lsp, &uri);
