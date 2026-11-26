@@ -5,8 +5,12 @@
 --- with j/k and filtered with `/` — and applied only when confirmed.
 ---
 --- What is renamed: what the cursor names (prepareRename), else the
---- file's own model; `!` always the file's model. `summary` and `items`
---- are pure, for the suite.
+--- file's own model; `!` always the file's model. On a column whose
+--- lineage starts upstream the dialog also offers "apply up- and
+--- downstream" (`dbt.renameColumn` with `direction = "both"`): the rename
+--- from the model that defines the column, so every model it passes
+--- through keeps one name. `summary`, `items` and `upstream` are pure, for
+--- the suite.
 
 local actions = require("cogitator.actions")
 
@@ -36,12 +40,51 @@ end
 
 --- The confirmation dialog's items: apply, cancel, then a group with a
 --- diff per changed file.
+--- The dialog's item for a `dbt.renameColumn` answer in direction "both",
+--- `nil` when it adds nothing (not a column, or nothing upstream). A
+--- refusal is a disabled item that says why.
+---@param result table? the command's result
+---@param err table? its error
+---@param encoding string
+---@return cogitator.picker.Item?
+function M.upstream(result, err, encoding)
+  if err then
+    local why = (err.message or "refused"):gsub("\n.*", "")
+    if not why:find("traced upstream", 1, true) and not why:find("renamed safely", 1, true) then
+      return nil
+    end
+    return { label = "up- and downstream: not possible", icon = "✗", disabled = why }
+  end
+  if type(result) ~= "table" or type(result.origin) ~= "table" or result.origin.model == result.model then
+    return nil
+  end
+  local ca = require("cogitator.code_actions")
+  local s = M.summary(result.edit or {})
+  local chain = table.concat(result.origin.chain or {}, " ← ")
+  return {
+    label = ("apply up- and downstream: from %s.%s"):format(result.origin.model, result.origin.column),
+    icon = "⇅",
+    detail = ("%d %s in %d %s · %s"):format(
+      s.edits,
+      s.edits == 1 and "edit" or "edits",
+      s.files,
+      s.files == 1 and "file" or "files",
+      chain
+    ),
+    value = "apply_both",
+    preview = function()
+      return { lines = ca.edit_lines(result.edit, encoding), syntax = "diff" }
+    end,
+  }
+end
+
 ---@param edit table WorkspaceEdit
 ---@param from string
 ---@param to string
 ---@param encoding string
+---@param both cogitator.picker.Item? the up- and downstream item (M.upstream)
 ---@return cogitator.picker.Item[]
-function M.items(edit, from, to, encoding)
+function M.items(edit, from, to, encoding, both)
   local ca = require("cogitator.code_actions")
   local s = M.summary(edit)
   local what = ("%d %s in %d %s"):format(
@@ -73,7 +116,7 @@ function M.items(edit, from, to, encoding)
   for uri, edits in pairs(edit.changes or {}) do
     add({ textDocument = { uri = uri }, edits = edits }, ("%s  (%d)"):format(relative(uri), #edits))
   end
-  return {
+  local out = {
     {
       label = ("apply: %s → %s"):format(from, to),
       icon = "✓",
@@ -87,6 +130,10 @@ function M.items(edit, from, to, encoding)
     { label = "cancel", icon = "✗", value = "cancel" },
     { label = "changes", icon = "±", detail = what, children = files },
   }
+  if both then
+    table.insert(out, 2, both)
+  end
+  return out
 end
 
 --- Apply a confirmed edit and say what changed.
@@ -104,6 +151,22 @@ local function apply(client, edit, from, to)
   )
 end
 
+--- The `dbt.renameColumn` answer for `subject` in direction "both", then
+--- `on_done(result, err)`; nothing for a file's own model.
+local function ask_both(client, bufnr, subject, new_name, on_done)
+  if subject.whole_model then
+    return on_done(nil, nil)
+  end
+  actions.request(client, bufnr, "workspace/executeCommand", {
+    command = "dbt.renameColumn",
+    arguments = {
+      { uri = subject.uri, position = subject.position, newName = new_name, direction = "both" },
+    },
+  }, { timeout_ms = 30000 }, function(err, result)
+    on_done(result, err)
+  end)
+end
+
 --- Ask the server for the edit of `subject` → `new_name`, then confirm it.
 local function ask_edit(client, bufnr, subject, new_name)
   actions.request(client, bufnr, "textDocument/rename", {
@@ -119,15 +182,20 @@ local function ask_edit(client, bufnr, subject, new_name)
       vim.notify(("rename: the server cannot rename %s here"):format(subject.name), vim.log.levels.WARN)
       return
     end
-    require("cogitator.picker").open({
-      title = ("rename %s → %s"):format(subject.name, new_name),
-      items = M.items(result, subject.name, new_name, client.offset_encoding),
-      on_choose = function(item)
-        if item.value == "apply" then
-          apply(client, result, subject.name, new_name)
-        end
-      end,
-    })
+    ask_both(client, bufnr, subject, new_name, function(both, both_err)
+      local upstream = M.upstream(both, both_err, client.offset_encoding)
+      require("cogitator.picker").open({
+        title = ("rename %s → %s"):format(subject.name, new_name),
+        items = M.items(result, subject.name, new_name, client.offset_encoding, upstream),
+        on_choose = function(item)
+          if item.value == "apply" then
+            apply(client, result, subject.name, new_name)
+          elseif item.value == "apply_both" then
+            apply(client, both.edit, subject.name, new_name)
+          end
+        end,
+      })
+    end)
   end)
 end
 
@@ -180,7 +248,9 @@ function M.rename(opts)
   local usages = require("cogitator.usages")
   local new_name = opts.args ~= "" and opts.args or nil
   if opts.bang then
-    return M.run(client, bufnr, usages.subject(bufnr, true), new_name)
+    local whole = usages.subject(bufnr, true)
+    whole.whole_model = true
+    return M.run(client, bufnr, whole, new_name)
   end
   local here = usages.subject(bufnr, false, client.offset_encoding)
   actions.request(client, bufnr, "textDocument/prepareRename", {
@@ -198,7 +268,9 @@ function M.rename(opts)
       return M.run(client, bufnr, here, new_name)
     end
     -- nothing renameable under the cursor: the file's own model
-    M.run(client, bufnr, usages.subject(bufnr, true), new_name)
+    local whole = usages.subject(bufnr, true)
+    whole.whole_model = true
+    M.run(client, bufnr, whole, new_name)
   end)
 end
 

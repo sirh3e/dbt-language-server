@@ -209,6 +209,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.lineageSite",
     "dbt.syncYaml",
     "dbt.modelDependencies",
+    "dbt.renameColumn",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

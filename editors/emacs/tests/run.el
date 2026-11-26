@@ -399,6 +399,31 @@
               (equal (plist-get (aref (plist-get found :nodes) 0) :name) "customers"))
          "integration: dbt.select picks the nightly model" found))
 
+;; unit + integration: dbt.renameColumn
+(check (equal (cogitator--rename-column-lines
+               '(:model "b" :column "x" :newName "y" :direction "both"
+                 :origin (:model "a" :column "x" :chain ["b" "a"] :stop "`a` defines `x`")
+                 :models ["a" "b"]
+                 :edit (:documentChanges
+                        [(:textDocument (:uri "file:///p/models/a.sql")
+                          :edits [(:range (:start (:line 0 :character 7)) :newText "y")])])))
+              '("# dbt.renameColumn: b.x → y (both)"
+                "# from a.x: `a` defines `x`"
+                "# models: a, b"
+                "file:///p/models/a.sql: 1 edit(s)"
+                "  1:8 y"))
+       "rename-column: the preview says where it starts, then each edit")
+(with-current-buffer (find-file-noselect (expand-file-name "models/customers.sql" run--fixture))
+  (goto-char (point-min))
+  (search-forward "customers.customer_id,")
+  (backward-char (length "customer_id,"))
+  (let ((found (run--exec "dbt.renameColumn"
+                          (append (cogitator--command-argument t)
+                                  (list :newName "cust_id" :direction "both")))))
+    (check (and (equal (plist-get (plist-get found :origin) :model) "stg_customers")
+                (equal (aref (plist-get found :models) 0) "stg_customers"))
+           "integration: dbt.renameColumn climbs to stg_customers" found)))
+
 ;; unit + integration: dbt.syncYaml
 (check (equal (cogitator--sync-yaml-lines
                '(:changes 2

@@ -127,7 +127,10 @@ pub use relation::{
     TargetRelation,
 };
 pub use rename::{prepare_rename, rename_model};
-pub use rename_column::{prepare_rename_column, rename_column_at};
+pub use rename_column::{
+    prepare_rename_column, rename_column_at, rename_column_directed, ColumnRename,
+    Direction as ColumnRenameDirection, Origin as ColumnRenameOrigin,
+};
 pub use rename_local::{local_highlights, local_references, prepare_rename_local, rename_local_at};
 pub use rename_macro::{prepare_rename_at, rename_at};
 pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};

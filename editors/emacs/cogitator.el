@@ -1075,6 +1075,67 @@ buffer (or the models of this properties file).  See
                 (lambda (_) (message "cogitator: schema YAML synced")))))))))))
 
 ;; ---------------------------------------------------------------------------
+;; a column renamed up- and downstream (dbt.renameColumn)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--rename-column-lines (result)
+  "The preview lines of a dbt.renameColumn RESULT: what is renamed from
+where and why there, then the edits of each file."
+  (let* ((origin (plist-get result :origin))
+         (lines (list (format "# dbt.renameColumn: %s.%s → %s (%s)"
+                              (plist-get result :model) (plist-get result :column)
+                              (plist-get result :newName) (plist-get result :direction))
+                      (format "# from %s.%s: %s" (plist-get origin :model)
+                              (plist-get origin :column) (plist-get origin :stop))
+                      (concat "# models: " (mapconcat #'identity
+                                                      (append (plist-get result :models) nil)
+                                                      ", ")))))
+    (dolist (change (append (plist-get (plist-get result :edit) :documentChanges) nil))
+      (let ((uri (plist-get (plist-get change :textDocument) :uri))
+            (edits (append (plist-get change :edits) nil)))
+        (setq lines (append lines (list (format "%s: %d edit(s)" uri (length edits)))))
+        (dolist (edit edits)
+          (let ((start (plist-get (plist-get edit :range) :start)))
+            (setq lines (append lines (list (format "  %d:%d %s"
+                                                    (1+ (plist-get start :line))
+                                                    (1+ (plist-get start :character))
+                                                    (plist-get edit :newText)))))))))
+    lines))
+
+;;;###autoload
+(defun cogitator-rename-column (new-name &optional downstream-only)
+  "Rename the model column at point to NEW-NAME up- and downstream
+\(dbt.renameColumn with direction \"both\"): from the model its lineage
+says defines it, through every model that passes it on.  With a prefix
+argument DOWNSTREAM-ONLY, only this model and its consumers, as
+`eglot-rename' does.  The edits are previewed and applied on confirm."
+  (interactive
+   (list (read-string (format "Rename column %s to: " (or (thing-at-point 'symbol t) "")))
+         current-prefix-arg))
+  (let ((argument (append (cogitator--command-argument t)
+                          (list :newName new-name
+                                :direction (if downstream-only "down" "both")))))
+    (cogitator--execute
+     "dbt.renameColumn" argument
+     (lambda (result)
+       (if (not (plist-get result :edit))
+           (message "cogitator: no model column at point")
+         (let ((buf (get-buffer-create "*cogitator-rename-column*")))
+           (with-current-buffer buf
+             (let ((inhibit-read-only t))
+               (erase-buffer)
+               (insert (mapconcat #'identity (cogitator--rename-column-lines result) "\n") "\n")
+               (goto-char (point-min)))
+             (setq buffer-read-only t)
+             (local-set-key (kbd "q") #'quit-window))
+           (display-buffer buf)
+           (when (yes-or-no-p (format "Rename %s.%s to %s? " (plist-get result :model)
+                                      (plist-get result :column) new-name))
+             (cogitator--execute
+              "dbt.renameColumn" (append argument (list :apply t))
+              (lambda (_) (message "cogitator: column renamed — save the buffers"))))))))))
+
+;; ---------------------------------------------------------------------------
 
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)

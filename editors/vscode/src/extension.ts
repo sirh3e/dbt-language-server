@@ -1085,6 +1085,101 @@ async function syncYaml(): Promise<void> {
   }
 }
 
+/** A dbt.renameColumn answer, as far as the palette reads it. */
+export interface ColumnRenameResult {
+  model: string;
+  column: string;
+  newName: string;
+  direction: string;
+  origin: { model: string; column: string; chain: string[]; stop: string };
+  models: string[];
+  edit: {
+    documentChanges: Array<{
+      textDocument: { uri: string };
+      edits: Array<{ range: { start: { line: number; character: number } }; newText: string }>;
+    }>;
+  };
+}
+
+/** One line on a dbt.renameColumn answer, for the confirmation. */
+export function renameColumnSummary(result: ColumnRenameResult): string {
+  const changes = result.edit.documentChanges ?? [];
+  const edits = changes.reduce((n, c) => n + (c.edits?.length ?? 0), 0);
+  return `dbt: rename ${result.origin.model}.${result.origin.column} → ${result.newName}: ${edits} edit(s) in ${changes.length} file(s), models ${result.models.join(", ")}`;
+}
+
+/** The preview of a dbt.renameColumn answer: where it starts, then each edit. */
+export function renameColumnLines(result: ColumnRenameResult): string[] {
+  const lines = [
+    `# dbt.renameColumn: ${result.model}.${result.column} → ${result.newName} (${result.direction})`,
+    `# from ${result.origin.model}.${result.origin.column}: ${result.origin.stop}`,
+  ];
+  for (const change of result.edit.documentChanges ?? []) {
+    lines.push(`${change.textDocument.uri}: ${change.edits.length} edit(s)`);
+    for (const edit of change.edits) {
+      const at = edit.range.start;
+      lines.push(`  ${at.line + 1}:${at.character + 1} ${edit.newText}`);
+    }
+  }
+  return lines;
+}
+
+/** Rename the model column at the cursor up- and downstream (dbt.renameColumn). */
+async function renameColumn(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    void vscode.window.showWarningMessage("cogitator: open a dbt model first.");
+    return;
+  }
+  const at = editor.selection.active;
+  const word = editor.document.getText(editor.document.getWordRangeAtPosition(at));
+  const newName = await vscode.window.showInputBox({
+    prompt: `Rename column ${word} to`,
+    value: word,
+  });
+  if (!newName || newName === word) {
+    return;
+  }
+  const direction = await vscode.window.showQuickPick(
+    [
+      { label: "Up- and downstream", description: "from the model that defines it", key: "both" },
+      { label: "Downstream only", description: "this model and its consumers", key: "down" },
+    ],
+    { placeHolder: `Rename ${word} → ${newName}…` }
+  );
+  if (!direction) {
+    return;
+  }
+  const argument = {
+    position: { line: at.line, character: at.character },
+    newName,
+    direction: direction.key,
+  };
+  let result: ColumnRenameResult | undefined | null;
+  try {
+    result = (await execDbt("dbt.renameColumn", argument)) as ColumnRenameResult | undefined | null;
+  } catch (err) {
+    void vscode.window.showErrorMessage(`dbt: ${(err as Error).message}`);
+    return;
+  }
+  if (!result) {
+    void vscode.window.showWarningMessage("dbt: no model column at the cursor");
+    return;
+  }
+  let choice = await vscode.window.showInformationMessage(renameColumnSummary(result), "Apply", "Show edits");
+  if (choice === "Show edits") {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: renameColumnLines(result).join("\n"),
+    });
+    await vscode.window.showTextDocument(doc, { preview: true });
+    choice = await vscode.window.showInformationMessage(renameColumnSummary(result), "Apply");
+  }
+  if (choice === "Apply") {
+    await execDbt("dbt.renameColumn", { ...argument, apply: true });
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -1109,6 +1204,7 @@ export async function activate(
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
     ["cogitator.modelDependencies", modelDependencies],
+    ["cogitator.renameColumn", renameColumn],
     [
       "cogitator.status",
       async () => {
