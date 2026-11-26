@@ -15,7 +15,7 @@ mod from_hir;
 mod typed;
 
 pub use from_hir::column_lineage;
-pub(crate) use from_hir::{has_control_block, template_input};
+pub(crate) use from_hir::{column_lineage_expanded, has_control_block, template_input};
 pub use typed::{needs_compiled, typed_column_lineage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]

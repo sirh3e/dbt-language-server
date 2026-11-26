@@ -22,13 +22,17 @@ pub fn cte_preview_lenses(ctx: &DbtContext, doc: &Document, uri: &str) -> Vec<Co
 
 fn lenses(parsed: &ParsedDocument, uri: &str) -> Vec<CodeLens> {
     let outline = outline(parsed);
-    let mut lenses: Vec<CodeLens> = outline
-        .ctes
-        .iter()
-        .map(|(name, token)| lens(token, json!({"uri": uri, "cte": name})))
-        .collect();
+    let mut lenses = Vec::new();
+    for (name, token) in &outline.ctes {
+        lenses.push(lens(token, json!({"uri": uri, "cte": name})));
+        lenses.push(sql_lens(
+            token,
+            json!({"uri": uri, "cte": name, "show": true}),
+        ));
+    }
     if let Some(select) = outline.final_select {
         lenses.push(lens(&select, json!({"uri": uri})));
+        lenses.push(sql_lens(&select, json!({"uri": uri, "show": true})));
     }
     lenses
 }
@@ -50,6 +54,39 @@ pub fn cte_at(parsed: &ParsedDocument, position: Position) -> Option<String> {
         .rev()
         .find(|(_, t)| (t.line, t.column) <= at)
         .map(|(name, _)| name.clone())
+}
+
+/// "Show the SQL of CTE `x`" (or of the final select) at the cursor.
+pub fn cte_sql_action(
+    ctx: &DbtContext,
+    doc: &Document,
+    uri: &str,
+    position: Position,
+) -> Option<cogitator_lsp::CodeAction> {
+    let model = model_name_from_uri(uri)?;
+    if !ctx.model_detail_map.contains_key(&model) {
+        return None;
+    }
+    let cte = cte_at(&doc.parsed, position);
+    let title = match &cte {
+        Some(name) => format!("Show the SQL of CTE `{name}`"),
+        None => "Show the SQL of the final select".to_string(),
+    };
+    let mut argument = json!({"uri": uri, "show": true});
+    if let Some(name) = &cte {
+        argument["cte"] = json!(name);
+    }
+    Some(
+        cogitator_lsp::CodeAction::command_only(
+            title.clone(),
+            Command {
+                title,
+                command: CTE_SQL.to_string(),
+                arguments: vec![argument],
+            },
+        )
+        .at_cursor(),
+    )
 }
 
 struct Outline {
@@ -90,6 +127,17 @@ fn outline(parsed: &ParsedDocument) -> Outline {
     Outline { ctes, final_select }
 }
 
+/// "SQL": the query that selects it, opened as a document (dbt.cteSql).
+fn sql_lens(token: &Token, argument: serde_json::Value) -> CodeLens {
+    let mut lens = lens(token, argument);
+    lens.command.title = "SQL".to_string();
+    lens.command.command = CTE_SQL.to_string();
+    lens
+}
+
+/// The command of the "SQL" lens.
+pub const CTE_SQL: &str = "dbt.cteSql";
+
 fn lens(token: &Token, argument: serde_json::Value) -> CodeLens {
     let start = Position {
         line: token.line,
@@ -127,10 +175,40 @@ mod tests {
 
     #[test]
     fn a_lens_per_cte_and_one_on_the_final_select() {
-        let got: Vec<(u32, serde_json::Value)> = lenses(&parsed(SQL), "file:///m.sql")
-            .into_iter()
+        let all = lenses(&parsed(SQL), "file:///m.sql");
+        let got: Vec<(u32, serde_json::Value)> = all
+            .iter()
+            .filter(|l| l.command.command == PREVIEW_CTE)
             .map(|l| (l.range.start.line, l.command.arguments[0].clone()))
             .collect();
+        // each also has an "SQL" lens beside it, which opens its query
+        let sql: Vec<(u32, &str, serde_json::Value)> = all
+            .iter()
+            .filter(|l| l.command.command == CTE_SQL)
+            .map(|l| {
+                (
+                    l.range.start.line,
+                    l.command.title.as_str(),
+                    l.command.arguments[0].clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            sql,
+            vec![
+                (
+                    0,
+                    "SQL",
+                    json!({"uri": "file:///m.sql", "cte": "orders", "show": true})
+                ),
+                (
+                    3,
+                    "SQL",
+                    json!({"uri": "file:///m.sql", "cte": "payments", "show": true})
+                ),
+                (6, "SQL", json!({"uri": "file:///m.sql", "show": true})),
+            ]
+        );
         assert_eq!(
             got,
             vec![
@@ -143,7 +221,10 @@ mod tests {
 
     #[test]
     fn a_model_without_ctes_gets_the_final_select_lens_only() {
-        let got = lenses(&parsed("select 1 as id\n"), "file:///m.sql");
+        let got: Vec<CodeLens> = lenses(&parsed("select 1 as id\n"), "file:///m.sql")
+            .into_iter()
+            .filter(|l| l.command.command == PREVIEW_CTE)
+            .collect();
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].command.arguments[0], json!({"uri": "file:///m.sql"}));
     }

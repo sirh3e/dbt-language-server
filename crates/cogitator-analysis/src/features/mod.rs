@@ -86,8 +86,9 @@ pub use compiled_map::{
 };
 pub use completion::{completion, resolve_completion_documentation};
 pub use cte_preview::{
-    choose_source, cte_at, cte_preview_lenses, parse_show, preview_file_name, preview_query,
-    render_markdown, CtePreview, PreviewSource, ShowTable,
+    card_markdown, choose_source, cte_at, cte_card, cte_preview_lenses, cte_sql, cte_sql_action,
+    cte_sql_file_name, parse_show, preview_file_name, preview_query, render_markdown, CteCard,
+    CteColumn, CtePreview, CteSql, PreviewSource, ShowTable,
 };
 pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};

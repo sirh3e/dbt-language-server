@@ -219,6 +219,19 @@ async function previewCte(): Promise<void> {
   });
 }
 
+/** dbt.cteSql: the query that selects the CTE under the cursor (or the
+ * final select), Jinja resolved, without running it. */
+async function cteSql(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const position = editor
+    ? { line: editor.selection.active.line, character: editor.selection.active.character }
+    : undefined;
+  const result = (await execDbt("dbt.cteSql", { position })) as { text?: string } | null | undefined;
+  if (result?.text) {
+    await showSql(result.text);
+  }
+}
+
 /** One row of a dbt.incrementality report. */
 export interface IncrementalityRow {
   model: string;
@@ -1140,6 +1153,7 @@ export async function activate(
     ["cogitator.compile", () => execDbt("dbt.compile")],
     ["cogitator.preview", () => execDbt("dbt.preview")],
     ["cogitator.previewCte", previewCte],
+    ["cogitator.cteSql", cteSql],
     ["cogitator.parse", () => execDbt("dbt.parse")],
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],

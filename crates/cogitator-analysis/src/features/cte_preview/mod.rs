@@ -9,17 +9,21 @@
 //! - `render`: the markdown table editors without a command UI open;
 //! - `locate`: the "Preview rows" lenses and the CTE under a cursor.
 
+mod card;
 mod locate;
 mod query;
 mod render;
 mod show;
 mod source;
+mod sql;
 
-pub use locate::{cte_at, cte_preview_lenses};
+pub use card::{card_markdown, cte_card, CteCard, CteColumn};
+pub use locate::{cte_at, cte_preview_lenses, cte_sql_action};
 pub use query::preview_query;
 pub use render::{preview_file_name, render_markdown};
 pub use show::{parse_show, ShowTable};
 pub use source::{choose_source, PreviewSource};
+pub use sql::{cte_sql, cte_sql_file_name, CteSql};
 
 use serde::Serialize;
 

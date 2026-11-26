@@ -229,6 +229,7 @@ impl Dispatcher {
                     }
                     extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
                     extra.extend(features::test_sql_action(&snap.ctx, &uri));
+                    extra.extend(features::cte_sql_action(&snap.ctx, doc, &uri, range.start));
                     extra.extend(features::incremental_sql_action(&snap.ctx, doc, &uri));
                     extra.extend(features::incremental_template_actions(&snap.ctx, doc, &uri));
                     extra.extend(

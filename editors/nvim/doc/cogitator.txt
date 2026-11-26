@@ -187,6 +187,17 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                                                      <leader>di
   :DbtProblems   this file's problems in the location list, errors
                  first, `✚` where a fix exists       <leader>dI
+  :DbtPreviewCte! [limit]
+                 the rows of the CTE under the cursor in a float
+                 (q or <Esc> closes)                 <leader>dC
+  :DbtCtes       every CTE of this model in the picker, its columns
+                 and lineage as preview; choose rows (float or split),
+                 its SQL or a jump                   <leader>dK
+  :DbtCteSql [cte]
+                 the query that selects a CTE, Jinja resolved, no
+                 warehouse, in a SQL split
+  (hover)        K on a CTE's name: its columns and where each comes
+                 from
   :DbtTestSql    the SQL every test of this model runs, as the query
                  dbt executes; <CR> on a header opens the test's
                  declaration, ]t / [t walk the tests <leader>dQ

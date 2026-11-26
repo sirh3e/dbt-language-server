@@ -83,6 +83,10 @@
         "title": "dbt: Compare incremental / full refresh"
       },
       {
+        "command": "cogitator.cteSql",
+        "title": "dbt: Show the SQL of the CTE under the cursor"
+      },
+      {
         "command": "cogitator.testSql",
         "title": "dbt: Show the SQL of this model's tests"
       },

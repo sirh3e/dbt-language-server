@@ -211,6 +211,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.modelDependencies",
     "dbt.testSql",
     "dbt.incrementalSql",
+    "dbt.cteSql",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

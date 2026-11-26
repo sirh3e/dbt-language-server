@@ -70,6 +70,10 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Diagnostics**: dangling `ref()` detection, dbt YAML schema validation
   (typify-generated types from [dbt-jsonschema]), pull diagnostics
   (`textDocument/diagnostic`)
+- **CTEs without the warehouse**: the query that selects a CTE
+  (`dbt.cteSql`, an "SQL" lens beside "Preview rows"), and on hover a CTE's
+  columns with the lineage of each; in Neovim the rows in a float
+  (`:DbtPreviewCte!`) and every CTE in a picker (`:DbtCtes`)
 - **The SQL of a model's tests** (`dbt.testSql`): every YAML data test
   (dbt's own, the project's and packages' generic tests, with their
   arguments and `where:`), singular test and unit test of the model,

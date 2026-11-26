@@ -42,10 +42,13 @@ M.defaults = {
   -- yazi-style picker walked with h/j/k/l; false → the `picker` backend
   -- for choices, vim.ui.input for prompts, the stock code-action menu
   ui = { picker = true },
+  -- :DbtPreviewCte: rows in a "split" or a "float" at the cursor (the
+  -- bang and <leader>dC always float)
+  preview = { cte = "split" },
 }
 
 -- the nested tables whose keys are checked like the top level's
-local NESTED = { "lens", "lineage", "dag", "grammar", "navigator", "highlight", "ui" }
+local NESTED = { "lens", "lineage", "dag", "grammar", "navigator", "highlight", "ui", "preview" }
 -- nested keys whose default is nil (invisible to the defaults lookup)
 local NESTED_NIL = { grammar = { url = true, rev = true } }
 
@@ -104,6 +107,10 @@ local function validate(opts)
   vim.validate("grammar.auto_install", grammar.auto_install, "boolean", true)
   vim.validate("grammar.url", grammar.url, "string", true)
   vim.validate("grammar.rev", grammar.rev, "string", true)
+  vim.validate("preview", opts.preview, "table", true)
+  vim.validate("preview.cte", (opts.preview or {}).cte, function(v)
+    return v == nil or v == "split" or v == "float"
+  end, '"split" or "float"')
   vim.validate("ui", opts.ui, "table", true)
   vim.validate("ui.picker", (opts.ui or {}).picker, "boolean", true)
   vim.validate("highlight", opts.highlight, "table", true)

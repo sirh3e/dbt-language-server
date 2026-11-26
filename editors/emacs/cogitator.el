@@ -409,6 +409,15 @@ and the SQL when `is_incremental()' changes nothing."
    "dbt.testSql" (cogitator--command-argument)
    (lambda (result) (cogitator--show-sql "*cogitator-test-sql*" result))))
 
+;;;###autoload
+(defun cogitator-cte-sql ()
+  "The query that selects the CTE at point (or the final select), Jinja
+resolved and without the warehouse."
+  (interactive)
+  (cogitator--execute
+   "dbt.cteSql" (cogitator--command-argument t)
+   (lambda (result) (cogitator--show-sql "*cogitator-cte-sql*" result))))
+
 (defconst cogitator-incremental-strategies
   '("append" "merge" "delete+insert" "insert_overwrite" "microbatch")
   "The strategies `cogitator-incremental-sql' takes.")

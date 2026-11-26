@@ -251,6 +251,53 @@ return function(ctx)
   )
   vim.api.nvim_set_current_buf(bufnr)
 
+  -- a CTE without the warehouse: its SQL, the picker's list, the card
+  local stg_path = vim.fs.joinpath(ctx.fixture, "models", "staging", "stg_orders.sql")
+  local cte_result = H.exec_cmd(client, bufnr, "dbt.cteSql", {
+    uri = vim.uri_from_fname(stg_path),
+    cte = "renamed",
+  }, "integration: dbt.cteSql")
+  H.check(
+    type(cte_result) == "table"
+      and cte_result.cte == "renamed"
+      and type(cte_result.text) == "string"
+      and cte_result.text:find("raw_orders", 1, true) ~= nil
+      and not cte_result.sql:lower():find("limit", 1, true),
+    "integration: dbt.cteSql gives the CTE's query, no limit",
+    vim.inspect(cte_result):sub(1, 300)
+  )
+  vim.cmd.edit(stg_path)
+  local stg_buf = vim.api.nvim_get_current_buf()
+  H.wait("integration: client attaches to stg_orders.sql", 15000, function()
+    return #vim.lsp.get_clients({ bufnr = stg_buf, name = "cogitator" }) > 0
+  end)
+  local symbols = H.request(client, stg_buf, "textDocument/documentSymbol", {
+    textDocument = { uri = vim.uri_from_bufnr(stg_buf) },
+  }, "integration: the CTE symbols") or {}
+  local listed = vim.tbl_map(function(c)
+    return c.name
+  end, require("cogitator.preview_cte").ctes_of(symbols, vim.uri_from_bufnr(stg_buf)))
+  H.check(
+    vim.deep_equal(listed, { "source", "renamed", false }),
+    ":DbtCtes: stg_orders' CTEs and its final select",
+    vim.inspect(listed)
+  )
+  local renamed = require("cogitator.preview_cte").ctes_of(symbols, vim.uri_from_bufnr(stg_buf))[2]
+  local cte_hover = H.request(client, stg_buf, "textDocument/hover", {
+    textDocument = { uri = vim.uri_from_bufnr(stg_buf) },
+    position = { line = renamed.line, character = renamed.character },
+  }, "integration: the CTE card")
+  local card = cte_hover and cte_hover.contents
+  card = type(card) == "table" and card.value or card
+  H.check(
+    type(card) == "string"
+      and card:find("**CTE** `renamed`", 1, true) ~= nil
+      and card:find("order_id", 1, true) ~= nil,
+    "integration: hovering a CTE shows its columns",
+    vim.inspect(card)
+  )
+  vim.api.nvim_set_current_buf(bufnr)
+
   local unresolved_result = H.exec_cmd(client, bufnr, "dbt.unresolved", {
     uri = vim.uri_from_bufnr(bufnr),
   }, "integration: dbt.unresolved")

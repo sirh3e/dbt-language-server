@@ -35,7 +35,24 @@ vim.api.nvim_create_user_command("DbtPreview", function(opts)
 end, { nargs = "?", desc = "dbt show for the current model (optional row limit, default 50)" })
 vim.api.nvim_create_user_command("DbtPreviewCte", function(opts)
   require("cogitator.preview_cte").preview_cte(opts)
-end, { nargs = "?", desc = "rows of the CTE under the cursor (optional row limit, default preview.rows)" })
+end, {
+  nargs = "?",
+  bang = true,
+  desc = "rows of the CTE under the cursor (optional row limit, default preview.rows); ! in a float",
+})
+--- the CTE names of the current buffer, for completion (read from its text)
+local function cte_names(lead)
+  local names = require("cogitator.preview_cte").names_in(vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  return vim.tbl_filter(function(name)
+    return vim.startswith(name, lead or "")
+  end, names)
+end
+vim.api.nvim_create_user_command("DbtCteSql", function(opts)
+  require("cogitator.preview_cte").cte_sql(opts)
+end, { nargs = "?", complete = cte_names, desc = "the SQL of the CTE under the cursor (or the one named)" })
+vim.api.nvim_create_user_command("DbtCtes", function()
+  require("cogitator.preview_cte").pick()
+end, { desc = "every CTE of this model in the picker" })
 cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
 cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, as a diff in a split")
 cmd("DbtTestSql", "test_sql", "the SQL every test of this model runs, in a split")

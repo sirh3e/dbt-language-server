@@ -120,7 +120,7 @@ writer wins).
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
   `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`,
-  `dbt.testSql`, `dbt.incrementalSql`,
+  `dbt.testSql`, `dbt.incrementalSql`, `dbt.cteSql`,
   `dbt.modelDependencies`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
@@ -161,6 +161,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.incrementalDiff` | `{model, fullRefresh, incremental, diff, identical}` or InvalidParams Guidance | none, or with `show: true` (the "Compare incremental / full refresh" lens) the diff written to `target/.cogitator/incremental/<model>.diff` and opened via showDocument |
 | `dbt.testSql` | `{model, relation, tests, text}`, each test `{label, kind, sql, query, error, …}`, or InvalidParams Guidance | none, or with `show: true` (the "Show the SQL of N tests" action) the text written to `target/.cogitator/tests/<model>.sql` and opened via showDocument |
 | `dbt.incrementalSql` | `{model, strategy, strategySource, steps, fullRefresh, notes, text}` or InvalidParams Guidance | none, or with `show: true` the text written to `target/.cogitator/incremental/<model>.<strategy>.sql` and opened via showDocument |
+| `dbt.cteSql` | `{model, cte, source, sql, text}` or InvalidParams Guidance | none, or with `show: true` (the "SQL" lens and the "Show the SQL of CTE `x`" action) the text written to `target/.cogitator/preview/<model>.<cte or final>.sql` and opened via showDocument |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -513,6 +514,7 @@ vim.lsp.enable("cogitator")
 | `:DbtMacros` | `workspace/symbol`, `textDocument/references` | every macro in the yazi-style dialog; choosing one shows where it is called (asked at its header, which the server reads from disk when the file is not open) — **Neovim only** |
 | `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
+| `:DbtPreviewCte! [limit]`, `:DbtCtes`, `:DbtCteSql [cte]` | `dbt.previewCte`, `textDocument/documentSymbol` + `textDocument/hover`, `dbt.cteSql` | the rows of the CTE under the cursor in a float (`!`, `<leader>dC`, or `preview.cte = "float"`; `q`/`<Esc>` close); every CTE of the model in the picker with its hover card (columns and lineage) as preview, choosing one offers the rows (float or split), its SQL or a jump to it (`<leader>dK`); the query that selects a CTE, no warehouse, in a SQL split (names completed) |
 | `:DbtTestSql` | `dbt.testSql` | every test of this model (YAML data tests, singular tests, unit tests listed) as the query dbt executes, in a SQL split; `<CR>` on a test's header opens its declaration, `]t`/`[t` walk the tests, `q` closes, `<leader>dQ` |
 | `:DbtIncrementalSql [strategy]` | `dbt.incrementalSql` | what an incremental run executes for the model's strategy (or the one named, completed), and the full refresh, in a SQL split, `<leader>dM`; `:Dbt incremental` opens the strategy templates in the code-action menu |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |

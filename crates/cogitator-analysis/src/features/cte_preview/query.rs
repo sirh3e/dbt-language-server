@@ -17,11 +17,13 @@ pub fn preview_query(
     compiled: &str,
     dialect: &Dialect,
     cte: Option<&str>,
-    limit: usize,
+    limit: Option<usize>,
 ) -> Result<String, Guidance> {
     let query = single_query(compiled, dialect)?;
+    // no limit: the SQL as a reader runs it (dbt.cteSql)
+    let limit = limit.map(|n| format!(" limit {n}")).unwrap_or_default();
     let sql = match cte {
-        None => format!("select * from ({query}) as cogitator_preview limit {limit}"),
+        None => format!("select * from ({query}) as cogitator_preview{limit}"),
         Some(name) => {
             let wanted = unquote(name);
             let with = query.with.as_ref().ok_or_else(|| no_such_cte(name, &[]))?;
@@ -40,7 +42,7 @@ pub fn preview_query(
             let mut kept = with.clone();
             kept.cte_tables.truncate(index + 1);
             let alias = kept.cte_tables[index].alias.name.clone();
-            format!("{kept} select * from {alias} limit {limit}")
+            format!("{kept} select * from {alias}{limit}")
         }
     };
     // what we print must read back as one query, or we would run
@@ -151,7 +153,7 @@ mod tests {
         ];
         for (cte, want) in cases {
             assert_eq!(
-                preview_query(MODEL, &duck(), cte, 5).unwrap(),
+                preview_query(MODEL, &duck(), cte, Some(5)).unwrap(),
                 want,
                 "{cte:?}"
             );
@@ -169,7 +171,7 @@ mod tests {
             ("select * from t for update", "locks"),
         ];
         for (sql, why) in cases {
-            let err = preview_query(sql, &Dialect::new("postgres"), None, 5)
+            let err = preview_query(sql, &Dialect::new("postgres"), None, Some(5))
                 .unwrap_err()
                 .to_message();
             assert!(
@@ -181,12 +183,12 @@ mod tests {
 
     #[test]
     fn an_unknown_cte_names_the_ones_there_are() {
-        let err = preview_query(MODEL, &duck(), Some("payment"), 5)
+        let err = preview_query(MODEL, &duck(), Some("payment"), Some(5))
             .unwrap_err()
             .to_message();
         assert!(err.contains("no CTE 'payment'"), "{err}");
         assert!(err.contains("orders, payments, final"), "{err}");
-        let none = preview_query("select 1", &duck(), Some("x"), 5)
+        let none = preview_query("select 1", &duck(), Some("x"), Some(5))
             .unwrap_err()
             .to_message();
         assert!(none.contains("no WITH clause"), "{none}");
@@ -194,7 +196,7 @@ mod tests {
 
     #[test]
     fn unparsable_sql_says_so() {
-        let err = preview_query("select from where", &duck(), None, 5)
+        let err = preview_query("select from where", &duck(), None, Some(5))
             .unwrap_err()
             .to_message();
         assert!(err.contains("could not be parsed"), "{err}");
@@ -206,12 +208,24 @@ mod tests {
             "with \"Odd\" as (select 1) select * from \"Odd\"",
             &duck(),
             Some("\"Odd\""),
-            3,
+            Some(3),
         )
         .unwrap();
         assert_eq!(
             sql,
             "WITH \"Odd\" AS (SELECT 1) select * from \"Odd\" limit 3"
         );
+    }
+
+    #[test]
+    fn without_a_limit_the_cte_is_selected_whole() {
+        let sql = preview_query(
+            "with a as (select 1 as x), b as (select x from a) select * from b",
+            &duck(),
+            Some("a"),
+            None,
+        )
+        .unwrap();
+        assert_eq!(sql, "WITH a AS (SELECT 1 AS x) select * from a");
     }
 }

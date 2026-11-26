@@ -40,6 +40,24 @@ pub fn column_lineage(doc: &ParsedDocument, dialect: &Dialect) -> Option<ModelLi
     })
 }
 
+/// [`column_lineage`] with `select *` expanded where what it reads is
+/// known in the template (a CTE, a derived table): what a CTE's card
+/// reads its columns from, as `select * from <cte>` is how it is cut.
+pub(crate) fn column_lineage_expanded(
+    doc: &ParsedDocument,
+    dialect: &Dialect,
+) -> Option<ModelLineage> {
+    if has_control_block(doc) {
+        return None;
+    }
+    let lowered = build_hir(&template_input(doc, dialect), &SchemaEnv::default());
+    let columns = columns_of(&lowered, &doc.text, Some(doc), true)?;
+    Some(ModelLineage {
+        columns,
+        origin: None,
+    })
+}
+
 pub(crate) fn template_input<'a>(doc: &'a ParsedDocument, dialect: &'a Dialect) -> HirInput<'a> {
     HirInput {
         text: &doc.text,

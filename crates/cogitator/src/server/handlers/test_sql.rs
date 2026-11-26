@@ -22,7 +22,10 @@ pub fn test_sql(snap: &Snapshot, derived: &DerivedCache, uri: &str, show: bool) 
                 .fix("pass the uri of a dbt model."),
         );
     };
-    let inputs = super::commands::preview_inputs(snap, derived);
+    let mut inputs = super::commands::preview_inputs(snap, derived);
+    // dbt reads generic tests from the test paths' `generic/` too, not only
+    // from the macro paths the renderer's sources come from
+    inputs.macro_sources.extend(generic_test_sources(snap));
     let singular = singular_files(snap, &model);
     let Some(answer) = features::test_sql(&snap.ctx, uri, &inputs, &singular) else {
         return invalid(
@@ -42,6 +45,28 @@ pub fn test_sql(snap: &Snapshot, derived: &DerivedCache, uri: &str, show: bool) 
         })),
         None => Reply::result(&answer),
     }
+}
+
+/// The `.sql` files under `<test path>/generic/` of the project: dbt's
+/// other home of `{% test %}` blocks.
+fn generic_test_sources(snap: &Snapshot) -> Vec<String> {
+    let Some(root) = snap.ctx.project_root.as_deref() else {
+        return Vec::new();
+    };
+    let mut files: Vec<std::path::PathBuf> = snap
+        .ctx
+        .project
+        .test_paths
+        .iter()
+        .map(|dir| root.join(dir).join("generic"))
+        .filter(|dir| dir.is_dir())
+        .flat_map(|dir| cogitator_analysis::util::walk_filepath(&dir, ".sql"))
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .filter_map(|path| std::fs::read_to_string(path).ok())
+        .collect()
 }
 
 /// The singular tests that ref `model`: the graph's test nodes downstream

@@ -261,10 +261,17 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none; with `show: true` writes `target/.cogitator/incremental/<model>.diff` and opens it via showDocument. Incremental models (the file's `config(materialized=…)`, else the manifest's) carry the code lens "Compare incremental / full refresh" — :DbtIncrementalDiff
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.cteSql`
+
+- **Argument**: `{uri, cte?, position?, show?}` — the model; the CTE to select, else the CTE under `position`, else the final select; `show: true` also opens the text as a document (what the "SQL" lens and the code action send)
+- **Result**: `{model, cte, source, sql, text}` — the query that selects the CTE (`with <the CTEs up to it> select * from <cte>`), cut with sqlparser from dbt's compiled SQL while it is current, else from the model rendered by the dbt.expandJinja renderer (`source`: `compiled` or `rendered`), with no limit, formatted; `text` the same under a header. A model that does not render, SQL that is not one SELECT or a name that is no CTE (with the CTEs it has) is InvalidParams Guidance
+- **Side effects**: none; with `show: true` writes `target/.cogitator/preview/<model>.<cte|final>.sql` and opens it via showDocument. Every CTE and the final select carry the code lens "SQL" beside "Preview rows", and the cursor's CTE the code action "Show the SQL of CTE `x`". The hover on a CTE's name (its definition or a reference) shows its columns and the lineage of each — :DbtCteSql, :DbtCtes
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
 ### `dbt.testSql`
 
 - **Argument**: `{uri, show?}` — the model; `show: true` also opens the text as a document (what the code action sends)
-- **Result**: `{model, relation, tests, text}` — each test `{label, name, column, kind (generic, singular, unit), definedBy, severity, uri, range, sql, query, error, note}`: a YAML data test rendered by its macro (`<adapter>__test_<x>`, `default__test_<x>`, `test_<x>`, a `{% test x %}` block; else dbt's own `not_null`, `unique`, `accepted_values`, `relationships`) with its arguments, `config.where` wrapping the model; a singular test that refs the model rendered as written; `query` the failures dbt counts around `sql` (`fail_calc`, `warn_if`, `error_if`, `limit`); a unit test listed with a note. A test that cannot be rendered has `error` and no SQL. `text` is all of it as one SQL text
+- **Result**: `{model, relation, tests, text}` — each test `{label, name, column, kind (generic, singular, unit), definedBy, severity, uri, range, sql, query, error, note}`: a YAML data test rendered by its macro (`<adapter>__test_<x>`, `default__test_<x>`, `test_<x>`, a `{% test x %}` block in the macro paths or a test path's `generic/`; else dbt's own `not_null`, `unique`, `accepted_values`, `relationships`) with its arguments, `config.where` wrapping the model; a singular test that refs the model rendered as written; `query` the failures dbt counts around `sql` (`fail_calc`, `warn_if`, `error_if`, `limit`); a unit test listed with a note. A test that cannot be rendered has `error` and no SQL. `text` is all of it as one SQL text
 - **Side effects**: none; with `show: true` writes `target/.cogitator/tests/<model>.sql` and opens it via showDocument. A model with tests carries the code action "Show the SQL of N tests" — :DbtTestSql
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 

@@ -118,6 +118,21 @@ impl Dispatcher {
                 return;
             }
             "dbt.previewCte" => return self.preview_cte(req.id, uri, arg),
+            "dbt.cteSql" => {
+                let show = arg.get("show").and_then(|s| s.as_bool()) == Some(true);
+                let ask = crate::server::handlers::preview_cte::PreviewAsk {
+                    cte: arg.get("cte").and_then(|c| c.as_str()).map(str::to_string),
+                    position: super::arg_position(arg),
+                    uri: uri.clone(),
+                    limit: 0,
+                };
+                let snap = self.snapshot_for(&uri);
+                let derived = self.derived.clone();
+                self.offload_blocking(req.id, "dbt.cteSql", move || {
+                    crate::server::handlers::preview_cte::cte_sql(&snap, &derived, &ask, show)
+                });
+                return;
+            }
             "dbt.cancel" => {
                 let token = arg.get("token").and_then(|t| t.as_u64()).unwrap_or(0);
                 match self.jobs.cancel(token) {
