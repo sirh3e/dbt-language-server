@@ -18,7 +18,7 @@ pub(crate) mod jinja;
 mod names;
 mod navigate;
 mod occurrences;
-mod sql;
+pub(crate) mod sql;
 
 pub use navigate::{local_definition, local_highlights, local_references};
 

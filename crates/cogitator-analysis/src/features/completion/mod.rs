@@ -4,6 +4,7 @@
 //! FROM/JOIN scope (`scope`) and served by composable `providers` with
 //! tiered ranking.
 
+mod column_items;
 mod context;
 mod dbt_calls;
 mod providers;
@@ -16,7 +17,7 @@ use regex::Regex;
 
 use super::{display_value, DbtContext, Document};
 use context::CompletionContext;
-use scope::ScopeIndex;
+use scope::sql::{self, Clause, Lookup};
 
 // Q1 fixed: `[a-zA-Z0-9_]` instead of Go's `[a-zA-z]` typo.
 static REF_RE: LazyLock<Regex> =
@@ -29,6 +30,18 @@ static DOC_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"\bdoc\(('|")[a-zA-Z0-9_]*$"#).unwrap());
 
 pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<CompletionItem> {
+    completion_with(ctx, doc, pos, &|_| None)
+}
+
+/// [`completion`] with a way to read a file: the models a column position
+/// reads, when their YAML documents no columns, are asked their column
+/// lineage.
+pub fn completion_with(
+    ctx: &DbtContext,
+    doc: &Document,
+    pos: Position,
+    read: &dyn Fn(&std::path::Path) -> Option<String>,
+) -> Vec<CompletionItem> {
     let lines: Vec<&str> = doc.text.split('\n').collect();
     let Some(&line) = lines.get(pos.line as usize) else {
         return Vec::new(); // Go panicked here (Q8-adjacent); degrade instead
@@ -67,23 +80,71 @@ pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<Comple
         return providers::macro_items(ctx);
     }
 
-    // Grammar-aware engine for plain SQL.
-    match context::classify(doc, pos, before) {
-        CompletionContext::MemberAccess { qualifier } => {
-            let scope = ScopeIndex::build(doc);
-            let items = providers::qualifier_column_items(ctx, doc, &scope, &qualifier);
-            if !items.is_empty() {
-                return items;
-            }
-            providers::general_items(ctx, doc, pos) // unresolved alias → broad set
+    // Grammar-aware engine for plain SQL: the clause from the parsed
+    // statement where it parses, the token classification otherwise.
+    let offset = lines[..pos.line as usize]
+        .iter()
+        .map(|l| l.len() + 1)
+        .sum::<usize>()
+        + cursor;
+    let parsed = sql::analyze(doc, &ctx.dialect, offset);
+    let lookup = Lookup { ctx, doc, read };
+    let scopes = || column_items::in_scope(&lookup, parsed.as_ref());
+    let classified = context::classify(doc, pos, before);
+    if let CompletionContext::MemberAccess { qualifier } = &classified {
+        return member_access(&lookup, parsed.as_ref(), &scopes(), qualifier)
+            .unwrap_or_else(|| providers::general_items(ctx, doc, pos, Vec::new()));
+    }
+    match parsed.as_ref().map(|p| p.clause) {
+        Some(Clause::Relation) => return providers::relation_items(ctx, doc),
+        Some(clause) if clause.takes_columns() => {
+            let columns = column_items::column_items(&scopes());
+            return providers::column_position_items(ctx, doc, pos, columns);
         }
+        _ => {}
+    }
+    match classified {
         CompletionContext::RelationPosition => providers::relation_items(ctx, doc),
-        CompletionContext::ColumnPosition => providers::column_position_items(ctx, doc, pos),
+        CompletionContext::ColumnPosition => {
+            let columns = column_items::column_items(&scopes());
+            providers::column_position_items(ctx, doc, pos, columns)
+        }
         CompletionContext::KeywordContinuation(words) => {
             providers::keyword_continuation_items(&words)
         }
-        CompletionContext::General => providers::general_items(ctx, doc, pos),
+        _ => {
+            let columns = column_items::column_items(&scopes());
+            providers::general_items(ctx, doc, pos, columns)
+        }
     }
+}
+
+/// `qualifier.`: the columns of the relation in scope it names, else of
+/// a CTE of that name; `None` when it names neither.
+fn member_access(
+    lookup: &Lookup<'_>,
+    parsed: Option<&sql::SqlScope<'_>>,
+    scopes: &[column_items::InScope],
+    qualifier: &str,
+) -> Option<Vec<CompletionItem>> {
+    let columns = match scopes
+        .iter()
+        .find(|s| s.qualifier.eq_ignore_ascii_case(qualifier))
+    {
+        Some(scope) => scope.columns.clone(),
+        None => match parsed {
+            Some(parsed) if parsed.has_cte(qualifier) => parsed.cte_columns(lookup, qualifier),
+            _ => lookup
+                .doc
+                .parsed
+                .def_tokens
+                .contains_key(qualifier)
+                .then(|| {
+                    sql::target_columns(lookup, &scope::RelationTarget::Cte(qualifier.to_string()))
+                })?,
+        },
+    };
+    (!columns.is_empty()).then(|| column_items::member_items(&columns))
 }
 
 /// completionItem/resolve (P2): fill documentation lazily from the maps.

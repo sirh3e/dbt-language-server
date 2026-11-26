@@ -8,7 +8,7 @@
 mod collect;
 mod columns;
 mod complete;
-mod mask;
+pub(crate) mod mask;
 
 #[cfg(test)]
 mod nav_tests;
