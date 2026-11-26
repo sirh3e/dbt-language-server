@@ -269,6 +269,7 @@ M.COMMANDS = {
   ["dbt.syntaxTree"] = ":DbtSyntaxTree",
   ["dbt.highlight"] = "the explorer's SQL panes, picker previews, :DbtHighlight",
   ["dbt.astGrep"] = ":DbtAstGrep, :DbtFind astgrep",
+  ["dbt.search"] = ":DbtSearch",
   ["dbt.nodeInfo"] = ":DbtNode, the explorer's macros and tests",
 }
 

@@ -378,6 +378,16 @@
               (= (plist-get found :count) (length (plist-get found :items))))
          "integration: dbt.unresolved lists the project's unresolved names" found))
 
+;; unit + integration: structural search
+(check (equal (cogitator--search-summary
+               '(:matches [(:a 1) (:a 2)] :models ["customers"] :searched 4
+                 :notSearched [(:model "orders" :why "Jinja control blocks")] :truncated :json-false))
+              "2 matches in 1 models (4 searched); 1 not searched")
+       "search: the summary counts matches, models and the models not searched")
+(let ((found (run--exec "dbt.search" (list :uri "" :query "reads stg_customers"))))
+  (check (member "customers" (append (plist-get found :models) nil))
+         "integration: dbt.search finds the models that read stg_customers" found))
+
 ;; unit + integration: impact and column reach
 (check (equal (cogitator--impact-lines
                '(:models [(:name "customers" :depth 1)]

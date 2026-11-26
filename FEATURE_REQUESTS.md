@@ -247,6 +247,16 @@ names what already exists in the codebase.
       hover line "`m.c` is read by N models, M tests, K semantic models, J
       dashboards". Neovim `:DbtImpact`, Emacs `cogitator-impact`, VS Code
       "dbt: Who reads this column?". Metric filters are not followed.
+- [x] **Structural search over the models' SQL** (`dbt.search`,
+      `features/hir_search/`, docs/search.md): a small query language
+      (`query.rs`: `joins <rel> [on <col>]`, `select-star [from <rel>]`,
+      `reads <rel>`, `uses column <rel>.<col>`, joined by `and`) evaluated
+      over each model's bound HIR (`eval.rs`: `FromKind::Join`, `RelTarget`,
+      `SelectItem::Star`, column resolutions); matches in `dbt.astGrep`'s
+      shape, models whose HIR cannot be built reported as not searched.
+      Shell `server/handlers/search.rs`; Neovim `:DbtSearch`, Emacs
+      `cogitator-search`, VS Code "dbt: Structural search over the models'
+      SQL".
 - [x] **dbt node selection** (`selectors/`, docs/selectors.md): one pure
       engine for dbt's selector language — methods (`fqn`, `tag`, `path`,
       `file`, `package`, `config.<key>`, `resource_type`, `source`,

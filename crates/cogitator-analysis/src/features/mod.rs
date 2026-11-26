@@ -24,6 +24,7 @@ mod file_ops;
 pub mod formatting;
 mod governance;
 mod graph_nav;
+pub mod hir_search;
 mod hover;
 mod impact;
 mod incremental_diff;

@@ -140,7 +140,10 @@ editor integrations live under `editors/`.
   written to `target/cogitator-lineage/`; `features/lineage_site/` pure,
   the shell `server/handlers/lineage_site.rs`, shared with the
   `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`),
-  dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
+  dbt.search (a structural query over every model's HIR —
+  `joins x on col`, `select-star from source`, `reads <rel>`, `uses column
+  <rel>.<col>` — in dbt.astGrep's match shape; `features/hir_search/`,
+  shell `server/handlers/search.rs`), dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
   columns, descriptions inherited down `ColumnLineage::direct` lineage;
   `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
   `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every

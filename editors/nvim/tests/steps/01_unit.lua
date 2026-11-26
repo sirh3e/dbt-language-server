@@ -294,6 +294,21 @@ return function(ctx)
     vim.inspect(impact)
   )
 
+  -- :DbtSearch summary
+  local search = require("cogitator.search")
+  local answer = {
+    matches = { {}, {} },
+    models = { "customers" },
+    searched = 4,
+    notSearched = { { model = "orders", why = "Jinja control blocks" } },
+  }
+  H.check(
+    search.summary(answer) == "2 matches in 1 model (4 searched); 1 not searched"
+      and search.not_searched_lines(answer)[1] == "orders: Jinja control blocks",
+    "search: the summary and the models not searched",
+    search.summary(answer)
+  )
+
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)
   local proj = vim.fs.joinpath(H.tmp, "proj-a")
   local manager = require("cogitator.manager")

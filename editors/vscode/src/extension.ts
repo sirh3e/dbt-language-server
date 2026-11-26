@@ -666,6 +666,58 @@ async function astGrep(): Promise<void> {
   }
 }
 
+/** A dbt.search answer, as far as the palette reads it. */
+export interface SearchResult {
+  matches: AstGrepMatch[];
+  models: string[];
+  searched: number;
+  notSearched: { model: string; why: string }[];
+  truncated: boolean;
+}
+
+/** The one-line summary of a dbt.search answer. */
+export function searchSummary(result: SearchResult): string {
+  const skipped = result.notSearched.length;
+  return (
+    `${result.matches.length} matches in ${result.models.length} models (${result.searched} searched)` +
+    (skipped > 0 ? `; ${skipped} not searched` : "") +
+    (result.truncated ? " (the first 500)" : "")
+  );
+}
+
+/** Structural search over the models' SQL (dbt.search). */
+async function structuralSearch(): Promise<void> {
+  const query = await vscode.window.showInputBox({
+    prompt: "dbt search: joins <rel> [on <col>] | select-star [from <rel>] | reads <rel> | uses column <rel>.<col>, joined by and",
+    value: "select-star from source",
+  });
+  if (!query) {
+    return;
+  }
+  const result = (await execDbt("dbt.search", { uri: "", query })) as SearchResult | undefined;
+  if (!result) {
+    return;
+  }
+  const skipped = result.notSearched.map((n) => `${n.model}: ${n.why}`);
+  if (result.matches.length === 0) {
+    void vscode.window.showInformationMessage(
+      `dbt search: ${searchSummary(result)}` + (skipped.length ? ` — ${skipped.join("; ")}` : "")
+    );
+    return;
+  }
+  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
+  const pick = await vscode.window.showQuickPick(
+    result.matches.map((m) => ({ ...astGrepLabel(m, relative), match: m })),
+    { matchOnDescription: true, placeHolder: `${query}: ${searchSummary(result)}` }
+  );
+  if (pick) {
+    const r = pick.match.range;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.match.uri), {
+      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
+    });
+  }
+}
+
 /** One node of a dbt.select answer. */
 export interface SelectedNode {
   uniqueId: string;
@@ -1165,6 +1217,7 @@ export async function activate(
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
     ["cogitator.impact", impact],
+    ["cogitator.search", structuralSearch],
     ["cogitator.modelDependencies", modelDependencies],
     [
       "cogitator.status",

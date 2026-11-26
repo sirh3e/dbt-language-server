@@ -276,6 +276,14 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.search" => {
+                let snap = self.snapshot_for(&uri);
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.search", move || {
+                    crate::server::handlers::search::search_reply(&snap, &arg, &uri)
+                });
+                return;
+            }
             "dbt.astGrep" => {
                 let snap = self.snapshot_for(&uri);
                 let arg = arg.clone();

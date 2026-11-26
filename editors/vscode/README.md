@@ -94,7 +94,10 @@ columns from `dbt.breakingChanges`: removed, possibly renamed and retyped
 columns and what reads them downstream; also a lens and a diagnostic,
 refreshed on save), `dbt: Who reads this column?` (`dbt.impact`: the
 models downstream and, for a column, its tests, semantic models, metrics,
-exposures at node level and the dashboards of the BI manifest), `dbt: Select nodes…` (dbt's selection syntax —
+exposures at node level and the dashboards of the BI manifest), `dbt:
+Structural search over the models' SQL` (`dbt.search`: `joins stg_orders
+on customer_id`, `select-star from source`, … over every model's HIR, a
+quick pick of the matches), `dbt: Select nodes…` (dbt's selection syntax —
 `tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `selector:<name>`,
 `… --exclude resource_type:test` — evaluated as you type by `dbt.select`,
 the counts in the title; choosing a node opens it), `dbt: Show

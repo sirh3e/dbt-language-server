@@ -910,6 +910,48 @@ it is applied to every match after asking."
               "dbt.astGrep" (append argument (list :apply t))
               (lambda (_) (message "cogitator: rewrote %d matches" (length matches)))))))))))
 
+;; structural search over the models' HIR (dbt.search)
+;; ---------------------------------------------------------------------------
+
+(defvar cogitator-search-history nil "Queries typed into `cogitator-search'.")
+
+(defun cogitator--search-summary (result)
+  "The one-line summary of a dbt.search RESULT."
+  (let ((skipped (length (plist-get result :notSearched))))
+    (concat (format "%d matches in %d models (%s searched)"
+                    (length (plist-get result :matches))
+                    (length (plist-get result :models))
+                    (plist-get result :searched))
+            (if (> skipped 0) (format "; %d not searched" skipped) "")
+            (if (eq (plist-get result :truncated) t) " (the first 500)" ""))))
+
+;;;###autoload
+(defun cogitator-search (query)
+  "Structural search over every model's SQL (dbt.search).
+QUERY is clauses joined by `and': `joins stg_orders on customer_id',
+`select-star from source', `reads source:shop.orders', `uses column
+orders.amount'.  Matches land in a grep buffer; the models whose SQL
+could not be searched are named under them."
+  (interactive (list (read-string "dbt search: " nil 'cogitator-search-history)))
+  (when (string-empty-p (string-trim query))
+    (user-error "cogitator: give a query, e.g. joins stg_orders on customer_id"))
+  (cogitator--execute
+   "dbt.search" (list :uri "" :query query)
+   (lambda (result)
+     (let ((matches (append (plist-get result :matches) nil))
+           (buf (get-buffer-create "*cogitator-search*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt search %s: %s -*-\n\n" query (cogitator--search-summary result)))
+           (insert (mapconcat #'cogitator--ast-grep-line matches "\n") "\n")
+           (dolist (skipped (append (plist-get result :notSearched) nil))
+             (insert (format "not searched: %s — %s\n"
+                             (plist-get skipped :model) (plist-get skipped :why)))))
+         (require 'grep)
+         (grep-mode))
+       (display-buffer buf)))))
+
 ;; node selection (dbt.select): dbt's --select syntax, as `dbt ls' answers it
 ;; ---------------------------------------------------------------------------
 

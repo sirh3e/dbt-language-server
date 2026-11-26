@@ -8,6 +8,7 @@
 | [local-names.md](local-names.md) | Renaming, references and highlights of names local to a file: Jinja `set` and loop variables, macro parameters (with their keyword call sites), CTEs and table aliases; scoping and refusals |
 | [highlighting.md](highlighting.md) | Colours from the server for models, macros, tests, compiled SQL and YAML property files: the layers, dbt-aware captures, options per editor, theming; macros and tests in the explorer |
 | [ast-grep.md](ast-grep.md) | Structural search and rewrite with ast-grep over tree-sitter-dbt, your ast-grep rules as diagnostics, the ast-grep CLI for CI, and the server's highlighting |
+| [search.md](search.md) | Structural search over the models' SQL (`dbt.search`): joins, `select *`, the relations and columns a model reads, as a small query language over the HIR |
 | [column-rename.md](column-rename.md) | Renaming a model's output column across the project: what changes at every depth, where the walk stops, and when it is refused |
 | [selectors.md](selectors.md) | dbt's node-selection language in cogitator: `dbt.select`, selectors.yml completion, diagnostics, hover and lenses, what is supported and what is not |
 | [properties-yaml.md](properties-yaml.md) | Properties files (`schema.yml`…): schema-driven completion of keys, values, tests and columns, the unproduced-column warning, adding missing columns |

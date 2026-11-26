@@ -16,3 +16,4 @@ mod plan_compiled;
 pub mod plan_hints;
 pub mod preview_cte;
 pub mod profiles;
+pub mod search;

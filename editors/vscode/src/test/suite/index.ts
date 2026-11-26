@@ -13,6 +13,7 @@ import {
   astGrepLabel,
   breakingLines,
   impactLines,
+  searchSummary,
   captureColor,
   columnPosition,
   lineageFocus,
@@ -503,6 +504,26 @@ export async function run(): Promise<void> {
     impactResult
   );
 
+  check(
+    searchSummary({
+      matches: [],
+      models: ["customers"],
+      searched: 4,
+      notSearched: [{ model: "orders", why: "Jinja control blocks" }],
+      truncated: false,
+    }) === "0 matches in 1 models (4 searched); 1 not searched",
+    "vscode: a structural search's summary"
+  );
+  const searchResult = (await exec("dbt.search", {
+    uri: "",
+    query: "reads stg_customers",
+  })) as { models?: string[] } | null;
+  check(
+    searchResult?.models?.includes("customers") === true,
+    "vscode: dbt.search finds the models that read stg_customers",
+    searchResult
+  );
+
   const selectResult = (await exec("dbt.select", {
     uri: document.uri.toString(),
     selector: "tag:nightly",
@@ -582,6 +603,7 @@ export async function run(): Promise<void> {
       "cogitator.unresolved",
       "cogitator.breakingChanges",
       "cogitator.impact",
+      "cogitator.search",
     ].every((c) =>
       commands.includes(c)
     ),
