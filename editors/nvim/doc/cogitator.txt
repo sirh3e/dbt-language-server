@@ -141,6 +141,16 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
   :DbtIncrementalDiff
                  this model rendered with is_incremental() false and
                  true, as a unified diff in a split (`q` closes)
+  :DbtDiffAt [rev] [sql|compiled|lineage]
+                 this model against itself at a git revision (default
+                 HEAD) or `last-run`, as a diff in a split; the lineage
+                 view lists added, removed and changed columns
+  :DbtCostReport the last run's models slowest first, bytes scanned,
+                 the critical path and "make it incremental" hints
+  :DbtProfileColumn
+                 profile the output column under the cursor (needs
+                 `warehouse.profile: true`: it queries the warehouse);
+                 the profile shows in a float and on later hovers
   :DbtIncrementality
                  table models that could be incremental (quickfix)
   :DbtBreakingChanges
@@ -522,6 +532,14 @@ macro's signature, callers and calls; a test's refs; a generic test's
 places in YAML; a model's neighbours. Without a kind the kinds are tried
 in order. <CR> opens the line's target, q closes.
 
+                                                     *cogitator-nvim-search*
+`:DbtSearch {query}` searches the structure of every model's SQL
+(`dbt.search`), which ast-grep's dbt grammar cannot see: `joins stg_orders
+on customer_id`, `select-star from source`, `reads source:shop.orders`,
+`uses column orders.amount`, combined with `and`. The matches fill the
+quickfix list; models whose SQL cannot be read structurally (Jinja control
+blocks, a parse error) are named as not searched. See docs/search.md.
+
                                                     *cogitator-nvim-astgrep*
 `:DbtAstGrep {{ ref($M) }}` searches the project's dbt files with ast-grep
 over tree-sitter-dbt (`dbt.astGrep`) and fills the quickfix list; `$M` is
@@ -608,7 +626,8 @@ back the way it came. Or call `require("cogitator.select").expand()` /
 
                                                       *cogitator-nvim-cmp*
 For nvim-cmp, `cogitator.completion` orders cogitator's items by the
-server's sortText and shows an item's detail in the menu: >lua
+server's sortText and shows an item's labelDetails (a column's type and
+relation, a model's materialization) or else its detail in the menu: >lua
 
     local dbt = require("cogitator.completion")
     cmp.setup({

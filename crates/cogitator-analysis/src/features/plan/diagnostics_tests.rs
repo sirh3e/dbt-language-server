@@ -26,6 +26,7 @@ fn finding(id: &'static str, span: Span, severity: &'static str) -> FindingView 
         suppressed: false,
         diagnostics_eligible: true,
         placement: Placement::Template,
+        subject: None,
     }
 }
 
@@ -250,5 +251,12 @@ fn suppressed_findings_are_silent_and_unknown_ids_warn() {
 #[test]
 fn suppression_warnings_wait_for_opt_in() {
     let text = "select 1 -- cogitator: ignore join.cartesan\n";
-    assert!(run(text, Vec::new(), &PerfSettings::default()).is_empty());
+    let mut nothing = PerfSettings {
+        types_checks: false,
+        ..PerfSettings::default()
+    };
+    nothing
+        .rules
+        .insert("join.fanout".to_string(), RuleOverride::Off);
+    assert!(run(text, Vec::new(), &nothing).is_empty());
 }

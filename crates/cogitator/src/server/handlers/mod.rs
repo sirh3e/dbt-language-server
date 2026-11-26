@@ -5,7 +5,10 @@
 //! path; their logic is already pure in `cogitator_analysis::features`.
 
 pub mod commands;
+pub mod cost;
+pub mod diff_at;
 pub mod doctor;
+pub mod impact;
 pub mod incremental;
 pub mod lineage;
 pub mod lineage_site;
@@ -15,3 +18,4 @@ mod plan_compiled;
 pub mod plan_hints;
 pub mod preview_cte;
 pub mod profiles;
+pub mod search;

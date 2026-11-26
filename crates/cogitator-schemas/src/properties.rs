@@ -12,8 +12,10 @@ use crate::generated::dbt_yml_files::DbtYmlFiles;
 use crate::yaml;
 
 mod columns;
+mod keys;
 
 use columns::{column_sides, columns_of, prune_columns, ColumnSide};
+use keys::unique_keys_of;
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PropertiesFile {
@@ -40,6 +42,12 @@ pub struct ModelEntry {
     /// `config:`), for incrementality.
     #[serde(default)]
     pub event_time: Option<String>,
+    /// Column sets the entry declares unique: model-level `constraints`
+    /// of type `primary_key` / `unique` with `columns:`, and strict
+    /// `dbt_utils.unique_combination_of_columns` tests. Each set is
+    /// lower-cased and sorted; single-column sets included.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unique_keys: Vec<Vec<String>>,
 }
 
 /// A documented column from the properties YAML (write-assist completion,
@@ -57,6 +65,10 @@ pub struct ColumnEntry {
     /// Column tests (`tests:` or `data_tests:`), in file order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tests: Vec<ColumnTest>,
+    /// Column-level `constraints:` types, lower-cased (`primary_key`,
+    /// `unique`, `not_null`, …), in file order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub constraints: Vec<String>,
 }
 
 /// One generic test on a column. `strict` says the test passing proves the
@@ -72,7 +84,20 @@ pub struct ColumnTest {
 impl ColumnEntry {
     /// True when a strict test named `name` covers this column.
     pub fn proven_by(&self, name: &str) -> bool {
-        self.tests.iter().any(|t| t.strict && t.name == name)
+        self.tests.iter().any(|t| t.strict && t.name == name) || self.constrained(name)
+    }
+
+    /// True when a column-level constraint states `name` (`unique` or
+    /// `not_null`); a `primary_key` states both.
+    pub fn constrained(&self, name: &str) -> bool {
+        self.constraints
+            .iter()
+            .any(|c| c == name || (c == "primary_key" && matches!(name, "unique" | "not_null")))
+    }
+
+    /// True when a `primary_key` constraint covers this column.
+    pub fn is_primary_key(&self) -> bool {
+        self.constraints.iter().any(|c| c == "primary_key")
     }
 }
 
@@ -151,6 +176,9 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
     let model_event_times: Vec<Option<String>> = yaml::get(&marked, "models")
         .map(|models| yaml::items(models).map(event_time_of).collect())
         .unwrap_or_default();
+    let model_unique_keys: Vec<Vec<Vec<String>>> = yaml::get(&marked, "models")
+        .map(|models| yaml::items(models).map(unique_keys_of).collect())
+        .unwrap_or_default();
     let source_event_times: Vec<(Option<String>, Vec<Option<String>>)> =
         yaml::get(&marked, "sources")
             .map(|sources| {
@@ -200,6 +228,7 @@ pub fn parse_properties(text: &str, path: &Path) -> Result<PropertiesFile> {
                 group: governance.group,
                 contract_enforced: governance.contract_enforced,
                 event_time: model_event_times.get(i).cloned().flatten(),
+                unique_keys: model_unique_keys.get(i).cloned().unwrap_or_default(),
             }
         })
         .collect();

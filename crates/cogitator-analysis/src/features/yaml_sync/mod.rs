@@ -37,7 +37,7 @@ use crate::DbtContext;
 mod create;
 mod entry;
 mod fill;
-mod inherit;
+pub(crate) mod inherit;
 mod order;
 mod select;
 mod text;

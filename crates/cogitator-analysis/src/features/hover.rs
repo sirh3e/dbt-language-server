@@ -128,11 +128,15 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
             // documented column of a relation in this document? (editor-
             // experience feature: column hover, with lineage when derivable)
             if let Some(hit) = super::completion::scope::resolve_column(ctx, doc, literal) {
-                let mut text = format!("Column of {}", hit.relation);
-                if !hit.description.is_empty() {
-                    text.push_str("\n\n");
-                    text.push_str(&hit.description);
-                }
+                // the same text the column's completion item documents
+                let fact = super::completion::column_info::column_fact(
+                    ctx,
+                    &super::completion::ModelHints::default(),
+                    &hit.of,
+                    literal,
+                    &[],
+                );
+                let mut text = super::completion::column_info::markdown(&fact);
                 let computed;
                 let lineage = match source {
                     Lineage::Compute => {

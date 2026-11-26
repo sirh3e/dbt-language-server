@@ -263,6 +263,7 @@ fn schema_of(
         columns: Arc::from(columns),
         completeness: Completeness::Open,
         fingerprint: hasher.finish(),
+        unique_sets: Vec::new(),
     })
 }
 
@@ -272,5 +273,6 @@ fn col(name: &str, raw_type: Option<&str>, input: &PlanInput<'_>) -> SchemaCol {
         name: Arc::from(name),
         ty: ColType::new(ty, Nullability::Unknown),
         unique: false,
+        proven_type: false,
     }
 }

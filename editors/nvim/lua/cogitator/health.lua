@@ -269,7 +269,11 @@ M.COMMANDS = {
   ["dbt.syntaxTree"] = ":DbtSyntaxTree",
   ["dbt.highlight"] = "the explorer's SQL panes, picker previews, :DbtHighlight",
   ["dbt.astGrep"] = ":DbtAstGrep, :DbtFind astgrep",
+  ["dbt.search"] = ":DbtSearch",
   ["dbt.nodeInfo"] = ":DbtNode, the explorer's macros and tests",
+  ["dbt.diffAt"] = ":DbtDiffAt",
+  ["dbt.costReport"] = ":DbtCostReport",
+  ["dbt.profileColumn"] = ":DbtProfileColumn",
 }
 
 --- The LSP methods the plugin's own features need, beyond the stock ones.

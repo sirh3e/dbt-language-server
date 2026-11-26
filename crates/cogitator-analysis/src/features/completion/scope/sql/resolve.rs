@@ -17,6 +17,7 @@ use cogitator_ir::schema::ModelSchema;
 use cogitator_ir::SqlType;
 use cogitator_schemas::ColumnEntry;
 
+use super::super::super::column_info::ColumnOf;
 use super::columns::{Column, Lookup};
 use crate::features::column_types::describe;
 
@@ -30,6 +31,18 @@ pub(super) fn model(lookup: &Lookup<'_>, name: &str) -> Option<Vec<Column>> {
         .get(name)
         .map_or(&[][..], |m| m.columns.as_slice());
     resolved(schema, yaml, name, &lookup.ctx.dialect)
+        .map(|columns| of(columns, ColumnOf::Model(name.to_string())))
+}
+
+/// The columns, each saying what it is a column of (`column_info`).
+fn of(columns: Vec<Column>, relation: ColumnOf) -> Vec<Column> {
+    columns
+        .into_iter()
+        .map(|c| Column {
+            of: Some(relation.clone()),
+            ..c
+        })
+        .collect()
 }
 
 /// The source table's columns as the schema job resolved them.
@@ -47,6 +60,15 @@ pub(super) fn source(lookup: &Lookup<'_>, source: &str, table: &str) -> Option<V
         &format!("{source}.{table}"),
         &lookup.ctx.dialect,
     )
+    .map(|columns| {
+        of(
+            columns,
+            ColumnOf::Source {
+                source: source.to_string(),
+                table: table.to_string(),
+            },
+        )
+    })
 }
 
 /// A schema's columns in its order, each with its YAML description and the
@@ -71,6 +93,7 @@ pub(super) fn resolved(
                 data_type: type_name(&col.ty.ty, dialect)
                     .or_else(|| entry.and_then(|e| e.data_type.clone())),
                 description: entry.map(|e| e.description.clone()).unwrap_or_default(),
+                of: None,
             }
         })
         .collect();

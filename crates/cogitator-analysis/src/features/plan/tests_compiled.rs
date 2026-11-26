@@ -224,6 +224,7 @@ fn finding(id: &'static str, span: Span, edits: Vec<Span>) -> FindingView {
                 .collect(),
         }],
         suppressed: false,
+        subject: None,
     }
 }
 

@@ -26,6 +26,9 @@ impl FileConfig {
         if let Some(on) = self.perf.inline_findings {
             settings.inline_findings = on;
         }
+        if let Some(on) = self.types.checks {
+            settings.types_checks = on;
+        }
         let known: Vec<&str> = advice_rule_ids().collect();
         for (id, value) in &self.perf_rules {
             if !known.contains(&id.as_str()) {

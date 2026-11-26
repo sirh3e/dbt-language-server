@@ -105,6 +105,7 @@ fn finding(verdict: Verdict, span: Span, fixes: Vec<Fix>) -> Finding {
         message: verdict.message,
         evidence: verdict.evidence,
         fixes,
+        subject: None,
     }
 }
 

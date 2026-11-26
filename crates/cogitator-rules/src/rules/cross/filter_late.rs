@@ -70,6 +70,7 @@ impl Detect<Mir> for FilterLate {
                 ),
                 evidence: evidence(dag),
                 fixes: Vec::new(),
+                subject: None,
             });
         }
     }

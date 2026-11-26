@@ -71,6 +71,9 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.costReport" => return self.cost_report(req.id),
+            "dbt.diffAt" => return self.diff_at(req.id, uri, arg),
+            "dbt.profileColumn" => return self.profile_column(req.id, uri, arg),
             "dbt.incrementality" => {
                 self.incrementality(req.id);
                 return;
@@ -238,28 +241,16 @@ impl Dispatcher {
                 let snap = self.snapshot_for(&uri);
                 let derived = self.derived.clone();
                 let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+                let bi_path = self.bi_manifest_path();
                 self.offload_blocking(req.id, "dbt.impact", move || {
-                    // typed lineage per downstream model, capped: each file
-                    // is read and parsed from disk, stars expand against the
-                    // project schemas, control flow only from fresh SQL
-                    let typed = crate::server::handlers::lineage::TypedLineage::new(
+                    crate::server::handlers::impact::impact_reply(
                         &snap,
                         &derived,
                         artifact_cap,
-                    );
-                    let mut lineages = std::collections::HashMap::new();
-                    for (name, path) in features::impact_targets(&snap.ctx, &model) {
-                        let uri = cogitator_lsp::fs_path_to_uri(&path);
-                        if let Some(lineage) = typed.for_saved_file(&uri) {
-                            lineages.insert(name, lineage);
-                        }
-                    }
-                    crate::server::reply::Reply::result(&features::impact(
-                        &snap.ctx,
+                        &bi_path,
                         &model,
                         column.as_deref(),
-                        &lineages,
-                    ))
+                    )
                 });
                 return;
             }
@@ -285,6 +276,14 @@ impl Dispatcher {
                             guidance.to_message(),
                         ),
                     }
+                });
+                return;
+            }
+            "dbt.search" => {
+                let snap = self.snapshot_for(&uri);
+                let arg = arg.clone();
+                self.offload_blocking(req.id, "dbt.search", move || {
+                    crate::server::handlers::search::search_reply(&snap, &arg, &uri)
                 });
                 return;
             }

@@ -28,28 +28,69 @@ pub struct HoverResult {
     pub contents: String,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+/// A completion item. `documentation` is plain text unless `markdown`
+/// says it is Markdown (sent as `MarkupContent`); `insert_text_format` 2
+/// marks `insert_text` as a snippet. [`super::completion::adapt`] fits
+/// every item to what the client supports before it is sent.
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CompletionItem {
     pub label: String,
     pub detail: String,
     pub documentation: String,
     pub kind: i32,
-    #[serde(rename = "insertText")]
     pub insert_text: String,
-    #[serde(rename = "sortText")]
     pub sort_text: String,
     /// Opaque payload for `completionItem/resolve` (additive; absent in the
     /// Go shape, omitted when unused).
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<serde_json::Value>,
+    /// `insertTextFormat`: 2 = snippet; absent = plain text.
+    pub insert_text_format: Option<u8>,
+    /// LSP 3.17 `labelDetails`: shown beside the label.
+    pub label_details: Option<super::completion::LabelDetails>,
+    /// `documentation` is Markdown.
+    pub markdown: bool,
     /// What the client filters on when it is not the label: a qualified
     /// column (`o.customer_id`) filters as its bare name, so typing the
     /// column keeps the qualified form in the list and in its rank.
-    #[serde(rename = "filterText", skip_serializing_if = "Option::is_none")]
     pub filter_text: Option<String>,
     /// The item the client should select first (the best-ranked column).
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub preselect: bool,
+}
+
+impl Serialize for CompletionItem {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("label", &self.label)?;
+        map.serialize_entry("detail", &self.detail)?;
+        if self.markdown {
+            map.serialize_entry(
+                "documentation",
+                &serde_json::json!({"kind": "markdown", "value": self.documentation}),
+            )?;
+        } else {
+            map.serialize_entry("documentation", &self.documentation)?;
+        }
+        map.serialize_entry("kind", &self.kind)?;
+        map.serialize_entry("insertText", &self.insert_text)?;
+        map.serialize_entry("sortText", &self.sort_text)?;
+        if let Some(filter) = &self.filter_text {
+            map.serialize_entry("filterText", filter)?;
+        }
+        if self.preselect {
+            map.serialize_entry("preselect", &true)?;
+        }
+        if let Some(data) = &self.data {
+            map.serialize_entry("data", data)?;
+        }
+        if let Some(format) = self.insert_text_format {
+            map.serialize_entry("insertTextFormat", &format)?;
+        }
+        if let Some(details) = &self.label_details {
+            map.serialize_entry("labelDetails", details)?;
+        }
+        map.end()
+    }
 }
 
 /// The typed shape inside `CompletionItem.data` (the field itself stays an
@@ -81,6 +122,17 @@ pub enum CompletionData {
     },
     Function {
         name: String,
+    },
+    /// A column of a model (`relation` its name), a source table
+    /// (`relation` the table, `source` set) or a CTE of the document
+    /// (`cte`: its documentation is filled eagerly).
+    Column {
+        relation: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        cte: bool,
+        column: String,
     },
 }
 

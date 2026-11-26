@@ -121,6 +121,30 @@ return function(ctx)
     vim.inspect(same)
   )
 
+  -- :DbtDiffAt: its words in either order, and the rendered lines
+  local commands = require("cogitator.commands")
+  local words = commands.diff_at_args("lineage main~2")
+  H.check(words.rev == "main~2" and words.what == "lineage", "commands: diff_at_args", vim.inspect(words))
+  local at_lines = commands.diff_at_lines({
+    model = "orders",
+    rev = "HEAD (abc)",
+    what = "lineage",
+    identical = false,
+    columns = { added = { "status" }, removed = {}, changed = {} },
+    diff = "--- a\n+++ b\n+status <- stg.status\n",
+  })
+  H.check(
+    at_lines[1] == "-- + column status" and at_lines[#at_lines] == "+status <- stg.status",
+    "commands: diff_at_lines lists columns, then the diff",
+    vim.inspect(at_lines)
+  )
+  local unchanged = commands.diff_at_lines({ model = "m", rev = "HEAD", what = "sql", identical = true })
+  H.check(unchanged[1]:find("no sql difference", 1, true) ~= nil, "commands: diff_at says nothing differs")
+  local cost = commands.cost_report_lines({ text = "dbt cost report\n\n  1.0 s  orders\n" })
+  H.check(#cost == 3 and cost[3]:find("orders", 1, true), "commands: cost_report_lines", vim.inspect(cost))
+  local prof = commands.profile_lines({ hover = "**Profile of `x`**\n\ndistinct 3" })
+  H.check(prof[3] == "distinct 3", "commands: profile_lines", vim.inspect(prof))
+
   -- :DbtSyncYaml: the argument of its words, and the preview lines
   local sync = require("cogitator.sync_yaml")
   local sync_arg = sync.arguments({ "%", "prune", "types", "stg_orders" }, "file:///p/models/a.sql")
@@ -262,6 +286,51 @@ return function(ctx)
       and breaking[2].text == "  read by customers.customer_id (contracted)",
     "commands: breaking_items name the change, the rename hint and the downstream reads",
     vim.inspect(breaking)
+  )
+
+  -- :DbtImpact quickfix items, with the column reach
+  local impact = require("cogitator.commands").impact_items({
+    models = { { name = "customers", uri = "file:///p/models/customers.sql", depth = 1 } },
+    columnHits = { { model = "customers", column = "customer_id" } },
+    reach = {
+      tests = { { model = "customers", column = "customer_id", test = "unique" } },
+      semanticItems = {
+        {
+          semanticModel = "sm",
+          list = "entity",
+          name = "customer",
+          uri = "file:///p/models/sm.yml",
+          range = { start = { line = 4, character = 8 } },
+        },
+      },
+      exposures = { { name = "weekly", level = "node" } },
+      dashboards = { { name = "Board", level = "column", url = "https://x" } },
+    },
+  })
+  H.check(
+    #impact == 6
+      and impact[1].filename == "/p/models/customers.sql"
+      and impact[4].text == "semantic model sm: entity customer"
+      and impact[4].lnum == 5
+      and impact[5].text == "exposure weekly (node level)"
+      and impact[6].text == "dashboard Board (column level) https://x",
+    "commands: impact_items list the models, hits and the column reach",
+    vim.inspect(impact)
+  )
+
+  -- :DbtSearch summary
+  local search = require("cogitator.search")
+  local answer = {
+    matches = { {}, {} },
+    models = { "customers" },
+    searched = 4,
+    notSearched = { { model = "orders", why = "Jinja control blocks" } },
+  }
+  H.check(
+    search.summary(answer) == "2 matches in 1 model (4 searched); 1 not searched"
+      and search.not_searched_lines(answer)[1] == "orders: Jinja control blocks",
+    "search: the summary and the models not searched",
+    search.summary(answer)
   )
 
   -- manager store: merge, vim.NIL clearing, roots listing (pure file I/O)

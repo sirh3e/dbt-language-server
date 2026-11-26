@@ -133,6 +133,90 @@ async function incrementalDiff(): Promise<void> {
   });
 }
 
+/** A dbt.diffAt answer: the model now against a git revision or the last run. */
+export interface DiffAt {
+  model: string;
+  rev: string;
+  what: string;
+  diff: string;
+  identical: boolean;
+  note?: string;
+  columns?: {
+    added: string[];
+    removed: string[];
+    changed: { name: string; before: string[]; after: string[] }[];
+    unknown?: string;
+  };
+}
+
+/** The text shown for dbt.diffAt: the note, column changes, then the diff. */
+export function diffAtText(result: DiffAt): string {
+  const lines: string[] = [];
+  if (result.note) {
+    lines.push(`-- ${result.note}`);
+  }
+  const columns = result.columns;
+  if (columns) {
+    if (columns.unknown) {
+      lines.push(`-- lineage unknown: ${columns.unknown}`);
+    }
+    columns.added.forEach((name) => lines.push(`-- + column ${name}`));
+    columns.removed.forEach((name) => lines.push(`-- - column ${name}`));
+    columns.changed.forEach((c) =>
+      lines.push(`-- ~ column ${c.name}: ${c.before.join(", ")} → ${c.after.join(", ")}`)
+    );
+  }
+  const head = lines.length ? `${lines.join("\n")}\n` : "";
+  if (result.identical) {
+    return `${head}-- ${result.model}: no ${result.what} difference between ${result.rev} and now\n`;
+  }
+  return head + result.diff;
+}
+
+async function showBeside(language: string, content: string): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument({ language, content });
+  await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+}
+
+async function diffAt(): Promise<void> {
+  const rev = await vscode.window.showInputBox({
+    prompt: "Revision: HEAD, a branch, a sha, or last-run",
+    value: "HEAD",
+  });
+  if (rev === undefined) {
+    return;
+  }
+  const what = await vscode.window.showQuickPick(["sql", "compiled", "lineage"], {
+    placeHolder: "Compare the template, the rendered SQL or the column lineage",
+  });
+  if (!what) {
+    return;
+  }
+  const result = (await execDbt("dbt.diffAt", { rev, what })) as DiffAt | null | undefined;
+  if (result) {
+    await showBeside(result.identical ? "sql" : "diff", diffAtText(result));
+  }
+}
+
+async function costReport(): Promise<void> {
+  const result = (await execDbt("dbt.costReport")) as { text?: string } | null | undefined;
+  if (result) {
+    await showBeside("plaintext", result.text ?? "no report");
+  }
+}
+
+async function profileColumn(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return;
+  }
+  const position = { line: editor.selection.active.line, character: editor.selection.active.character };
+  const result = (await execDbt("dbt.profileColumn", { position })) as { hover?: string } | null | undefined;
+  if (result?.hover) {
+    await showBeside("markdown", result.hover);
+  }
+}
+
 /** A dbt.previewCte answer: the rows of one CTE (or the final select). */
 export interface CtePreview {
   model: string;
@@ -666,6 +750,58 @@ async function astGrep(): Promise<void> {
   }
 }
 
+/** A dbt.search answer, as far as the palette reads it. */
+export interface SearchResult {
+  matches: AstGrepMatch[];
+  models: string[];
+  searched: number;
+  notSearched: { model: string; why: string }[];
+  truncated: boolean;
+}
+
+/** The one-line summary of a dbt.search answer. */
+export function searchSummary(result: SearchResult): string {
+  const skipped = result.notSearched.length;
+  return (
+    `${result.matches.length} matches in ${result.models.length} models (${result.searched} searched)` +
+    (skipped > 0 ? `; ${skipped} not searched` : "") +
+    (result.truncated ? " (the first 500)" : "")
+  );
+}
+
+/** Structural search over the models' SQL (dbt.search). */
+async function structuralSearch(): Promise<void> {
+  const query = await vscode.window.showInputBox({
+    prompt: "dbt search: joins <rel> [on <col>] | select-star [from <rel>] | reads <rel> | uses column <rel>.<col>; combine with and, or, not, ( )",
+    value: "select-star from source",
+  });
+  if (!query) {
+    return;
+  }
+  const result = (await execDbt("dbt.search", { uri: "", query })) as SearchResult | undefined;
+  if (!result) {
+    return;
+  }
+  const skipped = result.notSearched.map((n) => `${n.model}: ${n.why}`);
+  if (result.matches.length === 0) {
+    void vscode.window.showInformationMessage(
+      `dbt search: ${searchSummary(result)}` + (skipped.length ? ` — ${skipped.join("; ")}` : "")
+    );
+    return;
+  }
+  const relative = (uri: string) => vscode.workspace.asRelativePath(vscode.Uri.parse(uri));
+  const pick = await vscode.window.showQuickPick(
+    result.matches.map((m) => ({ ...astGrepLabel(m, relative), match: m })),
+    { matchOnDescription: true, placeHolder: `${query}: ${searchSummary(result)}` }
+  );
+  if (pick) {
+    const r = pick.match.range;
+    await vscode.window.showTextDocument(vscode.Uri.parse(pick.match.uri), {
+      selection: new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character),
+    });
+  }
+}
+
 /** One node of a dbt.select answer. */
 export interface SelectedNode {
   uniqueId: string;
@@ -894,6 +1030,62 @@ async function modelDependencies(): Promise<void> {
   }
 }
 
+/** A dbt.impact answer, as far as the palette reads it. */
+export interface ImpactReport {
+  summary: string;
+  models?: { name: string; depth: number }[];
+  columnHits?: { model: string; column: string }[];
+  reach?: {
+    tests?: { model: string; column: string; test: string }[];
+    semanticItems?: { semanticModel: string; list?: string; name?: string }[];
+    metrics?: { name: string; via: string }[];
+    exposures?: { name: string }[];
+    dashboards?: { name: string; level: string; url?: string }[];
+    notes?: string[];
+  };
+}
+
+/** The lines of a dbt.impact answer: the downstream models, the column
+ * hits and, for a column, what reads it. */
+export function impactLines(report: ImpactReport): string[] {
+  const reach = report.reach ?? {};
+  return [
+    ...(report.models ?? []).map((m) => `model ${m.name} (depth ${m.depth})`),
+    ...(report.columnHits ?? []).map((h) => `column ${h.model}.${h.column}`),
+    ...(reach.tests ?? []).map((t) => `test ${t.test} on ${t.model}.${t.column}`),
+    ...(reach.semanticItems ?? []).map(
+      (s) => `semantic model ${s.semanticModel}: ${s.list ?? "expr"} ${s.name ?? ""}`
+    ),
+    ...(reach.metrics ?? []).map((m) => `metric ${m.name} (via ${m.via})`),
+    ...(reach.exposures ?? []).map((e) => `exposure ${e.name} (node level)`),
+    ...(reach.dashboards ?? []).map(
+      (d) => `dashboard ${d.name} (${d.level} level)` + (d.url ? ` ${d.url}` : "")
+    ),
+    ...(reach.notes ?? []).map((n) => `note: ${n}`),
+  ];
+}
+
+/** Who reads this model or one of its columns (dbt.impact). */
+async function impact(): Promise<void> {
+  const column = await vscode.window.showInputBox({
+    prompt: "Column (empty: the whole model)",
+  });
+  if (column === undefined) {
+    return;
+  }
+  const report = (await execDbt("dbt.impact", column ? { column } : {})) as
+    | ImpactReport
+    | undefined;
+  if (!report) {
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "plaintext",
+    content: [report.summary, "", ...impactLines(report)].join("\n"),
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
 /** A dbt.breakingChanges answer, as far as the palette reads it. */
 export interface BreakingReport {
   summary: string;
@@ -1098,6 +1290,9 @@ export async function activate(
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
     ["cogitator.incrementalDiff", incrementalDiff],
+    ["cogitator.diffAt", diffAt],
+    ["cogitator.costReport", costReport],
+    ["cogitator.profileColumn", profileColumn],
     ["cogitator.incrementality", incrementality],
     ["cogitator.syntaxTree", syntaxTree],
     ["cogitator.highlight", highlight],
@@ -1108,6 +1303,8 @@ export async function activate(
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
     ["cogitator.breakingChanges", breakingChanges],
+    ["cogitator.impact", impact],
+    ["cogitator.search", structuralSearch],
     ["cogitator.modelDependencies", modelDependencies],
     [
       "cogitator.status",

@@ -98,6 +98,7 @@ fn examine(cx: &Cx<'_>) -> Option<Finding> {
         fixes: expand_fix(cx, hir, query, &star, &used)
             .into_iter()
             .collect(),
+        subject: None,
     })
 }
 

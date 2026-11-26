@@ -113,7 +113,10 @@ editor integrations live under `editors/`.
   (showDocument navigation for the YAML-side code actions),
   dbt.setProfilesDir, dbt.cache, dbt.reloadConfig, dbt.sourceFreshness,
   dbt.cancel + dbt.runSelection (job tokens), dbt.deadModels,
-  dbt.impact, dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
+  dbt.impact (with a `column`, its reach: tests, semantic models,
+  metrics, exposures at node level, BI-manifest dashboards;
+  `features/column_reach/`, shell `server/handlers/impact.rs`, cached per
+  model on open/save for the column hover), dbt.expandJinja, dbt.doctor, dbt.queryPlan (IR levels,
   findings and rule trace for one model; `features/plan/`), dbt.deps
   (project-wide `dbt deps`, refreshes the context; the packages.yml
   quickfix runs it), dbt.syntaxTree (the open document's tree-sitter-dbt
@@ -129,16 +132,30 @@ editor integrations live under `editors/`.
   against target/catalog.json or the manifest's documented columns, and
   what that breaks downstream; `features/breaking/`, the shell in
   `server/breaking.rs`, computed on open/save for its diagnostics and
-  lens by `dispatcher/breaking.rs`), dbt.select (the nodes a dbt selector
+  lens by `dispatcher/breaking.rs`; after the refresh debounce on change
+  too, against the saved file as well, anchored by `breaking/anchor.rs`,
+  with a "Keep '<old>' as an alias" quick fix), dbt.select (the nodes a dbt selector
   picks, as `dbt ls` lists them; the selector engine, `selectors/`),
   dbt.lineageSite (the lineage site's data and page assets, or the page
   written to `target/cogitator-lineage/`; `features/lineage_site/` pure,
   the shell `server/handlers/lineage_site.rs`, shared with the
   `cogitator lineage-site` subcommand, `cmd_lineage_site.rs`),
-  dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
+  dbt.search (a structural query over every model's HIR —
+  `joins x on col`, `select-star from source`, `reads <rel>`, `uses column
+  <rel>.<col>` — in dbt.astGrep's match shape; `features/hir_search/`,
+  shell `server/handlers/search.rs`), dbt.syncYaml (the project's schema YAML synced with its SQL: entries,
   columns, descriptions inherited down `ColumnLineage::direct` lineage;
   `features/yaml_sync/`, the shell `server/yaml_sync.rs`, also the
-  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`). Every
+  `cogitator yaml-sync [--check]` CLI in `cmd_yaml_sync.rs`),
+  dbt.diffAt (the model against a git revision or the last run, as SQL,
+  rendered SQL or column lineage; `features/diff_at/`, the git shell
+  `server/git.rs`), dbt.costReport (the last run's models by time and
+  adapter bytes, the critical path, "make it incremental";
+  `features/cost/`, also the cost parts of the last-run lens),
+  dbt.profileColumn (a sampled column profile from the warehouse, off
+  unless `warehouse.profile`; `features/profile/`, the job
+  `server/profile.rs`; the hover and the "Profile column" code action
+  read its cache). Every
   command takes one argument object
   (`{uri, position?, …}`). Hover/definition on `target/compiled|run`
   files map a line back to its Jinja source (`features/compiled_map.rs`).
@@ -151,13 +168,26 @@ editor integrations live under `editors/`.
   declare a source, a source table, a docs block; `governance_fixes.rs`:
   private refs; `yaml_columns.rs`: add undocumented or undeclared
   columns, drop contracted ones — offered from the YAML entry too;
+  `unique_test.rs`: "Add a unique test on …" for `join.fanout`, from the
+  diagnostic's `data.subject`;
   `yaml_unproduced.rs`: the `yaml-unproduced-column` warning and its
   rename/remove fixes; `refactors.rs`: expand a star, extract
-  schema YAML; `extract_cte.rs`: CTE → model; "Sync schema YAML of 'm'"
+  schema YAML; `extract_cte.rs`: CTE → model, with the parent's
+  pass-through column docs (`extract_cte_yaml.rs`); `inline_model.rs`:
+  model → CTE, deleting its file (`DeleteFile`); `staging_scaffold.rs`:
+  a staging model + YAML from a source/ref; `inherit_docs.rs`: inherit a
+  column description (YAML column or SQL select item) over the yaml-sync
+  walk, doc() calls kept — shell `dispatcher/authoring.rs`,
+  docs/authoring-actions.md; "Sync schema YAML of 'm'"
   from `features::yaml_sync`, on the model's SQL and its YAML entry). All pure: the shell
   passes file text through a `read` closure; YAML is edited line-wise
   through `yaml_text.rs`, never re-serialized. The completion
-  capability advertises `triggerCharacters`.
+  capability advertises `triggerCharacters`. Completion items are fitted to
+  the client (`cogitator_lsp::adapt`, `CompletionSupport` read at
+  initialize): snippets (`insertTextFormat` 2, the model-aware
+  `is_incremental()` / `config()` snippets, `completion/snippets.rs`),
+  `labelDetails` (column types and relations, `completion/details.rs`) and
+  Markdown documentation, each with a plain fallback.
 - `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
 - **Selector engine** (`cogitator-analysis/src/selectors/`, docs/selectors.md):
   dbt's node-selection language, pure — `syntax` (the `--select` string),
@@ -186,7 +216,9 @@ editor integrations live under `editors/`.
 - **Hot config file**: `<root>/cogitator.yml` (or `.cogitator.yml`) —
   `profiles.{dir,profile,target,allow}`, `limits.compiled_sql_mib`,
   `refresh.debounce_ms`, `perf.{profile,catalog_stats,row_hints,inline_findings}` and `perf_rules`
-  (rule id → severity or off; profile default `off`, specs/ir-pipeline/08)
+  (rule id → severity or off; profile default `off`, specs/ir-pipeline/08;
+  `join.fanout` and the `type.*` checks report under `off` too, the latter
+  gated by `types.checks`), `inlay.{vars,env_vars,jinja,types}`
   hot-reload (2 s stamp poll + didSave fast-path +
   `dbt.reloadConfig`); changed-keys-only, removed keys revert to launch
   values; `startup.{debug,otlp,tree_sitter,fusion}` only via `--config`

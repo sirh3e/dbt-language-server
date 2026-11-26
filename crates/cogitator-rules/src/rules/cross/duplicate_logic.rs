@@ -69,6 +69,7 @@ impl Detect<Mir> for DuplicateLogic {
                 ),
                 evidence: Evidence::Exact,
                 fixes: Vec::new(),
+                subject: None,
             });
             return;
         }

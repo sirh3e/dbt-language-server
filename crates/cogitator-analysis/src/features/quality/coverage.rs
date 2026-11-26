@@ -111,6 +111,7 @@ mod tests {
             } else {
                 Vec::new()
             },
+            constraints: Vec::new(),
         }
     }
 

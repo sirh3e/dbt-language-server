@@ -99,11 +99,23 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     SectionSchema {
         name: "warehouse",
         doc: "Warehouse introspection (duckdb builds only).",
-        keys: &[key(
-            "columns",
-            "Complete source columns from the warehouse when the YAML has none.",
-            "bool",
-        )],
+        keys: &[
+            key(
+                "columns",
+                "Complete source columns from the warehouse when the YAML has none.",
+                "bool",
+            ),
+            key(
+                "profile",
+                "Offer dbt.profileColumn (a sampled profile query against the warehouse; default off).",
+                "bool",
+            ),
+            key(
+                "profile_sample_rows",
+                "Rows a column profile samples (default 10000).",
+                "rows",
+            ),
+        ],
     },
     SectionSchema {
         name: "perf",
@@ -146,7 +158,21 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Show what short single-line {{ … }} expressions render to (default false).",
                 "bool",
             ),
+            key(
+                "types",
+                "Show each output column's inferred type after its select item (default false).",
+                "bool",
+            ),
         ],
+    },
+    SectionSchema {
+        name: "types",
+        doc: "Type checks: text compared with dates, sums over text, mismatched join keys (type-* diagnostics).",
+        keys: &[key(
+            "checks",
+            "Report the type.* checks and join.key_type_mismatch under every perf profile (default true); a Warning only when both types are proven.",
+            "bool",
+        )],
     },
     SectionSchema {
         name: "vars",
@@ -181,6 +207,9 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("limit.no_scan_reduction", "LIMIT does not reduce bytes read.", RULE_SEVERITIES),
             key("incr.no_unique_key", "Merge strategy without a unique_key.", RULE_SEVERITIES),
             key("incr.could_be_incremental", "A table that could be built incrementally.", RULE_SEVERITIES),
+            key("join.fanout", "This join may duplicate rows: the key is not known to be unique (on by default).", RULE_SEVERITIES),
+            key("type.text_temporal_compare", "Text compared with a date or time (types.checks).", RULE_SEVERITIES),
+            key("type.aggregate_text", "A numeric aggregate over text (types.checks).", RULE_SEVERITIES),
         ],
     },
     SectionSchema {
@@ -190,6 +219,22 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("rows", "Rows a preview shows when the call names no limit (default 20).", "rows"),
             key("max_rows", "The most rows a preview may ask for; larger limits are capped (default 1000).", "rows"),
         ],
+    },
+    SectionSchema {
+        name: "bi",
+        doc: "BI tools as the end of the lineage: dbt.impact's column reach and the column hover name the dashboards that read a column.",
+        keys: &[
+            key("manifest", "A JSON file, relative to the project root, listing dashboards and the models/columns they read ({\"dashboards\": [{\"name\", \"url\", \"reads\": [{\"model\", \"column\"}]}]}; docs/column-reach.md).", "path"),
+        ],
+    },
+    SectionSchema {
+        name: "cost",
+        doc: "dbt.costReport and the cost lens: optional figures beyond target/run_results.json.",
+        keys: &[key(
+            "query_history",
+            "A JSON (array or JSON lines) export of the warehouse's query history; fills bytes and slots dbt did not record.",
+            "path",
+        )],
     },
 ];
 

@@ -122,6 +122,7 @@ fn examine(
             .to_owned(),
         evidence: Evidence::Exact,
         fixes: fix(hir, text, query, cx).into_iter().collect(),
+        subject: None,
     })
 }
 

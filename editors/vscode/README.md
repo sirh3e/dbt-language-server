@@ -76,7 +76,11 @@ beside it, as do the "Preview rows" lenses), `dbt: Parse project`,
 frontier` (the plan as an S-expression beside the model, with an
 "Apply split" button), `dbt: Compare incremental / full refresh` (the
 model rendered with `is_incremental()` false and true, as a unified diff
-beside it), `dbt: Table models that could be incremental`
+beside it), `dbt: Compare this model with a git revision or the last run`
+(dbt.diffAt: the `sql`, `compiled` or `lineage` view, as a diff beside it),
+`dbt: Cost report of the last run` (dbt.costReport), `dbt: Profile the column
+under the cursor` (dbt.profileColumn; needs `warehouse.profile: true`),
+`dbt: Table models that could be incremental`
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the
 model's tree-sitter-dbt tree beside it), `dbt: Highlight with
 tree-sitter-dbt` (colours the editor as the server highlights it — the
@@ -92,7 +96,12 @@ to each), `dbt: Breaking changes against the last build` (this model's
 columns against `target/catalog.json` or the manifest's documented
 columns from `dbt.breakingChanges`: removed, possibly renamed and retyped
 columns and what reads them downstream; also a lens and a diagnostic,
-refreshed on save), `dbt: Select nodes…` (dbt's selection syntax —
+refreshed on save), `dbt: Who reads this column?` (`dbt.impact`: the
+models downstream and, for a column, its tests, semantic models, metrics,
+exposures at node level and the dashboards of the BI manifest), `dbt:
+Structural search over the models' SQL` (`dbt.search`: `joins stg_orders
+on customer_id`, `select-star from source`, … over every model's HIR, a
+quick pick of the matches), `dbt: Select nodes…` (dbt's selection syntax —
 `tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `selector:<name>`,
 `… --exclude resource_type:test` — evaluated as you type by `dbt.select`,
 the counts in the title; choosing a node opens it), `dbt: Show

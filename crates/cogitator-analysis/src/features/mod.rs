@@ -6,15 +6,18 @@ mod artifact_status;
 pub mod breaking;
 mod call_hierarchy;
 mod code_actions;
+pub mod column_reach;
 pub mod column_types;
 mod compiled;
 mod compiled_map;
-mod completion;
+pub mod completion;
+pub mod cost;
 mod cte_preview;
 mod dead_models;
 mod declaration;
 mod definition;
 mod diagnostics;
+pub mod diff_at;
 pub mod dispatch;
 mod document_links;
 mod env_vars;
@@ -23,6 +26,7 @@ mod file_ops;
 pub mod formatting;
 mod governance;
 mod graph_nav;
+pub mod hir_search;
 mod hover;
 mod impact;
 mod incremental_diff;
@@ -37,6 +41,7 @@ pub mod macro_calls;
 mod model_info;
 mod navigation;
 pub mod plan;
+pub mod profile;
 pub mod quality;
 mod references;
 mod relation;
@@ -68,13 +73,19 @@ pub use code_actions::declare_missing::declare_missing_actions;
 pub use code_actions::define_missing::define_missing_actions;
 pub use code_actions::extract_cte::extract_cte_action;
 pub use code_actions::governance_fixes::private_ref_actions;
+pub use code_actions::inherit_docs::{
+    inherit_description_actions, inherit_description_sql_action, LineageOf,
+};
+pub use code_actions::inline_model::inline_model_action;
 pub use code_actions::refactors::{expand_star_action, extract_yaml_action};
 pub use code_actions::split_model::split_action;
+pub use code_actions::staging_scaffold::{staging_scaffold_action, ScaffoldInputs};
+pub use code_actions::unique_test::unique_test_actions;
 pub use code_actions::unit_test_scaffold::unit_test_scaffold_action;
 pub use code_actions::yaml_columns::{
     add_missing_columns_action, remove_unproduced_columns_action,
 };
-pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_action};
+pub use code_actions::yaml_fixes::scaffold_tests_action;
 pub use code_actions::yaml_unproduced::unproduced_column_diagnostics;
 pub use code_actions::{code_actions, model_entry_at, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
@@ -83,6 +94,7 @@ pub use compiled_map::{
 };
 pub use completion::{
     completion, completion_resolving, completion_with, resolve_completion_documentation,
+    resolve_completion_documentation_with, ModelHints,
 };
 pub use cte_preview::{
     choose_source, cte_at, cte_preview_lenses, parse_show, preview_file_name, preview_query,

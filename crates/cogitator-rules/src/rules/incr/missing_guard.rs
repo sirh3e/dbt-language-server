@@ -54,6 +54,7 @@ impl Detect<Hir> for MissingGuard {
                 .to_string(),
             evidence: Evidence::Exact,
             fixes: Vec::new(),
+            subject: None,
         });
     }
 }

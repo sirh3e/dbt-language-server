@@ -42,6 +42,8 @@ mod inputs;
 mod scalar;
 mod walk;
 
+pub use scalar::looks_like_event_time;
+
 #[cfg(test)]
 mod tests;
 

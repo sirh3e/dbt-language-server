@@ -153,7 +153,7 @@ pub(super) fn temporal(ty: &SqlType) -> bool {
 /// Is the column a column only an append-only table's new rows carry the
 /// newest values of, by its name? Updated-at columns are left out: their
 /// rows change.
-pub(super) fn looks_like_event_time(name: &str) -> bool {
+pub fn looks_like_event_time(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     if name.starts_with("updated") || name.starts_with("modified") || name.contains("_updated") {
         return false;

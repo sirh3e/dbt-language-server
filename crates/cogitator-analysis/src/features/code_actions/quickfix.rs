@@ -151,6 +151,7 @@ mod tests {
             },
             token_range: range,
             suggestions: vec![],
+            subject: None,
         });
         let actions = quickfixes("file:///m.sql", &[diag]);
         assert_eq!(actions.len(), 2);
@@ -184,6 +185,7 @@ mod tests {
             },
             token_range: range,
             suggestions: vec![],
+            subject: None,
         });
         diag
     }
@@ -264,6 +266,7 @@ mod tests {
             fix: FixKind::ReplaceToken,
             token_range: range,
             suggestions: vec!["stg_orders".into(), "stg_payments".into()],
+            subject: None,
         });
         let plain = Diagnostic::plain(
             range,

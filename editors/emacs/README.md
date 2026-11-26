@@ -71,6 +71,9 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-graph` | model-graph browser (below) |
 | `M-x cogitator-preview-cte` | the rows of the CTE at point, or the final select past every CTE (`dbt.previewCte`: the model run up to it through `dbt show --inline`), in `*cogitator-preview*`; a prefix argument sets the row count |
 | `M-x cogitator-incremental-diff` | this model rendered with `is_incremental()` false and true (`dbt.incrementalDiff`), as a unified diff; `q` closes |
+| `M-x cogitator-diff-at` | this model against itself at a git revision or `last-run` (`dbt.diffAt`), in the `sql`, `compiled` or `lineage` view, as a diff; `q` closes |
+| `M-x cogitator-cost-report` | the last run's models by cost, the critical path and "make it incremental" suggestions (`dbt.costReport`) |
+| `M-x cogitator-profile-column` | profiles the output column at point (`dbt.profileColumn`; needs `warehouse.profile: true`) |
 | `M-x cogitator-split-plan` | split this table model at its incrementality frontier: the plan as an S-expression and the new model's file; `a` offers the split code action |
 | `M-x cogitator-incrementality` | pick a table model by whether it could be incremental (slowest last run first) and visit it |
 | `M-x cogitator-syntax-tree` | the model's tree-sitter-dbt tree (`dbt.syntaxTree`) in a buffer; `RET` jumps to a node in the model |
@@ -79,11 +82,13 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-node-info` | a node's card (`dbt.nodeInfo`): `[kind:]name` — a macro's signature, callers and calls; a test's refs; a generic test's places in YAML |
 | `M-x cogitator-select` | the nodes a dbt selection picks (`dbt.select`), as `dbt ls --select` answers it: `tag:nightly`, `+dim_items`, `a,b`, `stg_*`, `… --exclude resource_type:test`; models, seeds, snapshots, sources, tests and exposures; choose one to visit it |
 | `M-x cogitator-breaking-changes` | this model against its last built schema (`dbt.breakingChanges`): removed, possibly renamed and retyped columns against `target/catalog.json` (else the manifest's documented columns) and what reads them downstream; also a lens and a diagnostic, refreshed on save |
+| `M-x cogitator-impact` | what this model feeds downstream (`dbt.impact`); with a column, who reads it: downstream columns, their tests, semantic-model entities/dimensions/measures, the metrics over them, exposures (node level) and the dashboards of the BI manifest (`bi.manifest` in cogitator.yml) |
 | `M-x cogitator-model-dependencies` | this model and its neighbours (`dbt.modelDependencies`): what it uses and what uses it, directly and all the way, nearest first, each with how it is built, in a grep buffer |
 | `M-x cogitator-unresolved` | every unresolved `ref`, `source`, source table, `doc`, macro and `var` of the project (`dbt.unresolved`) in a grep buffer; with `C-u`, only the kinds you name |
 | `M-x cogitator-lineage-site` | the project's column-lineage page (`dbt.lineageSite`), written to `target/cogitator-lineage/index.html` and opened in the browser |
 | `M-x cogitator-sync-yaml` | bring the models' schema YAML in line with their SQL (`dbt.syncYaml`): missing entries and columns added, descriptions inherited down the column lineage; the plan opens as a diff and is applied on confirm; with `C-u`, only this buffer's model (`cogitator-sync-yaml-prune`, `cogitator-sync-yaml-inherit-types`) |
 | `M-x cogitator-ast-grep` | structural search with ast-grep (`dbt.astGrep`): `{{ ref($M) }}` over the project's dbt files, `sql:select $$$C from $T` over the compiled SQL; matches in a grep buffer; `pattern => rewrite` rewrites every match after asking |
+| `M-x cogitator-search` | structural search over every model's SQL (`dbt.search`): `joins stg_orders on customer_id`, `select-star from source`, `reads source:shop.orders`, `uses column orders.amount`, combined with `and`, `or`, `not` and parentheses; matches in a grep buffer, the models it could not search named under them |
 
 Suggested bindings:
 
