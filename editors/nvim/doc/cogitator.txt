@@ -162,7 +162,9 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  the model no longer produces, `types` fills proven
                  data_type, `reorder` follows the SQL's order,
                  `folder` writes new entries to _<folder>__models.yml
-  :DbtColumnLineage [column]  column-lineage graph of this model
+  :DbtColumnLineage [column]  the column-lineage dialog of this model
+                 (|cogitator-nvim-column-dialog|), on that column;
+                 `:DbtColumnLineage graph [column]` draws it as the DAG
   :DbtDeps       dbt deps for the project (cancellable)
   :DbtInstall    install or update the language server from this
                  repository's releases (checksum-verified install.sh),
@@ -232,6 +234,34 @@ column reads, downstream through the models that read it, up to
 says when the walk stopped early). A column of a model whose template the
 server declines (Jinja control flow) has no lineage; compiling it
 (|:DbtCompile|) lets the server read the compiled SQL instead.
+
+                                               *cogitator-nvim-column-dialog*
+:DbtColumnLineage opens the column lineage as yazi-style Miller panes:
+what feeds the column under the cursor | the list (first the model's
+columns) | what reads it, and below them the dbt SQL (or a source's YAML)
+and the compiled SQL of the column's model, each scrolled to the column
+with the column marked — in the model's own buffer too when it is open.
+It opens at once and fills as the lineages arrive. Rows are
+`▦ model.column` (`◆` a source column) with tags: `⋈` feeds a join,
+`ƒ` derived, `=` passed through, `↑in ↓out` its edges. The data is
+`dbt.columnLineageGraph` where the server has it, else the walk above.
+
+  j / k …        any motion moves the cursor; the panes follow it
+  h / l          walk: what feeds (reads) the column becomes the list;
+                 back the way you came lands on the column you left
+  /              filter the list in fzf's syntax (|cogitator-pickers|);
+                 <CR> keeps it, <Esc> drops it
+  <CR>           open the column where it is defined
+  c              open the compiled SQL at the column
+  y              yank `model.column`
+  D              draw it as the DAG graph instead
+  + / - / R      walk one hop deeper / shallower / again
+  <C-d> / <C-u>  scroll the previews
+  ?              the keys
+  <Esc>          clear the filter, else close;  q  close
+
+The marks are `DbtColumnHit` and `DbtColumnHitLine`, the tags
+`DbtColumnJoin`, `DbtColumnDerived` and `DbtColumnDirect`.
 
 Counts repeat h, j, k, l, n, N, <C-o> and <C-i>. The colours are the
 `DbtDag*` highlight groups, which a colorscheme can override. Search

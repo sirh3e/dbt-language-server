@@ -43,6 +43,7 @@ for _, step in ipairs({
   "03_features",
   "04_browser",
   "04_graphs",
+  "04_column_dialog",
   "04_tools",
   "04_pickers",
   "04_dialogs",

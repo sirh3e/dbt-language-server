@@ -143,8 +143,24 @@ vim.api.nvim_create_user_command("DbtDag", function()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
 
 vim.api.nvim_create_user_command("DbtColumnLineage", function(opts)
-  require("cogitator.dag").open({ columns = true, column = opts.args ~= "" and opts.args or nil })
-end, { nargs = "?", desc = "column-lineage graph of this model (optionally of one column)" })
+  local args = vim.split(vim.trim(opts.args), "%s+", { trimempty = true })
+  if args[1] == "graph" then
+    -- the lineage drawn as the DAG, as before the dialog
+    require("cogitator.dag").open({ columns = true, column = args[2] })
+  else
+    require("cogitator.column_dialog").open({ column = args[1] })
+  end
+end, {
+  nargs = "*",
+  complete = function(lead, line)
+    local first = line:match("ColumnLineage%s+%S*$") ~= nil
+    local words = vim.list_extend(first and { "graph" } or {}, require("cogitator.dispatch").column_names())
+    return vim.tbl_filter(function(w)
+      return w:find(lead, 1, true) == 1
+    end, words)
+  end,
+  desc = "column-lineage dialog of this model (optionally one column); `graph [column]` draws the DAG",
+})
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()
