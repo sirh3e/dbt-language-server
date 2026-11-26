@@ -204,8 +204,10 @@ impl Dispatcher {
                 return;
             }
         }
+        let support = self.completion_support;
+        let derived = self.derived.clone();
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
-            match doc {
+            let items = match doc {
                 // the server's own config file: schema-table completion
                 Some(d) if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) => {
                     cogitator_analysis::yaml_cogitator::cogitator_completion(&d.text, pos)
@@ -214,9 +216,16 @@ impl Dispatcher {
                 Some(d) if crate::server::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
                 }
-                Some(d) => features::completion(ctx, d, pos),
+                Some(d) => {
+                    let hints = super::completion_hints::hints(ctx, &derived, uri);
+                    features::completion_with(ctx, d, pos, &hints)
+                }
                 None => Vec::new(),
-            }
+            };
+            items
+                .into_iter()
+                .map(|item| cogitator_lsp::adapt(item, support))
+                .collect::<Vec<_>>()
         });
     }
 

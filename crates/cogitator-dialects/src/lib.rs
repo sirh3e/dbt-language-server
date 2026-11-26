@@ -65,6 +65,7 @@ impl Dialect {
                 insert_text: name.clone(),
                 sort_text: name.clone(),
                 data: Some(CompletionData::Function { name: name.clone() }.into_value()),
+                ..Default::default()
             })
             .collect()
     }

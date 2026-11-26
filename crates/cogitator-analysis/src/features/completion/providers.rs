@@ -29,6 +29,7 @@ pub(super) fn item(
         kind,
         insert_text: insert.into(),
         data: None,
+        ..Default::default()
     }
 }
 

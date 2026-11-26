@@ -201,6 +201,7 @@ pub fn yaml_completion(uri: &str, text: &str, pos: Position) -> Vec<CompletionIt
             insert_text: format!("{key}: "),
             sort_text: key.clone(),
             data: None,
+            ..Default::default()
         })
         .collect()
 }

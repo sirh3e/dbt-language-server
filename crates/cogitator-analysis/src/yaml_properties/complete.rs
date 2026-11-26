@@ -176,6 +176,7 @@ fn test_items(inputs: &PropertiesInputs<'_>, dash: &str, suffix: &str) -> Vec<Co
                 insert_text: format!("{dash}{label}{opens}"),
                 sort_text: format!("{}{label}", u8::from(t.package.is_some())),
                 data: None,
+                ..Default::default()
             }
         })
         .collect()
@@ -197,6 +198,7 @@ fn argument_items(inputs: &PropertiesInputs<'_>, test: &str, custom: bool) -> Ve
             insert_text: format!("{arg}: "),
             sort_text: format!("0{arg}"),
             data: None,
+            ..Default::default()
         })
         .collect();
     if custom && !out.is_empty() {
@@ -208,6 +210,7 @@ fn argument_items(inputs: &PropertiesInputs<'_>, test: &str, custom: bool) -> Ve
             insert_text: "arguments:".to_string(),
             sort_text: "1arguments".to_string(),
             data: None,
+            ..Default::default()
         });
     }
     out
@@ -236,6 +239,7 @@ fn column_items(inputs: &PropertiesInputs<'_>, prefix: &str) -> Vec<CompletionIt
                 insert_text: format!("{prefix}{column}"),
                 sort_text: format!("{}{column}", u8::from(declared)),
                 data: None,
+                ..Default::default()
             }
         })
         .collect()
@@ -254,6 +258,7 @@ fn property_item(key: SchemaKey) -> CompletionItem {
         insert_text,
         sort_text: key.name,
         data: None,
+        ..Default::default()
     }
 }
 
@@ -266,6 +271,7 @@ fn value_item(value: String) -> CompletionItem {
         insert_text: value.clone(),
         sort_text: value,
         data: None,
+        ..Default::default()
     }
 }
 

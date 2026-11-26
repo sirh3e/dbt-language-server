@@ -342,6 +342,14 @@ names what already exists in the codebase.
       strict `unique_combination_of_columns` tests and an incremental
       `unique_key` make columns (or column sets, `ModelSchema::unique_sets`)
       unique; `SchemaCol::proven_type` says a type rests on proven evidence
+- [x] **Model-aware snippets** (docs/snippets.md,
+      `features/completion/snippets.rs`): `is_inc…` / `{% if ` offer an
+      `is_incremental()` block on the model's event_time, a declared upstream
+      delta column or a named guess (a tab stop), with the incrementality
+      rewrite's filter (`rules/incr/watermark.rs`); `conf…` an incremental
+      `config()` with the merge key from constraints and tests;
+      `insertTextFormat`/`labelDetails`/Markdown fitted to the client
+      (`cogitator_lsp::adapt`, `CompletionSupport`)
 - [x] **Type checks under every profile** (docs/type-checks.md):
       `type.text_temporal_compare`, `type.aggregate_text` and
       `join.key_type_mismatch` (`cogitator-rules/src/rules/types/`), Warning

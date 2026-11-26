@@ -33,6 +33,8 @@ pub struct Dispatcher {
     profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
     /// Client advertised window.workDoneProgress (set at initialize).
     progress_supported: Arc<AtomicBool>,
+    /// The client's completion-item capabilities (set at initialize).
+    completion_support: cogitator_lsp::CompletionSupport,
     /// What the server has been doing, for dbt.status.
     status: Arc<std::sync::Mutex<super::StatusInfo>>,
     /// Shared derived-data caches (profiles inventory, lineage, results).
@@ -64,6 +66,7 @@ pub struct Dispatcher {
 mod breaking;
 mod commands_exec;
 mod compiled_nav;
+mod completion_hints;
 mod dbt_ops;
 mod diagnostics_req;
 mod dispatch_impl;
@@ -114,6 +117,7 @@ impl Dispatcher {
             fusion_jobs: HashMap::new(),
             profiles,
             progress_supported,
+            completion_support: cogitator_lsp::CompletionSupport::default(),
             status,
             derived,
             in_flight: super::offload::InFlight::default(),
@@ -372,6 +376,8 @@ impl Dispatcher {
         *self.primary_root.lock().expect("primary root lock") = self.root_path.clone();
         self.progress_supported
             .store(params.work_done_progress(), Ordering::Relaxed);
+        self.completion_support =
+            cogitator_lsp::CompletionSupport::from_capabilities(params.capabilities.as_ref());
         {
             let mut cfg = self.profiles.lock().expect("profiles config lock");
             if let Some(dir) = params.profiles_dir() {
