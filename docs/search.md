@@ -8,8 +8,9 @@ name-resolved reading of the template (the same one column lineage uses).
 
 ## The query language
 
-Clauses, joined by `and`; a model matches when every clause holds in it,
-and each clause's places are listed. Names compare case-insensitively.
+Clauses, combined with `and`, `or`, `not` and parentheses; a model matches
+when the whole query holds in it. Names and the words `and`, `or`, `not`
+compare case-insensitively.
 
 | Clause | Finds |
 |---|---|
@@ -28,7 +29,21 @@ joins stg_orders on customer_id
 select-star from source
 reads source:shop.orders and select-star
 uses column stg_payments.amount
+select-star from source or select-star from stg_customers
+reads stg_orders and not reads stg_customers
+(joins stg_orders or joins stg_payments) and not select-star
 ```
+
+`not` binds tightest, then `and`, then `or`, as in SQL, so `reads a or
+reads b and reads c` is `reads a or (reads b and reads c)`; parentheses
+group, and may touch the words they enclose (`(reads a or reads b)`).
+
+Which places are listed: those of the clauses that made the model match —
+every clause of an `and`, only the `or` branches that held, and nothing
+under a `not` (a negated clause has no place: it is about what the model
+does *not* do). A model that matches only through `not` — e.g. every model
+that `not reads source` — is listed once at the top of its file, with the
+whole query as its `env.clause`.
 
 Relations are what the template refers to: a CTE is not a relation of the
 project, so `joins stg_orders` finds a join on the `ref`, not on a CTE that
@@ -60,4 +75,4 @@ render, or SQL that does not parse into a full query — is listed under
 
 - No compiled SQL: control blocks make a model not searched rather than
   searched in one rendering.
-- No rewriting (use `dbt.astGrep` for that) and no `or`/`not`.
+- No rewriting (use `dbt.astGrep` for that).

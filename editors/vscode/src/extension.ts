@@ -688,7 +688,7 @@ export function searchSummary(result: SearchResult): string {
 /** Structural search over the models' SQL (dbt.search). */
 async function structuralSearch(): Promise<void> {
   const query = await vscode.window.showInputBox({
-    prompt: "dbt search: joins <rel> [on <col>] | select-star [from <rel>] | reads <rel> | uses column <rel>.<col>, joined by and",
+    prompt: "dbt search: joins <rel> [on <col>] | select-star [from <rel>] | reads <rel> | uses column <rel>.<col>; combine with and, or, not, ( )",
     value: "select-star from source",
   });
   if (!query) {

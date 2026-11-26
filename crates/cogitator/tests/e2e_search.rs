@@ -49,3 +49,39 @@ fn a_structural_query_over_the_project() {
         "{bad}"
     );
 }
+
+#[test]
+fn or_and_not_over_the_project() {
+    let project = jaffle();
+    let (mut lsp, _) = project.booted();
+    lsp.wait_refresh(1);
+    let answer = lsp.request(
+        "workspace/executeCommand",
+        json!({"command": "dbt.search",
+               "arguments": [{"uri": "",
+                              "query": "(reads raw_customers or reads raw_orders) and not reads raw_orders"}]}),
+    );
+    assert_eq!(
+        answer["result"]["models"],
+        json!(["stg_customers"]),
+        "{answer}"
+    );
+    let clauses: Vec<&str> = answer["result"]["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["env"]["clause"].as_str().unwrap())
+        .collect();
+    assert_eq!(clauses, ["reads raw_customers"], "{answer}");
+
+    let bad = lsp.request(
+        "workspace/executeCommand",
+        json!({"command": "dbt.search", "arguments": [{"uri": "", "query": "(reads a"}]}),
+    );
+    assert!(
+        bad["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("not closed")),
+        "{bad}"
+    );
+}

@@ -1,7 +1,7 @@
 --- Structural search over the models' SQL, through the server
 --- (dbt.search): `joins stg_orders on customer_id`, `select-star from
 --- source`, `reads source:shop.orders`, `uses column orders.amount`,
---- combined with `and`. The matches have dbt.astGrep's shape, so they
+--- combined with `and`, `or`, `not` and parentheses. The matches have dbt.astGrep's shape, so they
 --- reuse its quickfix items.
 
 local actions = require("cogitator.actions")

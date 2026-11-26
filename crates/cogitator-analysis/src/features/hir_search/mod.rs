@@ -7,6 +7,7 @@
 //! searched, with why — never dropped silently.
 
 mod eval;
+pub mod expr;
 pub mod query;
 
 use std::collections::BTreeMap;
@@ -49,7 +50,7 @@ pub struct SearchReport {
     pub query: String,
     /// Models whose HIR was searched.
     pub searched: usize,
-    /// Models that matched every clause.
+    /// Models the whole query holds in.
     pub models: Vec<String>,
     pub matches: Vec<SearchMatch>,
     pub not_searched: Vec<NotSearched>,
@@ -80,6 +81,33 @@ fn model_sites(
         .filter(|_| !hole)
         .ok_or_else(|| "the SQL does not parse into a full query".to_string())?;
     Ok(query.clauses.iter().map(|c| eval::sites(hir, c)).collect())
+}
+
+/// Each witnessing clause once, with its sites, in the query's order.
+fn witness_sites<'a>(
+    clauses: &'a [query::Clause],
+    sites: &'a [Vec<cogitator_ir::Span>],
+    witnesses: &[usize],
+) -> impl Iterator<Item = (&'a query::Clause, &'a Vec<cogitator_ir::Span>)> {
+    let mut chosen: Vec<usize> = witnesses.to_vec();
+    chosen.sort_unstable();
+    chosen.dedup();
+    chosen.into_iter().map(|i| (&clauses[i], &sites[i]))
+}
+
+/// A match for a model the query holds in without a site of its own (a
+/// `not` alone): the top of the file, naming the whole query.
+fn whole_model(uri: &str, source: &str, query: &str, model: &str) -> SearchMatch {
+    SearchMatch {
+        uri: uri.to_string(),
+        range: Range::default(),
+        text: source.lines().next().unwrap_or_default().to_string(),
+        env: BTreeMap::from([
+            ("clause".to_string(), query.to_string()),
+            ("model".to_string(), model.to_string()),
+        ]),
+        replacement: None,
+    }
 }
 
 /// Run `query` over the project's models (or the one named `only`).
@@ -127,13 +155,26 @@ pub fn search(
             }
         };
         report.searched += 1;
-        if sites.iter().any(Vec::is_empty) {
+        let found: Vec<bool> = sites.iter().map(|s| !s.is_empty()).collect();
+        if !query.expr.holds(&found) {
             continue;
         }
         report.models.push(name.clone());
         let uri = cogitator_lsp::fs_path_to_uri(path);
         let table = LineTable::new(&source);
-        for (clause, spans) in query.clauses.iter().zip(&sites) {
+        let witnesses = query.expr.witnesses(&found);
+        if witnesses.iter().all(|&i| sites[i].is_empty()) {
+            // matched only through `not`: no site shows it, the model does
+            if report.matches.len() == MAX_MATCHES {
+                report.truncated = true;
+                return Ok(report);
+            }
+            report
+                .matches
+                .push(whole_model(&uri, &source, &query.describe(), name));
+            continue;
+        }
+        for (clause, spans) in witness_sites(&query.clauses, &sites, &witnesses) {
             for span in spans {
                 if report.matches.len() == MAX_MATCHES {
                     report.truncated = true;
