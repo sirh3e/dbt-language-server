@@ -78,7 +78,19 @@ impl Dispatcher {
                                 super::yaml_types::hover(ctx, &derived, d, uri, pos),
                             );
                             // who reads it, from the open/save cache only
-                            with_type_line(text, reach_line(ctx, &derived, d, uri, pos))
+                            let text = with_type_line(text, reach_line(ctx, &derived, d, uri, pos));
+                            // a dbt.profileColumn answer, from the cache only
+                            with_type_line(
+                                text,
+                                crate::server::profile::hover(
+                                    ctx,
+                                    &derived,
+                                    d,
+                                    uri,
+                                    pos,
+                                    lineage.as_deref().and_then(Option::as_ref),
+                                ),
+                            )
                         }
                     })
                     .unwrap_or_default(),

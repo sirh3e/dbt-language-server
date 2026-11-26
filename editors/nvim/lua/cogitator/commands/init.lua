@@ -5,7 +5,17 @@
 
 local M = {}
 
-for _, part in ipairs({ "shared", "jobs", "lists", "analysis", "views", "node", "split", "navigation" }) do
+for _, part in ipairs({
+  "shared",
+  "jobs",
+  "lists",
+  "analysis",
+  "views",
+  "node",
+  "split",
+  "navigation",
+  "insights",
+}) do
   for name, value in pairs(require("cogitator.commands." .. part)) do
     assert(M[name] == nil, "cogitator.commands: " .. name .. " is defined twice")
     M[name] = value

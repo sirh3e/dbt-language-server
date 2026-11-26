@@ -15,6 +15,7 @@ pub struct RunStatus {
     pub execution_time: f64,
     pub message: Option<String>,
     pub generated_at: Option<String>,
+    pub adapter: super::adapter_response::AdapterStats,
 }
 
 /// Last-run status per MODEL name ("model.<proj>.<name>" results only).
@@ -35,6 +36,7 @@ pub fn run_status_by_model(rr: &RunResults) -> HashMap<String, RunStatus> {
                 execution_time: result.execution_time.unwrap_or_default(),
                 message: result.message.clone(),
                 generated_at: rr.metadata.generated_at.clone(),
+                adapter: result.adapter.clone(),
             },
         );
     }

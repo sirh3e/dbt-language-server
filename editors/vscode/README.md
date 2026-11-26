@@ -76,7 +76,11 @@ beside it, as do the "Preview rows" lenses), `dbt: Parse project`,
 frontier` (the plan as an S-expression beside the model, with an
 "Apply split" button), `dbt: Compare incremental / full refresh` (the
 model rendered with `is_incremental()` false and true, as a unified diff
-beside it), `dbt: Table models that could be incremental`
+beside it), `dbt: Compare this model with a git revision or the last run`
+(dbt.diffAt: the `sql`, `compiled` or `lineage` view, as a diff beside it),
+`dbt: Cost report of the last run` (dbt.costReport), `dbt: Profile the column
+under the cursor` (dbt.profileColumn; needs `warehouse.profile: true`),
+`dbt: Table models that could be incremental`
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the
 model's tree-sitter-dbt tree beside it), `dbt: Highlight with
 tree-sitter-dbt` (colours the editor as the server highlights it — the

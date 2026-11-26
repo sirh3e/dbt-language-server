@@ -250,6 +250,21 @@
               (stringp (plist-get diff :incremental)))
          "integration: dbt.incrementalDiff renders both ways" diff))
 
+;; unit + integration: dbt.diffAt, dbt.costReport
+(check (string-match-p "-- \\+ column status"
+                       (cogitator--diff-at-render
+                        '(:model "m" :rev "HEAD" :what "lineage" :identical :json-false
+                          :columns (:added ["status"] :removed [] :changed [])
+                          :diff "--- a\n+++ b\n")))
+       "diff at: the lineage view lists the added column")
+(check (string-match-p "no sql difference"
+                       (cogitator--diff-at-render
+                        '(:model "m" :rev "HEAD" :what "sql" :identical t :diff "")))
+       "diff at: an unchanged model says so")
+(let ((cost (run--exec "dbt.costReport" (cogitator--command-argument))))
+  (check (stringp (plist-get cost :text))
+         "integration: dbt.costReport answers a report" cost))
+
 ;; unit + integration: the syntax tree
 (check (equal (cogitator--syntax-line
                '(:depth 1 :kind "select" :field "body" :missing :json-false

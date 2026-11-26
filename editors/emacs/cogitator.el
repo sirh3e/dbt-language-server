@@ -381,6 +381,89 @@ and the SQL when `is_incremental()' changes nothing."
          (pop-to-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
+;; the model at another revision (dbt.diffAt), the last run's cost
+;; (dbt.costReport), a column's profile (dbt.profileColumn)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--diff-at-render (result)
+  "The text of a dbt.diffAt RESULT: the note, column changes, the diff."
+  (let* ((columns (plist-get result :columns))
+         (identical (plist-get result :identical))
+         (lines '()))
+    (when (stringp (plist-get result :note))
+      (push (concat "-- " (plist-get result :note)) lines))
+    (when (and columns (not (eq columns :null)))
+      (when (stringp (plist-get columns :unknown))
+        (push (concat "-- lineage unknown: " (plist-get columns :unknown)) lines))
+      (seq-doseq (name (plist-get columns :added))
+        (push (concat "-- + column " name) lines))
+      (seq-doseq (name (plist-get columns :removed))
+        (push (concat "-- - column " name) lines))
+      (seq-doseq (changed (plist-get columns :changed))
+        (push (format "-- ~ column %s: %s -> %s"
+                      (plist-get changed :name)
+                      (mapconcat #'identity (plist-get changed :before) ", ")
+                      (mapconcat #'identity (plist-get changed :after) ", "))
+              lines)))
+    (concat (mapconcat #'identity (nreverse lines) "\n")
+            (if lines "\n" "")
+            (if (and identical (not (eq identical :json-false)))
+                (format "-- %s: no %s difference between %s and now\n"
+                        (plist-get result :model) (plist-get result :what)
+                        (plist-get result :rev))
+              (plist-get result :diff)))))
+
+(defun cogitator--show-text (name text mode)
+  "Show TEXT in buffer NAME with major MODE, read-only; `q' quits."
+  (let ((buf (get-buffer-create name)))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert text)
+        (goto-char (point-min)))
+      (funcall mode)
+      (setq buffer-read-only t)
+      (local-set-key (kbd "q") #'quit-window))
+    (pop-to-buffer buf)))
+
+;;;###autoload
+(defun cogitator-diff-at (rev what)
+  "This model against itself at REV (a git revision or last-run) in view WHAT."
+  (interactive
+   (list (read-string "Revision (HEAD, a sha, last-run): " nil nil "HEAD")
+         (completing-read "View: " '("sql" "compiled" "lineage") nil t nil nil "sql")))
+  (cogitator--execute
+   "dbt.diffAt"
+   (append (cogitator--command-argument) (list :rev rev :what what))
+   (lambda (result)
+     (if (or (null result) (eq result :null))
+         (message "cogitator: no diff for this buffer")
+       (cogitator--show-text "*cogitator-diff-at*"
+                             (cogitator--diff-at-render result) #'diff-mode)))))
+
+;;;###autoload
+(defun cogitator-cost-report ()
+  "The last run's models by cost, the critical path and suggestions."
+  (interactive)
+  (cogitator--execute
+   "dbt.costReport" (cogitator--command-argument)
+   (lambda (result)
+     (cogitator--show-text "*cogitator-cost-report*"
+                           (or (plist-get result :text) "no report")
+                           #'special-mode))))
+
+;;;###autoload
+(defun cogitator-profile-column ()
+  "Profile the output column at point (needs warehouse.profile: true)."
+  (interactive)
+  (message "cogitator: profiling the column at point…")
+  (cogitator--execute
+   "dbt.profileColumn" (cogitator--command-argument t)
+   (lambda (result)
+     (cogitator--show-text "*cogitator-profile*"
+                           (or (plist-get result :hover) "") #'special-mode))))
+
+;; ---------------------------------------------------------------------------
 ;; the rows of a CTE (dbt.previewCte)
 ;; ---------------------------------------------------------------------------
 

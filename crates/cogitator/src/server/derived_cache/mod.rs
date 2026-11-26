@@ -23,6 +23,7 @@ mod artifacts;
 mod breaking;
 mod lineage;
 mod plan;
+mod profile;
 mod reach;
 mod schemas;
 
@@ -128,6 +129,8 @@ pub struct DerivedCache {
     /// The syntax check's renderer of ONE context snapshot (the pointer
     /// identity of the Arc): the project's macros, vars and relations.
     syntax_renderer: Mutex<Option<(usize, Arc<SyntaxRenderer>)>>,
+    /// dbt.profileColumn's answers, which the hover reads.
+    column_profiles: profile::ProfileSlot,
 }
 
 /// What a cached `dbt.highlight` answer is of: an open document at a

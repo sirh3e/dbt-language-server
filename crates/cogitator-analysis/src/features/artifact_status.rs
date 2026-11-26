@@ -33,7 +33,14 @@ pub fn run_lens(ctx: &DbtContext, uri: &str, set: &ArtifactSet) -> Option<CodeLe
     let run = run_status_by_model(run_results);
     let status = run.get(&model)?;
     let title = match status.status.as_str() {
-        "success" | "pass" => format!("last run: OK in {:.1} s", status.execution_time),
+        "success" | "pass" => {
+            let mut title = format!("last run: OK in {:.1} s", status.execution_time);
+            for part in super::cost::lens_parts(run_results, &model, status) {
+                title.push_str(" · ");
+                title.push_str(&part);
+            }
+            title
+        }
         "skipped" => "last run: skipped".to_string(),
         other => format!("last run: {}", other.to_uppercase()),
     };

@@ -40,6 +40,8 @@ pub struct FileConfig {
     pub preview: PreviewSection,
     #[serde(default)]
     pub bi: BiSection,
+    #[serde(default)]
+    pub cost: CostSection,
     /// `--vars` equivalents: a mapping of var name → value.
     #[serde(default)]
     pub vars: Option<serde_json::Map<String, serde_json::Value>>,
@@ -154,6 +156,16 @@ pub struct LogSection {
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 pub struct WarehouseSection {
     pub columns: Option<bool>,
+    /// dbt.profileColumn may query the warehouse (off by default).
+    pub profile: Option<bool>,
+    pub profile_sample_rows: Option<u64>,
+}
+
+/// `cost:` — dbt.costReport's optional inputs.
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+pub struct CostSection {
+    /// Path (relative to the project root) of a query-history JSON export.
+    pub query_history: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -244,6 +256,7 @@ const ROOT_KEYS: &[&str] = &[
     "perf_rules",
     "preview",
     "bi",
+    "cost",
 ];
 const PROFILES_KEYS: &[&str] = &["dir", "profile", "target", "allow"];
 const LIMITS_KEYS: &[&str] = &["compiled_sql_mib", "artifact_mib"];
@@ -260,7 +273,8 @@ const LINT_KEYS: &[&str] = &[
     "syntax",
 ];
 const LOG_KEYS: &[&str] = &["client_level"];
-const WAREHOUSE_KEYS: &[&str] = &["columns"];
+const WAREHOUSE_KEYS: &[&str] = &["columns", "profile", "profile_sample_rows"];
+const COST_KEYS: &[&str] = &["query_history"];
 const PERF_KEYS: &[&str] = &["profile", "catalog_stats", "row_hints", "inline_findings"];
 const INLAY_KEYS: &[&str] = &["vars", "env_vars", "jinja"];
 const PREVIEW_KEYS: &[&str] = &["rows", "max_rows"];
@@ -335,6 +349,7 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
         ("inlay", INLAY_KEYS),
         ("preview", PREVIEW_KEYS),
         ("bi", BI_KEYS),
+        ("cost", COST_KEYS),
     ] {
         if let Some(node) = get(root, section) {
             for (key, _) in entries(node) {
@@ -345,8 +360,11 @@ pub fn unknown_key_warnings(text: &str, path: &Path) -> Vec<Guidance> {
     out
 }
 
+mod analytics;
 mod apply;
 mod perf;
+
+pub use analytics::AnalyticsSettings;
 
 pub use apply::{apply, diff, launch_filter, Baseline};
 
@@ -372,6 +390,7 @@ mod tests {
             (INLAY_KEYS, "inlay"),
             (PREVIEW_KEYS, "preview"),
             (BI_KEYS, "bi"),
+            (COST_KEYS, "cost"),
         ] {
             let schema: Vec<&str> = section(name)
                 .expect(name)

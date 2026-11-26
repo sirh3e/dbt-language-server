@@ -99,11 +99,23 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     SectionSchema {
         name: "warehouse",
         doc: "Warehouse introspection (duckdb builds only).",
-        keys: &[key(
-            "columns",
-            "Complete source columns from the warehouse when the YAML has none.",
-            "bool",
-        )],
+        keys: &[
+            key(
+                "columns",
+                "Complete source columns from the warehouse when the YAML has none.",
+                "bool",
+            ),
+            key(
+                "profile",
+                "Offer dbt.profileColumn (a sampled profile query against the warehouse; default off).",
+                "bool",
+            ),
+            key(
+                "profile_sample_rows",
+                "Rows a column profile samples (default 10000).",
+                "rows",
+            ),
+        ],
     },
     SectionSchema {
         name: "perf",
@@ -197,6 +209,15 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
         keys: &[
             key("manifest", "A JSON file, relative to the project root, listing dashboards and the models/columns they read ({\"dashboards\": [{\"name\", \"url\", \"reads\": [{\"model\", \"column\"}]}]}; docs/column-reach.md).", "path"),
         ],
+    },
+    SectionSchema {
+        name: "cost",
+        doc: "dbt.costReport and the cost lens: optional figures beyond target/run_results.json.",
+        keys: &[key(
+            "query_history",
+            "A JSON (array or JSON lines) export of the warehouse's query history; fills bytes and slots dbt did not record.",
+            "path",
+        )],
     },
 ];
 

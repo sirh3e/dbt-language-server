@@ -210,6 +210,9 @@ pub const COMMANDS: &[&str] = &[
     "dbt.syncYaml",
     "dbt.modelDependencies",
     "dbt.search",
+    "dbt.costReport",
+    "dbt.diffAt",
+    "dbt.profileColumn",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

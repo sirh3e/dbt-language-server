@@ -133,6 +133,90 @@ async function incrementalDiff(): Promise<void> {
   });
 }
 
+/** A dbt.diffAt answer: the model now against a git revision or the last run. */
+export interface DiffAt {
+  model: string;
+  rev: string;
+  what: string;
+  diff: string;
+  identical: boolean;
+  note?: string;
+  columns?: {
+    added: string[];
+    removed: string[];
+    changed: { name: string; before: string[]; after: string[] }[];
+    unknown?: string;
+  };
+}
+
+/** The text shown for dbt.diffAt: the note, column changes, then the diff. */
+export function diffAtText(result: DiffAt): string {
+  const lines: string[] = [];
+  if (result.note) {
+    lines.push(`-- ${result.note}`);
+  }
+  const columns = result.columns;
+  if (columns) {
+    if (columns.unknown) {
+      lines.push(`-- lineage unknown: ${columns.unknown}`);
+    }
+    columns.added.forEach((name) => lines.push(`-- + column ${name}`));
+    columns.removed.forEach((name) => lines.push(`-- - column ${name}`));
+    columns.changed.forEach((c) =>
+      lines.push(`-- ~ column ${c.name}: ${c.before.join(", ")} → ${c.after.join(", ")}`)
+    );
+  }
+  const head = lines.length ? `${lines.join("\n")}\n` : "";
+  if (result.identical) {
+    return `${head}-- ${result.model}: no ${result.what} difference between ${result.rev} and now\n`;
+  }
+  return head + result.diff;
+}
+
+async function showBeside(language: string, content: string): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument({ language, content });
+  await vscode.window.showTextDocument(doc, { preview: true, viewColumn: vscode.ViewColumn.Beside });
+}
+
+async function diffAt(): Promise<void> {
+  const rev = await vscode.window.showInputBox({
+    prompt: "Revision: HEAD, a branch, a sha, or last-run",
+    value: "HEAD",
+  });
+  if (rev === undefined) {
+    return;
+  }
+  const what = await vscode.window.showQuickPick(["sql", "compiled", "lineage"], {
+    placeHolder: "Compare the template, the rendered SQL or the column lineage",
+  });
+  if (!what) {
+    return;
+  }
+  const result = (await execDbt("dbt.diffAt", { rev, what })) as DiffAt | null | undefined;
+  if (result) {
+    await showBeside(result.identical ? "sql" : "diff", diffAtText(result));
+  }
+}
+
+async function costReport(): Promise<void> {
+  const result = (await execDbt("dbt.costReport")) as { text?: string } | null | undefined;
+  if (result) {
+    await showBeside("plaintext", result.text ?? "no report");
+  }
+}
+
+async function profileColumn(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return;
+  }
+  const position = { line: editor.selection.active.line, character: editor.selection.active.character };
+  const result = (await execDbt("dbt.profileColumn", { position })) as { hover?: string } | null | undefined;
+  if (result?.hover) {
+    await showBeside("markdown", result.hover);
+  }
+}
+
 /** A dbt.previewCte answer: the rows of one CTE (or the final select). */
 export interface CtePreview {
   model: string;
@@ -1206,6 +1290,9 @@ export async function activate(
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
     ["cogitator.incrementalDiff", incrementalDiff],
+    ["cogitator.diffAt", diffAt],
+    ["cogitator.costReport", costReport],
+    ["cogitator.profileColumn", profileColumn],
     ["cogitator.incrementality", incrementality],
     ["cogitator.syntaxTree", syntaxTree],
     ["cogitator.highlight", highlight],

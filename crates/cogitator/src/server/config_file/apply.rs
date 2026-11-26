@@ -31,6 +31,8 @@ pub enum Change {
     PreviewMaxRows(u64),
     /// `bi.manifest` (empty: none; no launch value to revert to).
     BiManifest(String),
+    /// cost.query_history / warehouse.profile*.
+    Analytics(super::AnalyticsSettings),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -92,7 +94,7 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.lint != new.lint {
         out.push(Change::LintFlags(new.lint.flags(baseline.lint_flags)));
     }
-    if old.warehouse != new.warehouse {
+    if old.warehouse.columns != new.warehouse.columns {
         out.push(Change::WarehouseColumns(
             new.warehouse.columns.unwrap_or(baseline.warehouse_columns),
         ));
@@ -129,6 +131,9 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
         out.push(Change::BiManifest(
             new.bi.manifest.clone().unwrap_or_default(),
         ));
+    }
+    if old.analytics() != new.analytics() {
+        out.push(Change::Analytics(new.analytics()));
     }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
@@ -169,7 +174,8 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayJinja(_)
             | Change::PreviewRows(_)
             | Change::PreviewMaxRows(_)
-            | Change::BiManifest(_) => true,
+            | Change::BiManifest(_)
+            | Change::Analytics(_) => true,
         })
         .collect()
 }
@@ -273,6 +279,11 @@ pub fn apply(
             Change::BiManifest(path) => {
                 *toggles.bi_manifest.write().expect("bi manifest lock") = path.clone();
                 applied.push("bi.manifest");
+            }
+            Change::Analytics(settings) => {
+                *toggles.analytics.write().expect("analytics settings lock") =
+                    std::sync::Arc::new(settings.clone());
+                applied.push("cost/warehouse.profile");
             }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc

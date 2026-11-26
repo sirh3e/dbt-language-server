@@ -120,7 +120,8 @@ writer wins).
   `dbt.splitPlan`, `dbt.incrementalDiff`, `dbt.syntaxTree`, `dbt.highlight`,
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
   `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`,
-  `dbt.modelDependencies`, `dbt.search`
+  `dbt.modelDependencies`, `dbt.search`, `dbt.costReport`, `dbt.diffAt`,
+  `dbt.profileColumn`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -158,6 +159,9 @@ Every command takes **one argument object**, not positional values:
 | `dbt.incrementality` | `{models, incremental}` | none; every table model's incrementality verdict, slowest last run first (specs/ir-pipeline/10) |
 | `dbt.splitPlan` | `{model, sexp, part: {name, cte, text}}` or `null` | none; the split at the incrementality frontier as an S-expression (specs/ir-pipeline/10 §6) |
 | `dbt.incrementalDiff` | `{model, fullRefresh, incremental, diff, identical}` or InvalidParams Guidance | none, or with `show: true` (the "Compare incremental / full refresh" lens) the diff written to `target/.cogitator/incremental/<model>.diff` and opened via showDocument |
+| `dbt.diffAt` | `{model, rev, what, before, after, diff, identical, columns?, note?}` or InvalidParams Guidance (not a git repository, git missing, unknown revision, file absent at the revision, no last run) | none, or with `show: true` the diff written to `target/.cogitator/diff/<model>@<rev>.<what>.diff` and opened via showDocument |
+| `dbt.costReport` | `{generatedAt, totalSeconds, models: [{model, uri, status, seconds, slowestPercent, bytesProcessed, bytesBilled, slotMs, rowsAffected, queryId, materialized, onCriticalPath, suggestion}], criticalPath: {models, seconds}, historyRows, text}` | none; reads target/run_results.json (and `cost.query_history`) |
+| `dbt.profileColumn` | `{profile: {model, column, relation, rows, distinct, nulls, nullRate, min, max, top: [{value, count}], engine, stamp, sql}, hover}` or RequestFailed Guidance (profiling off, no output column under the cursor, the query failed) | a background job (a `dbt.cancel` token, $/progress) that queries the warehouse — only with `warehouse.profile: true`; fills the cache the hover reads |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -512,6 +516,9 @@ vim.lsp.enable("cogitator")
 | `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
+| `:DbtDiffAt [rev] [sql\|compiled\|lineage]` | `dbt.diffAt` | the model against itself at a git revision (default `HEAD`) or `last-run`, as a unified diff in a scratch split (`diff` filetype); the lineage view lists added, removed and changed columns first; `q` closes |
+| `:DbtCostReport` | `dbt.costReport` | the last run's models, slowest first, with bytes scanned, the critical path and "make it incremental" suggestions, in a scratch split; `q` closes |
+| `:DbtProfileColumn` | `dbt.profileColumn` | profiles the output column under the cursor (needs `warehouse.profile: true`); the profile shows in a float and on later hovers |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |
 | `:DbtIncrementality` | `dbt.incrementality` | every table model with its verdict, strategy, last run time and why, as a quickfix list |
 | `:DbtColumnLineage [column]` | `dbt.projectGraph` + `dbt.columnLineage` | the column-lineage graph of this model (or one column) in :DbtDag (§5.3b) |
