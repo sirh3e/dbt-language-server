@@ -445,8 +445,11 @@ returned whenever lookup fails at any point.
   range in the request uri. A cursor on a `vars:` key of a dbt_project.yml
   goes to the entry deciding that var's value.
 - `MACRO` → package as in hover; if macro exists: `"file://" + macro.uri`, macro.range.
-- default → CTE jump: uri stays the request uri; if `def_tokens[lit]` exists,
-  range = zero-width at the definition token's (line, column).
+- default → a SQL local bound by the binder (`features::local_definition`:
+  a table alias, a CTE, a select-list column alias or a CTE column name, in
+  its scope; docs/local-names.md) → its declaration's range; else CTE jump:
+  uri stays the request uri; if `def_tokens[lit]` exists, range =
+  zero-width at the definition token's (line, column).
 
 ### 9.3 Go to schema (`dbt.goToSchema`)
 

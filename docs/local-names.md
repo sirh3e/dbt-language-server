@@ -1,4 +1,4 @@
-# Renaming names local to a file
+# Names local to a file
 
 Rename (F2 in most editors), find references and document highlights work
 on names that live in one file, as well as on models, macros and vars:
@@ -13,6 +13,32 @@ on names that live in one file, as well as on models, macros and vars:
 | a table alias | `from orders o`, `join … as o` | the alias and every `o.col` in that query |
 
 Highlights mark a binding as a write and a use as a read.
+
+## Go to definition, and column aliases
+
+Go to definition on a CTE, a table alias or a column alias jumps to where
+it is declared, in the scope the SQL binder resolved it in: `o` in
+`o.amount` to `from orders o` (a subquery's own `o` to its own alias), a
+CTE named in `from` or `join` to its `name as (`, and a column to the
+`… as col` of the select list that makes it:
+
+| Read as | Declared at |
+|---|---|
+| `order by n`, `group by n`, `qualify n = 1` | `… as n` of the same select |
+| `c.col` or `col` from a CTE or derived table | `… as col` in its select list (its first `select` for a `union`) |
+| `c.col` of `with c (col, …) as` | the name in the CTE's column list |
+
+References and highlights list every use of a column alias in the file.
+Two exceptions defer to the project-wide column features: references on a
+column of the model's own output (they follow it into every consumer and
+its YAML entry), and definition on the alias itself (which goes on to the
+column's YAML entry). `ref()`, `source()`, macros and vars keep their own
+definitions. Column aliases are never renamed here; renaming a model's
+column is its own feature.
+
+Over a table whose columns are unknown, `group by n`, `having n` and
+`qualify n` read the select alias `n` when the select has one; `where n`
+reads the table.
 
 ## How Jinja scopes a name
 
