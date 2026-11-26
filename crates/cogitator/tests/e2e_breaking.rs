@@ -257,8 +257,11 @@ fn an_unsaved_edit_shows_what_it_breaks() {
         "textDocument/didOpen",
         json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": original}}),
     );
-    // first_name dropped in the buffer only
-    let edited = original.replace("        first_name,\n", "");
+    // first_name dropped in the buffer only; Windows checks the fixture out
+    // with CRLF endings, so the line goes whatever it ends with
+    let edited = original
+        .replace("        first_name,\r\n", "")
+        .replace("        first_name,\n", "");
     assert_ne!(edited, original, "the fixture still selects first_name");
     lsp.notify(
         "textDocument/didChange",
