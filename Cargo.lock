@@ -639,7 +639,7 @@ checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
 
 [[package]]
 name = "cogitator"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -673,7 +673,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-analysis"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-duckdb",
@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-astgrep"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "ast-grep-config",
  "ast-grep-core",
@@ -717,7 +717,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-dialects"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-lsp",
  "serde_json",
@@ -725,7 +725,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-duckdb"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-error",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-error"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "serde_json",
  "sqlparser",
@@ -748,7 +748,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-format"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "clap",
  "insta",
@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-ir"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "insta",
  "petgraph",
@@ -777,7 +777,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-lower"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-ir",
  "insta",
@@ -785,7 +785,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-lsp"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-error",
  "insta",
@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-oracle"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-duckdb",
  "insta",
@@ -810,7 +810,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-parser"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-error",
@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-rules"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-ir",
@@ -838,7 +838,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-schemas"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-error",
  "cogitator-lsp",
@@ -852,7 +852,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-sql-front"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-error",
@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "cogitator-treesitter"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "cogitator-dialects",
  "cogitator-error",

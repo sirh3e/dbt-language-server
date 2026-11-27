@@ -244,9 +244,12 @@ release-prep version:
     perl -pi -e 'if (!$done && s/^version = ".*"/version = "'"$v"'"/) { $done = 1 }' Cargo.toml
     perl -pi -e 'if (!$done && s/^  "version": ".*",/  "version": "'"$v"'",/) { $done = 1 }' editors/vscode/package.json
     cargo update --workspace --quiet
+    # the isolated DataFusion oracle pins the workspace's crates by version
+    # in its own lock file, which CI builds with --locked
+    (cd oracles/datafusion && cargo update --workspace --quiet)
     just check
     git cliff 724b0f2..HEAD --tag "v$v" -o CHANGELOG.md
-    git add Cargo.toml Cargo.lock CHANGELOG.md editors/vscode/package.json
+    git add Cargo.toml Cargo.lock oracles/datafusion/Cargo.lock CHANGELOG.md editors/vscode/package.json
     git commit -m "chore(release): v$v"
     echo "release/v$v ready — push it and open a PR titled 'chore(release): v$v';"
     echo "after the squash-merge, on updated main: just release-tag $v"
