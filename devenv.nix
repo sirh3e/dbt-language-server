@@ -8,6 +8,8 @@
   languages.rust = {
     enable = true;
     channel = "stable";
+    # the Zed extension compiles to WebAssembly (`just zed-build`)
+    targets = [ "wasm32-wasip1" ];
   };
 
   scripts.check.exec = "just check";

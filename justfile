@@ -206,6 +206,17 @@ emacs-test:
 zed-build:
     cd editors/zed && cargo build --target wasm32-wasip1
 
+# The extension as Zed installs it: the module adapted into a wasm component
+[group('editors')]
+zed-package:
+    editors/zed/tests/package.sh
+
+# The extension in a real Zed without a display (Xvfb, software Vulkan):
+# passes when Zed loads it and starts the debug cogitator (Linux)
+[group('editors')]
+zed-smoke seconds="60":
+    editors/zed/tests/smoke.sh {{seconds}}
+
 # -------------------------------------------------------------- release
 
 # (range starts at the fork point: upstream Go commits and tags stay out)
