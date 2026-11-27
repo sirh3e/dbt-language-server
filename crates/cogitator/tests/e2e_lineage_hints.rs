@@ -49,14 +49,22 @@ fn lineage_hints_arrive_after_a_refresh_and_point_upstream() {
     let capabilities = json!({"workspace": {"inlayHint": {"refreshSupport": true}}});
     let (mut lsp, _) = project.booted_with(&[], capabilities);
     open(&mut lsp, &uri, PROBE);
-    // the first request starts the computation; the refresh says it landed
-    let _ = lineage_hints(&mut lsp, &uri);
-    let refresh = lsp.wait_server_request("workspace/inlayHint/refresh", |_| true);
-    assert!(
-        refresh.get("params").is_none(),
-        "no params member: {refresh}"
-    );
-    let hints = lineage_hints(&mut lsp, &uri);
+    // the first request starts the computation, and a refresh says
+    // something moved: the lineage landed, or the project's schemas were
+    // published (which a request right after startup may come before, so
+    // its lineage had nothing upstream). Ask again on each, as a client does.
+    let mut hints = lineage_hints(&mut lsp, &uri);
+    for _ in 0..5 {
+        if !hints.is_empty() {
+            break;
+        }
+        let refresh = lsp.wait_server_request("workspace/inlayHint/refresh", |_| true);
+        assert!(
+            refresh.get("params").is_none(),
+            "no params member: {refresh}"
+        );
+        hints = lineage_hints(&mut lsp, &uri);
+    }
     let labels: Vec<&str> = hints.iter().map(|(l, _)| l.as_str()).collect();
     assert_eq!(
         labels,

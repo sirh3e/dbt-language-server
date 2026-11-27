@@ -20,7 +20,6 @@ pub(super) struct RefreshTask {
     pub profiles: Arc<std::sync::Mutex<ProfilesConfig>>,
     pub derived: Arc<DerivedCache>,
     pub limits: Arc<SharedLimits>,
-    #[cfg(feature = "duckdb-parser")]
     pub toggles: Arc<super::SharedToggles>,
     pub status: Arc<std::sync::Mutex<StatusInfo>>,
     pub revision: Arc<AtomicU64>,
@@ -39,7 +38,6 @@ impl RefreshTask {
         let refresh_profiles = self.profiles;
         let refresh_derived = self.derived;
         let refresh_limits = self.limits;
-        #[cfg(feature = "duckdb-parser")]
         let refresh_toggles = self.toggles;
         let refresh_status = self.status;
         let refresh_revision = self.revision;
@@ -237,11 +235,20 @@ impl RefreshTask {
                         }
                         refresh_revision.fetch_add(1, Ordering::Relaxed);
                         let ctx = Arc::new(ctx);
+                        // a new schema revision moves the inlay hints (lineage
+                        // computed before it had no upstream columns)
+                        let link = refresh_link.clone();
+                        let toggles = refresh_toggles.clone();
                         refresh_derived.spawn_schema_job(
                             ctx.clone(),
                             refresh_limits
                                 .artifact_cap_bytes
                                 .load(std::sync::atomic::Ordering::Relaxed),
+                            move || {
+                                if toggles.inlay_refresh.load(Ordering::Relaxed) {
+                                    link.send_bare_request("workspace/inlayHint/refresh");
+                                }
+                            },
                         );
                         let _ = ctx_tx.send(ctx);
                     }

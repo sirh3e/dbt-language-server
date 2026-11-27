@@ -65,7 +65,9 @@ impl Dispatcher {
                                 .unwrap_or_default()
                         } else {
                             // dispatcher path: a cache probe, never a compute
-                            let lineage = derived.lineage_cached(uri, d.generation);
+                            let revision =
+                                crate::server::handlers::plan::schema_revision(ctx, &derived);
+                            let lineage = derived.lineage_cached(uri, d.generation, revision);
                             let text = features::hover_with_lineage(
                                 ctx,
                                 d,
@@ -145,7 +147,12 @@ impl Dispatcher {
         let Some(generation) = snap.doc.as_deref().map(|doc| doc.generation) else {
             return;
         };
-        if self.derived.lineage_cached(&uri, generation).is_some() {
+        let revision = crate::server::handlers::plan::schema_revision(&snap.ctx, &self.derived);
+        if self
+            .derived
+            .lineage_cached(&uri, generation, revision)
+            .is_some()
+        {
             return;
         }
         let derived = self.derived.clone();
@@ -481,7 +488,8 @@ impl Dispatcher {
             return None;
         }
         let generation = snap.doc.as_deref()?.generation;
-        let cached = self.derived.lineage_cached(uri, generation);
+        let revision = crate::server::handlers::plan::schema_revision(&snap.ctx, &self.derived);
+        let cached = self.derived.lineage_cached(uri, generation, revision);
         if cached.is_none() {
             lineage_hints::warm(
                 self.snapshot_for(uri),

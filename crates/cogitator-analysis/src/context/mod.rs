@@ -159,6 +159,9 @@ impl ContextBuilder {
         } else {
             PathBuf::from(workspace_root)
         };
+        // every path of the context is the root's: spelled as a URI spells
+        // it, it compares with the paths of the URIs requests name
+        let start = util::without_verbatim_prefix(start);
         let Some(root) = util::get_project_root("dbt_project.yml", &start) else {
             tracing::debug!(?start, "dbt_project.yml not found");
             return DbtContext::default();
@@ -406,25 +409,52 @@ fn list_dirs(root: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// A path as a `file://` URI spells it, back as a path: no Windows
+/// verbatim prefix, `/` separators, the drive letter upper case.
+fn as_uri_spells_it(path: &Path) -> PathBuf {
+    let uri = cogitator_lsp::fs_path_to_uri(path);
+    let plain = cogitator_lsp::uri_to_fs_path(&uri).unwrap_or_else(|| path.display().to_string());
+    let mut chars = plain.chars();
+    match (chars.next(), chars.next()) {
+        (Some(drive), Some(':')) if drive.is_ascii_alphabetic() => {
+            PathBuf::from(format!("{}{}", drive.to_ascii_uppercase(), &plain[1..]))
+        }
+        _ => PathBuf::from(plain),
+    }
+}
+
 impl DbtContext {
     /// Is the file at `uri` a user-defined function's body (the project's
     /// or a package's, an overload's too)? Its SQL is an expression, no
     /// statement, so the model checks do not apply to it. A new body file
     /// counts once the next refresh has seen it.
+    ///
+    /// The paths are compared as a URI spells them: the CLI canonicalizes
+    /// its project root, which on Windows is a verbatim path
+    /// (`\\?\C:\p\functions\f.sql`), while a file's URI never is
+    /// (`fs_path_to_uri` strips the prefix), so the plain `Path`s differ.
     pub fn is_function_body(&self, uri: &str) -> bool {
-        cogitator_lsp::uri_to_fs_path(uri)
-            .is_some_and(|path| self.function_bodies.contains(Path::new(&path)))
+        let Some(path) = cogitator_lsp::uri_to_fs_path(uri) else {
+            return false;
+        };
+        let wanted = as_uri_spells_it(Path::new(&path));
+        self.function_bodies
+            .iter()
+            .any(|body| as_uri_spells_it(body) == wanted)
     }
 
     /// The installed package a file belongs to (its files see the
     /// package's vars), by path under the package's root.
+    /// Compared as a URI spells the paths, as in [`Self::is_function_body`].
     pub fn package_of_uri(&self, uri: &str) -> Option<&PackageVars> {
         let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-        let path = Path::new(&path);
+        let path = as_uri_spells_it(Path::new(&path));
         self.package_variables
             .iter()
-            .filter(|p| path.starts_with(&p.root))
-            .max_by_key(|p| p.root.as_os_str().len())
+            .map(|p| (p, as_uri_spells_it(&p.root)))
+            .filter(|(_, root)| path.starts_with(root))
+            .max_by_key(|(_, root)| root.as_os_str().len())
+            .map(|(p, _)| p)
     }
 
     /// The vars a file sees (03 §4): its package's, else the root project's.
@@ -437,5 +467,33 @@ impl DbtContext {
     /// The var a `var('name')` in `uri` resolves to.
     pub fn var_for(&self, uri: &str, name: &str) -> Option<&VariableDetails> {
         self.vars_for(uri).get(name)
+    }
+}
+
+#[cfg(test)]
+mod uri_path_tests {
+    use super::as_uri_spells_it;
+    use std::path::Path;
+
+    #[test]
+    fn a_root_loses_its_verbatim_prefix() {
+        use crate::util::without_verbatim_prefix;
+        use std::path::PathBuf;
+        let plain = |s: &str| without_verbatim_prefix(PathBuf::from(s));
+        assert_eq!(plain(r"\\?\C:\p\shop"), PathBuf::from(r"C:\p\shop"));
+        assert_eq!(plain(r"\\?\UNC\srv\sh"), PathBuf::from(r"\\srv\sh"));
+        assert_eq!(plain("/p/shop"), PathBuf::from("/p/shop"));
+    }
+
+    #[test]
+    fn a_verbatim_path_is_its_uris_path() {
+        // what `canonicalize` gives on Windows, against a URI's path
+        let verbatim = as_uri_spells_it(Path::new(r"\\?\C:\p\functions\f.sql"));
+        let plain = as_uri_spells_it(Path::new("c:/p/functions/f.sql"));
+        assert_eq!(verbatim, plain);
+        assert_eq!(
+            as_uri_spells_it(Path::new("/p/functions/f.sql")),
+            Path::new("/p/functions/f.sql")
+        );
     }
 }

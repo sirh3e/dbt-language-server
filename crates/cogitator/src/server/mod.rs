@@ -334,7 +334,6 @@ pub async fn run(
         Arc::new(launch.perf_settings(&Default::default()));
     *toggles.format.write().expect("format rules lock") = launch.format.clone();
     let refresh_limits = limits.clone();
-    #[cfg(feature = "duckdb-parser")]
     let refresh_toggles = toggles.clone();
     let refresh_link = client_link::ClientLink::new(
         write_tx.clone(),
@@ -348,7 +347,6 @@ pub async fn run(
             profiles: refresh_profiles,
             derived: refresh_derived,
             limits: refresh_limits,
-            #[cfg(feature = "duckdb-parser")]
             toggles: refresh_toggles,
             status: refresh_status,
             revision: refresh_revision,

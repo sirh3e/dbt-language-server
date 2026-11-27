@@ -261,8 +261,11 @@ fn the_name_is_a_function_token() {
 
 fn relative(uri: &str) -> String {
     let path = cogitator_lsp::uri_to_fs_path(uri).unwrap();
+    // the root as a URI spells it: canonical paths are verbatim on Windows
+    // (\\?\C:\…), a URI's never is
+    let root = cogitator_lsp::uri_to_fs_path(&fs_path_to_uri(&root())).unwrap();
     Path::new(&path)
-        .strip_prefix(root())
+        .strip_prefix(&root)
         .unwrap()
         .to_string_lossy()
         .replace('\\', "/")

@@ -53,8 +53,8 @@ pub fn run(args: &Args, profiles_dir: Option<&str>, target: Option<&str>) -> i32
             NewEntries::PerModel
         },
     };
-    let root =
-        std::fs::canonicalize(&args.project_dir).unwrap_or_else(|_| args.project_dir.clone());
+    let root = cogitator_analysis::util::canonical(&args.project_dir)
+        .unwrap_or_else(|_| args.project_dir.clone());
     let offline = Offline {
         profiles_dir: profiles_dir.map(str::to_string),
         target: target.map(str::to_string),
