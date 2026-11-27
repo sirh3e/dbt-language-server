@@ -126,8 +126,5 @@
 "dbt.renameColumn" = { via = "textDocument/rename, up- and downstream with initializationOptions.renameColumnDirection \"both\"" }
 
 [gaps.zed]
-"dbt.astGrep" = "a pattern is free text, which a showMessageRequest button cannot carry"
-"dbt.setProfilesDir" = "a directory is free text; set initialization_options.profilesDir instead"
 "dbt.highlight" = "colours a client's buffers; Zed colours them itself (semantic tokens)"
-"dbt.search" = "a query is free text, which a showMessageRequest button cannot carry"
 "dbt.renameColumn" = "a new name is free text; Zed renames a column with textDocument/rename ([zed])"

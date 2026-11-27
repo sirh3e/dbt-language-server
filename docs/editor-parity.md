@@ -35,7 +35,10 @@ Zed included. The rule is about **commands**.
    server draws its dialogs: the code action "dbt…" (`dbt.menu`) walks the
    dbt menu as `window/showMessageRequest` prompts. **Every user command is a
    choice of that menu** (`crates/cogitator/src/server/dialogs/menu.rs`), or
-   a `[gaps.zed]` line saying why a button cannot drive it (free text).
+   a `[gaps.zed]` line saying why a button cannot drive it (free text). A
+   command that takes free text can still be a choice when fixed values
+   make sense: `dbt.search`'s queries about the open model, `dbt.astGrep`'s
+   patterns, `dbt.setProfilesDir`'s directories found on disk.
    `[zed]` also lists the commands Zed reaches without the menu, through a
    lens, an action or a setting.
 3. `[gaps.<editor>]` lists what each editor was missing when the rule was

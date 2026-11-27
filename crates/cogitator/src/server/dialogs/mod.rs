@@ -11,6 +11,7 @@
 //!
 //! [`ClientLink::send`]: super::client_link::ClientLink::send
 
+pub mod finds;
 pub mod menu;
 pub mod render;
 
@@ -178,6 +179,24 @@ fn file_for(pending: &Pending, extension: &str) -> PathBuf {
     pending.dir.join(name)
 }
 
+/// The project a dialog's documents are written in: `dir` is
+/// `<project>/target/.cogitator/dialogs`.
+fn project_of(pending: &Pending) -> Option<&std::path::Path> {
+    pending.dir.ancestors().nth(3)
+}
+
+/// The facts a dialog adds to a command's answer before [`outcome`] reads
+/// it, which need file I/O (so not in the pure menu): which profiles.yml
+/// exist, for "Switch the profiles directory".
+fn with_facts(pending: &Pending, mut response: Value) -> Value {
+    if pending.run.present == Present::Choose(menu::Chooser::ProfilesDirs) {
+        if let Some(result) = response.get_mut("result") {
+            *result = finds::with_existing_profiles(result.take(), |p| p.is_file());
+        }
+    }
+    response
+}
+
 /// What a command's response (`{id, result}` or `{id, error}`) leads to.
 /// Pure: [`finish`] carries it out.
 pub fn outcome(pending: &Pending, response: &Value) -> Outcome {
@@ -231,6 +250,10 @@ pub fn outcome(pending: &Pending, response: &Value) -> Outcome {
                 text: render::markdown(&run.title, result),
             },
         },
+        Present::Matches => Outcome::Write {
+            path: file_for(pending, "md"),
+            text: finds::markdown(&run.title, result, project_of(pending)),
+        },
         Present::Location => match result.get("uri").and_then(Value::as_str) {
             Some(uri) => Outcome::Open {
                 uri: uri.to_string(),
@@ -262,7 +285,7 @@ pub fn outcome(pending: &Pending, response: &Value) -> Outcome {
 /// I/O, so it runs on a blocking thread, off whatever task sent the
 /// response.
 pub fn finish(link: super::client_link::ClientLink, pending: Pending, response: Value) {
-    let work = move || match outcome(&pending, &response) {
+    let work = move || match outcome(&pending, &with_facts(&pending, response)) {
         Outcome::Nothing => {}
         Outcome::Say { error, text } => link.show_message(
             if error {

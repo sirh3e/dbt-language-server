@@ -75,6 +75,9 @@ pub enum Present {
     Site,
     /// The answer holds the next question's choices.
     Choose(Chooser),
+    /// `dbt.search`'s or `dbt.astGrep`'s matches as a markdown list, each a
+    /// link to its file and line (`dialogs::finds`).
+    Matches,
 }
 
 /// The questions whose choices come from a command's answer.
@@ -84,6 +87,9 @@ pub enum Chooser {
     Targets,
     /// `dbt.columnLineage` → the model's columns, then a command about one.
     Columns(ColumnUse),
+    /// `dbt.profiles` → the directories of its `searched` candidates whose
+    /// profiles.yml exists, then `dbt.setProfilesDir`.
+    ProfilesDirs,
 }
 
 /// What a column picked from the model's lineage is for.
@@ -95,6 +101,8 @@ pub enum ColumnUse {
     Graph,
     /// `dbt.profileColumn`: its values in the warehouse (when profiling is on).
     Profile,
+    /// `dbt.search`: the models that use it (`uses column <model>.<column>`).
+    Search,
 }
 
 impl ColumnUse {
@@ -103,6 +111,7 @@ impl ColumnUse {
             ColumnUse::Impact => "The downstream impact of which column?",
             ColumnUse::Graph => "The lineage graph of which column?",
             ColumnUse::Profile => "Profile which column (queries the warehouse)?",
+            ColumnUse::Search => "Which models use which of its columns?",
         }
     }
 
@@ -121,7 +130,7 @@ impl ColumnUse {
                 json!({ "show": true }),
                 Present::Itself,
             )),
-            ColumnUse::Profile => None,
+            ColumnUse::Profile | ColumnUse::Search => None,
         }
     }
 
@@ -148,6 +157,11 @@ impl ColumnUse {
                     extension: "md",
                 },
             ),
+            ColumnUse::Search => {
+                let model = cogitator_analysis::features::model_name_from_uri(&here.uri)
+                    .unwrap_or_default();
+                search(here, column, &format!("uses column {model}.{column}"), true)
+            }
         }
     }
 }
@@ -426,6 +440,11 @@ fn model_group(here: &Here, model: &str) -> Prompt {
                 json!({}),
                 doc(),
             ),
+            ask("Find in the project ›", find_in_project(here, model)),
+            ask(
+                "Find a Jinja pattern in this file ›",
+                jinja_patterns(here, false),
+            ),
             here.run(
                 "Its model graph",
                 "dbt.modelGraph",
@@ -585,6 +604,7 @@ fn project_group(here: &Here) -> Prompt {
                 "Cancel which job?",
                 "No dbt job is running.",
             ),
+            ask("Find a Jinja pattern ›", jinja_patterns(here, true)),
             here.run("Models nothing uses", "dbt.deadModels", json!({}), doc()),
             here.run(
                 "Every unresolved name",
@@ -632,6 +652,12 @@ fn session_group(here: &Here) -> Prompt {
                 Present::Choose(Chooser::Targets),
             ),
             here.run("The profiles", "dbt.profiles", json!({}), doc()),
+            here.run(
+                "Switch the profiles directory ›",
+                "dbt.profiles",
+                json!({}),
+                Present::Choose(Chooser::ProfilesDirs),
+            ),
             here.run("Cache counters", "dbt.cache", json!({}), doc()),
             here.run(
                 "Clear the caches",
@@ -646,6 +672,90 @@ fn session_group(here: &Here) -> Prompt {
                 Present::Itself,
             ),
         ],
+    )
+}
+
+/// A `dbt.search` the menu offers: over the project (`uri: ""`), or narrowed
+/// to the model it was opened in.
+fn search(here: &Here, title: &str, query: &str, project: bool) -> Choice {
+    let extra = if project {
+        json!({ "query": query, "uri": "" })
+    } else {
+        json!({ "query": query })
+    };
+    here.run(title, "dbt.search", extra, Present::Matches)
+}
+
+/// "Find in the project ›": the structural searches (`docs/search.md`) a
+/// model's file offers about that model.
+fn find_in_project(here: &Here, model: &str) -> Prompt {
+    let m = model;
+    prompt(
+        format!("Find what, about {model}?"),
+        vec![
+            search(here, "Who reads it", &format!("reads {m}"), true),
+            search(here, "Who joins it", &format!("joins {m}"), true),
+            search(
+                here,
+                "Who selects * from it",
+                &format!("select-star from {m}"),
+                true,
+            ),
+            search(
+                here,
+                "Who reads it without select *",
+                &format!("reads {m} and not select-star from {m}"),
+                true,
+            ),
+            here.run(
+                "Which models use which of its columns ›",
+                "dbt.columnLineage",
+                json!({}),
+                Present::Choose(Chooser::Columns(ColumnUse::Search)),
+            ),
+            search(here, "Its own select *", "select-star", false),
+            search(here, "Its joins with sources", "joins source", false),
+        ],
+    )
+}
+
+/// The ast-grep patterns the menu offers (`docs/ast-grep.md`): title,
+/// pattern, language. Free text is not a button, so these are fixed.
+pub const JINJA_PATTERNS: [(&str, &str, &str); 7] = [
+    ("Every ref()", "{{ ref($M) }}", "dbt"),
+    ("Every source()", "{{ source($S, $T) }}", "dbt"),
+    ("Every {{ this }}", "{{ this }}", "dbt"),
+    ("Every config()", "{{ config($$$ARGS) }}", "dbt"),
+    (
+        "Every is_incremental() block",
+        "{% if is_incremental() %}",
+        "dbt",
+    ),
+    ("Every ref(var(…))", "{{ ref(var($V)) }}", "dbt"),
+    ("select * in the compiled SQL", "select * from $T", "sql"),
+];
+
+/// "Find a Jinja pattern ›": `dbt.astGrep` with a fixed pattern, over the
+/// project or the file the menu was opened in (dbt patterns alone there).
+fn jinja_patterns(here: &Here, project: bool) -> Prompt {
+    let choices = JINJA_PATTERNS
+        .iter()
+        .filter(|(_, _, language)| project || *language == "dbt")
+        .map(|(title, pattern, language)| {
+            let mut extra = json!({ "pattern": pattern, "language": language });
+            if project {
+                extra["uri"] = json!("");
+            }
+            here.run(title, "dbt.astGrep", extra, Present::Matches)
+        })
+        .collect();
+    prompt(
+        if project {
+            "Find which pattern in the project?"
+        } else {
+            "Find which pattern in this file?"
+        },
+        choices,
     )
 }
 
@@ -724,7 +834,62 @@ pub fn choose(chooser: Chooser, uri: &str, answer: &Value) -> Result<Prompt, Str
                 Ok(prompt(usage.question(), choices))
             }
         }
+        Chooser::ProfilesDirs => profiles_dirs(answer),
     }
+}
+
+/// The directories to switch to: the parent of each `searched` candidate
+/// the dialog found on disk (`existing`, added to the answer before it
+/// reaches here, as this is pure), once each, ✓ on the one in use (`path`).
+fn profiles_dirs(answer: &Value) -> Result<Prompt, String> {
+    // a directory by its components, so that one written with `/` and
+    // with `\` (Windows) or with a `.` in it is the same choice
+    let parent = |path: &str| {
+        std::path::Path::new(path)
+            .parent()
+            .map(|p| p.components().collect::<std::path::PathBuf>())
+            .map(|p| p.display().to_string())
+    };
+    let active = answer.get("path").and_then(Value::as_str).and_then(parent);
+    let mut dirs: Vec<String> = Vec::new();
+    for dir in answer
+        .get("existing")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter_map(parent)
+    {
+        if !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    if dirs.is_empty() {
+        return Err(
+            "No profiles.yml exists in any directory cogitator looks in, so there is none to switch to."
+                .into(),
+        );
+    }
+    let choices = dirs
+        .into_iter()
+        .map(|dir| {
+            let on = active.as_deref() == Some(dir.as_str());
+            let title = format!("{dir}{}", if on { " ✓" } else { "" });
+            Choice {
+                title: title.clone(),
+                step: Step::Run(Run {
+                    title,
+                    command: "dbt.setProfilesDir",
+                    argument: json!({ "dir": dir })
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                    present: Present::Itself,
+                }),
+            }
+        })
+        .collect();
+    Ok(prompt("Use the profiles.yml of which directory?", choices))
 }
 
 /// A prompt as it stands on screen: which page of it.
@@ -1009,6 +1174,101 @@ mod tests {
             "dbt.profileColumn"
         );
         assert!(choose(Chooser::Columns(ColumnUse::Profile), uri, &json!({})).is_err());
+    }
+
+    #[test]
+    fn a_models_finds_are_fixed_searches_over_the_project_or_the_file() {
+        let model = prompt_of(sub(&root(&here()), "Model ›")).clone();
+        let finds = prompt_of(sub(&model, "Find in the project ›")).clone();
+        let readers = run_of(sub(&finds, "Who reads it without select *"));
+        assert_eq!(readers.command, "dbt.search");
+        assert_eq!(
+            Value::Object(readers.argument.clone()),
+            json!({ "uri": "", "query": "reads orders and not select-star from orders" })
+        );
+        assert_eq!(readers.present, Present::Matches);
+        let own = run_of(sub(&finds, "Its own select *"));
+        assert_eq!(own.argument["uri"], "file:///p/models/orders.sql");
+        assert_eq!(own.argument["query"], "select-star");
+        let columns = run_of(sub(&finds, "Which models use which of its columns ›"));
+        assert_eq!(
+            columns.present,
+            Present::Choose(Chooser::Columns(ColumnUse::Search))
+        );
+        let answer = json!({ "columns": [{"name": "amount"}] });
+        let pick = choose(
+            Chooser::Columns(ColumnUse::Search),
+            "file:///p/models/orders.sql",
+            &answer,
+        )
+        .unwrap();
+        assert_eq!(titles(&pick), vec!["amount"]);
+        let run = run_of(sub(&pick, "amount"));
+        assert_eq!(
+            Value::Object(run.argument.clone()),
+            json!({ "uri": "", "query": "uses column orders.amount" })
+        );
+    }
+
+    #[test]
+    fn jinja_patterns_are_buttons_and_the_compiled_sql_is_the_projects() {
+        let project = prompt_of(sub(&root(&here()), "Project ›")).clone();
+        let patterns = prompt_of(sub(&project, "Find a Jinja pattern ›")).clone();
+        assert_eq!(patterns.choices.len(), JINJA_PATTERNS.len());
+        let refs = run_of(sub(&patterns, "Every ref()"));
+        assert_eq!(refs.command, "dbt.astGrep");
+        assert_eq!(
+            Value::Object(refs.argument.clone()),
+            json!({ "uri": "", "pattern": "{{ ref($M) }}", "language": "dbt" })
+        );
+        assert_eq!(
+            run_of(sub(&patterns, "select * in the compiled SQL")).argument["language"],
+            "sql"
+        );
+        let model = prompt_of(sub(&root(&here()), "Model ›")).clone();
+        let here_only = prompt_of(sub(&model, "Find a Jinja pattern in this file ›")).clone();
+        assert!(!titles(&here_only).contains(&"select * in the compiled SQL"));
+        assert_eq!(
+            run_of(sub(&here_only, "Every ref()")).argument["uri"],
+            "file:///p/models/orders.sql"
+        );
+    }
+
+    #[test]
+    fn the_profiles_dirs_are_those_on_disk_once_with_the_one_in_use_marked() {
+        let answer = json!({
+            "path": "/p/.dbt/profiles.yml",
+            "searched": ["/p/.dbt/profiles.yml", "/p/profiles.yml", "/p/.dbt/profiles.yml", "/h/.dbt/profiles.yml"],
+            // the same directory spelled twice (Windows mixes `/` and `\`; a
+            // `.` shows the same here) is one choice
+            "existing": ["/p/.dbt/profiles.yml", "/p/./.dbt/profiles.yml", "/h/.dbt/profiles.yml"]
+        });
+        // a directory as this platform writes it (`\p\.dbt` on Windows)
+        let dir = |d: &str| {
+            std::path::Path::new(d)
+                .components()
+                .collect::<std::path::PathBuf>()
+                .display()
+                .to_string()
+        };
+        let (p, h) = (dir("/p/.dbt"), dir("/h/.dbt"));
+        let prompt = choose(Chooser::ProfilesDirs, "", &answer).unwrap();
+        assert_eq!(titles(&prompt), vec![format!("{p} ✓"), h.clone()]);
+        let run = run_of(sub(&prompt, &h));
+        assert_eq!(run.command, "dbt.setProfilesDir");
+        assert_eq!(Value::Object(run.argument.clone()), json!({ "dir": h }));
+        assert_eq!(run.present, Present::Itself);
+        let none = choose(
+            Chooser::ProfilesDirs,
+            "",
+            &json!({ "searched": ["/x/profiles.yml"], "existing": [] }),
+        );
+        assert!(none.unwrap_err().contains("No profiles.yml exists"));
+        let session = prompt_of(sub(&root(&here()), "Session ›")).clone();
+        assert_eq!(
+            run_of(sub(&session, "Switch the profiles directory ›")).present,
+            Present::Choose(Chooser::ProfilesDirs)
+        );
     }
 
     #[test]
