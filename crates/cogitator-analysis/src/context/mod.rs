@@ -442,13 +442,16 @@ impl DbtContext {
 
     /// The installed package a file belongs to (its files see the
     /// package's vars), by path under the package's root.
+    /// Compared as a URI spells the paths, as in [`Self::is_function_body`].
     pub fn package_of_uri(&self, uri: &str) -> Option<&PackageVars> {
         let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-        let path = Path::new(&path);
+        let path = as_uri_spells_it(Path::new(&path));
         self.package_variables
             .iter()
-            .filter(|p| path.starts_with(&p.root))
-            .max_by_key(|p| p.root.as_os_str().len())
+            .map(|p| (p, as_uri_spells_it(&p.root)))
+            .filter(|(_, root)| path.starts_with(root))
+            .max_by_key(|(_, root)| root.as_os_str().len())
+            .map(|(p, _)| p)
     }
 
     /// The vars a file sees (03 §4): its package's, else the root project's.
