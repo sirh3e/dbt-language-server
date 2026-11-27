@@ -842,9 +842,12 @@ pub fn choose(chooser: Chooser, uri: &str, answer: &Value) -> Result<Prompt, Str
 /// the dialog found on disk (`existing`, added to the answer before it
 /// reaches here, as this is pure), once each, ✓ on the one in use (`path`).
 fn profiles_dirs(answer: &Value) -> Result<Prompt, String> {
+    // a directory by its components, so that one written with `/` and
+    // with `\` (Windows) or with a `.` in it is the same choice
     let parent = |path: &str| {
         std::path::Path::new(path)
             .parent()
+            .map(|p| p.components().collect::<std::path::PathBuf>())
             .map(|p| p.display().to_string())
     };
     let active = answer.get("path").and_then(Value::as_str).and_then(parent);
@@ -1236,7 +1239,9 @@ mod tests {
         let answer = json!({
             "path": "/p/.dbt/profiles.yml",
             "searched": ["/p/.dbt/profiles.yml", "/p/profiles.yml", "/p/.dbt/profiles.yml", "/h/.dbt/profiles.yml"],
-            "existing": ["/p/.dbt/profiles.yml", "/p/.dbt/profiles.yml", "/h/.dbt/profiles.yml"]
+            // the same directory spelled twice (Windows mixes `/` and `\`; a
+            // `.` shows the same here) is one choice
+            "existing": ["/p/.dbt/profiles.yml", "/p/./.dbt/profiles.yml", "/h/.dbt/profiles.yml"]
         });
         let prompt = choose(Chooser::ProfilesDirs, "", &answer).unwrap();
         assert_eq!(titles(&prompt), vec!["/p/.dbt ✓", "/h/.dbt"]);
