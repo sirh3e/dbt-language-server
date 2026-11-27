@@ -10,7 +10,8 @@
 //!
 //! What every walker had to repeat is decided here, once, while building:
 //! - column names match case-insensitively (`Customer_ID` is `customer_id`),
-//!   relation names exactly; a node keeps the spelling it was first seen in;
+//!   relation names exactly; a model's column is spelled as the model
+//!   writes it, any other column as it was first seen;
 //! - dbt's internal `__dbt_rel_*` placeholders are no columns and get no
 //!   node;
 //! - a `*` row is resolved, along [`Flow::Star`] edges, into the columns it
@@ -151,12 +152,15 @@ impl ColumnGraph {
         }
     }
 
-    /// The model's output column `name`, made if new.
+    /// The model's output column `name`, made if new. A model spells its
+    /// own columns: a node a downstream reference made first takes the
+    /// model's spelling when the model outputs it.
     fn output(&mut self, model: &str, name: &str) -> NodeIndex {
         let node = self.node(Relation::Model(model.to_string()), name);
         let outputs = self.models.entry(model.to_string()).or_default();
         if !outputs.contains(&node) {
             outputs.push(node);
+            self.graph[node].column = name.to_string();
         }
         node
     }

@@ -19,8 +19,9 @@ M.defaults = {
   keymaps = true,
   semantic_tokens = true,
   inlay_hints = true, -- vim.lsp.inlay_hint on attach (column lineage, ref relations, vars)
-  -- column lineage graphs: hops each way, dbt.columnLineage calls at most
-  lineage = { depth = 3, max_requests = 60 },
+  -- column lineage graphs: hops each way (the server walks them;
+  -- `max_requests` is accepted and ignored, the plugin no longer walks)
+  lineage = { depth = 3 },
   -- :DbtDag: hops shown around the selection when focused (f, +/-),
   -- follow the current buffer's model, redraw after a save
   dag = { focus_depth = 2, follow = false, refresh_on_save = true },

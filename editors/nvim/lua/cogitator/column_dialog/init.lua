@@ -10,9 +10,8 @@
 --- j/k (any motion) moves the cursor and the side panes and previews
 --- follow it; h/l walk (the side pane becomes the list); `/` filters in
 --- fzf's syntax; <CR> opens the column where it is defined. The data is
---- dbt.columnLineageGraph (cogitator.lineage_graph) when the server has
---- it, else the client walk over dbt.columnLineage (cogitator.column_lineage),
---- whose progress fills the panes as lineages arrive. Pure parts:
+--- dbt.columnLineageGraph (cogitator.lineage_graph), the server's walk.
+--- Pure parts:
 --- model (panes, walking, filter, rows), locate (where a column is
 --- written); preview and keys are the shell beside this one.
 
