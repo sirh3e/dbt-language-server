@@ -1243,14 +1243,20 @@ mod tests {
             // `.` shows the same here) is one choice
             "existing": ["/p/.dbt/profiles.yml", "/p/./.dbt/profiles.yml", "/h/.dbt/profiles.yml"]
         });
+        // a directory as this platform writes it (`\p\.dbt` on Windows)
+        let dir = |d: &str| {
+            std::path::Path::new(d)
+                .components()
+                .collect::<std::path::PathBuf>()
+                .display()
+                .to_string()
+        };
+        let (p, h) = (dir("/p/.dbt"), dir("/h/.dbt"));
         let prompt = choose(Chooser::ProfilesDirs, "", &answer).unwrap();
-        assert_eq!(titles(&prompt), vec!["/p/.dbt ✓", "/h/.dbt"]);
-        let run = run_of(sub(&prompt, "/h/.dbt"));
+        assert_eq!(titles(&prompt), vec![format!("{p} ✓"), h.clone()]);
+        let run = run_of(sub(&prompt, &h));
         assert_eq!(run.command, "dbt.setProfilesDir");
-        assert_eq!(
-            Value::Object(run.argument.clone()),
-            json!({ "dir": "/h/.dbt" })
-        );
+        assert_eq!(Value::Object(run.argument.clone()), json!({ "dir": h }));
         assert_eq!(run.present, Present::Itself);
         let none = choose(
             Chooser::ProfilesDirs,
