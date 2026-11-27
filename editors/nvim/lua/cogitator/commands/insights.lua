@@ -1,6 +1,7 @@
 --- The model's history and cost: :DbtDiffAt (dbt.diffAt), :DbtCostReport
---- (dbt.costReport) and :DbtProfileColumn (dbt.profileColumn). Rendering is
---- pure (`diff_at_lines`, `cost_report_lines`, `profile_lines`) so the suite
+--- (dbt.costReport), :DbtDagText (dbt.dagText) and :DbtProfileColumn
+--- (dbt.profileColumn). Rendering is pure (`diff_at_lines`,
+--- `cost_report_lines`, `dag_text_lines`, `profile_lines`) so the suite
 --- tests it without a server.
 
 local shared = require("cogitator.commands.shared")
@@ -113,6 +114,53 @@ function M.cost_report()
       return failed("dbt.costReport", err)
     end
     scratch(M.cost_report_lines(result), "text")
+  end)
+end
+
+--- `[depth]` → the dbt.dagText argument beyond the uri: a depth draws the
+--- current model's neighbourhood, none the whole project.
+---@param args string
+---@return {depth?: integer}?
+function M.dag_text_args(args)
+  local word = vim.trim(args or "")
+  if word == "" then
+    return {}
+  end
+  local depth = tonumber(word)
+  if not depth or depth < 1 or depth % 1 ~= 0 then
+    return nil
+  end
+  return { depth = depth }
+end
+
+--- The lines of a dbt.dagText answer: the server's drawing, as it is.
+---@param result table
+---@return string[]
+function M.dag_text_lines(result)
+  return vim.split((result.text or "no DAG"):gsub("\n$", ""), "\n")
+end
+
+--- :DbtDagText [depth] — the project DAG drawn as text (what :DbtDag draws,
+--- to copy or keep), or with a depth this model's neighbourhood, in a split.
+---@param opts? {args?: string}
+function M.dag_text(opts)
+  local extra = M.dag_text_args(opts and opts.args or "")
+  if not extra then
+    vim.notify(":DbtDagText takes a depth, a whole number of hops (1 or more)", vim.log.levels.ERROR)
+    return
+  end
+  local bufnr = vim.api.nvim_get_current_buf()
+  local client = require("cogitator.actions").client_for(bufnr)
+  if not client then
+    return
+  end
+  local arg = shared.build_argument(bufnr, false)
+  arg.depth = extra.depth
+  client:exec_cmd({ command = "dbt.dagText", arguments = { arg } }, { bufnr = bufnr }, function(err, result)
+    if err or type(result) ~= "table" then
+      return failed("dbt.dagText", err)
+    end
+    scratch(M.dag_text_lines(result), "text")
   end)
 end
 

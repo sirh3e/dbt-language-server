@@ -69,11 +69,15 @@ end
 ---@return integer width total grid width
 ---@return integer height total grid height
 function M.layout(data, expanded_set, all_expanded)
-  local layers = {}
+  -- layers may have a hole (a cycle's nodes go one past the deepest
+  -- layer reached, which no node may occupy), so `#layers` cannot say
+  -- how many there are
+  local layers, last = {}, 0
   for _, node in ipairs(data.nodes) do
     local layer = node.layer + 1
     layers[layer] = layers[layer] or {}
     table.insert(layers[layer], node)
+    last = math.max(last, layer)
   end
 
   local parents = M.adjacency(data.edges).parents
@@ -81,7 +85,7 @@ function M.layout(data, expanded_set, all_expanded)
   local x = 2
   local max_bottom = 0
   local centers = {}
-  for li = 1, #layers do
+  for li = 1, last do
     local column = layers[li] or {}
     if li > 1 then
       local score = {}

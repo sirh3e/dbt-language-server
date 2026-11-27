@@ -296,6 +296,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none; with `show: true` writes `target/.cogitator/preview/<model>.<cte|final>.sql` and opens it via showDocument. Every CTE and the final select carry the code lens "SQL" beside "Preview rows", and the cursor's CTE the code action "Show the SQL of CTE `x`". The hover on a CTE's name (its definition or a reference) shows its columns and the lineage of each — :DbtCteSql, :DbtCtes
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.dagText`
+
+- **Argument**: `{uri?, model?, depth?, show?}` — no `model` and no `depth`: the whole project; a `model` (or a `depth` and the `uri` of a model's `.sql` file): that model's neighbourhood, `depth` hops up and down (default 2, at most 10), not sideways; `show: true` also opens the text as a document
+- **Result**: `{text, nodes, truncated}` — the DAG drawn as text, as `:DbtDag` draws it in Neovim: layers left to right, a box per node (its name, a `[kind]` badge but for models, a `#tags` line), each edge an elbow ending in `▸` at what depends on it; a heading says what is drawn and how many nodes and edges. A project of more than 300 nodes keeps its first layers (`truncated: true`, and the heading says how many were left out). A depth without a model, or a model the project lacks, is InvalidParams Guidance
+- **Side effects**: none; with `show: true` writes `target/.cogitator/dag/<model>.dag.txt` (or `project.dag.txt`) and opens it via showDocument. In Zed: the dbt menu's Project › "The project DAG (text)" and Model › "Its neighbourhood DAG ›" (1, 2 or 3 hops)
+- **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
+
 ### `dbt.menu`
 
 - **Argument**: `{uri, position?}` — where the menu was opened (the code action sends the cursor)

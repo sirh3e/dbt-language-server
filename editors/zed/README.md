@@ -81,12 +81,14 @@ choice a button:
   profile (you pick the column), its changes since the last commit or the
   last dbt run (SQL, compiled SQL or lineage), breaking changes, dependencies, the model graph, its card and tests,
   its relation, its schema YAML entry, extract and sync the YAML, the
-  split plan, the syntax tree.
+  split plan, the syntax tree, its neighbourhood DAG as text (you pick 1, 2
+  or 3 hops up and down).
 - **Project**: dbt parse, source freshness, run/test/build/compile a
   selection (you pick this model, upstream/downstream, a `selectors.yml`
   entry or a tag), list a selection's nodes, cancel a running dbt job,
   dead models, unresolved names, models that could be incremental, the
-  project graph, what the last run cost, the lineage site (opens in the
+  project graph, the project DAG as text (the picture Neovim's `:DbtDag`
+  draws, opened as a `.txt` document), what the last run cost, the lineage site (opens in the
   browser).
 - **Session**: status, the health report, switch profile/target (you
   pick from the profiles), the profiles, cache counters and clearing,

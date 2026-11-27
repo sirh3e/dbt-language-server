@@ -205,6 +205,34 @@ async function costReport(): Promise<void> {
   }
 }
 
+/** The scopes `dbt: The DAG as text` offers: the project, or the model's neighbourhood. */
+export const DAG_TEXT_SCOPES: { label: string; depth?: number }[] = [
+  { label: "The whole project" },
+  { label: "This model, 1 hop up and down", depth: 1 },
+  { label: "This model, 2 hops up and down", depth: 2 },
+  { label: "This model, 3 hops up and down", depth: 3 },
+];
+
+/** The dbt.dagText argument beyond the uri for a scope's depth. */
+export function dagTextArgument(depth?: number): Record<string, unknown> {
+  return depth === undefined ? {} : { depth };
+}
+
+/** dbt.dagText: the project DAG, or the model's neighbourhood, drawn as text. */
+async function dagText(): Promise<void> {
+  const scope = await vscode.window.showQuickPick(DAG_TEXT_SCOPES, { placeHolder: "Draw which DAG?" });
+  if (!scope) {
+    return;
+  }
+  const result = (await execDbt("dbt.dagText", dagTextArgument(scope.depth))) as
+    | { text?: string }
+    | null
+    | undefined;
+  if (result) {
+    await showBeside("plaintext", result.text ?? "no DAG");
+  }
+}
+
 async function profileColumn(): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
@@ -1507,6 +1535,7 @@ export async function activate(
     ["cogitator.incrementalDiff", incrementalDiff],
     ["cogitator.diffAt", diffAt],
     ["cogitator.costReport", costReport],
+    ["cogitator.dagText", dagText],
     ["cogitator.profileColumn", profileColumn],
     ["cogitator.testSql", testSql],
     ["cogitator.incrementalSql", incrementalSql],

@@ -455,6 +455,30 @@ impl Dispatcher {
                 });
                 return;
             }
+            "dbt.dagText" => {
+                let ask = crate::server::handlers::dag_text::DagAsk {
+                    model: arg
+                        .get("model")
+                        .and_then(|m| m.as_str())
+                        .filter(|m| !m.is_empty())
+                        .map(str::to_string),
+                    depth: arg
+                        .get("depth")
+                        .and_then(|d| d.as_u64())
+                        .map(|d| d as usize),
+                    show: arg.get("show").and_then(|s| s.as_bool()) == Some(true),
+                    uri: uri.clone(),
+                };
+                let ctx = if uri.is_empty() {
+                    self.snapshot()
+                } else {
+                    self.ctx_for(&uri)
+                };
+                self.offload_blocking(req.id, "dbt.dagText", move || {
+                    crate::server::handlers::dag_text::dag_text(&ctx, &ask)
+                });
+                return;
+            }
             "dbt.projectGraph" => {
                 let ctx = self.snapshot();
                 self.offload_blocking(req.id, "dbt.projectGraph", move || {

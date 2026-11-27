@@ -1,0 +1,12 @@
+---
+source: crates/cogitator-analysis/src/features/dag_text/tests.rs
+expression: "drawn(&graph(&[\"src\", \"left\", \"right\", \"mart\"],\n&[(\"src\", \"left\"), (\"src\", \"right\"), (\"left\", \"mart\"), (\"right\", \"mart\")],))"
+---
+
+ ╭─────╮       ╭──────╮        ╭──────╮
+ │ src │───┼──▸│ left │────┼──▸│ mart │
+ ╰─────╯   │   ╰──────╯    │   ╰──────╯
+           │               │
+           │   ╭───────╮   │
+           ╰──▸│ right │───╯
+               ╰───────╯

@@ -382,7 +382,8 @@ and the SQL when `is_incremental()' changes nothing."
 
 ;; ---------------------------------------------------------------------------
 ;; the model at another revision (dbt.diffAt), the last run's cost
-;; (dbt.costReport), a column's profile (dbt.profileColumn)
+;; (dbt.costReport), the DAG as text (dbt.dagText), a column's profile
+;; (dbt.profileColumn)
 ;; ---------------------------------------------------------------------------
 
 (defun cogitator--diff-at-render (result)
@@ -451,6 +452,25 @@ and the SQL when `is_incremental()' changes nothing."
      (cogitator--show-text "*cogitator-cost-report*"
                            (or (plist-get result :text) "no report")
                            #'special-mode))))
+
+(defun cogitator--dag-text (result)
+  "The text of a dbt.dagText RESULT."
+  (if (and result (not (eq result :null)) (stringp (plist-get result :text)))
+      (plist-get result :text)
+    "no DAG"))
+
+;;;###autoload
+(defun cogitator-dag-text (&optional depth)
+  "The project DAG drawn as text; with a prefix DEPTH, this model's neighbourhood.
+DEPTH is the hops up and down from the current model (`C-u 2 M-x ...')."
+  (interactive "P")
+  (let ((hops (and depth (prefix-numeric-value depth))))
+    (cogitator--execute
+     "dbt.dagText"
+     (append (cogitator--command-argument) (and hops (list :depth hops)))
+     (lambda (result)
+       (cogitator--show-text "*cogitator-dag*"
+                             (cogitator--dag-text result) #'special-mode)))))
 
 ;;;###autoload
 (defun cogitator-profile-column ()

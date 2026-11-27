@@ -125,7 +125,7 @@ writer wins).
   `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`,
   `dbt.modelDependencies`, `dbt.search`, `dbt.costReport`, `dbt.diffAt`,
   `dbt.profileColumn`, `dbt.renameColumn`, `dbt.testSql`,
-  `dbt.incrementalSql`, `dbt.cteSql`
+  `dbt.incrementalSql`, `dbt.cteSql`, `dbt.dagText`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -170,6 +170,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.testSql` | `{model, relation, tests, text}`, each test `{label, kind, sql, query, error, …}`, or InvalidParams Guidance | none, or with `show: true` (the "Show the SQL of N tests" action) the text written to `target/.cogitator/tests/<model>.sql` and opened via showDocument |
 | `dbt.incrementalSql` | `{model, strategy, strategySource, steps, fullRefresh, notes, text}` or InvalidParams Guidance | none, or with `show: true` the text written to `target/.cogitator/incremental/<model>.<strategy>.sql` and opened via showDocument |
 | `dbt.cteSql` | `{model, cte, source, sql, text}` or InvalidParams Guidance | none, or with `show: true` (the "SQL" lens and the "Show the SQL of CTE `x`" action) the text written to `target/.cogitator/preview/<model>.<cte or final>.sql` and opened via showDocument |
+| `dbt.dagText` | `{text, nodes, truncated}` or InvalidParams Guidance (a depth without a model, a model the project lacks) | none, or with `show: true` the text written to `target/.cogitator/dag/<model or project>.dag.txt` and opened via showDocument |
 | `dbt.menu` | `null` (at once) | `{uri, position?}`: the dbt menu as `window/showMessageRequest` dialogs, for a client with `initializationOptions.dialogs` (Zed): its groups, then what the chosen command needs; the command runs server-side and its answer opens via showDocument (`target/.cogitator/dialogs/`) or is said |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
@@ -530,6 +531,7 @@ vim.lsp.enable("cogitator")
 | `:DbtIncrementalSql [strategy]` | `dbt.incrementalSql` | what an incremental run executes for the model's strategy (or the one named, completed), and the full refresh, in a SQL split, `<leader>dM`; `:Dbt incremental` opens the strategy templates in the code-action menu |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtDiffAt [rev] [sql\|compiled\|lineage]` | `dbt.diffAt` | the model against itself at a git revision (default `HEAD`) or `last-run`, as a unified diff in a scratch split (`diff` filetype); the lineage view lists added, removed and changed columns first; `q` closes |
+| `:DbtDagText [depth]` | `dbt.dagText` | the project DAG drawn as text (what `:DbtDag` draws, without the keys), or with a depth the current model's neighbourhood that many hops up and down, in a scratch split; `q` closes |
 | `:DbtCostReport` | `dbt.costReport` | the last run's models, slowest first, with bytes scanned, the critical path and "make it incremental" suggestions, in a scratch split; `q` closes |
 | `:DbtProfileColumn` | `dbt.profileColumn` | profiles the output column under the cursor (needs `warehouse.profile: true`); the profile shows in a float and on later hovers |
 | `:DbtSplit` | `dbt.splitPlan` | the split at the incrementality frontier as an S-expression and the new model's file in a scratch split; `a` applies the split code action, `q` closes |

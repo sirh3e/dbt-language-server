@@ -149,6 +149,10 @@ resolution order is: this override, `$DBT_PROFILES_DIR`,
                  view lists added, removed and changed columns
   :DbtCostReport the last run's models slowest first, bytes scanned,
                  the critical path and "make it incremental" hints
+  :DbtDagText [depth]
+                 the project DAG drawn as text in a split (what :DbtDag
+                 draws, to copy or keep); with a depth, this model's
+                 neighbourhood that many hops up and down
   :DbtProfileColumn
                  profile the output column under the cursor (needs
                  `warehouse.profile: true`: it queries the warehouse);

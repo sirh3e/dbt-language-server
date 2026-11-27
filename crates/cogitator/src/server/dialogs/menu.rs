@@ -481,6 +481,23 @@ fn model_group(here: &Here, model: &str) -> Prompt {
                 },
             ),
             here.run("Its syntax tree", "dbt.syntaxTree", json!({}), doc()),
+            ask(
+                "Its neighbourhood DAG ›",
+                prompt(
+                    format!("The DAG around {model}, how many hops up and down?"),
+                    [(1, "1 hop"), (2, "2 hops"), (3, "3 hops")]
+                        .into_iter()
+                        .map(|(depth, title)| {
+                            here.run(
+                                title,
+                                "dbt.dagText",
+                                json!({ "model": model, "depth": depth, "show": true }),
+                                Present::Itself,
+                            )
+                        })
+                        .collect(),
+                ),
+            ),
         ],
     )
 }
@@ -599,6 +616,12 @@ fn project_group(here: &Here) -> Prompt {
                 doc(),
             ),
             here.run("The project graph", "dbt.projectGraph", json!({}), doc()),
+            here.run(
+                "The project DAG (text)",
+                "dbt.dagText",
+                json!({ "show": true }),
+                Present::Itself,
+            ),
             here.run(
                 "What the last run cost",
                 "dbt.costReport",
@@ -1009,6 +1032,27 @@ mod tests {
             "dbt.profileColumn"
         );
         assert!(choose(Chooser::Columns(ColumnUse::Profile), uri, &json!({})).is_err());
+    }
+
+    #[test]
+    fn the_dag_is_drawn_for_the_project_or_around_the_model() {
+        let menu = root(&here());
+        let project = prompt_of(sub(&menu, "Project ›")).clone();
+        let whole = run_of(sub(&project, "The project DAG (text)"));
+        assert_eq!(whole.command, "dbt.dagText");
+        assert_eq!(whole.present, Present::Itself);
+        assert_eq!(
+            Value::Object(whole.argument.clone()),
+            json!({ "uri": "file:///p/models/orders.sql", "show": true })
+        );
+        let model = prompt_of(sub(&menu, "Model ›")).clone();
+        let depths = prompt_of(sub(&model, "Its neighbourhood DAG ›")).clone();
+        assert_eq!(titles(&depths), vec!["1 hop", "2 hops", "3 hops"]);
+        let two = run_of(sub(&depths, "2 hops"));
+        assert_eq!(
+            Value::Object(two.argument.clone()),
+            json!({ "uri": "file:///p/models/orders.sql", "model": "orders", "depth": 2, "show": true })
+        );
     }
 
     #[test]

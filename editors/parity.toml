@@ -60,6 +60,7 @@
 "dbt.testSql" = { kind = "user" }
 "dbt.incrementalSql" = { kind = "user" }
 "dbt.cteSql" = { kind = "user" }
+"dbt.dagText" = { kind = "user" }
 "dbt.syntaxTree" = { kind = "user" }
 "dbt.highlight" = { kind = "user" }
 "dbt.astGrep" = { kind = "user" }

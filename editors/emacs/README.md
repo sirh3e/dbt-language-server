@@ -73,6 +73,7 @@ project.el, so eglot picks the right workspace root even without VC.
 | `M-x cogitator-incremental-diff` | this model rendered with `is_incremental()` false and true (`dbt.incrementalDiff`), as a unified diff; `q` closes |
 | `M-x cogitator-diff-at` | this model against itself at a git revision or `last-run` (`dbt.diffAt`), in the `sql`, `compiled` or `lineage` view, as a diff; `q` closes |
 | `M-x cogitator-cost-report` | the last run's models by cost, the critical path and "make it incremental" suggestions (`dbt.costReport`) |
+| `M-x cogitator-dag-text` | the project DAG drawn as text, as `:DbtDag` draws it in Neovim (`dbt.dagText`); with a prefix argument (`C-u 2`) this model's neighbourhood that many hops up and down; `q` closes |
 | `M-x cogitator-profile-column` | profiles the output column at point (`dbt.profileColumn`; needs `warehouse.profile: true`) |
 | `M-x cogitator-split-plan` | split this table model at its incrementality frontier: the plan as an S-expression and the new model's file; `a` offers the split code action |
 | `M-x cogitator-incrementality` | pick a table model by whether it could be incremental (slowest last run first) and visit it |

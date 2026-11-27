@@ -142,6 +142,20 @@ return function(ctx)
   H.check(unchanged[1]:find("no sql difference", 1, true) ~= nil, "commands: diff_at says nothing differs")
   local cost = commands.cost_report_lines({ text = "dbt cost report\n\n  1.0 s  orders\n" })
   H.check(#cost == 3 and cost[3]:find("orders", 1, true), "commands: cost_report_lines", vim.inspect(cost))
+  local dag_lines =
+    commands.dag_text_lines({ text = "dbt DAG — the project: 1 node, 0 edges\n\n ╭───╮\n" })
+  H.check(
+    #dag_lines == 3 and dag_lines[3] == " ╭───╮",
+    "commands: dag_text_lines",
+    vim.inspect(dag_lines)
+  )
+  H.check(
+    vim.deep_equal(commands.dag_text_args(""), {})
+      and commands.dag_text_args(" 3 ").depth == 3
+      and commands.dag_text_args("0") == nil
+      and commands.dag_text_args("two") == nil,
+    "commands: dag_text_args takes a depth or nothing"
+  )
   local prof = commands.profile_lines({ hover = "**Profile of `x`**\n\ndistinct 3" })
   H.check(prof[3] == "distinct 3", "commands: profile_lines", vim.inspect(prof))
 

@@ -33,6 +33,19 @@ impl GraphNodeKind {
             NodeKind::Model | NodeKind::Macro => GraphNodeKind::Model,
         }
     }
+
+    /// The wire word (`semantic_model`), as serde writes it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GraphNodeKind::Model => "model",
+            GraphNodeKind::Source => "source",
+            GraphNodeKind::Exposure => "exposure",
+            GraphNodeKind::Metric => "metric",
+            GraphNodeKind::SemanticModel => "semantic_model",
+            GraphNodeKind::Test => "test",
+            GraphNodeKind::Analysis => "analysis",
+        }
+    }
 }
 
 /// One neighbor entry, shared by dbt.modelGraph and dbt.modelInfo so their

@@ -50,4 +50,50 @@ return function(ctx)
     vim.inspect(kept)
   )
   H.check(dag_data.focus(chain, "nope", 1) == chain, "dag_data: focus on an unknown id is the whole graph")
+
+  -- the drawing: the same picture the server's dbt.dagText draws of the same
+  -- graph (crates/cogitator-analysis/src/features/dag_text, snapshot diamond)
+  local layout = require("cogitator.layout")
+  local function drawn(names, edges)
+    local nodes, es = {}, {}
+    for _, n in ipairs(names) do
+      nodes[#nodes + 1] = { id = n, name = n, kind = "model", tags = {}, columns = {} }
+    end
+    for _, e in ipairs(edges) do
+      es[#es + 1] = { from = e[1], to = e[2] }
+    end
+    local data = { nodes = dag_data.relayer(nodes, es), edges = es }
+    local boxes, w, h = layout.layout(data, {}, false)
+    local lines = layout.draw(boxes, data.edges, w + 2, h + 1)
+    while #lines > 0 and lines[#lines] == "" do
+      table.remove(lines)
+    end
+    return lines
+  end
+  local diamond = drawn(
+    { "src", "left", "right", "mart" },
+    { { "src", "left" }, { "src", "right" }, { "left", "mart" }, { "right", "mart" } }
+  )
+  H.check(
+    vim.deep_equal(diamond, {
+      "",
+      " ╭─────╮       ╭──────╮        ╭──────╮",
+      " │ src │───┼──▸│ left │────┼──▸│ mart │",
+      " ╰─────╯   │   ╰──────╯    │   ╰──────╯",
+      "           │               │",
+      "           │   ╭───────╮   │",
+      "           ╰──▸│ right │───╯",
+      "               ╰───────╯",
+    }),
+    "layout: the diamond draws as dbt.dagText draws it",
+    table.concat(diamond, "\n")
+  )
+  -- a cycle's nodes sit one layer past an empty one: they are still drawn
+  local looped =
+    table.concat(drawn({ "root", "a", "b" }, { { "root", "a" }, { "a", "b" }, { "b", "a" } }), "\n")
+  H.check(
+    looped:find("│ a │", 1, true) and looped:find("│ b │", 1, true),
+    "layout: a cycle past an empty layer is drawn",
+    looped
+  )
 end
