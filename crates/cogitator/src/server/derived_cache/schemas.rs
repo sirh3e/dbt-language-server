@@ -89,8 +89,15 @@ impl DerivedCache {
         }
     }
 
-    /// Starts a background job for this context, superseding one in flight.
-    pub fn spawn_schema_job(self: &Arc<Self>, ctx: Arc<DbtContext>, artifact_cap: u64) {
+    /// Starts a background job for this context, superseding one in flight;
+    /// `published` runs when it publishes a new revision (what hints and
+    /// lineage read moved, so clients should ask for them again).
+    pub fn spawn_schema_job(
+        self: &Arc<Self>,
+        ctx: Arc<DbtContext>,
+        artifact_cap: u64,
+        published: impl FnOnce() + Send + 'static,
+    ) {
         let Some(root) = ctx.project_root.clone() else {
             return;
         };
@@ -128,7 +135,16 @@ impl DerivedCache {
                 elapsed_ms = started.elapsed().as_millis() as u64,
                 "project schemas published"
             );
-            *slot.current.lock().expect("schema snapshot lock") = Some(snapshot);
+            let revision = snapshot.revision;
+            let before = slot
+                .current
+                .lock()
+                .expect("schema snapshot lock")
+                .replace(snapshot)
+                .map(|old| old.revision);
+            if before != Some(revision) {
+                published();
+            }
         });
     }
 }

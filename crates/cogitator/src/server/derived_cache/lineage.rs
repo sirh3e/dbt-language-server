@@ -15,12 +15,13 @@ impl DerivedCache {
         uri: &str,
         generation: u64,
         key: u64,
+        revision: u64,
         compute: impl FnOnce() -> Option<ModelLineage>,
     ) -> Arc<Option<ModelLineage>> {
         {
             let map = self.typed_lineage.lock().expect("typed lineage lock");
             if let Some((cached, lineage)) = map.get(uri) {
-                if *cached == (generation, key) {
+                if *cached == (generation, key, revision) {
                     self.lineage_stats.hit("lineage");
                     return lineage.clone();
                 }
@@ -31,17 +32,28 @@ impl DerivedCache {
         self.typed_lineage
             .lock()
             .expect("typed lineage lock")
-            .insert(uri.to_string(), ((generation, key), lineage.clone()));
+            .insert(
+                uri.to_string(),
+                ((generation, key, revision), lineage.clone()),
+            );
         lineage
     }
 
     /// The lineage of `uri` at this document generation if one is cached
     /// (typed first), never computing: the dispatcher path's only access.
     /// A generation match means the text it was computed over is unchanged.
-    pub fn lineage_cached(&self, uri: &str, generation: u64) -> Option<Arc<Option<ModelLineage>>> {
+    /// The schema `revision` must match too: lineage computed before the
+    /// project's schemas were published (a request right after startup)
+    /// has no upstream columns, and is computed again once they are.
+    pub fn lineage_cached(
+        &self,
+        uri: &str,
+        generation: u64,
+        revision: u64,
+    ) -> Option<Arc<Option<ModelLineage>>> {
         let typed = self.typed_lineage.lock().expect("typed lineage lock");
-        if let Some(((cached, _), lineage)) = typed.get(uri) {
-            if *cached == generation {
+        if let Some(((cached, _, at), lineage)) = typed.get(uri) {
+            if *cached == generation && *at == revision {
                 return Some(lineage.clone());
             }
         }
@@ -67,21 +79,33 @@ mod tests {
     #[test]
     fn typed_entries_key_on_generation_and_plan_key() {
         let cache = DerivedCache::default();
-        let first = cache.typed_lineage("u", 1, 7, empty);
-        let hit = cache.typed_lineage("u", 1, 7, || panic!("must not compute"));
+        let first = cache.typed_lineage("u", 1, 7, 1, empty);
+        let hit = cache.typed_lineage("u", 1, 7, 1, || panic!("must not compute"));
         assert!(Arc::ptr_eq(&first, &hit));
-        let moved = cache.typed_lineage("u", 1, 8, empty);
+        let moved = cache.typed_lineage("u", 1, 8, 1, empty);
         assert!(!Arc::ptr_eq(&first, &moved), "a new plan key recomputes");
+    }
+
+    #[test]
+    fn the_probe_misses_lineage_of_an_older_schema_revision() {
+        let cache = DerivedCache::default();
+        // computed before the schemas were published (revision 0)
+        cache.typed_lineage("u", 3, 7, 0, empty);
+        assert!(cache.lineage_cached("u", 3, 0).is_some());
+        assert!(cache.lineage_cached("u", 3, 1).is_none(), "published since");
     }
 
     #[test]
     fn the_probe_never_computes_and_matches_the_generation() {
         let cache = DerivedCache::default();
-        assert!(cache.lineage_cached("u", 1).is_none());
-        cache.typed_lineage("u", 3, 7, empty);
-        assert!(cache.lineage_cached("u", 3).is_some());
-        assert!(cache.lineage_cached("u", 4).is_none());
+        assert!(cache.lineage_cached("u", 1, 1).is_none());
+        cache.typed_lineage("u", 3, 7, 1, empty);
+        assert!(cache.lineage_cached("u", 3, 1).is_some());
+        assert!(cache.lineage_cached("u", 4, 1).is_none());
         cache.lineage("v", 2, empty);
-        assert!(cache.lineage_cached("v", 2).is_some(), "plain entries too");
+        assert!(
+            cache.lineage_cached("v", 2, 1).is_some(),
+            "plain entries too"
+        );
     }
 }

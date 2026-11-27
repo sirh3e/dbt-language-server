@@ -226,6 +226,12 @@ pub fn split_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_c
     }
 }
 
+/// The revision of the project's published schemas, 0 before the first:
+/// a lookup, never a computation, so the dispatcher may ask.
+pub fn schema_revision(ctx: &DbtContext, derived: &DerivedCache) -> u64 {
+    project_of(ctx, derived).map_or(0, |p| p.revision)
+}
+
 fn project_of(ctx: &DbtContext, derived: &DerivedCache) -> Option<Arc<SchemaSnapshot>> {
     ctx.project_root
         .as_deref()

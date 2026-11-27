@@ -42,9 +42,11 @@ impl<'a> TypedLineage<'a> {
     /// compiled file's stamp, like a plan's.
     pub fn for_open_document(&self, doc: &Document, uri: &str) -> Arc<Option<ModelLineage>> {
         let key = plan_key(&self.snap.ctx, self.derived, &self.artifacts, uri, false);
-        self.derived.typed_lineage(uri, doc.generation, key, || {
-            self.compute(&doc.parsed, uri, |text| saved_as(uri, text))
-        })
+        let revision = self.project.as_ref().map_or(0, |p| p.revision);
+        self.derived
+            .typed_lineage(uri, doc.generation, key, revision, || {
+                self.compute(&doc.parsed, uri, |text| saved_as(uri, text))
+            })
     }
 
     /// A file not open in the editor, read from disk and computed per call.
