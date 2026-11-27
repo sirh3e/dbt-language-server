@@ -54,217 +54,76 @@ pub fn references(
     out
 }
 
-/// textDocument/documentSymbol (flat): CTEs + macros defined in the file.
+/// textDocument/documentSymbol (flat): CTEs and macros defined in the
+/// file, and the `ref()`/`source()` calls it makes, by position.
 pub fn document_symbols(doc: &Document, uri: &str) -> Vec<SymbolInformation> {
+    let local = |name: String, kind: i32, range: Range| SymbolInformation {
+        name,
+        kind,
+        location: Location {
+            uri: uri.to_string(),
+            range,
+        },
+        container_name: None,
+    };
     let mut symbols: Vec<SymbolInformation> = doc
         .parsed
         .def_tokens
         .iter()
-        .map(|(name, token)| SymbolInformation {
-            name: name.to_string(),
-            kind: symbol_kind::STRUCT,
-            location: Location {
-                uri: uri.to_string(),
-                range: token_range(token),
-            },
-        })
+        .map(|(name, token)| local(name.to_string(), symbol_kind::STRUCT, token_range(token)))
         .collect();
     for raw in cogitator_parser::jinja_scan::extract_macros(&doc.text) {
-        symbols.push(SymbolInformation {
-            name: raw.name,
-            kind: symbol_kind::FUNCTION,
-            location: Location {
-                uri: uri.to_string(),
-                range: Range {
-                    start: Position {
-                        line: raw.start.0,
-                        character: raw.start.1,
-                    },
-                    end: Position {
-                        line: raw.end.0,
-                        character: raw.end.1,
-                    },
-                },
+        let range = Range {
+            start: Position {
+                line: raw.start.0,
+                character: raw.start.1,
             },
-        });
+            end: Position {
+                line: raw.end.0,
+                character: raw.end.1,
+            },
+        };
+        symbols.push(local(raw.name, symbol_kind::FUNCTION, range));
     }
+    symbols.extend(
+        call_symbols(doc)
+            .into_iter()
+            .map(|(name, range)| local(name, symbol_kind::PACKAGE, range)),
+    );
     symbols.sort_by(|a, b| {
-        (
-            a.location.range.start.line,
-            a.location.range.start.character,
-            a.name.clone(),
-        )
-            .cmp(&(
-                b.location.range.start.line,
-                b.location.range.start.character,
-                b.name.clone(),
-            ))
+        let key = |s: &SymbolInformation| {
+            (
+                s.location.range.start.line,
+                s.location.range.start.character,
+            )
+        };
+        key(a).cmp(&key(b)).then_with(|| a.name.cmp(&b.name))
     });
     symbols
 }
 
-/// workspace/symbol: models, sources and macros matching `query`. The
-/// `tag:` and `selector:` prefixes go through the selector engine over a
-/// universe built from the context alone (no file reads); the server
-/// uses [`workspace_symbols_in`] with the project's full universe.
-pub fn workspace_symbols(ctx: &DbtContext, query: &str) -> Vec<SymbolInformation> {
-    let universe = crate::selectors::universe(ctx, &|_| None);
-    workspace_symbols_in(ctx, &universe, query)
-}
-
-/// [`workspace_symbols`] over a given selector universe.
-pub fn workspace_symbols_in(
-    ctx: &DbtContext,
-    universe: &crate::selectors::Universe,
-    query: &str,
-) -> Vec<SymbolInformation> {
-    use crate::selectors::{self, glob, Indirect, ResourceType};
-    let raw = query;
-    let query = query.to_lowercase();
-
-    // `tag:x` → nodes carrying a tag that contains x (a glob as written);
-    // `selector:x` → selectors.yml entries. A bare prefix lists
-    // everything of that kind.
-    if let Some(tag) = raw.strip_prefix("tag:") {
-        // tags compare as dbt does: case-sensitive
-        let tag = tag.trim();
-        let pattern = if glob::is_glob(tag) {
-            tag.to_string()
-        } else {
-            format!("*{tag}*")
-        };
-        let Ok(eval) = selectors::select(universe, &[], &format!("tag:{pattern}"), Indirect::Empty)
-        else {
-            return Vec::new();
-        };
-        let mut out: Vec<SymbolInformation> = selectors::sorted(universe, &eval)
-            .into_iter()
-            .map(|n| SymbolInformation {
-                name: n.display_name(),
-                kind: match n.resource_type {
-                    ResourceType::Source => symbol_kind::INTERFACE,
-                    ResourceType::Test | ResourceType::UnitTest => symbol_kind::FUNCTION,
-                    _ => symbol_kind::CLASS,
-                },
-                location: Location {
-                    uri: file_uri(&n.uri),
-                    range: n.range,
-                },
-            })
-            .collect();
-        out.sort_by(|a, b| a.name.cmp(&b.name));
-        return out;
-    }
-    if let Some(selector) = query.strip_prefix("selector:") {
-        let selector = selector.trim();
-        let mut out: Vec<SymbolInformation> = ctx
-            .selectors
-            .definitions
-            .iter()
-            .filter(|d| selector.is_empty() || d.name.to_lowercase().contains(selector))
-            .filter_map(|d| ctx.selector_detail_map.get(&d.name))
-            .map(|s| SymbolInformation {
-                name: s.name.clone(),
-                kind: symbol_kind::NAMESPACE,
-                location: Location {
-                    uri: file_uri(&s.uri),
-                    range: s.range,
-                },
-            })
-            .collect();
-        out.sort_by(|a, b| a.name.cmp(&b.name));
-        out.dedup_by(|a, b| a.name == b.name);
-        return out;
-    }
-
-    if let Some(exposure) = query.strip_prefix("exposure:") {
-        let exposure = exposure.trim();
-        let mut out: Vec<SymbolInformation> = ctx
-            .exposure_detail_map
-            .iter()
-            .chain(&ctx.metric_detail_map)
-            .chain(&ctx.semantic_model_detail_map)
-            .filter(|(name, _)| exposure.is_empty() || name.to_lowercase().contains(exposure))
-            .map(|(name, c)| SymbolInformation {
-                name: name.clone(),
-                kind: symbol_kind::MODULE,
-                location: Location {
-                    uri: file_uri(&c.uri),
-                    range: c.range,
-                },
-            })
-            .collect();
-        out.sort_by(|a, b| a.name.cmp(&b.name));
-        return out;
-    }
-
-    let matches = |name: &str| query.is_empty() || name.to_lowercase().contains(&query);
-    let mut out = Vec::new();
-    for (name, s) in &ctx.selector_detail_map {
-        if matches(name) {
-            out.push(SymbolInformation {
-                name: name.clone(),
-                kind: symbol_kind::NAMESPACE,
-                location: Location {
-                    uri: file_uri(&s.uri),
-                    range: s.range,
-                },
-            });
-        }
-    }
-    for (name, m) in &ctx.model_detail_map {
-        if matches(name) {
-            out.push(SymbolInformation {
-                name: name.clone(),
-                kind: symbol_kind::CLASS,
-                location: Location {
-                    uri: file_uri(&m.uri),
-                    range: Range::default(),
-                },
-            });
-        }
-    }
-    for (name, s) in &ctx.source_detail_map {
-        if matches(name) {
-            out.push(SymbolInformation {
-                name: name.clone(),
-                kind: symbol_kind::INTERFACE,
-                location: Location {
-                    uri: file_uri(&s.uri),
-                    range: s.range,
-                },
-            });
-        }
-    }
-    for macros in ctx.macro_detail_map.values() {
-        for (name, m) in macros {
-            if matches(name) {
-                out.push(SymbolInformation {
-                    name: name.clone(),
-                    kind: symbol_kind::FUNCTION,
-                    location: Location {
-                        uri: file_uri(&m.uri),
-                        range: m.range,
-                    },
-                });
+/// The file's `ref('m')` and `source('s', 't')` calls, named as written
+/// (`ref(m)`, `source(s, t)`), at the name argument(s).
+fn call_symbols(doc: &Document) -> Vec<(String, Range)> {
+    let parsed = &doc.parsed;
+    parsed
+        .tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, t)| match t.kind {
+            TokenKind::Ref => Some((format!("ref({})", parsed.literal(t)), token_range(t))),
+            TokenKind::SourceTable => {
+                let source = parsed.lookback_find(idx, TokenKind::SourceName, 4)?;
+                let range = Range {
+                    start: token_range(source).start,
+                    end: token_range(t).end,
+                };
+                let name = format!("source({}, {})", parsed.literal(source), parsed.literal(t));
+                Some((name, range))
             }
-        }
-    }
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    dedup_same_file(&mut out);
-    out
-}
-
-/// One symbol per name and file: a package installed by a link, or a
-/// folder of linked macros, reaches the same file under several paths.
-fn dedup_same_file(out: &mut Vec<SymbolInformation>) {
-    let mut seen = std::collections::HashSet::new();
-    out.retain(|s| {
-        let path = cogitator_lsp::uri_to_fs_path(&s.location.uri)
-            .map(std::path::PathBuf::from)
-            .map(|p| std::fs::canonicalize(&p).unwrap_or(p));
-        seen.insert((s.name.clone(), s.kind, path, s.location.range.start.line))
-    });
+            _ => None,
+        })
+        .collect()
 }
 
 /// textDocument/documentHighlight: occurrences of the same literal + kind.

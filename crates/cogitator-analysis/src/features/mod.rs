@@ -58,6 +58,7 @@ pub mod selectors_yml;
 mod semantic_captures;
 mod signature;
 mod structure;
+mod symbol_parts;
 pub mod syntax;
 mod test_sql;
 mod tests_nav;
@@ -66,6 +67,7 @@ mod unresolved_builtins;
 mod unused_vars;
 mod vars;
 mod workspace_diagnostics;
+mod workspace_symbols;
 pub mod yaml_sync;
 
 pub use artifact_status::{artifact_diagnostics, freshness_lenses, run_lens};
@@ -145,9 +147,7 @@ pub use jinja_preview::{expand_jinja, ExpandedSql, PreviewInputs};
 pub use lenses::code_lenses;
 pub use linked_editing::linked_editing;
 pub use model_info::{compiled_sql_path, model_info, ModelInfo, ModelVersions, VersionEntry};
-pub use navigation::{
-    document_highlights, document_symbols, references, workspace_symbols, workspace_symbols_in,
-};
+pub use navigation::{document_highlights, document_symbols, references};
 pub use references::references_at;
 pub use relation::{
     relation_info, with_manifest_relation, RelationInfo, RelationKind, RelationOrigin,
@@ -177,6 +177,9 @@ pub use unresolved::{
 pub use unused_vars::unused_var_diagnostics;
 pub use vars::{key_definition, var_key_at, var_references};
 pub use workspace_diagnostics::project_diagnostics;
+pub use workspace_symbols::{
+    workspace_symbols, workspace_symbols_in, workspace_symbols_with, MAX_PART_SYMBOLS,
+};
 
 use std::path::Path;
 

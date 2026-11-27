@@ -683,8 +683,10 @@ the name itself; and a macro called inside a hook's string
 (`post_hook="{{ m() }}"`). The hover of a ref(), source() or macro ends
 with `Definition: [file:line](…)`: focus the hover (`K` again) and <CR>
 or `gd` opens it. Document symbols report a model's CTEs as Struct and
-workspace symbols selectors as Namespace and exposures as Module, so
-pickers that filter symbol kinds (LazyVim's `<leader>ss`) keep them.
+its ref()/source() calls as Package, and workspace symbols selectors as
+Namespace, exposures as Module, documented columns as Field and tests as
+Method, so pickers that filter symbol kinds (LazyVim's `<leader>ss`)
+keep them. A workspace symbol query also takes `column:x` and `test:x`.
 
                                                   *cogitator-nvim-treesitter*
 `:DbtTreesitter install` builds the tree-sitter-dbt grammar at the

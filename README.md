@@ -116,8 +116,11 @@ where o.ordered_at >= '{{ var("since") }}'                      -- the value inl
   editor updates what refers to it. [docs/file-operations.md](docs/file-operations.md)
 - **Code lenses** per model: upstream and downstream counts, tests and
   coverage, run, test, compile, and preview rows.
-- **Search** by tag and selector (`tag:x`, `selector:x` in workspace
-  symbols), and dbt's own node-selection language (`dbt.select`).
+- **Find anything by name** in workspace symbols: models, sources and
+  their tables, macros, selectors, exposures, documented columns and
+  tests, or one kind with `tag:x`, `selector:x`, `exposure:x`, `column:x`,
+  `test:x`; the outline lists a model's CTEs and its `ref()`/`source()`
+  calls. Search with dbt's own node-selection language too (`dbt.select`).
   [docs/selectors.md](docs/selectors.md)
 
 ### Running dbt

@@ -215,6 +215,31 @@ arrives through standard LSP requests:
   diff opens as a file), and in the active profiles.yml
   **Switch target** (`dbt.setTarget`).
 
+## Find anything: cmd-T
+
+Zed's project symbols (`cmd-T`, `project_symbols::Toggle`) ask the
+server's `workspace/symbol`, and the outline (`cmd-shift-O`) its
+`textDocument/documentSymbol`; both are standard LSP, so they need no
+setting.
+
+- **A plain query** lists, by name, every selector, model (at the top of
+  its SQL), source and source table (`jaffle_shop.orders`), macro,
+  exposure, metric and semantic model, and — once something is typed —
+  the documented columns (`orders.order_id`, `source.table.column`, at
+  their `name:` in the YAML) and the tests (`not_null on
+  orders.order_id`, unit tests by their name, at their entry). A column
+  or test names its model as its container. Columns and tests stop at
+  2,000 an answer; the definitions are never cut.
+- **`tag:x`** lists the nodes carrying a tag that contains `x` (a glob as
+  written; tags compare as dbt does, case-sensitive).
+- **`selector:x`** lists selectors.yml entries, **`exposure:x`**
+  exposures, metrics and semantic models, **`column:x`** documented
+  columns and **`test:x`** tests. A bare prefix lists every one of its
+  kind.
+- **The outline** of a model lists its CTEs, the macros it defines and
+  its `ref('m')` / `source('s', 't')` calls (as `ref(m)`, `source(s, t)`),
+  in file order.
+
 ## Server features beyond stock LSP
 
 Formatting, inlay hints, document links, linked CTE editing, quickfix

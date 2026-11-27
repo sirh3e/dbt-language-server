@@ -8,16 +8,25 @@ local preview = require("cogitator.pick.preview")
 local M = {}
 
 -- selectors were Key (20) and exposures Event (24) before servers that
--- send Namespace (3) and Module (2), which symbol filters keep
+-- send Namespace (3) and Module (2), which symbol filters keep; a
+-- non-empty query also answers columns (Field, 8) and tests (Method, 6),
+-- and sources come with their tables (`source.table`, Interface)
 local SYMBOL_KINDS = {
   [2] = "exposure",
   [3] = "selector",
   [5] = "model",
+  [6] = "test",
+  [8] = "column",
   [11] = "source",
   [12] = "macro",
   [20] = "selector",
   [24] = "exposure",
 }
+
+-- what documentSymbol answers beside the calls this picker finds itself:
+-- macros (Function) and CTEs (Struct); its ref()/source() calls (Package)
+-- would come twice
+local LOCAL_KINDS = { [12] = "macro", [23] = "cte" }
 
 --- workspace/symbol, all of it, matched here (the server matches substrings).
 ---@param ctx cogitator.pick.Ctx
@@ -131,17 +140,15 @@ function M.refs(ctx)
       }, { timeout_ms = 5000 }, function(err, result)
         for _, sym in ipairs((not err and type(result) == "table") and result or {}) do
           local range = (sym.location or sym).range
-          items[#items + 1] = {
-            text = ("%s  [%s]  :%d"):format(
-              sym.name,
-              sym.kind == 12 and "macro" or "cte",
-              range.start.line + 1
-            ),
-            name = sym.name,
-            lnum = range.start.line + 1,
-            col = range.start.character,
-            value = { kind = "local" },
-          }
+          if LOCAL_KINDS[sym.kind] then
+            items[#items + 1] = {
+              text = ("%s  [%s]  :%d"):format(sym.name, LOCAL_KINDS[sym.kind], range.start.line + 1),
+              name = sym.name,
+              lnum = range.start.line + 1,
+              col = range.start.character,
+              value = { kind = "local" },
+            }
+          end
         end
         table.sort(items, function(a, b)
           return a.lnum < b.lnum

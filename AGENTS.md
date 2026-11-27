@@ -200,7 +200,12 @@ editor integrations live under `editors/`.
   `is_incremental()` / `config()` snippets, `completion/snippets.rs`),
   `labelDetails` (column types and relations, `completion/details.rs`) and
   Markdown documentation, each with a plain fallback.
-- `workspace/symbol` understands `tag:x` and `selector:x` query prefixes.
+- `workspace/symbol` understands `tag:x`, `selector:x`, `exposure:x`,
+  `column:x` and `test:x` query prefixes; a non-empty plain query adds
+  documented columns (Field) and tests (Method) to the definitions,
+  capped at `MAX_PART_SYMBOLS` (`features/workspace_symbols.rs`, the YAML
+  parts in `features/symbol_parts.rs`). documentSymbol lists the file's
+  `ref()`/`source()` calls (Package) beside its CTEs and macros.
 - **Selector engine** (`cogitator-analysis/src/selectors/`, docs/selectors.md):
   dbt's node-selection language, pure — `syntax` (the `--select` string),
   `yaml` (selectors.yml definitions), `universe` (the nodes and edges,
