@@ -1,0 +1,41 @@
+---
+source: crates/cogitator/src/server/dialogs/cards/deps.rs
+expression: "card(&answer, Some(\"file:///p\")).unwrap()"
+---
+# orders
+
+model · [models/orders.sql](file:///p/models/orders.sql)
+
+## How it is built
+
+| config | value |
+|---|---|
+| materialized | `incremental` |
+
+> No `unique_key`: every run appends.
+
+`#nightly`
+
+## Columns (2)
+
+| column | type | basis |
+|---|---|---|
+| `order_id` | `INTEGER` | proven |
+| `status` | `text?` | declared, not enforced |
+
+## Uses directly (1)
+
+- [stg_orders](file:///p/models/stg_orders.sql) · model · `view`
+
+## Used directly by (0)
+
+_nothing_
+
+## Everything upstream (2)
+
+- ↑1 [stg_orders](file:///p/models/stg_orders.sql) · model · `view`
+- ↑2 [raw.orders](file:///p/models/sources.yml) · source — models/sources.yml line 7
+
+## Everything downstream (0)
+
+_nothing_

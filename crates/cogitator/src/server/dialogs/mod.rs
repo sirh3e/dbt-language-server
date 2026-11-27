@@ -11,8 +11,10 @@
 //!
 //! [`ClientLink::send`]: super::client_link::ClientLink::send
 
+pub mod cards;
 pub mod menu;
 pub mod render;
+pub mod tagged;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -178,6 +180,16 @@ fn file_for(pending: &Pending, extension: &str) -> PathBuf {
     pending.dir.join(name)
 }
 
+/// The project's root as a `file://` URI: the dialogs write under
+/// `<root>/target/.cogitator/dialogs`.
+fn root_uri(pending: &Pending) -> Option<String> {
+    pending
+        .dir
+        .ancestors()
+        .nth(3)
+        .map(cogitator_lsp::fs_path_to_uri)
+}
+
 /// What a command's response (`{id, result}` or `{id, error}`) leads to.
 /// Pure: [`finish`] carries it out.
 pub fn outcome(pending: &Pending, response: &Value) -> Outcome {
@@ -216,6 +228,16 @@ pub fn outcome(pending: &Pending, response: &Value) -> Outcome {
         Present::Document => Outcome::Write {
             path: file_for(pending, "md"),
             text: render::markdown(&run.title, result),
+        },
+        Present::Card(kind) => match cards::render(*kind, result, root_uri(pending).as_deref()) {
+            Some(page) => Outcome::Write {
+                path: file_for(pending, page.extension),
+                text: page.text,
+            },
+            None => Outcome::Write {
+                path: file_for(pending, "md"),
+                text: render::markdown(&run.title, result),
+            },
         },
         Present::Field { field, extension } => match result.get(*field).and_then(Value::as_str) {
             Some(text) => Outcome::Write {

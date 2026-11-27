@@ -1,0 +1,19 @@
+---
+source: crates/cogitator/src/server/dialogs/cards/model_tests.rs
+expression: "node(&answer, ROOT).unwrap()"
+---
+# cents_to_dollars
+
+macro · [macros/money.sql](file:///p/macros/money.sql)
+
+`cents_to_dollars(column, scale=2)`
+
+package: shop
+
+## Called by (1)
+
+- [orders](file:///p/models/orders.sql) · model
+
+## Calls (0)
+
+_no other macro_

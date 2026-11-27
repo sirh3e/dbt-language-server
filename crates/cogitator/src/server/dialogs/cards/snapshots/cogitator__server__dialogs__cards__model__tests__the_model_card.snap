@@ -1,0 +1,46 @@
+---
+source: crates/cogitator/src/server/dialogs/cards/model_tests.rs
+expression: "model(&info(), ROOT).unwrap()"
+---
+# orders
+
+model · [models/orders.sql](file:///p/models/orders.sql)
+
+One row per order.
+
+With its payments.
+
+`#mart` `#nightly`
+
+## Files
+
+- dbt SQL: [models/orders.sql](file:///p/models/orders.sql)
+- compiled SQL: _not compiled yet — "Compile it" in the dbt menu writes it_
+
+## Versions (latest 2)
+
+- v1 → [models/orders_v1.sql](file:///p/models/orders_v1.sql)
+- v2 → _no file_
+
+## Upstream (2)
+
+- [stg_orders](file:///p/models/staging/stg_orders.sql) · model
+- raw.payments · source
+
+## Downstream (0)
+
+_nothing depends on it_
+
+## Columns (3)
+
+2 of 3 documented · 1 tested
+
+| column | type | basis |
+|---|---|---|
+| `order_id` | `INTEGER` | proven |
+| `status` | `a text?` | declared, not enforced |
+
+## Tests (2)
+
+- [unique on order_id](file:///p/models/schema.yml) — models/schema.yml line 12
+- [test_totals (v2)](file:///p/models/schema.yml) · unit test — models/schema.yml line 31

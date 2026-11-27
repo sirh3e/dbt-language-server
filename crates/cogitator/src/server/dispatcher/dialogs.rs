@@ -101,6 +101,7 @@ impl Dispatcher {
                 self.show_message(cogitator_lsp::message_type::INFO, text)
             }
             Answer::Step(Step::Run(run)) => self.dialog_run(run),
+            Answer::Step(Step::Open { uri, selection }) => self.link.show_document(uri, selection),
         }
     }
 
