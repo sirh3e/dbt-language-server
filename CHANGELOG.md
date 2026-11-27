@@ -8,6 +8,24 @@ the git history belong to the upstream Go project and are ignored
 here.
 
 <!-- git-cliff: end of header -->
+## [0.8.0] - 2026-11-27
+
+### 🚀 Features
+
+- *(completion)* Rank alias.column above globals, from a sqlparser scope (#101)
+- *(completion)* A column name resolver over the project's schema snapshot (#106)
+- Authoring actions, column reach, history and cost, typed checks and completion (#115)
+- A formatter on sqlfluff's parser, user-defined functions, invalid models as you type, tests' and incremental strategies' SQL, CTEs without the warehouse, and the lineage suite: alias navigation, inline lineage hints, a column-lineage dialog, rename along lineage, the column graph and its cache (#116)
+- *(lineage)* Dbt.columnLineageGraph walks the column graph; retire the plugin's walk (#122)
+- *(zed)* The dbt menu as the server's dialogs (#123)
+
+### 🐛 Bug Fixes
+
+- *(test)* Wait for didOpen's refresh before the cached-plan push check (#114)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(dev)* A real Zed in the dev shell, and `just zed-smoke` (#124)
 ## [0.7.0] - 2026-11-25
 
 ### 🚀 Features
@@ -32,6 +50,10 @@ here.
 
 - *(nvim)* Split the plugin's three largest modules, share three helpers (#85)
 - *(schemas)* Read dbt's schemas from the shared dbt-schemas crate (#93)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* V0.7.0 (#94)
 ## [0.6.0] - 2026-11-22
 
 ### 🚀 Features

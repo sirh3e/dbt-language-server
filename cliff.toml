@@ -64,6 +64,9 @@ require_conventional = false
 split_commits = false
 # An array of regex based parsers to modify commit messages prior to further processing.
 commit_preprocessors = [
+    # #116 landed many PRs at once under a merge title, which no parser
+    # recognises; say what it brought (v0.8.0)
+    { pattern = '^merge: #108 \(lineage suite #96 #97 #98 #100 #102\)[^\n]*\(#116\)', replace = "feat: a formatter on sqlfluff's parser, user-defined functions, invalid models as you type, tests' and incremental strategies' SQL, CTEs without the warehouse, and the lineage suite: alias navigation, inline lineage hints, a column-lineage dialog, rename along lineage, the column graph and its cache (#116)" },
     # Replace issue numbers with link templates to be updated in `changelog.postprocessors`.
     #{ pattern = '\((\w+\s)?#([0-9]+)\)', replace = "([#${2}](<REPO>/issues/${2}))"},
     # Check spelling of the commit message using https://github.com/crate-ci/typos.
