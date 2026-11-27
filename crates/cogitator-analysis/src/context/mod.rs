@@ -161,7 +161,7 @@ impl ContextBuilder {
         };
         // every path of the context is the root's: spelled as a URI spells
         // it, it compares with the paths of the URIs requests name
-        let start = without_verbatim_prefix(start);
+        let start = util::without_verbatim_prefix(start);
         let Some(root) = util::get_project_root("dbt_project.yml", &start) else {
             tracing::debug!(?start, "dbt_project.yml not found");
             return DbtContext::default();
@@ -409,20 +409,6 @@ fn list_dirs(root: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// A Windows verbatim path (`\\?\C:\p`, what `canonicalize` returns there)
-/// in its plain spelling (`C:\p`; `\\?\UNC\srv\sh` → `\\srv\sh`), which a
-/// file's URI and so every request's path has; any other path as it is.
-fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
-    let text = path.to_string_lossy();
-    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
-        PathBuf::from(format!(r"\\{rest}"))
-    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
-        PathBuf::from(rest)
-    } else {
-        path
-    }
-}
-
 /// A path as a `file://` URI spells it, back as a path: no Windows
 /// verbatim prefix, `/` separators, the drive letter upper case.
 fn as_uri_spells_it(path: &Path) -> PathBuf {
@@ -491,7 +477,7 @@ mod uri_path_tests {
 
     #[test]
     fn a_root_loses_its_verbatim_prefix() {
-        use super::without_verbatim_prefix;
+        use crate::util::without_verbatim_prefix;
         use std::path::PathBuf;
         let plain = |s: &str| without_verbatim_prefix(PathBuf::from(s));
         assert_eq!(plain(r"\\?\C:\p\shop"), PathBuf::from(r"C:\p\shop"));
