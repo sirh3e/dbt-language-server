@@ -61,8 +61,16 @@ fn a_saved_rename_is_a_breaking_change() {
         "textDocument/didSave",
         json!({"textDocument": {"uri": uri}}),
     );
+    // the file is written before didChange, so a job may first report the
+    // buffer (the original) against the saved file (the edit): the other
+    // way round, and rightly. Wait for the report of the edit itself.
     let published = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
-        n["params"]["uri"] == uri && !breaking_items(&n["params"]).is_empty()
+        n["params"]["uri"] == uri
+            && breaking_items(&n["params"]).iter().any(|d| {
+                d["message"].as_str().is_some_and(|m| {
+                    m.contains("'customer_id' was removed") && m.contains("breaks")
+                })
+            })
     });
     let items = breaking_items(&published["params"]);
     assert_eq!(items.len(), 1, "{items:?}");
