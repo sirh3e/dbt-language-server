@@ -167,10 +167,12 @@ return function(ctx)
     supported = function()
       return true
     end,
+    model_uri = real.model_uri,
+    note = real.note,
     fetch = function(buf, opts, cb)
       asked = { buf = buf, opts = opts }
       vim.schedule(function()
-        cb({
+        cb(nil, {
           cached = false,
           stale = false,
           nodes = {
@@ -206,8 +208,8 @@ return function(ctx)
   end)
   s = dialog._state
   H.check(
-    asked and asked.buf == bufnr and asked.opts.column == "customer_id",
-    "column dialog: asks lineage_graph for the column",
+    asked and asked.buf == bufnr and asked.opts.column == nil and asked.opts.uri == uri,
+    "column dialog: asks lineage_graph for the start model's every column, by its file",
     vim.inspect(asked)
   )
   H.check(

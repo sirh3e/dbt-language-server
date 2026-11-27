@@ -274,11 +274,11 @@ on the selection's neighbourhood (`cogitator.dag_data.focus`, relayered)
 and `+`/`-` its depth, `F` follow the model of the buffer entered
 elsewhere, `R` refresh (also after every save when
 `dag.refresh_on_save`), `q` close; the winbar names the mode.
-The column graph (`cogitator.column_lineage`) is walked from
-`dbt.columnLineage`, one model per request: upstream through the
-`model`/`source` refs of each column, downstream through the project
-graph's children whose columns read it, bounded by `lineage.depth` hops
-and `lineage.max_requests` requests; it reuses the DAG's layout, as a
+The column graph is the server's `dbt.columnLineageGraph`
+(`cogitator.lineage_graph`), one request over its project-wide column
+graph: upstream through the `model`/`source` columns each column reads,
+downstream through the columns that read it, bounded by `lineage.depth`
+hops (the plugin walks nothing itself); it reuses the DAG's layout, as a
 payload of column nodes (`model:<m>::<col>`, `source:<s>.<t>::<col>`,
 `unknown:<name>::<col>`) with layers from the longest path. The server command is editor-neutral; this UI is
 deliberately implemented only in the Neovim plugin.
@@ -444,7 +444,7 @@ require("cogitator").setup({
   attach_outside_project = false, -- see §4.2
   lens = { enabled = true, events = { "BufEnter", "CursorHold", "InsertLeave" } },
   keymaps = true,               -- buffer-local defaults of §5.3
-  lineage = { depth = 3, max_requests = 60 },  -- column-lineage graphs (§5.3b)
+  lineage = { depth = 3 },  -- column-lineage graphs (§5.3b); max_requests ignored
   dag = { focus_depth = 2, follow = false, refresh_on_save = true },
   grammar = { highlight = true, auto_install = false, url = nil, rev = nil }, -- §5.3d
   -- colours from the server (specs/highlighting §7.1)

@@ -1,15 +1,13 @@
 --- The column-lineage dialog's data: dbt.columnLineageGraph through
---- cogitator.lineage_graph when the server answers it, else the client
---- walk over dbt.columnLineage (cogitator.column_lineage), whose progress
---- fills the panes as each lineage arrives. Nothing here blocks: every
---- answer lands in a callback, and one for an older load is dropped.
+--- cogitator.lineage_graph, the server's walk over its column graph.
+--- Nothing here blocks: the answer lands in a callback, and one for an
+--- older load is dropped.
 
-local actions = require("cogitator.actions")
 local model = require("cogitator.column_dialog.model")
 
 local M = {}
 
---- New data (a progress snapshot, or the whole answer).
+--- New data (the whole answer).
 local function set_data(dialog, s, data, start, done)
   s.ix = model.index(data)
   if start and not s.nav.cursor then
@@ -19,73 +17,45 @@ local function set_data(dialog, s, data, start, done)
   dialog.render(s)
 end
 
---- Fetch the graph: dbt.columnLineageGraph when the server answers it,
---- else the client walk.
+--- Fetch the graph. The whole model is asked first, so the list holds
+--- every column with the cursor on the asked one; a column that answer
+--- does not hold (nothing reads it, a declined template) is asked alone.
 function M.load(dialog, s)
+  -- looked up per load, so a test can stand in for it
+  local lineage_graph = require("cogitator.lineage_graph")
   s.gen = s.gen + 1
   local gen, start = s.gen, s.start
   s.loading, s.note = true, nil
   local settings = require("cogitator.dag").settings().lineage
   local depth = math.max(1, s.depth or settings.depth)
   s.depth = depth
-  local function live()
-    return dialog._state == s and s.gen == gen
-  end
-  -- the walk takes every column of the model, so the list holds them all
-  -- with the cursor on the asked one; a column the lineage does not list
-  -- (select *, a declined template) is walked on its own after
-  local function walk(from)
-    local finished = false
-    local function fetch(uri, cb)
-      if s.client:is_stopped() then
-        return cb(nil)
-      end
-      actions.exec_with(s.client, s.src_buf, "dbt.columnLineage", { uri = uri }, function(err, result)
-        cb((not err and result ~= vim.NIL) and result or nil)
-      end)
-    end
-    require("cogitator.column_lineage").walk(s.project, from, fetch, {
+  local asked = start.column and ("model:%s::%s"):format(start.model, start.column) or nil
+  local function ask(column)
+    lineage_graph.fetch(s.src_buf, {
+      uri = lineage_graph.model_uri(s.project, start.model),
+      column = column,
+      direction = "both",
       depth = depth,
-      max_requests = math.max(1, settings.max_requests),
-      progress = function(partial, start_id)
-        if live() and not finished then
-          set_data(dialog, s, partial, start_id, false)
-        end
-      end,
-    }, function(result)
-      finished = true
-      if not live() then
+    }, function(err, result)
+      if dialog._state ~= s or s.gen ~= gen then
         return
       end
-      local asked = start.column and ("model:%s::%s"):format(start.model, start.column)
+      if err or type(result) ~= "table" or type(result.nodes) ~= "table" then
+        s.note = "no column lineage"
+        return set_data(dialog, s, { nodes = {}, edges = {} }, nil, true)
+      end
       local found = not asked
-        or vim.iter(result.data.nodes):any(function(n)
+        or vim.iter(result.nodes):any(function(n)
           return n.id == asked
         end)
-      if not found and not from.column then
-        return walk(start)
+      if not found and column == nil then
+        return ask(start.column)
       end
-      s.note = result.truncated and ("stopped after %d lineages"):format(result.requests) or nil
-      set_data(dialog, s, result.data, result.start, true)
+      s.note = lineage_graph.note(result)
+      set_data(dialog, s, { nodes = result.nodes, edges = result.edges }, asked or result.start, true)
     end)
   end
-  local ok, graph = pcall(require, "cogitator.lineage_graph")
-  if ok and type(graph) == "table" and graph.supported and graph.supported(s.client) then
-    graph.fetch(s.src_buf, { column = start.column, direction = "both", depth = depth }, function(result)
-      if not live() then
-        return
-      end
-      if type(result) == "table" and type(result.nodes) == "table" and #result.nodes > 0 then
-        s.note = result.stale and "stale" or nil
-        local id = start.column and ("model:%s::%s"):format(start.model, start.column) or nil
-        set_data(dialog, s, result, id, true)
-      else
-        walk({ model = start.model })
-      end
-    end)
-  else
-    walk({ model = start.model })
-  end
+  ask(nil)
 end
 
 return M

@@ -110,6 +110,29 @@ menu off with:
 { "lsp": { "cogitator": { "initialization_options": { "dialogs": false } } } }
 ```
 
+## Test it in a real Zed
+
+The dev shell (`devenv shell`, or `nix-shell`) brings Zed (`zeditor`, from its
+own pin in `nix/zed.nix`), Xvfb and `wasm-tools` on Linux.
+
+```
+just zed-package      # the extension as Zed installs it, in target/package/
+just zed-smoke        # a real Zed, no display needed; `just zed-smoke 120` waits longer
+```
+
+`zed-package` adapts the `wasm32-wasip1` module into the wasm *component*
+Zed loads, with wasmtime's WASI preview1 reactor adapter (v18.0.2, as Zed's
+dev-extension builder uses), downloaded once and checked by its SHA-256.
+
+`zed-smoke` starts Zed under Xvfb on Mesa's software Vulkan (lavapipe), with
+a throwaway home that holds the packaged extension and trusts every worktree,
+opens `testdata/jaffle_shop_duckdb`'s `models/schema.yml` (YAML is built into
+Zed; SQL would need Zed's SQL extension from the network), and passes once
+Zed has loaded the extension and started this checkout's debug `cogitator`.
+It fails when Zed refuses the extension, saying why. Your own Zed settings
+and extensions are never touched. Outside the dev shell, unset an
+`LD_LIBRARY_PATH` that points at another glibc, or Zed cannot start.
+
 ## Notes
 
 - Hover, completion, definition, references, rename, signature help,

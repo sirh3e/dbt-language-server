@@ -42,6 +42,16 @@ with pkgs;
     ++ lib.optionals stdenv.isLinux [
       mold
       clang
+
+      # a real Zed client for the extension (editors/zed): `zeditor` on a
+      # project, or under `xvfb-run` without a display (docs: editors/zed).
+      # Linux only: nixpkgs does not build Zed for every Darwin. Its own
+      # pin (nix/zed.nix), as the toolchain pin's Zed is too old for the
+      # extension's API.
+      (import ./zed.nix pkgs)
+      xvfb-run
+      # Zed loads a wasm *component*: `just zed-package` adapts the module
+      wasm-tools
     ]
     # prek is new in nixpkgs; older pins fall back to `cargo install prek`
     ++ lib.optionals (pkgs ? prek) [ prek ];

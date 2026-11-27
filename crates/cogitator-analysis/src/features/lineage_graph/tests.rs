@@ -2,8 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::*;
+use crate::features::graph_nav::GraphNodeKind;
 use crate::features::graph_nav::{ProjectGraphEdge, ProjectGraphNode};
-use crate::lineage::ColumnLineage;
+use crate::lineage::SourceRef;
+use crate::lineage::{ColumnLineage, ModelLineage};
 
 fn node(id: &str, kind: GraphNodeKind) -> ProjectGraphNode {
     ProjectGraphNode {
@@ -81,25 +83,43 @@ fn lineages() -> HashMap<&'static str, Arc<Option<ModelLineage>>> {
     ])
 }
 
+/// What the shell does: the graph of the lineages it has, the declined
+/// ones missing, the pending ones stale.
 fn run(direction: Direction, column: Option<&str>, pending: &[&str]) -> WalkResult {
+    walk_over(&lineages(), direction, column, pending)
+}
+
+fn walk_over(
+    lineages: &HashMap<&'static str, Arc<Option<ModelLineage>>>,
+    direction: Direction,
+    column: Option<&str>,
+    pending: &[&str],
+) -> WalkResult {
     let project = project();
-    let lineages = lineages();
+    let mut models: Vec<&&str> = lineages.keys().collect();
+    models.sort();
+    let (mut known, mut missing, mut stale) = (Vec::new(), Vec::new(), Vec::new());
+    for m in models {
+        match (pending.contains(m), lineages[m].as_ref()) {
+            (true, _) => stale.push(m.to_string()),
+            (false, Some(l)) => known.push((*m, l)),
+            (false, None) => missing.push(m.to_string()),
+        }
+    }
+    let graph = ColumnGraph::build(known);
     let none = |_: &str| None;
     let input = WalkInput {
         project: &project,
+        graph: &graph,
         model: "stg",
         column,
         direction,
         depth: 3,
         compiled_uri: &none,
+        missing,
+        stale,
     };
-    walk(&input, &|m| {
-        if pending.contains(&m) {
-            Known::Pending
-        } else {
-            Known::Lineage(lineages[m].clone())
-        }
-    })
+    walk(&input)
 }
 
 fn ids(result: &WalkResult) -> Vec<&str> {
@@ -182,4 +202,40 @@ fn the_wire_shape_is_the_plugins() {
         })
     );
     assert!(json[1].get("model").is_none());
+}
+
+/// The graph's rules hold on the wire: a consumer naming the column in
+/// another case reads it, and a `select *` passes it on under its name.
+#[test]
+fn case_and_stars_reach_the_consumers() {
+    let mut lineages = lineages();
+    let some = |columns| {
+        Arc::new(Some(ModelLineage {
+            columns,
+            origin: None,
+        }))
+    };
+    lineages.insert(
+        "a",
+        some(vec![col(
+            "CUSTOMER_ID",
+            true,
+            vec![model("stg", "Customer_Id")],
+        )]),
+    );
+    lineages.insert("b", some(vec![col("*", false, vec![model("stg", "*")])]));
+    let down = walk_over(&lineages, Direction::Down, Some("customer_id"), &[]);
+    assert_eq!(
+        ids(&down),
+        [
+            "model:stg::customer_id",
+            "model:a::CUSTOMER_ID",
+            "model:b::customer_id",
+        ]
+    );
+    assert!(
+        down.edges.iter().all(|e| e.kind == "direct"),
+        "{:?}",
+        down.edges
+    );
 }

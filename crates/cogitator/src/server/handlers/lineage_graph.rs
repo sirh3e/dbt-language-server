@@ -13,16 +13,17 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cogitator_analysis::features::lineage_graph::{
-    text, walk, Direction, Known, LineageEdge, LineageNode, WalkInput,
+    text, walk, Direction, LineageEdge, LineageNode, WalkInput,
 };
 use cogitator_analysis::features::{model_name_from_uri, project_graph_json};
+use cogitator_analysis::lineage::{ColumnGraph, ModelLineage};
 use cogitator_analysis::DbtContext;
 use cogitator_error::guidance::Guidance;
 use cogitator_lsp::{error_codes, ShowDocumentParams};
 use serde::Serialize;
 
 use super::super::derived_cache::DerivedCache;
-use super::super::lineage_graph::stamps::{self, Keyed};
+use super::super::lineage_graph::stamps;
 use super::super::lineage_graph::Compute;
 use super::super::reply::{Effect, Reply};
 use super::super::snapshot::Snapshot;
@@ -114,7 +115,6 @@ pub fn command(
     let reach = reachable(&ctx, &model, request.direction, request.depth);
     let wanted = reach.iter().filter_map(|m| keys.get(m).cloned());
     let waiting = store.ensure(wanted, &compute, true);
-    let mut cached = waiting.is_empty();
     store.wait(&waiting, deadline);
 
     // the open document answers for itself, unsaved edits and all
@@ -122,44 +122,40 @@ pub fn command(
         .doc
         .as_deref()
         .map(|doc| TypedLineage::new(&snap, &derived, artifact_cap).for_open_document(doc, uri));
+    let mut lineages: Vec<(String, Arc<Option<ModelLineage>>)> = Vec::new();
+    let (mut missing, mut stale) = (Vec::new(), Vec::new());
+    for m in &reach {
+        let known = match (&open, keys.get(m)) {
+            (Some(open), _) if *m == model => Some(open.clone()),
+            (_, Some(k)) => store.valid(m, &k.key),
+            (_, None) => continue, // no file: a leaf
+        };
+        match known {
+            Some(lineage) if lineage.is_some() => lineages.push((m.clone(), lineage)),
+            Some(_) => missing.push(m.clone()),
+            None => stale.push(m.clone()),
+        }
+    }
+    let graph = ColumnGraph::build(
+        lineages
+            .iter()
+            .filter_map(|(m, l)| l.as_ref().as_ref().map(|l| (m.as_str(), l))),
+    );
+    let cached = waiting.is_empty() && stale.is_empty();
     let pg = project_graph_json(&ctx);
     let compiled = |m: &str| keys.get(m).and_then(|k| stamps::compiled_uri(&ctx, &k.uri));
     let input = WalkInput {
         project: &pg,
+        graph: &graph,
         model: &model,
         column: request.column.as_deref(),
         direction: request.direction,
         depth: request.depth,
         compiled_uri: &compiled,
+        missing,
+        stale,
     };
-    let lookup = |m: &str| -> Known {
-        if m == model {
-            if let Some(open) = &open {
-                return Known::Lineage(open.clone());
-            }
-        }
-        match keys.get(m) {
-            Some(k) => store
-                .valid(m, &k.key)
-                .map_or(Known::Pending, Known::Lineage),
-            None => Known::Lineage(Arc::new(None)),
-        }
-    };
-    let mut result = walk(&input, &lookup);
-    // a lineage can name a model the graph did not reach: one more round
-    while !result.stale.is_empty() && Instant::now() < deadline {
-        cached = false;
-        let more: Vec<Keyed> = result
-            .stale
-            .iter()
-            .filter_map(|m| keys.get(m).cloned())
-            .collect();
-        let waiting = store.ensure(more, &compute, true);
-        if !store.wait(&waiting, deadline).is_empty() {
-            break;
-        }
-        result = walk(&input, &lookup);
-    }
+    let result = walk(&input);
     // the rest of the project, behind any request's models
     let rest = keys
         .values()

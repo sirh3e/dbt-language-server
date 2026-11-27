@@ -1,10 +1,10 @@
--- dbt.columnLineageGraph against the plugin's own walk: the server's one
--- answer must be the graph column_lineage.walk assembles from one
--- dbt.columnLineage request per hop, node for node and edge for edge.
+-- dbt.columnLineageGraph, the server's walk over its column graph, which
+-- every column-lineage view draws (the plugin walks nothing itself):
+-- the answer around a jaffle_shop column, the helpers, and fetch reaching
+-- its callback as (err, result) with the start model's uri.
 
 return function(ctx)
   local H, client, bufnr = ctx.H, ctx.client, ctx.bufnr
-  local column_lineage = require("cogitator.column_lineage")
   local lineage_graph = require("cogitator.lineage_graph")
 
   H.check(lineage_graph.supported(client), "lineage graph: the server advertises the command")
@@ -15,88 +15,76 @@ return function(ctx)
     "lineage graph: the argument defaults to both ways, at least one hop",
     vim.inspect(arg)
   )
+  H.check(
+    lineage_graph.note({ stale = { "a", "b" } }) == "2 models still being computed"
+      and lineage_graph.note({ stale = {} }) == nil,
+    "lineage graph: the winbar note says what is still being computed"
+  )
 
   local project = H.exec_cmd(client, bufnr, "dbt.projectGraph", vim.empty_dict(), "lineage graph: project")
   if not H.check(type(project) == "table", "lineage graph: the project graph", vim.inspect(project)) then
     return
   end
-  local by_id = {}
-  for _, node in ipairs(project.nodes) do
-    by_id[node.id] = node
-  end
+  local customers = lineage_graph.model_uri(project, "customers")
+  H.check(
+    type(customers) == "string",
+    "lineage graph: a model's uri from the project graph",
+    tostring(customers)
+  )
+  H.check(lineage_graph.model_uri(project, "no_such_model") == nil, "lineage graph: no model, no uri")
 
-  --- What the server sends beyond the walk: dropped before comparing.
-  local function as_walk(nodes, edges)
-    local n = vim.tbl_map(function(node)
-      local copy = vim.deepcopy(node)
-      copy.compiledUri = nil
-      return copy
-    end, nodes)
-    local e = vim.tbl_map(function(edge)
-      return { from = edge.from, to = edge.to }
-    end, edges)
-    return n, e
+  local served = H.exec_cmd(client, bufnr, lineage_graph.command, {
+    uri = customers,
+    column = "customer_id",
+    direction = "both",
+    depth = 3,
+  }, "lineage graph: customers.customer_id", 20000)
+  if not H.check(type(served) == "table", "lineage graph: an answer", vim.inspect(served)) then
+    return
   end
-
-  for _, start in ipairs({
-    { model = "customers", column = "customer_id" },
-    { model = "customers" },
-    { model = "stg_orders", column = "order_id" },
-    { model = "orders", column = "order_id" },
-  }) do
-    local label = ("lineage graph: %s.%s"):format(start.model, start.column or "*")
-    local walked
-    column_lineage.walk(project, start, function(uri, cb)
-      client:exec_cmd(
-        { command = "dbt.columnLineage", arguments = { { uri = uri } } },
-        { bufnr = bufnr },
-        function(err, result)
-          cb((not err and result ~= vim.NIL) and result or nil)
-        end
-      )
-    end, { depth = 3, max_requests = 1000 }, function(result)
-      walked = result
-    end)
-    H.wait(label .. " [the walk ends]", 20000, function()
-      return walked ~= nil
-    end)
-    local served = H.exec_cmd(client, bufnr, lineage_graph.command, {
-      uri = by_id["model:" .. start.model].uri,
-      column = start.column,
-      direction = "both",
-      depth = 3,
-    }, label, 20000)
-    if walked and type(served) == "table" then
-      local nodes, edges = as_walk(served.nodes, served.edges)
-      H.check(
-        vim.deep_equal(nodes, walked.data.nodes),
-        label .. ": the same nodes",
-        vim.inspect({ served = nodes, walked = walked.data.nodes }):sub(1, 1500)
-      )
-      H.check(
-        vim.deep_equal(edges, walked.data.edges),
-        label .. ": the same edges",
-        vim.inspect({ served = edges, walked = walked.data.edges }):sub(1, 1500)
-      )
-      H.check(served.start == walked.start, label .. ": the same start", served.start)
-      local missing = vim.deepcopy(served.missing or {})
-      local expected = vim.deepcopy(walked.missing)
-      table.sort(missing)
-      table.sort(expected)
-      H.check(vim.deep_equal(missing, expected), label .. ": the same missing models", vim.inspect(missing))
-    end
+  local ids = {}
+  for _, node in ipairs(served.nodes) do
+    ids[node.id] = node
   end
+  H.check(
+    served.start == "model:customers::customer_id",
+    "lineage graph: starts on the asked column",
+    served.start
+  )
+  H.check(
+    ids["model:stg_customers::customer_id"] ~= nil,
+    "lineage graph: upstream reaches the staging column",
+    vim.inspect(vim.tbl_keys(ids))
+  )
+  H.check(
+    vim.iter(served.edges):all(function(e)
+      return ids[e.from] ~= nil and ids[e.to] ~= nil and (e.kind == "direct" or e.kind == "derived")
+    end),
+    "lineage graph: every edge joins two nodes of the answer and says how",
+    vim.inspect(served.edges):sub(1, 600)
+  )
+  H.check(
+    vim.iter(served.edges):any(function(e)
+      return e.from == "model:stg_customers::customer_id" and e.to == "model:customers::customer_id"
+    end),
+    "lineage graph: the staging column feeds the mart's",
+    vim.inspect(served.edges):sub(1, 600)
+  )
 
+  -- fetch: the start model's uri, and (err, result) in the callback
   local fetched
-  lineage_graph.fetch(bufnr, { column = "customer_id", direction = "up" }, function(err, result)
+  lineage_graph.fetch(bufnr, { uri = customers, column = "customer_id", depth = 3 }, function(err, result)
     fetched = { err = err, result = result }
   end)
   H.wait("lineage graph: fetch answers", 20000, function()
     return fetched ~= nil
   end)
   H.check(
-    fetched and fetched.err == nil and type(fetched.result) == "table" and #fetched.result.nodes > 0,
-    "lineage graph: fetch hands the graph to its callback",
-    vim.inspect(fetched):sub(1, 400)
+    fetched
+      and fetched.err == nil
+      and fetched.result
+      and fetched.result.start == "model:customers::customer_id",
+    "lineage graph: fetch hands (nil, result) for the asked model",
+    vim.inspect(fetched):sub(1, 300)
   )
 end

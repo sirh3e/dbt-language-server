@@ -33,7 +33,10 @@ editor integrations live under `editors/`.
   (the plugin read-only over every model of a real dbt project; not in CI), `just emacs-test` (Emacs ≥ 29 batch/eglot),
   `just vscode-test` (extension host via @vscode/test-electron, VS Code
   cached under editors/vscode/.vscode-test), `just zed-build`
-  (wasm32-wasip1 compile check)
+  (wasm32-wasip1 compile check), `just zed-package` (the extension as
+  Zed installs it: a wasm component) and `just zed-smoke` (a real Zed 1.25
+  from nix/zed.nix under Xvfb loads it and starts cogitator; Linux, not in
+  CI; editors/zed/README.md)
 - **DuckDB feature** (bundled C++ build, slow): `cargo check -p cogitator --features duckdb-parser`
 - **Release cross-builds**: cargo-zigbuild via the Zig toolchain
   (specs/rust-port/07 §5; .github/workflows/release.yml — linux-amd64,
