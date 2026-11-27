@@ -1,10 +1,9 @@
 --- What :DbtDag shows: the whole model graph, the neighbourhood of the
---- selection (focus, ±depth hops), or a column-lineage graph walked from
---- dbt.columnLineage. Also the view's two autocmds: follow the buffer
+--- selection (focus, ±depth hops), or a column-lineage graph the server
+--- walks (dbt.columnLineageGraph). Also the view's two autocmds: follow the buffer
 --- entered elsewhere, and redraw after a save.
 
-local actions = require("cogitator.actions")
-local column_lineage = require("cogitator.column_lineage")
+local lineage_graph = require("cogitator.lineage_graph")
 local dag_data = require("cogitator.dag_data")
 
 local M = {}
@@ -46,25 +45,18 @@ end
 function M.columns(dag, start)
   local s = dag._state
   local settings = dag.settings().lineage
-  local client, src_buf = s.client, s.src_buf
   s.note = "walking lineage…"
   dag.winbar()
-  local function fetch(uri, cb)
-    if client:is_stopped() then
-      return cb(nil)
-    end
-    actions.exec_with(client, src_buf, "dbt.columnLineage", { uri = uri }, function(err, result)
-      cb((not err and result ~= vim.NIL) and result or nil)
-    end)
-  end
-  column_lineage.walk(s.project, start, fetch, {
+  lineage_graph.fetch(s.src_buf, {
+    uri = lineage_graph.model_uri(s.project, start.model),
+    column = start.column,
+    direction = "both",
     depth = math.max(1, s.lineage_depth or settings.depth),
-    max_requests = math.max(1, settings.max_requests),
-  }, function(result)
+  }, function(err, result)
     if dag._state ~= s then
       return
     end
-    if #result.data.nodes == 0 then
+    if err or not result or #(result.nodes or {}) == 0 then
       s.note = nil
       dag.winbar()
       vim.notify(
@@ -78,8 +70,8 @@ function M.columns(dag, start)
     end
     s.mode = "columns"
     s.start = start
-    s.note = result.truncated and ("stopped after %d lineages"):format(result.requests) or nil
-    dag.show(result.data, result.start)
+    s.note = lineage_graph.note(result)
+    dag.show({ nodes = result.nodes, edges = result.edges }, result.start)
   end)
 end
 

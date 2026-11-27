@@ -74,7 +74,6 @@ Defaults shown: >lua
       },
       lineage = {                 -- column-lineage graphs (|cogitator-nvim-lineage|)
         depth = 3,                -- hops followed each way
-        max_requests = 60,        -- dbt.columnLineage calls per graph, at most
       },
       dag = {                     -- |:DbtDag|
         focus_depth = 2,          -- hops shown around the selection (f, +/-)
@@ -282,11 +281,13 @@ The winbar says what is shown: the models, a focus and its depth, or
 the column graph and its origin.
 
                                                      *cogitator-nvim-lineage*
-A column-lineage graph is walked from `dbt.columnLineage`, which answers
-one model at a time: upstream through the model and source columns each
-column reads, downstream through the models that read it, up to
-`lineage.depth` hops and `lineage.max_requests` requests (the winbar
-says when the walk stopped early). A column of a model whose template the
+A column-lineage graph is walked by the server (`dbt.columnLineageGraph`),
+in one request over its column graph: upstream through the model and
+source columns each column reads, downstream through the models that read
+it, up to `lineage.depth` hops. Column names match ignoring case, and a
+`select *` passes its columns on under their names. The winbar says when
+models were still being computed; ask again for them. `lineage.max_requests`
+is accepted and ignored: the plugin no longer walks lineage itself. A column of a model whose template the
 server declines (Jinja control flow) has no lineage; compiling it
 (|:DbtCompile|) lets the server read the compiled SQL instead.
 
