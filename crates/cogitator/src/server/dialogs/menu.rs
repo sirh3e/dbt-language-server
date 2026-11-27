@@ -10,6 +10,8 @@
 
 use serde_json::{json, Map, Value};
 
+use super::cards::CardKind;
+
 /// The button that shows the next page of a long prompt.
 pub const MORE: &str = "More…";
 /// The button that ends a dialog (Zed's close button answers `null`, too).
@@ -40,6 +42,11 @@ pub enum Step {
     Run(Run),
     /// Say something, and end.
     Say(String),
+    /// Open a file, at a range when there is one.
+    Open {
+        uri: String,
+        selection: Option<cogitator_lsp::Range>,
+    },
 }
 
 /// A command the dialog runs, and how its answer reaches the reader.
@@ -64,6 +71,9 @@ pub enum Present {
     Started,
     /// The answer as a markdown document.
     Document,
+    /// The answer drawn as a card ([`super::cards`]), the way Neovim shows
+    /// it; a [`Document`](Present::Document) when it is not the card's shape.
+    Card(super::cards::CardKind),
     /// One text field of the answer as a file of its own (`sql`, `md`).
     Field {
         field: &'static str,
@@ -84,6 +94,8 @@ pub enum Chooser {
     Targets,
     /// `dbt.columnLineage` → the model's columns, then a command about one.
     Columns(ColumnUse),
+    /// `dbt.select` of a tag → its nodes, each opening its file.
+    Tagged,
 }
 
 /// What a column picked from the model's lineage is for.
@@ -424,23 +436,34 @@ fn model_group(here: &Here, model: &str) -> Prompt {
                 "What it uses and what uses it",
                 "dbt.modelDependencies",
                 json!({}),
-                doc(),
+                Present::Card(CardKind::Dependencies),
             ),
             here.run(
                 "Its model graph",
                 "dbt.modelGraph",
                 json!({ "model": model }),
-                doc(),
+                Present::Card(CardKind::Model),
             ),
-            here.run("Its card", "dbt.modelInfo", json!({}), doc()),
+            here.run(
+                "Its card",
+                "dbt.modelInfo",
+                json!({}),
+                Present::Card(CardKind::Model),
+            ),
             here.run(
                 "Its node card",
                 "dbt.nodeInfo",
                 json!({ "node": { "kind": "model", "name": model } }),
-                doc(),
+                Present::Card(CardKind::Node),
             ),
             here.run("Its tests", "dbt.modelTests", json!({}), doc()),
             here.run("Its relation", "dbt.relation", json!({}), doc()),
+            here.run(
+                "A query of its relation",
+                "dbt.relation",
+                json!({}),
+                Present::Card(CardKind::Query),
+            ),
             here.run(
                 "Its schema YAML entry",
                 "dbt.goToSchema",
@@ -580,6 +603,22 @@ fn project_group(here: &Here) -> Prompt {
                 "Nothing to select: no model is open and the project has no tags or selectors.yml entries.",
             ),
             some(
+                "Models with a tag ›",
+                here.tags
+                    .iter()
+                    .map(|t| {
+                        here.run(
+                            t,
+                            "dbt.select",
+                            json!({ "select": format!("tag:{t}") }),
+                            Present::Choose(Chooser::Tagged),
+                        )
+                    })
+                    .collect(),
+                "Which tag?",
+                "No model of the project has a tag.",
+            ),
+            some(
                 "Cancel a dbt job ›",
                 jobs,
                 "Cancel which job?",
@@ -706,6 +745,7 @@ pub fn choose(chooser: Chooser, uri: &str, answer: &Value) -> Result<Prompt, Str
                 Ok(prompt("Switch to which profile and target?", choices))
             }
         }
+        Chooser::Tagged => super::tagged::prompt(answer),
         Chooser::Columns(usage) => {
             let mut choices: Vec<Choice> = usage.whole(&here).into_iter().collect();
             choices.extend(

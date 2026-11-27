@@ -80,11 +80,13 @@ choice a button:
   column lineage, a column's downstream impact, lineage graph or warehouse
   profile (you pick the column), its changes since the last commit or the
   last dbt run (SQL, compiled SQL or lineage), breaking changes, dependencies, the model graph, its card and tests,
-  its relation, its schema YAML entry, extract and sync the YAML, the
+  its relation and a query of it (`select * from <relation> limit 100`, as
+  a `.sql` file), its schema YAML entry, extract and sync the YAML, the
   split plan, the syntax tree.
 - **Project**: dbt parse, source freshness, run/test/build/compile a
   selection (you pick this model, upstream/downstream, a `selectors.yml`
-  entry or a tag), list a selection's nodes, cancel a running dbt job,
+  entry or a tag), list a selection's nodes, the models with a tag (you
+  pick the tag, then a node, which opens), cancel a running dbt job,
   dead models, unresolved names, models that could be incremental, the
   project graph, what the last run cost, the lineage site (opens in the
   browser).
@@ -95,7 +97,12 @@ choice a button:
 A long prompt pages with **More…**; **Cancel** (or closing the prompt)
 ends it. A command's answer opens as a document: markdown, or the SQL
 itself, under `target/.cogitator/dialogs/` (SQL the server already writes,
-such as a CTE's or a test's, opens from where it is). A dbt job says it
+such as a CTE's or a test's, opens from where it is). The model's card,
+its node card, its model graph and what it uses and what uses it are
+drawn as Neovim draws them (the explorer's card, the dependencies
+dialog): its files, versions, neighbours, typed columns and tests, how
+each node is built, each linked to its file, which Zed opens from the
+markdown. A dbt job says it
 started, and its outcome follows as a message.
 
 Five commands are not in the menu, because a button cannot carry free

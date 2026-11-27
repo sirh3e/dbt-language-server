@@ -154,8 +154,15 @@ fn an_answer_opens_as_a_document_after_two_pages() {
     open_menu(&mut lsp, &uri, &["Model ›", "More…", "More…", "Its card"]);
     let path = opened(&mut lsp, "dialogs/modelInfo.customers.md");
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.starts_with("# Its card\n"), "{text}");
-    assert!(text.contains("- **model**: customers"), "{text}");
+    // the card, as Neovim's explorer draws it, with links Zed opens
+    assert!(
+        text.starts_with("# customers\n\nmodel · [models/customers.sql](file://"),
+        "{text}"
+    );
+    assert!(text.contains("`#mart` `#nightly`"), "{text}");
+    assert!(text.contains("\n## Upstream ("), "{text}");
+    assert!(text.contains("\n## Tests ("), "{text}");
+    assert!(text.contains("- [unique on customer_id](file://"), "{text}");
     assert!(
         path.starts_with(project.root.join("target/.cogitator/dialogs")),
         "{}",
@@ -196,4 +203,66 @@ fn a_closed_prompt_ends_the_dialog_and_nothing_leaks_to_the_client() {
         reply["id"].as_i64().unwrap() > 0,
         "only the client's own ids reach it: {reply}"
     );
+}
+
+#[test]
+fn what_a_model_uses_is_a_card_of_its_dependencies() {
+    let project = jaffle();
+    let (mut lsp, uri) = booted_with_dialogs(&project, true);
+    open_menu(
+        &mut lsp,
+        &uri,
+        &["Model ›", "More…", "More…", "What it uses and what uses it"],
+    );
+    let text = std::fs::read_to_string(opened(&mut lsp, "dialogs/modelDependencies.customers.md"))
+        .unwrap();
+    assert!(text.starts_with("# customers\n"), "{text}");
+    assert!(text.contains("\n## How it is built\n"), "{text}");
+    assert!(text.contains("\n## Uses directly ("), "{text}");
+    assert!(text.contains("- [stg_customers](file://"), "{text}");
+    assert!(text.contains("\n## Everything downstream ("), "{text}");
+}
+
+#[test]
+fn a_query_of_the_relation_is_a_sql_file() {
+    let project = jaffle();
+    let (mut lsp, uri) = booted_with_dialogs(&project, true);
+    open_menu(
+        &mut lsp,
+        &uri,
+        &["Model ›", "More…", "More…", "A query of its relation"],
+    );
+    let sql = std::fs::read_to_string(opened(&mut lsp, "dialogs/relation.customers.sql")).unwrap();
+    assert!(sql.starts_with("-- model customers"), "{sql}");
+    assert!(sql.contains("{{ ref('customers') }}"), "{sql}");
+    assert!(sql.trim_end().ends_with("customers limit 100"), "{sql}");
+}
+
+#[test]
+fn a_tag_leads_to_its_models_and_one_opens() {
+    let project = jaffle();
+    let (mut lsp, uri) = booted_with_dialogs(&project, true);
+    open_menu(
+        &mut lsp,
+        &uri,
+        &[
+            "Project ›",
+            "Models with a tag ›",
+            "nightly",
+            "customers (model)",
+        ],
+    );
+    let tags = lsp.wait_server_request("window/showMessageRequest", |frame| {
+        frame["params"]["message"] == "Which tag?"
+    });
+    assert_eq!(titles(&tags), vec!["mart", "nightly", "Cancel"]);
+    let nodes = lsp.wait_server_request("window/showMessageRequest", |frame| {
+        frame["params"]["message"] == "Open which node tagged nightly?"
+    });
+    assert!(
+        titles(&nodes).contains(&"customers (model)".to_string()),
+        "{nodes}"
+    );
+    let path = opened(&mut lsp, "models/customers.sql");
+    assert_eq!(path, project.root.join("models/customers.sql"));
 }
