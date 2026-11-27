@@ -16,6 +16,7 @@ import {
   searchSummary,
   captureColor,
   columnPosition,
+  dagTextArgument,
   lineageFocus,
   lineageGraphLines,
   lineageHtml,
@@ -219,6 +220,12 @@ export async function run(): Promise<void> {
     }).startsWith("-- + column status\n--- a"),
     "vscode: diffAtText lists the columns, then the diff"
   );
+  check(
+    JSON.stringify(dagTextArgument()) === "{}" && JSON.stringify(dagTextArgument(2)) === '{"depth":2}',
+    "vscode: dagTextArgument sends a depth only for a neighbourhood"
+  );
+  const dag = (await exec("dbt.dagText", {})) as { text?: string } | null;
+  check(typeof dag?.text === "string" && dag.text.startsWith("dbt DAG"), "vscode: dbt.dagText draws the project", dag);
   const cost = (await exec("dbt.costReport", {})) as { text?: string } | null;
   check(typeof cost?.text === "string", "vscode: dbt.costReport answers a report", cost);
   check(

@@ -7,16 +7,25 @@ use std::collections::HashMap;
 use super::{LineageEdge, LineageNode};
 
 pub(super) fn assign(nodes: &mut [LineageNode], edges: &[LineageEdge]) {
-    let index: HashMap<&str, usize> = nodes
+    let ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+    let pairs: Vec<(&str, &str)> = edges
         .iter()
-        .enumerate()
-        .map(|(i, n)| (n.id.as_str(), i))
+        .map(|e| (e.from.as_str(), e.to.as_str()))
         .collect();
-    let mut indegree = vec![0usize; nodes.len()];
-    let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
-    for edge in edges {
-        let (Some(&from), Some(&to)) = (index.get(edge.from.as_str()), index.get(edge.to.as_str()))
-        else {
+    let layers = longest_path(&ids, &pairs);
+    for (node, layer) in nodes.iter_mut().zip(layers) {
+        node.layer = layer;
+    }
+}
+
+/// The layer of each of `ids`, in their order, over `edges` (parent →
+/// child; an edge naming an unknown id, and a self-loop, are ignored).
+pub(crate) fn longest_path(ids: &[&str], edges: &[(&str, &str)]) -> Vec<usize> {
+    let index: HashMap<&str, usize> = ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
+    let mut indegree = vec![0usize; ids.len()];
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); ids.len()];
+    for (from, to) in edges {
+        let (Some(&from), Some(&to)) = (index.get(from), index.get(to)) else {
             continue;
         };
         if from != to {
@@ -24,8 +33,8 @@ pub(super) fn assign(nodes: &mut [LineageNode], edges: &[LineageEdge]) {
             children[from].push(to);
         }
     }
-    let mut layer = vec![0usize; nodes.len()];
-    let mut queue: Vec<usize> = (0..nodes.len()).filter(|&i| indegree[i] == 0).collect();
+    let mut layer = vec![0usize; ids.len()];
+    let mut queue: Vec<usize> = (0..ids.len()).filter(|&i| indegree[i] == 0).collect();
     let mut head = 0;
     let mut deepest = 0;
     while head < queue.len() {
@@ -40,11 +49,13 @@ pub(super) fn assign(nodes: &mut [LineageNode], edges: &[LineageEdge]) {
             }
         }
     }
-    for (i, node) in nodes.iter_mut().enumerate() {
-        node.layer = if indegree[i] == 0 {
-            layer[i]
-        } else {
-            deepest + 1
-        };
-    }
+    (0..ids.len())
+        .map(|i| {
+            if indegree[i] == 0 {
+                layer[i]
+            } else {
+                deepest + 1
+            }
+        })
+        .collect()
 }

@@ -282,6 +282,16 @@
   (check (stringp (plist-get cost :text))
          "integration: dbt.costReport answers a report" cost))
 
+;; unit + integration: dbt.dagText
+(check (equal (cogitator--dag-text '(:text "dbt DAG\n" :nodes 1)) "dbt DAG\n")
+       "dag text: the server's text, as it is")
+(check (equal (cogitator--dag-text :null) "no DAG")
+       "dag text: nothing says so")
+(let ((dag (run--exec "dbt.dagText" (cogitator--command-argument))))
+  (check (and (stringp (plist-get dag :text))
+              (string-prefix-p "dbt DAG — the project" (plist-get dag :text)))
+         "integration: dbt.dagText draws the project" dag))
+
 ;; unit + integration: the syntax tree
 (check (equal (cogitator--syntax-line
                '(:depth 1 :kind "select" :field "body" :missing :json-false

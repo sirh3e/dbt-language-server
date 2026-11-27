@@ -21,7 +21,7 @@ use crate::lineage::graph::NodeIndex;
 use crate::lineage::{ColumnGraph, Flow, Relation};
 
 mod action;
-mod layers;
+pub(crate) mod layers;
 pub mod text;
 
 pub use action::{show_lineage_action, SHOW_COMMAND};

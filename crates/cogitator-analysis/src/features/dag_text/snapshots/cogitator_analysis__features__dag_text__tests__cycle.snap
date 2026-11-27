@@ -1,0 +1,12 @@
+---
+source: crates/cogitator-analysis/src/features/dag_text/tests.rs
+expression: "drawn(&graph(&[\"root\", \"a\", \"b\"], &[(\"root\", \"a\"), (\"a\", \"b\"), (\"b\", \"a\")],))"
+---
+
+ ╭──────╮              ╭───╮
+ │ root │─────────────▸│ a │─┼
+ ╰──────╯              ╰───╯ │
+                             │
+                       ╭───╮ │
+                      ▸│ b │─┼
+                       ╰───╯

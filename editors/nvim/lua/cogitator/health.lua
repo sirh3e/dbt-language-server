@@ -273,6 +273,7 @@ M.COMMANDS = {
   ["dbt.nodeInfo"] = ":DbtNode, the explorer's macros and tests",
   ["dbt.diffAt"] = ":DbtDiffAt",
   ["dbt.costReport"] = ":DbtCostReport",
+  ["dbt.dagText"] = ":DbtDagText",
   ["dbt.profileColumn"] = ":DbtProfileColumn",
 }
 

@@ -79,7 +79,10 @@ frontier` (the plan as an S-expression beside the model, with an
 model rendered with `is_incremental()` false and true, as a unified diff
 beside it), `dbt: Compare this model with a git revision or the last run`
 (dbt.diffAt: the `sql`, `compiled` or `lineage` view, as a diff beside it),
-`dbt: Cost report of the last run` (dbt.costReport), `dbt: Profile the column
+`dbt: Cost report of the last run` (dbt.costReport), `dbt: The DAG as text
+(the project, or this model's neighbourhood)` (dbt.dagText: the project DAG
+drawn as text beside the editor, or the model's neighbourhood 1–3 hops up and
+down), `dbt: Profile the column
 under the cursor` (dbt.profileColumn; needs `warehouse.profile: true`),
 `dbt: Table models that could be incremental`
 (a quick pick, slowest last run first), `dbt: Show syntax tree` (the

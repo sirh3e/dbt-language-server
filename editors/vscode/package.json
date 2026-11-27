@@ -91,6 +91,10 @@
         "title": "dbt: Cost report of the last run"
       },
       {
+        "command": "cogitator.dagText",
+        "title": "dbt: The DAG as text (the project, or this model's neighbourhood)"
+      },
+      {
         "command": "cogitator.profileColumn",
         "title": "dbt: Profile the column under the cursor"
       },

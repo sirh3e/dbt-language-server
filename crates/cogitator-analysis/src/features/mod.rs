@@ -13,6 +13,7 @@ mod compiled_map;
 pub mod completion;
 pub mod cost;
 mod cte_preview;
+pub mod dag_text;
 mod dead_models;
 mod declaration;
 mod definition;

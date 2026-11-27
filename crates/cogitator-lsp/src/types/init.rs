@@ -219,6 +219,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.testSql",
     "dbt.incrementalSql",
     "dbt.cteSql",
+    "dbt.dagText",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {

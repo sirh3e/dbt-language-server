@@ -6,6 +6,7 @@
 
 pub mod commands;
 pub mod cost;
+pub mod dag_text;
 pub mod diff_at;
 pub mod doctor;
 pub mod impact;

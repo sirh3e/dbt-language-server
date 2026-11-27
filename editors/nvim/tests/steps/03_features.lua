@@ -203,6 +203,21 @@ return function(ctx)
     "integration: dbt.costReport answers a report",
     vim.inspect(cost_result):sub(1, 200)
   )
+  local dag_result = H.exec_cmd(
+    client,
+    bufnr,
+    "dbt.dagText",
+    { uri = vim.uri_from_bufnr(bufnr), depth = 1 },
+    "integration: dbt.dagText"
+  )
+  H.check(
+    type(dag_result) == "table"
+      and type(dag_result.text) == "string"
+      and dag_result.text:find("1 hop up and down", 1, true) ~= nil
+      and dag_result.truncated == false,
+    "integration: dbt.dagText draws the model's neighbourhood",
+    vim.inspect(dag_result):sub(1, 300)
+  )
   -- the copy is no git repository: last-run reads the manifest, or says why
   local at_result = H.exec_cmd(client, bufnr, "dbt.diffAt", {
     uri = vim.uri_from_bufnr(bufnr),
