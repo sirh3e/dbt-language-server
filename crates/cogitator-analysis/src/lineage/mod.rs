@@ -12,10 +12,12 @@
 use serde::Serialize;
 
 mod from_hir;
+pub mod graph;
 mod typed;
 
 pub use from_hir::column_lineage;
 pub(crate) use from_hir::{column_lineage_expanded, has_control_block, template_input};
+pub use graph::{ColumnGraph, ColumnNode, Flow, Reached, Relation};
 pub use typed::{needs_compiled, typed_column_lineage};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
@@ -33,7 +35,39 @@ pub enum SourceRef {
     Unknown { name: String, column: String },
 }
 
-#[derive(Debug, Clone, Serialize)]
+impl SourceRef {
+    /// The column it names.
+    pub fn column(&self) -> &str {
+        match self {
+            SourceRef::Model { column, .. }
+            | SourceRef::Source { column, .. }
+            | SourceRef::Unknown { column, .. } => column,
+        }
+    }
+
+    /// `model.column`, `source.table.column`, `name.column`: what every
+    /// label of a source starts from (a site adds its own `source ` or `?`).
+    pub fn label(&self) -> String {
+        match self {
+            SourceRef::Model { name, column } | SourceRef::Unknown { name, column } => {
+                format!("{name}.{column}")
+            }
+            SourceRef::Source {
+                source,
+                table,
+                column,
+            } => format!("{source}.{table}.{column}"),
+        }
+    }
+
+    /// One of dbt's internal relation placeholders (`__dbt_rel_*`), which
+    /// the lineage invents for relation references in Jinja: no column.
+    pub fn is_placeholder(&self) -> bool {
+        self.column().starts_with("__dbt_rel_")
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct ColumnLineage {
     pub name: String,
     pub sources: Vec<SourceRef>,
@@ -44,6 +78,16 @@ pub struct ColumnLineage {
     /// not on the wire.
     #[serde(skip)]
     pub direct: bool,
+    /// The value is computed somewhere on its way here (an expression,
+    /// a literal, a set operation): not a column reference at every hop,
+    /// renames allowed. The inline lineage hints mark it; not on the wire.
+    #[serde(skip)]
+    pub derived: bool,
+    /// The byte offset in the template where the select item producing
+    /// this column ends; `None` on the compiled route, whose spans index
+    /// the compiled SQL. Where the inline hint goes; not on the wire.
+    #[serde(skip)]
+    pub end: Option<u32>,
 }
 
 /// Where an answer that was not read off the live template came from.
@@ -81,3 +125,37 @@ mod direct_tests;
 mod gap_tests;
 #[cfg(test)]
 mod typed_tests;
+
+#[cfg(test)]
+mod source_ref_tests {
+    use super::SourceRef;
+
+    #[test]
+    fn a_source_ref_names_its_column_and_labels_itself() {
+        let model = SourceRef::Model {
+            name: "stg".into(),
+            column: "id".into(),
+        };
+        let source = SourceRef::Source {
+            source: "shop".into(),
+            table: "orders".into(),
+            column: "amount".into(),
+        };
+        let unknown = SourceRef::Unknown {
+            name: "raw".into(),
+            column: "x".into(),
+        };
+        let labels: Vec<String> = [&model, &source, &unknown]
+            .iter()
+            .map(|s| s.label())
+            .collect();
+        assert_eq!(labels, ["stg.id", "shop.orders.amount", "raw.x"]);
+        assert_eq!(source.column(), "amount");
+        let placeholder = SourceRef::Model {
+            name: "m".into(),
+            column: "__dbt_rel_0".into(),
+        };
+        assert!(placeholder.is_placeholder());
+        assert!(!model.is_placeholder());
+    }
+}

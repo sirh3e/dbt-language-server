@@ -4,6 +4,8 @@
 //! the call hierarchy's prepare and outgoing calls. File-reading work is
 //! offloaded (05 §6.1).
 
+use std::sync::atomic::Ordering;
+
 use cogitator_analysis::{features, Document};
 use cogitator_lsp::{error_codes, Envelope, ErrorResponse, ResultResponse};
 
@@ -62,10 +64,29 @@ impl Dispatcher {
         let new_name = params.new_name.into_owned();
         let position = params.position;
         let snap = self.snapshot_for(&uri);
+        let both = self.toggles.rename_column_both.load(Ordering::Relaxed);
         self.offload_blocking(req.id, "textDocument/rename", move || {
             let disk = on_disk(&snap, &uri);
             let doc = snap.doc.as_deref().or(disk.as_ref());
             let read = |p: &std::path::Path| std::fs::read_to_string(p).ok();
+            // a column goes down (the default) or, with the init option
+            // renameColumnDirection "both", from where it is defined
+            let column = || {
+                if both {
+                    features::rename_column_directed(
+                        &snap.ctx,
+                        doc,
+                        &uri,
+                        position,
+                        &new_name,
+                        features::ColumnRenameDirection::Both,
+                        &read,
+                    )
+                    .map(|answer| answer.map(|rename| rename.edit))
+                } else {
+                    features::rename_column_at(&snap.ctx, doc, &uri, position, &new_name, &read)
+                }
+            };
             // local name → var → column → macro → model: the first that names the cursor
             let answer = None
                 .or_else(|| {
@@ -74,9 +95,7 @@ impl Dispatcher {
                 .or_else(|| {
                     features::rename_var_at(&snap.ctx, doc, &uri, position, &new_name, &read)
                 })
-                .or_else(|| {
-                    features::rename_column_at(&snap.ctx, doc, &uri, position, &new_name, &read)
-                })
+                .or_else(column)
                 .map(|edit| edit.map(Some))
                 .unwrap_or_else(|| features::rename_at(&snap.ctx, doc, &uri, position, &new_name));
             match answer {

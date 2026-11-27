@@ -42,18 +42,32 @@ impl<'a> TypedLineage<'a> {
     /// compiled file's stamp, like a plan's.
     pub fn for_open_document(&self, doc: &Document, uri: &str) -> Arc<Option<ModelLineage>> {
         let key = plan_key(&self.snap.ctx, self.derived, &self.artifacts, uri, false);
-        self.derived.typed_lineage(uri, doc.generation, key, || {
-            self.compute(&doc.parsed, uri, |text| saved_as(uri, text))
-        })
+        let revision = self.project.as_ref().map_or(0, |p| p.revision);
+        self.derived
+            .typed_lineage(uri, doc.generation, key, revision, || {
+                self.compute(&doc.parsed, uri, |text| saved_as(uri, text))
+            })
     }
 
     /// A file not open in the editor, read from disk and computed per call.
     pub fn for_saved_file(&self, uri: &str) -> Option<ModelLineage> {
+        self.for_saved_file_routed(uri).0
+    }
+
+    /// [`Self::for_saved_file`], and whether the answer rests on the
+    /// compiled file (a template with control flow): what a cache of it
+    /// must also key on.
+    pub fn for_saved_file_routed(&self, uri: &str) -> (Option<ModelLineage>, bool) {
         let path = cogitator_lsp::uri_to_fs_path(uri).unwrap_or_else(|| uri.to_string());
-        let text = std::fs::read_to_string(path).ok()?;
-        let parsed =
-            cogitator_parser::pipeline::parse_document(&text, &self.snap.ctx.dialect).ok()?;
-        self.compute(&parsed, uri, |_| true)
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return (None, false);
+        };
+        let Ok(parsed) = cogitator_parser::pipeline::parse_document(&text, &self.snap.ctx.dialect)
+        else {
+            return (None, false);
+        };
+        let compiled = lineage::needs_compiled(&parsed);
+        (self.compute(&parsed, uri, |_| true), compiled)
     }
 
     /// `saved` rules out unsaved edits before a compiled file is consulted:

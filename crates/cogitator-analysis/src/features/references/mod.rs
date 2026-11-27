@@ -17,7 +17,7 @@ use cogitator_lsp::{Location, Position, Range};
 use cogitator_parser::{DocumentParser, JinjaSqlParser, TokenKind};
 
 use files::{is_yaml, node_files, yaml_files, Reader};
-use occur::{doc_uses, name_span, source_uses};
+use occur::{doc_uses, function_uses, name_span, source_uses};
 use target::{target_at, Target};
 
 use super::{file_uri, model_name_from_uri, DbtContext, Document};
@@ -45,6 +45,9 @@ pub fn references_at(
             macro_references(ctx, &reader, &package, &name, include_declaration)
         }
         Target::Doc(name) => doc_references(ctx, &reader, doc, uri, &name, include_declaration),
+        Target::Function(name) => {
+            function_references(ctx, &reader, doc, uri, &name, include_declaration)
+        }
         Target::Column { model, column } => {
             columns::column_references(ctx, &reader, &model, &column, include_declaration)
         }
@@ -210,6 +213,48 @@ fn macro_references(
                 if let Some(text) = reader.read(&path) {
                     out.extend(locations(&path, yaml_calls::macro_entries(&text, name)));
                 }
+            }
+        }
+    }
+    out
+}
+
+/// `function('name')` calls in every file of the graph (models, tests,
+/// analyses) and the open document; the declaration is the body file and
+/// the `functions:` entry.
+fn function_references(
+    ctx: &DbtContext,
+    reader: &Reader<'_>,
+    doc: Option<&Document>,
+    uri: &str,
+    name: &str,
+    include_declaration: bool,
+) -> Vec<Location> {
+    let mut files = node_files(ctx.graph.nodes());
+    if let Some(path) = files::path_of(uri).filter(|_| doc.is_some()) {
+        files.push(path);
+    }
+    files.sort();
+    files.dedup();
+    let mut out: Vec<Location> = files
+        .iter()
+        .filter(|path| !is_yaml(path))
+        .filter_map(|path| reader.read(path).map(|text| (path, text)))
+        .flat_map(|(path, text)| {
+            locations(path, parsed_ranges(ctx, &text, |p| function_uses(p, name)))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    if include_declaration {
+        if let Some(details) = ctx.function_detail_map.get(name) {
+            if let Some(body) = &details.body {
+                out.push(Location {
+                    uri: file_uri(body),
+                    range: Range::default(),
+                });
+            }
+            if let (Some(yaml), Some(entry)) = (&details.yaml, &details.entry) {
+                out.push(declared(reader, yaml, entry.name_pos, name));
             }
         }
     }

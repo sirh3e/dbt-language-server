@@ -107,6 +107,7 @@ fn column(name: &str, ty: SqlType) -> SchemaCol {
         name: Arc::from(name),
         ty: ColType::new(ty, Nullability::Unknown),
         unique: false,
+        proven_type: true,
     }
 }
 
@@ -115,6 +116,7 @@ fn schema(columns: Vec<SchemaCol>) -> Arc<ModelSchema> {
         columns: Arc::from(columns),
         completeness: Completeness::Closed,
         fingerprint: 0,
+        unique_sets: Vec::new(),
     })
 }
 

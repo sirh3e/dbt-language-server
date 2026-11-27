@@ -25,6 +25,33 @@ impl Dispatcher {
         });
     }
 
+    pub(super) fn column_lineage_graph(
+        &mut self,
+        id: i64,
+        uri: &str,
+        arg: &serde_json::Map<String, serde_json::Value>,
+    ) {
+        use crate::server::handlers::lineage_graph::{command, Request};
+        let request = match Request::from_args(arg) {
+            Ok(request) => request,
+            Err(message) => {
+                let reply = crate::server::reply::Reply::error(
+                    cogitator_lsp::error_codes::INVALID_PARAMS,
+                    message,
+                );
+                self.transmit(Some(id), reply);
+                return;
+            }
+        };
+        let snap = self.snapshot_for(uri);
+        let derived = self.derived.clone();
+        let uri = uri.to_string();
+        let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        self.offload_blocking(id, "dbt.columnLineageGraph", move || {
+            command(snap, derived, artifact_cap, &uri, request)
+        });
+    }
+
     pub(super) fn open_schema(&mut self, id: i64, uri: &str) {
         let snap = self.snapshot_for(uri);
         let reply = crate::server::handlers::navigation::open_schema(&snap, uri);
@@ -199,7 +226,7 @@ impl Dispatcher {
         let options = crate::server::yaml_sync::options_of(&snap, &uri, arg);
         let apply = arg.get("apply").and_then(|v| v.as_bool()) == Some(true);
         self.offload_blocking(id, "dbt.syncYaml", move || {
-            let plan = crate::server::yaml_sync::plan(&snap, &derived, cap, &open, &uri, &options);
+            let plan = crate::server::yaml_sync::plan(&snap, &derived, cap, &open, &options);
             crate::server::yaml_sync::sync_yaml(&snap, &derived, &plan, apply)
         });
     }

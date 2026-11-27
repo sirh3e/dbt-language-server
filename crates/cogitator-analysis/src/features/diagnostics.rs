@@ -84,7 +84,36 @@ pub fn dangling_ref_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnos
         out.extend(diagnostic.flatten());
     }
     out.extend(dangling_doc_diagnostics(ctx, doc));
+    out.extend(dangling_function_diagnostics(ctx, doc));
     out
+}
+
+/// `function('name')` naming no user-defined function of the project or
+/// its packages: dbt fails the compile. Warned with the closest names.
+pub fn dangling_function_diagnostics(ctx: &DbtContext, doc: &Document) -> Vec<Diagnostic> {
+    // no project read yet: nothing is known to be missing (a project may
+    // have no functions at all, so an empty map is no such sign)
+    if ctx.project_root.is_none() {
+        return Vec::new();
+    }
+    let names = || ctx.function_detail_map.keys().map(String::as_str);
+    doc.parsed
+        .tokens
+        .iter()
+        .filter(|t| t.kind == TokenKind::Function)
+        .filter(|t| !ctx.function_detail_map.contains_key(doc.parsed.literal(t)))
+        .filter_map(|t| {
+            let literal = doc.parsed.literal(t);
+            entry(
+                t,
+                "dangling-function",
+                Guidance::new(format!(
+                    "function '{literal}' is not defined in any function path"
+                ))
+                .suggest(closest_matches(literal, names())),
+            )
+        })
+        .collect()
 }
 
 /// `doc('name')` with no docs block anywhere renders verbatim in dbt
@@ -131,6 +160,7 @@ fn entry(token: &cogitator_parser::Token, code: &str, guidance: Guidance) -> Opt
             fix: cogitator_lsp::FixKind::ReplaceToken,
             token_range: range,
             suggestions: guidance.suggestions,
+            subject: None,
         });
     }
     Some(diagnostic)

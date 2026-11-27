@@ -381,6 +381,89 @@ and the SQL when `is_incremental()' changes nothing."
          (pop-to-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
+;; the model at another revision (dbt.diffAt), the last run's cost
+;; (dbt.costReport), a column's profile (dbt.profileColumn)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--diff-at-render (result)
+  "The text of a dbt.diffAt RESULT: the note, column changes, the diff."
+  (let* ((columns (plist-get result :columns))
+         (identical (plist-get result :identical))
+         (lines '()))
+    (when (stringp (plist-get result :note))
+      (push (concat "-- " (plist-get result :note)) lines))
+    (when (and columns (not (eq columns :null)))
+      (when (stringp (plist-get columns :unknown))
+        (push (concat "-- lineage unknown: " (plist-get columns :unknown)) lines))
+      (seq-doseq (name (plist-get columns :added))
+        (push (concat "-- + column " name) lines))
+      (seq-doseq (name (plist-get columns :removed))
+        (push (concat "-- - column " name) lines))
+      (seq-doseq (changed (plist-get columns :changed))
+        (push (format "-- ~ column %s: %s -> %s"
+                      (plist-get changed :name)
+                      (mapconcat #'identity (plist-get changed :before) ", ")
+                      (mapconcat #'identity (plist-get changed :after) ", "))
+              lines)))
+    (concat (mapconcat #'identity (nreverse lines) "\n")
+            (if lines "\n" "")
+            (if (and identical (not (eq identical :json-false)))
+                (format "-- %s: no %s difference between %s and now\n"
+                        (plist-get result :model) (plist-get result :what)
+                        (plist-get result :rev))
+              (plist-get result :diff)))))
+
+(defun cogitator--show-text (name text mode)
+  "Show TEXT in buffer NAME with major MODE, read-only; `q' quits."
+  (let ((buf (get-buffer-create name)))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert text)
+        (goto-char (point-min)))
+      (funcall mode)
+      (setq buffer-read-only t)
+      (local-set-key (kbd "q") #'quit-window))
+    (pop-to-buffer buf)))
+
+;;;###autoload
+(defun cogitator-diff-at (rev what)
+  "This model against itself at REV (a git revision or last-run) in view WHAT."
+  (interactive
+   (list (read-string "Revision (HEAD, a sha, last-run): " nil nil "HEAD")
+         (completing-read "View: " '("sql" "compiled" "lineage") nil t nil nil "sql")))
+  (cogitator--execute
+   "dbt.diffAt"
+   (append (cogitator--command-argument) (list :rev rev :what what))
+   (lambda (result)
+     (if (or (null result) (eq result :null))
+         (message "cogitator: no diff for this buffer")
+       (cogitator--show-text "*cogitator-diff-at*"
+                             (cogitator--diff-at-render result) #'diff-mode)))))
+
+;;;###autoload
+(defun cogitator-cost-report ()
+  "The last run's models by cost, the critical path and suggestions."
+  (interactive)
+  (cogitator--execute
+   "dbt.costReport" (cogitator--command-argument)
+   (lambda (result)
+     (cogitator--show-text "*cogitator-cost-report*"
+                           (or (plist-get result :text) "no report")
+                           #'special-mode))))
+
+;;;###autoload
+(defun cogitator-profile-column ()
+  "Profile the output column at point (needs warehouse.profile: true)."
+  (interactive)
+  (message "cogitator: profiling the column at point…")
+  (cogitator--execute
+   "dbt.profileColumn" (cogitator--command-argument t)
+   (lambda (result)
+     (cogitator--show-text "*cogitator-profile*"
+                           (or (plist-get result :hover) "") #'special-mode))))
+
+;; ---------------------------------------------------------------------------
 ;; the SQL of the tests (dbt.testSql) and of an incremental run
 ;; (dbt.incrementalSql)
 ;; ---------------------------------------------------------------------------
@@ -966,6 +1049,48 @@ it is applied to every match after asking."
               "dbt.astGrep" (append argument (list :apply t))
               (lambda (_) (message "cogitator: rewrote %d matches" (length matches)))))))))))
 
+;; structural search over the models' HIR (dbt.search)
+;; ---------------------------------------------------------------------------
+
+(defvar cogitator-search-history nil "Queries typed into `cogitator-search'.")
+
+(defun cogitator--search-summary (result)
+  "The one-line summary of a dbt.search RESULT."
+  (let ((skipped (length (plist-get result :notSearched))))
+    (concat (format "%d matches in %d models (%s searched)"
+                    (length (plist-get result :matches))
+                    (length (plist-get result :models))
+                    (plist-get result :searched))
+            (if (> skipped 0) (format "; %d not searched" skipped) "")
+            (if (eq (plist-get result :truncated) t) " (the first 500)" ""))))
+
+;;;###autoload
+(defun cogitator-search (query)
+  "Structural search over every model's SQL (dbt.search).
+QUERY is clauses joined by `and': `joins stg_orders on customer_id',
+`select-star from source', `reads source:shop.orders', `uses column
+orders.amount'.  Matches land in a grep buffer; the models whose SQL
+could not be searched are named under them."
+  (interactive (list (read-string "dbt search: " nil 'cogitator-search-history)))
+  (when (string-empty-p (string-trim query))
+    (user-error "cogitator: give a query, e.g. joins stg_orders on customer_id"))
+  (cogitator--execute
+   "dbt.search" (list :uri "" :query query)
+   (lambda (result)
+     (let ((matches (append (plist-get result :matches) nil))
+           (buf (get-buffer-create "*cogitator-search*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt search %s: %s -*-\n\n" query (cogitator--search-summary result)))
+           (insert (mapconcat #'cogitator--ast-grep-line matches "\n") "\n")
+           (dolist (skipped (append (plist-get result :notSearched) nil))
+             (insert (format "not searched: %s — %s\n"
+                             (plist-get skipped :model) (plist-get skipped :why)))))
+         (require 'grep)
+         (grep-mode))
+       (display-buffer buf)))))
+
 ;; node selection (dbt.select): dbt's --select syntax, as `dbt ls' answers it
 ;; ---------------------------------------------------------------------------
 
@@ -1131,6 +1256,67 @@ buffer (or the models of this properties file).  See
                 (lambda (_) (message "cogitator: schema YAML synced")))))))))))
 
 ;; ---------------------------------------------------------------------------
+;; a column renamed up- and downstream (dbt.renameColumn)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--rename-column-lines (result)
+  "The preview lines of a dbt.renameColumn RESULT: what is renamed from
+where and why there, then the edits of each file."
+  (let* ((origin (plist-get result :origin))
+         (lines (list (format "# dbt.renameColumn: %s.%s → %s (%s)"
+                              (plist-get result :model) (plist-get result :column)
+                              (plist-get result :newName) (plist-get result :direction))
+                      (format "# from %s.%s: %s" (plist-get origin :model)
+                              (plist-get origin :column) (plist-get origin :stop))
+                      (concat "# models: " (mapconcat #'identity
+                                                      (append (plist-get result :models) nil)
+                                                      ", ")))))
+    (dolist (change (append (plist-get (plist-get result :edit) :documentChanges) nil))
+      (let ((uri (plist-get (plist-get change :textDocument) :uri))
+            (edits (append (plist-get change :edits) nil)))
+        (setq lines (append lines (list (format "%s: %d edit(s)" uri (length edits)))))
+        (dolist (edit edits)
+          (let ((start (plist-get (plist-get edit :range) :start)))
+            (setq lines (append lines (list (format "  %d:%d %s"
+                                                    (1+ (plist-get start :line))
+                                                    (1+ (plist-get start :character))
+                                                    (plist-get edit :newText)))))))))
+    lines))
+
+;;;###autoload
+(defun cogitator-rename-column (new-name &optional downstream-only)
+  "Rename the model column at point to NEW-NAME up- and downstream
+\(dbt.renameColumn with direction \"both\"): from the model its lineage
+says defines it, through every model that passes it on.  With a prefix
+argument DOWNSTREAM-ONLY, only this model and its consumers, as
+`eglot-rename' does.  The edits are previewed and applied on confirm."
+  (interactive
+   (list (read-string (format "Rename column %s to: " (or (thing-at-point 'symbol t) "")))
+         current-prefix-arg))
+  (let ((argument (append (cogitator--command-argument t)
+                          (list :newName new-name
+                                :direction (if downstream-only "down" "both")))))
+    (cogitator--execute
+     "dbt.renameColumn" argument
+     (lambda (result)
+       (if (not (plist-get result :edit))
+           (message "cogitator: no model column at point")
+         (let ((buf (get-buffer-create "*cogitator-rename-column*")))
+           (with-current-buffer buf
+             (let ((inhibit-read-only t))
+               (erase-buffer)
+               (insert (mapconcat #'identity (cogitator--rename-column-lines result) "\n") "\n")
+               (goto-char (point-min)))
+             (setq buffer-read-only t)
+             (local-set-key (kbd "q") #'quit-window))
+           (display-buffer buf)
+           (when (yes-or-no-p (format "Rename %s.%s to %s? " (plist-get result :model)
+                                      (plist-get result :column) new-name))
+             (cogitator--execute
+              "dbt.renameColumn" (append argument (list :apply t))
+              (lambda (_) (message "cogitator: column renamed — save the buffers"))))))))))
+
+;; ---------------------------------------------------------------------------
 
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)
@@ -1204,6 +1390,60 @@ nearest first, in a grep buffer."
            (require 'grep)
            (grep-mode))
          (display-buffer buf))))))
+
+;; downstream impact and column reach (dbt.impact)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--impact-lines (result)
+  "The lines of a dbt.impact RESULT: the downstream models, the column
+hits and, for a column, what reads it (tests, semantic models, metrics,
+exposures at node level, dashboards)."
+  (let ((reach (plist-get result :reach))
+        lines)
+    (dolist (node (append (plist-get result :models) nil))
+      (push (format "model %s (depth %s)" (plist-get node :name) (plist-get node :depth)) lines))
+    (dolist (hit (append (plist-get result :columnHits) nil))
+      (push (format "column %s.%s" (plist-get hit :model) (plist-get hit :column)) lines))
+    (when (and reach (not (eq reach :null)))
+      (dolist (test (append (plist-get reach :tests) nil))
+        (push (format "test %s on %s.%s" (plist-get test :test)
+                      (plist-get test :model) (plist-get test :column))
+              lines))
+      (dolist (item (append (plist-get reach :semanticItems) nil))
+        (push (format "semantic model %s: %s %s" (plist-get item :semanticModel)
+                      (or (plist-get item :list) "expr") (or (plist-get item :name) ""))
+              lines))
+      (dolist (metric (append (plist-get reach :metrics) nil))
+        (push (format "metric %s (via %s)" (plist-get metric :name) (plist-get metric :via)) lines))
+      (dolist (exposure (append (plist-get reach :exposures) nil))
+        (push (format "exposure %s (node level)" (plist-get exposure :name)) lines))
+      (dolist (dash (append (plist-get reach :dashboards) nil))
+        (push (format "dashboard %s (%s level)%s" (plist-get dash :name) (plist-get dash :level)
+                      (if (stringp (plist-get dash :url)) (concat " " (plist-get dash :url)) ""))
+              lines))
+      (dolist (note (append (plist-get reach :notes) nil))
+        (push (concat "note: " note) lines)))
+    (nreverse lines)))
+
+;;;###autoload
+(defun cogitator-impact (column)
+  "What this model feeds downstream (dbt.impact); with a COLUMN, who reads it:
+the downstream columns, their tests, semantic models, metrics, exposures
+and the dashboards of the BI manifest (cogitator.yml bi.manifest)."
+  (interactive (list (read-string "Column (empty: the whole model): ")))
+  (cogitator--execute
+   "dbt.impact"
+   (append (cogitator--command-argument)
+           (and column (not (string-empty-p column)) (list :column column)))
+   (lambda (result)
+     (let ((buf (get-buffer-create "*cogitator-impact*")))
+       (with-current-buffer buf
+         (let ((inhibit-read-only t))
+           (erase-buffer)
+           (insert (format "-*- dbt impact: %s -*-\n\n" (plist-get result :summary)))
+           (insert (mapconcat #'identity (cogitator--impact-lines result) "\n") "\n"))
+         (special-mode))
+       (display-buffer buf)))))
 
 ;; breaking changes (dbt.breakingChanges)
 ;; ---------------------------------------------------------------------------
@@ -1506,6 +1746,57 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
       :priority 1
       :server-id 'cogitator)))
   (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
+
+;; ---------------------------------------------------------------------------
+;; the column-lineage graph (dbt.columnLineageGraph)
+
+(defun cogitator--lineage-graph-lines (result)
+  "The lines a dbt.columnLineageGraph RESULT reads as, an edge a line."
+  (let ((names (make-hash-table :test #'equal)))
+    (seq-doseq (node (plist-get result :nodes))
+      (puthash (plist-get node :id) (plist-get node :name) names))
+    (let* ((name (lambda (id) (gethash id names id)))
+           (edges (append (plist-get result :edges) nil))
+           (stale (append (plist-get result :stale) nil))
+           (lines (list (format "%d columns, %d edges%s"
+                                (length (plist-get result :nodes)) (length edges)
+                                (if (eq (plist-get result :cached) t)
+                                    " (from the cache)" "")))))
+      (when stale
+        (push (format "still being computed: %s" (string-join stale ", ")) lines))
+      (push "" lines)
+      (dolist (edge edges)
+        (push (format "%s -> %s%s"
+                      (funcall name (plist-get edge :from))
+                      (funcall name (plist-get edge :to))
+                      (if (plist-get edge :kind)
+                          (format " (%s)" (plist-get edge :kind)) ""))
+              lines))
+      (nreverse lines))))
+
+;;;###autoload
+(defun cogitator-column-lineage-graph (column direction)
+  "The column lineage around COLUMN of this model, walked DIRECTION.
+One request (dbt.columnLineageGraph) answers the whole walk from the
+server's project-wide lineage cache.  An empty COLUMN is every column."
+  (interactive
+   (list (read-string "Column (empty: every column): ")
+         (completing-read "Direction: " '("both" "up" "down") nil t nil nil "both")))
+  (cogitator--execute
+   "dbt.columnLineageGraph"
+   (append (cogitator--command-argument)
+           (unless (string-empty-p column) (list :column column))
+           (list :direction direction))
+   (lambda (result)
+     (if (not (listp result))
+         (message "cogitator: no column lineage for this file")
+       (let ((buf (get-buffer-create "*cogitator-lineage-graph*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (mapconcat #'identity (cogitator--lineage-graph-lines result) "\n") "\n"))
+           (special-mode))
+         (display-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
 ;; the lineage page (dbt.lineageSite)

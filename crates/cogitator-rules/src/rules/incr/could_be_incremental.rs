@@ -73,6 +73,7 @@ impl Detect<Mir> for CouldBeIncremental {
                 .and_then(|text| super::rewrite::rewrite(hir, text, &analysis.verdict))
                 .into_iter()
                 .collect(),
+            subject: None,
         });
     }
 }

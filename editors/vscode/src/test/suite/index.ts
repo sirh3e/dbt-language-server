@@ -12,10 +12,14 @@ import type { CogitatorApi } from "../../extension";
 import {
   astGrepLabel,
   breakingLines,
+  impactLines,
+  searchSummary,
   captureColor,
   columnPosition,
   lineageFocus,
+  lineageGraphLines,
   lineageHtml,
+  diffAtText,
   incrementalDiffText,
   incrementalityLabel,
   languageOf,
@@ -29,6 +33,8 @@ import {
   selectionSummary,
   syncYamlLines,
   syncYamlSummary,
+  renameColumnLines,
+  renameColumnSummary,
   spansByColor,
   splitText,
   syntaxLine,
@@ -202,6 +208,19 @@ export async function run(): Promise<void> {
     "vscode: dbt.incrementalDiff renders both ways",
     diff
   );
+  check(
+    diffAtText({
+      model: "m",
+      rev: "HEAD",
+      what: "lineage",
+      diff: "--- a\n+++ b\n",
+      identical: false,
+      columns: { added: ["status"], removed: [], changed: [] },
+    }).startsWith("-- + column status\n--- a"),
+    "vscode: diffAtText lists the columns, then the diff"
+  );
+  const cost = (await exec("dbt.costReport", {})) as { text?: string } | null;
+  check(typeof cost?.text === "string", "vscode: dbt.costReport answers a report", cost);
   check(
     incrementalDiffText({
       model: "m",
@@ -465,6 +484,36 @@ export async function run(): Promise<void> {
       ]),
     "vscode: a breaking change and its downstream reads are lines"
   );
+  check(
+    JSON.stringify(
+      lineageGraphLines({
+        nodes: [
+          { id: "model:a::id", name: "a.id", kind: "model" },
+          { id: "model:b::id", name: "b.id", kind: "model" },
+        ],
+        edges: [{ from: "model:a::id", to: "model:b::id", kind: "direct" }],
+        cached: true,
+        stale: ["c"],
+      })
+    ) ===
+      JSON.stringify([
+        "2 columns, 1 edges (from the cache)",
+        "still being computed: c",
+        "",
+        "a.id → b.id (direct)",
+      ]),
+    "vscode: a lineage graph reads as an edge a line"
+  );
+  const lineageGraph = (await exec("dbt.columnLineageGraph", {
+    uri: document.uri.toString(),
+    column: "customer_id",
+    direction: "up",
+  })) as { nodes?: unknown[]; edges?: unknown[] } | null;
+  check(
+    Array.isArray(lineageGraph?.nodes) && Array.isArray(lineageGraph?.edges),
+    "vscode: dbt.columnLineageGraph answers nodes and edges",
+    lineageGraph
+  );
   const breakingResult = (await exec("dbt.breakingChanges", {
     uri: document.uri.toString(),
   })) as { status?: string } | null;
@@ -472,6 +521,54 @@ export async function run(): Promise<void> {
     typeof breakingResult?.status === "string",
     "vscode: dbt.breakingChanges answers a status",
     breakingResult
+  );
+
+  check(
+    JSON.stringify(
+      impactLines({
+        summary: "s",
+        models: [{ name: "customers", depth: 1 }],
+        reach: {
+          semanticItems: [{ semanticModel: "sm", list: "entity", name: "customer" }],
+          dashboards: [{ name: "Board", level: "column", url: "https://x" }],
+        },
+      })
+    ) ===
+      JSON.stringify([
+        "model customers (depth 1)",
+        "semantic model sm: entity customer",
+        "dashboard Board (column level) https://x",
+      ]),
+    "vscode: an impact report and its column reach are lines"
+  );
+  const impactResult = (await exec("dbt.impact", {
+    uri: document.uri.toString(),
+    column: "customer_id",
+  })) as { summary?: string } | null;
+  check(
+    typeof impactResult?.summary === "string",
+    "vscode: dbt.impact answers a summary",
+    impactResult
+  );
+
+  check(
+    searchSummary({
+      matches: [],
+      models: ["customers"],
+      searched: 4,
+      notSearched: [{ model: "orders", why: "Jinja control blocks" }],
+      truncated: false,
+    }) === "0 matches in 1 models (4 searched); 1 not searched",
+    "vscode: a structural search's summary"
+  );
+  const searchResult = (await exec("dbt.search", {
+    uri: "",
+    query: "reads stg_customers",
+  })) as { models?: string[] } | null;
+  check(
+    searchResult?.models?.includes("customers") === true,
+    "vscode: dbt.search finds the models that read stg_customers",
+    searchResult
   );
 
   const selectResult = (await exec("dbt.select", {
@@ -533,6 +630,56 @@ export async function run(): Promise<void> {
     syncResult
   );
 
+  // dbt.renameColumn: the preview and summary, then over the wire
+  const columnRename = {
+    model: "b",
+    column: "x",
+    newName: "y",
+    direction: "both",
+    origin: { model: "a", column: "x", chain: ["b", "a"], stop: "`a` defines `x`" },
+    models: ["a", "b"],
+    edit: {
+      documentChanges: [
+        {
+          textDocument: { uri: "file:///p/models/a.sql" },
+          edits: [{ range: { start: { line: 0, character: 7 } }, newText: "y" }],
+        },
+      ],
+    },
+  };
+  check(
+    JSON.stringify(renameColumnLines(columnRename)) ===
+      JSON.stringify([
+        "# dbt.renameColumn: b.x → y (both)",
+        "# from a.x: `a` defines `x`",
+        "file:///p/models/a.sql: 1 edit(s)",
+        "  1:8 y",
+      ]),
+    "vscode: the column rename preview says where it starts, then each edit",
+    renameColumnLines(columnRename)
+  );
+  check(
+    renameColumnSummary(columnRename) === "dbt: rename a.x → y: 1 edit(s) in 1 file(s), models a, b",
+    "vscode: the column rename summary counts the edit",
+    renameColumnSummary(columnRename)
+  );
+  const customerAt = text.indexOf("customers.customer_id,") + "customers.".length;
+  const before = text.slice(0, customerAt);
+  const renamed = (await exec("dbt.renameColumn", {
+    uri: document.uri.toString(),
+    position: {
+      line: before.split("\n").length - 1,
+      character: customerAt - (before.lastIndexOf("\n") + 1),
+    },
+    newName: "cust_id",
+    direction: "both",
+  })) as { origin?: { model?: string } } | null;
+  check(
+    renamed?.origin?.model === "stg_customers",
+    "vscode: dbt.renameColumn climbs to stg_customers",
+    renamed
+  );
+
   // the palette commands registered
   const commands = await vscode.commands.getCommands(true);
   check(
@@ -552,6 +699,10 @@ export async function run(): Promise<void> {
       "cogitator.select",
       "cogitator.unresolved",
       "cogitator.breakingChanges",
+      "cogitator.impact",
+      "cogitator.search",
+      "cogitator.columnLineageGraph",
+      "cogitator.renameColumn",
     ].every((c) =>
       commands.includes(c)
     ),

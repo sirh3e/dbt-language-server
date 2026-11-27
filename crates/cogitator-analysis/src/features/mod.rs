@@ -6,15 +6,18 @@ mod artifact_status;
 pub mod breaking;
 mod call_hierarchy;
 mod code_actions;
+pub mod column_reach;
 pub mod column_types;
 mod compiled;
 mod compiled_map;
-mod completion;
+pub mod completion;
+pub mod cost;
 mod cte_preview;
 mod dead_models;
 mod declaration;
 mod definition;
 mod diagnostics;
+pub mod diff_at;
 pub mod dispatch;
 mod document_links;
 mod env_vars;
@@ -23,6 +26,7 @@ mod file_ops;
 pub mod formatting;
 mod governance;
 mod graph_nav;
+pub mod hir_search;
 mod hover;
 mod impact;
 mod incremental_diff;
@@ -31,6 +35,8 @@ mod inlay_hints;
 mod jinja_inline;
 mod jinja_preview;
 mod lenses;
+pub mod lineage_graph;
+pub mod lineage_inlay;
 pub mod lineage_site;
 mod linked_editing;
 pub mod lint;
@@ -39,6 +45,7 @@ pub mod model_checks;
 mod model_info;
 mod navigation;
 pub mod plan;
+pub mod profile;
 pub mod quality;
 mod references;
 mod relation;
@@ -71,20 +78,29 @@ pub use code_actions::declare_missing::declare_missing_actions;
 pub use code_actions::define_missing::define_missing_actions;
 pub use code_actions::extract_cte::extract_cte_action;
 pub use code_actions::governance_fixes::private_ref_actions;
+pub use code_actions::inherit_docs::{
+    inherit_description_actions, inherit_description_sql_action, LineageOf,
+};
+pub use code_actions::inline_model::inline_model_action;
 pub use code_actions::refactors::{expand_star_action, extract_yaml_action};
 pub use code_actions::split_model::split_action;
+pub use code_actions::staging_scaffold::{staging_scaffold_action, ScaffoldInputs};
+pub use code_actions::unique_test::unique_test_actions;
 pub use code_actions::unit_test_scaffold::unit_test_scaffold_action;
 pub use code_actions::yaml_columns::{
     add_missing_columns_action, remove_unproduced_columns_action,
 };
-pub use code_actions::yaml_fixes::{inherit_description_actions, scaffold_tests_action};
+pub use code_actions::yaml_fixes::scaffold_tests_action;
 pub use code_actions::yaml_unproduced::unproduced_column_diagnostics;
 pub use code_actions::{code_actions, model_entry_at, TargetChoice};
 pub use compiled::{compiled_target, CompiledSql};
 pub use compiled_map::{
     compiled_definition, compiled_hover, compiled_line_map, compiled_source_path, SourceLines,
 };
-pub use completion::{completion, resolve_completion_documentation};
+pub use completion::{
+    completion, completion_resolving, completion_with, resolve_completion_documentation,
+    resolve_completion_documentation_with, ModelHints,
+};
 pub use cte_preview::{
     card_markdown, choose_source, cte_at, cte_card, cte_preview_lenses, cte_sql, cte_sql_action,
     cte_sql_file_name, parse_show, preview_file_name, preview_query, render_markdown, CteCard,
@@ -94,7 +110,8 @@ pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
 pub use diagnostics::{
-    citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
+    citizen_diagnostics, dangling_doc_diagnostics, dangling_function_diagnostics,
+    dangling_ref_diagnostics, packages_diagnostics,
 };
 pub use dispatch::implementation::implementation;
 pub use document_links::{document_links, document_links_at};
@@ -108,7 +125,9 @@ pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };
 pub use hover::{hover, hover_with_lineage};
-pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
+pub use impact::{
+    impact, impact_graph, impact_over, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP,
+};
 pub use incremental_diff::{
     config_materialized, incremental_diff, incremental_lens, is_incremental_model, IncrementalDiff,
     INCREMENTAL_LENS_TITLE,
@@ -135,8 +154,13 @@ pub use relation::{
     TargetRelation,
 };
 pub use rename::{prepare_rename, rename_model};
-pub use rename_column::{prepare_rename_column, rename_column_at};
-pub use rename_local::{local_highlights, local_references, prepare_rename_local, rename_local_at};
+pub use rename_column::{
+    prepare_rename_column, rename_column_at, rename_column_directed, ColumnRename,
+    Direction as ColumnRenameDirection, Origin as ColumnRenameOrigin,
+};
+pub use rename_local::{
+    local_definition, local_highlights, local_references, prepare_rename_local, rename_local_at,
+};
 pub use rename_macro::{prepare_rename_at, rename_at};
 pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};
 pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};

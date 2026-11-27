@@ -111,6 +111,7 @@ mod tests {
             } else {
                 Vec::new()
             },
+            constraints: Vec::new(),
         }
     }
 
@@ -135,6 +136,7 @@ mod tests {
                     name: n.to_string(),
                     sources: Vec::new(),
                     direct: false,
+                    ..Default::default()
                 })
                 .collect(),
             origin: None,

@@ -45,6 +45,27 @@ pub struct Finding {
     pub message: String,
     pub evidence: Evidence,
     pub fixes: Vec<Fix>,
+    /// What the finding is about beyond its span, for fixes the rule
+    /// cannot write itself (they edit another file).
+    pub subject: Option<Subject>,
+}
+
+/// A relation of the project a finding names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelationName {
+    Model(String),
+    Source { source: String, table: String },
+}
+
+/// The structured subject of a finding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Subject {
+    /// A join key not known to be unique (`join.fanout`): a `unique`
+    /// test on `relation.column` would settle it.
+    UniqueKey {
+        relation: RelationName,
+        column: String,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -90,6 +111,7 @@ mod tests {
             message: "m".to_string(),
             evidence: Evidence::Unknown,
             fixes: vec![],
+            subject: None,
         }
     }
 

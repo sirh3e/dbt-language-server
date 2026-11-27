@@ -6,9 +6,12 @@
 //! rename when a written occurrence is not among the bound ones.
 
 mod collect;
+mod columns;
 mod complete;
-mod mask;
+pub(crate) mod mask;
 
+#[cfg(test)]
+mod nav_tests;
 #[cfg(test)]
 mod tests;
 
@@ -55,7 +58,9 @@ pub(crate) fn sql_locals(text: &str, dialect: &Dialect) -> Result<SqlLocals, Str
     let hir = lowered
         .value
         .ok_or_else(|| unreadable("the front end declined it"))?;
-    Ok(collect::collect(&hir, text))
+    let mut locals = collect::collect(&hir, text);
+    locals.columns = columns::collect(&hir, text);
+    Ok(locals)
 }
 
 fn touches(span: cogitator_ir::Span, offset: u32) -> bool {
@@ -67,6 +72,13 @@ impl SqlLocals {
     pub fn at(&self, offset: u32) -> Option<usize> {
         self.locals.iter().position(|l| {
             touches(l.definition, offset) || l.uses.iter().any(|s| touches(*s, offset))
+        })
+    }
+
+    /// The column alias whose definition or use is at `offset`.
+    pub fn column_at(&self, offset: u32) -> Option<usize> {
+        self.columns.iter().position(|c| {
+            touches(c.definition, offset) || c.uses.iter().any(|s| touches(*s, offset))
         })
     }
 

@@ -82,8 +82,74 @@ pub enum Present {
 pub enum Chooser {
     /// `dbt.profiles` → the targets, then `dbt.setTarget`.
     Targets,
-    /// `dbt.columnLineage` → the model's columns, then `dbt.impact`.
-    Columns,
+    /// `dbt.columnLineage` → the model's columns, then a command about one.
+    Columns(ColumnUse),
+}
+
+/// What a column picked from the model's lineage is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColumnUse {
+    /// `dbt.impact`: what downstream reads it.
+    Impact,
+    /// `dbt.columnLineageGraph`: its lineage up- and downstream, as a file.
+    Graph,
+    /// `dbt.profileColumn`: its values in the warehouse (when profiling is on).
+    Profile,
+}
+
+impl ColumnUse {
+    fn question(self) -> &'static str {
+        match self {
+            ColumnUse::Impact => "The downstream impact of which column?",
+            ColumnUse::Graph => "The lineage graph of which column?",
+            ColumnUse::Profile => "Profile which column (queries the warehouse)?",
+        }
+    }
+
+    /// The choice for the whole model, where the command has one.
+    fn whole(self, here: &Here) -> Option<Choice> {
+        match self {
+            ColumnUse::Impact => Some(here.run(
+                "the whole model",
+                "dbt.impact",
+                json!({}),
+                Present::Document,
+            )),
+            ColumnUse::Graph => Some(here.run(
+                "every column of the model",
+                "dbt.columnLineageGraph",
+                json!({ "show": true }),
+                Present::Itself,
+            )),
+            ColumnUse::Profile => None,
+        }
+    }
+
+    fn of(self, here: &Here, column: &str) -> Choice {
+        match self {
+            ColumnUse::Impact => here.run(
+                column,
+                "dbt.impact",
+                json!({ "column": column }),
+                Present::Document,
+            ),
+            ColumnUse::Graph => here.run(
+                column,
+                "dbt.columnLineageGraph",
+                json!({ "column": column, "show": true }),
+                Present::Itself,
+            ),
+            ColumnUse::Profile => here.run(
+                column,
+                "dbt.profileColumn",
+                json!({ "column": column }),
+                Present::Field {
+                    field: "hover",
+                    extension: "md",
+                },
+            ),
+        }
+    }
 }
 
 /// What the menu knows of where it was opened.
@@ -229,6 +295,36 @@ fn model_group(here: &Here, model: &str) -> Prompt {
             Present::Itself,
         )
     }));
+    let diffs: Vec<Choice> = [
+        ("its SQL since the last commit", "HEAD", "sql"),
+        ("its compiled SQL since the last commit", "HEAD", "compiled"),
+        (
+            "its column lineage since the last commit",
+            "HEAD",
+            "lineage",
+        ),
+        ("its SQL since the last dbt run", "last-run", "sql"),
+        (
+            "its compiled SQL since the last dbt run",
+            "last-run",
+            "compiled",
+        ),
+        (
+            "its column lineage since the last dbt run",
+            "last-run",
+            "lineage",
+        ),
+    ]
+    .into_iter()
+    .map(|(title, rev, what)| {
+        here.run(
+            title,
+            "dbt.diffAt",
+            json!({ "rev": rev, "what": what, "show": true }),
+            Present::Itself,
+        )
+    })
+    .collect();
     let doc = || Present::Document;
     prompt(
         format!("dbt — {model}"),
@@ -300,7 +396,23 @@ fn model_group(here: &Here, model: &str) -> Prompt {
                 "Downstream impact of a column ›",
                 "dbt.columnLineage",
                 json!({}),
-                Present::Choose(Chooser::Columns),
+                Present::Choose(Chooser::Columns(ColumnUse::Impact)),
+            ),
+            here.run(
+                "A column's lineage graph ›",
+                "dbt.columnLineage",
+                json!({}),
+                Present::Choose(Chooser::Columns(ColumnUse::Graph)),
+            ),
+            here.run(
+                "Profile a column in the warehouse ›",
+                "dbt.columnLineage",
+                json!({}),
+                Present::Choose(Chooser::Columns(ColumnUse::Profile)),
+            ),
+            ask(
+                "Its changes ›",
+                prompt(format!("What changed in {model}, since when?"), diffs),
             ),
             here.run(
                 "Breaking changes against the last build",
@@ -488,6 +600,15 @@ fn project_group(here: &Here) -> Prompt {
             ),
             here.run("The project graph", "dbt.projectGraph", json!({}), doc()),
             here.run(
+                "What the last run cost",
+                "dbt.costReport",
+                json!({}),
+                Present::Field {
+                    field: "text",
+                    extension: "md",
+                },
+            ),
+            here.run(
                 "The lineage site (opens in the browser)",
                 "dbt.lineageSite",
                 json!({ "write": true }),
@@ -585,13 +706,8 @@ pub fn choose(chooser: Chooser, uri: &str, answer: &Value) -> Result<Prompt, Str
                 Ok(prompt("Switch to which profile and target?", choices))
             }
         }
-        Chooser::Columns => {
-            let mut choices = vec![here.run(
-                "the whole model",
-                "dbt.impact",
-                json!({}),
-                Present::Document,
-            )];
+        Chooser::Columns(usage) => {
+            let mut choices: Vec<Choice> = usage.whole(&here).into_iter().collect();
             choices.extend(
                 answer
                     .get("columns")
@@ -600,16 +716,13 @@ pub fn choose(chooser: Chooser, uri: &str, answer: &Value) -> Result<Prompt, Str
                     .flatten()
                     .filter_map(|c| c.get("name").and_then(Value::as_str))
                     .filter(|name| *name != "*")
-                    .map(|name| {
-                        here.run(
-                            name,
-                            "dbt.impact",
-                            json!({ "column": name }),
-                            Present::Document,
-                        )
-                    }),
+                    .map(|name| usage.of(&here, name)),
             );
-            Ok(prompt("The downstream impact of which column?", choices))
+            if choices.is_empty() {
+                Err("The model's columns could not be read (its lineage declined).".into())
+            } else {
+                Ok(prompt(usage.question(), choices))
+            }
         }
     }
 }
@@ -861,7 +974,12 @@ mod tests {
     fn the_columns_come_from_the_lineage_answer() {
         let answer =
             json!({ "columns": [{"name": "order_id"}, {"name": "*"}, {"name": "amount"}] });
-        let prompt = choose(Chooser::Columns, "file:///p/models/orders.sql", &answer).unwrap();
+        let prompt = choose(
+            Chooser::Columns(ColumnUse::Impact),
+            "file:///p/models/orders.sql",
+            &answer,
+        )
+        .unwrap();
         assert_eq!(
             titles(&prompt),
             vec!["the whole model", "order_id", "amount"]
@@ -870,6 +988,38 @@ mod tests {
         assert_eq!(run.command, "dbt.impact");
         assert_eq!(run.argument["column"], "amount");
         assert_eq!(run.argument["uri"], "file:///p/models/orders.sql");
+    }
+
+    #[test]
+    fn a_column_is_picked_for_its_graph_or_its_profile() {
+        let answer = json!({ "columns": [{"name": "order_id"}] });
+        let uri = "file:///p/models/orders.sql";
+        let graph = choose(Chooser::Columns(ColumnUse::Graph), uri, &answer).unwrap();
+        assert_eq!(
+            titles(&graph),
+            vec!["every column of the model", "order_id"]
+        );
+        let run = run_of(sub(&graph, "order_id"));
+        assert_eq!(run.command, "dbt.columnLineageGraph");
+        assert_eq!(run.argument["show"], true);
+        let profile = choose(Chooser::Columns(ColumnUse::Profile), uri, &answer).unwrap();
+        assert_eq!(titles(&profile), vec!["order_id"]);
+        assert_eq!(
+            run_of(sub(&profile, "order_id")).command,
+            "dbt.profileColumn"
+        );
+        assert!(choose(Chooser::Columns(ColumnUse::Profile), uri, &json!({})).is_err());
+    }
+
+    #[test]
+    fn a_diff_asks_since_when() {
+        let model = prompt_of(sub(&root(&here()), "Model ›")).clone();
+        let diffs = prompt_of(sub(&model, "Its changes ›")).clone();
+        assert_eq!(diffs.choices.len(), 6);
+        let run = run_of(sub(&diffs, "its column lineage since the last dbt run"));
+        assert_eq!(run.command, "dbt.diffAt");
+        assert_eq!(run.argument["rev"], "last-run");
+        assert_eq!(run.argument["what"], "lineage");
     }
 
     #[test]

@@ -176,6 +176,7 @@ fn diagnostic(text: &str, table: &LineTable, found: Finding) -> Diagnostic {
             fix: FixKind::ReplaceToken,
             token_range: range,
             suggestions,
+            subject: None,
         }),
         Fix::Rewrite {
             title,
@@ -195,6 +196,7 @@ fn diagnostic(text: &str, table: &LineTable, found: Finding) -> Diagnostic {
             },
             token_range: range,
             suggestions: Vec::new(),
+            subject: None,
         }),
     };
     diagnostic

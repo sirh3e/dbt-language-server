@@ -21,6 +21,10 @@ pub struct SchemaCol {
     pub ty: ColType,
     /// Backed by a `unique` test or constraint.
     pub unique: bool,
+    /// The type rests on evidence that holds: SQL inference over proven
+    /// inputs, the catalog, or an enforced contract — not a YAML
+    /// `data_type` nothing enforces (`type.*` rules warn only on these).
+    pub proven_type: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -28,6 +32,11 @@ pub struct ModelSchema {
     pub columns: Arc<[SchemaCol]>,
     pub completeness: Completeness,
     pub fingerprint: u64,
+    /// Column sets of two or more columns that are unique together
+    /// (a composite primary key, a `unique_combination_of_columns`
+    /// test, an incremental model's composite `unique_key`). Lower-cased;
+    /// single-column keys are `SchemaCol::unique` instead.
+    pub unique_sets: Vec<Vec<Arc<str>>>,
 }
 
 #[derive(Debug, Clone, Default)]

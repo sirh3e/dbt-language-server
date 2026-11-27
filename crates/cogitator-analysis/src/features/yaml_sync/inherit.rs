@@ -15,7 +15,7 @@ const MAX_HOPS: usize = 32;
 
 /// A description found upstream.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Found {
+pub(crate) struct Found {
     pub description: String,
     /// The documented column it was read from.
     pub from: SourceRef,
@@ -25,7 +25,7 @@ pub(super) struct Found {
 
 /// What the walk came to.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Walk {
+pub(crate) enum Walk {
     Found(Found),
     /// Not the same column upstream, or no documented ancestor.
     Nothing,
@@ -34,7 +34,7 @@ pub(super) enum Walk {
 }
 
 /// Lineage per model, computed at most once per sync.
-pub(super) struct Lineages<'a> {
+pub(crate) struct Lineages<'a> {
     compute: &'a dyn Fn(&str) -> Option<ModelLineage>,
     memo: HashMap<String, Option<ModelLineage>>,
 }
@@ -57,7 +57,7 @@ impl<'a> Lineages<'a> {
 }
 
 /// The one upstream column `column` of `lineage` passes through unchanged.
-pub(super) fn same_column<'l>(lineage: &'l ModelLineage, column: &str) -> Option<&'l SourceRef> {
+pub(crate) fn same_column<'l>(lineage: &'l ModelLineage, column: &str) -> Option<&'l SourceRef> {
     let col: &ColumnLineage = lineage
         .columns
         .iter()
@@ -65,25 +65,18 @@ pub(super) fn same_column<'l>(lineage: &'l ModelLineage, column: &str) -> Option
     if !col.direct {
         return None;
     }
-    let mut sources = col.sources.iter().filter(|s| !is_helper(s));
+    let mut sources = col.sources.iter().filter(|s| !s.is_placeholder());
     let (Some(source), None) = (sources.next(), sources.next()) else {
         return None;
     };
-    let upstream = match source {
-        SourceRef::Model { column, .. }
-        | SourceRef::Source { column, .. }
-        | SourceRef::Unknown { column, .. } => column,
-    };
-    upstream.eq_ignore_ascii_case(column).then_some(source)
-}
-
-/// Columns the lineage invents for relation references in Jinja.
-fn is_helper(source: &SourceRef) -> bool {
-    matches!(source, SourceRef::Model { column, .. } if column.starts_with("__dbt_rel_"))
+    source
+        .column()
+        .eq_ignore_ascii_case(column)
+        .then_some(source)
 }
 
 /// The description column `column` of `model` can inherit.
-pub(super) fn walk(
+pub(crate) fn walk(
     ctx: &DbtContext,
     lineages: &mut Lineages<'_>,
     model: &str,

@@ -94,9 +94,9 @@ fn format_check_then_format_then_clean() {
     let project = jaffle();
     let messy = project.root.join("models/messy.sql");
     std::fs::write(&messy, "select a,b from {{ ref('customers') }} where a>1\n").unwrap();
+    // SQL the dialect cannot parse (`where` with nothing after it)
     let declined = project.root.join("models/declined.sql");
-    let declined_text =
-        "select a {% if var('x', false) %}, b{% endif %} from {{ ref('customers') }}\n";
+    let declined_text = "select a from {{ ref('customers') }} where\n";
     std::fs::write(&declined, declined_text).unwrap();
 
     let check = cogitator(&project, &["format", "--check", "--diff"]);
@@ -105,7 +105,10 @@ fn format_check_then_format_then_clean() {
     assert!(out.contains("would reformat models/messy.sql"), "{out}");
     assert!(out.contains("+++ b/models/messy.sql"), "{out}");
     let stderr = String::from_utf8_lossy(&check.stderr);
-    assert!(stderr.contains("skipped models/declined.sql"), "{stderr}");
+    assert!(
+        stderr.contains("skipped models/declined.sql (its SQL cannot be parsed"),
+        "{stderr}"
+    );
     assert_eq!(
         std::fs::read_to_string(&messy).unwrap(),
         "select a,b from {{ ref('customers') }} where a>1\n",
@@ -148,4 +151,38 @@ fn lint_checks_incremental_models_and_loops() {
     let out = stdout(&found);
     assert!(out.contains("models/looped.sql:2:"), "{out}");
     assert!(out.contains("as dbt renders it"), "{out}");
+}
+
+#[test]
+fn lint_reads_function_bodies_as_expressions_and_checks_calls() {
+    let project = jaffle();
+    let functions = project.root.join("functions");
+    std::fs::create_dir_all(&functions).unwrap();
+    // a body is an expression, never a statement: no sql-syntax error
+    std::fs::write(
+        functions.join("is_positive_int.sql"),
+        "regexp_instr(a_string, '^[0-9]+$')\n",
+    )
+    .unwrap();
+    std::fs::write(
+        project.root.join("models/checked.sql"),
+        "select {{ function('is_positive_int') }}(order_id) as ok,\n\
+         {{ function('is_postive_int') }}(order_id) as typo\n\
+         from {{ ref('orders') }}\n",
+    )
+    .unwrap();
+
+    let body = cogitator(&project, &["lint", "functions/is_positive_int.sql"]);
+    assert_eq!(body.status.code(), Some(0), "{}", stdout(&body));
+    assert!(!stdout(&body).contains("sql-syntax"), "{}", stdout(&body));
+
+    let model = cogitator(&project, &["lint", "models/checked.sql"]);
+    let out = stdout(&model);
+    assert!(!out.contains("sql-syntax"), "the call is valid SQL: {out}");
+    assert!(
+        out.contains("models/checked.sql:2:")
+            && out.contains("warning dangling-function: function 'is_postive_int'"),
+        "{out}"
+    );
+    assert!(!out.contains("function 'is_positive_int'"), "{out}");
 }

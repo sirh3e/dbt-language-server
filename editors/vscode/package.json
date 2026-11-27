@@ -83,6 +83,18 @@
         "title": "dbt: Compare incremental / full refresh"
       },
       {
+        "command": "cogitator.diffAt",
+        "title": "dbt: Compare this model with a git revision or the last run"
+      },
+      {
+        "command": "cogitator.costReport",
+        "title": "dbt: Cost report of the last run"
+      },
+      {
+        "command": "cogitator.profileColumn",
+        "title": "dbt: Profile the column under the cursor"
+      },
+      {
         "command": "cogitator.cteSql",
         "title": "dbt: Show the SQL of the CTE under the cursor"
       },
@@ -119,8 +131,20 @@
         "title": "dbt: Unresolved references"
       },
       {
+        "command": "cogitator.columnLineageGraph",
+        "title": "dbt: Column lineage graph"
+      },
+      {
         "command": "cogitator.breakingChanges",
         "title": "dbt: Breaking changes against the last build"
+      },
+      {
+        "command": "cogitator.impact",
+        "title": "dbt: Who reads this column?"
+      },
+      {
+        "command": "cogitator.search",
+        "title": "dbt: Structural search over the models' SQL"
       },
       {
         "command": "cogitator.modelDependencies",
@@ -137,6 +161,10 @@
       {
         "command": "cogitator.syncYaml",
         "title": "dbt: Sync schema YAML"
+      },
+      {
+        "command": "cogitator.renameColumn",
+        "title": "dbt: Rename column up- and downstream…"
       },
       {
         "command": "cogitator.status",

@@ -18,6 +18,7 @@ const BUILTINS: &[&str] = &[
     "exceptions",
     "fromjson",
     "fromyaml",
+    "function",
     "graph",
     "is_incremental",
     "joiner",

@@ -127,6 +127,7 @@ fn column(name: &str, data_type: Option<&str>) -> ColumnEntry {
         name_pos: Default::default(),
         data_type: data_type.map(str::to_string),
         tests: Vec::new(),
+        constraints: Vec::new(),
     }
 }
 

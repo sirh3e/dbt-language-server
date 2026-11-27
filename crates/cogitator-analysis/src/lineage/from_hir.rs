@@ -97,7 +97,13 @@ pub(super) fn columns_of(
     }
     let mut walker = Walker::new(hir, text, doc, expand_stars);
     let rows = walker.rows_of(root);
-    Some(rows.iter().filter_map(Row::to_column).collect())
+    // spans index `text`, which is the template only when `doc` is given
+    let placed = doc.is_some();
+    Some(
+        rows.iter()
+            .filter_map(|row| row.to_column(placed))
+            .collect(),
+    )
 }
 
 /// The 07 §3.2 rule: any statement tag but config and set declines. That
@@ -134,6 +140,11 @@ struct Row {
     /// The value is one upstream column, under its own name, through
     /// every hop: no expression, no rename (see `ColumnLineage::direct`).
     direct: bool,
+    /// The value is a column reference at every hop, renames allowed: not
+    /// computed anywhere on the way (see `ColumnLineage::derived`).
+    passes: bool,
+    /// Where the select item that makes the row ends, in the walked text.
+    end: Option<u32>,
 }
 
 /// EXCLUDE and REPLACE of one star item.
@@ -146,7 +157,7 @@ struct Star {
 }
 
 impl Row {
-    fn to_column(&self) -> Option<ColumnLineage> {
+    fn to_column(&self, placed: bool) -> Option<ColumnLineage> {
         let mut sources = self.sources.clone(); // boundary: the report owns its data
         if let Some(star) = &self.star {
             sources.extend(star.replace.iter().flat_map(|(_, s)| s.iter().cloned()));
@@ -155,6 +166,8 @@ impl Row {
             name: self.label.clone()?, // boundary: as above
             sources: unique(sources),
             direct: self.direct && self.star.is_none(),
+            derived: !self.passes && self.star.is_none(),
+            end: self.end.filter(|_| placed),
         })
     }
 }

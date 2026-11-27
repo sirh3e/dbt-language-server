@@ -76,7 +76,7 @@ vars:
 | YAML colouring | `var('x')` in a value is `variable.dbt.var`, or `variable.dbt.var.unresolved` when nothing defines it ([highlighting.md](highlighting.md)) |
 
 Inlay hints have to be turned on in the editor:
-- **Neovim:** `inlay_hints = true` in `setup()`.
+- **Neovim:** on by default (`inlay_hints = true` in `setup()`).
 - **VS Code:** `editor.inlayHints.enabled`.
 - **Emacs:** eglot's `eglot-inlay-hints-mode`, or lsp-mode's `lsp-inlay-hint-enable`.
 

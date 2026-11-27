@@ -61,8 +61,16 @@ fn a_saved_rename_is_a_breaking_change() {
         "textDocument/didSave",
         json!({"textDocument": {"uri": uri}}),
     );
+    // the file is written before didChange, so a job may first report the
+    // buffer (the original) against the saved file (the edit): the other
+    // way round, and rightly. Wait for the report of the edit itself.
     let published = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
-        n["params"]["uri"] == uri && !breaking_items(&n["params"]).is_empty()
+        n["params"]["uri"] == uri
+            && breaking_items(&n["params"]).iter().any(|d| {
+                d["message"].as_str().is_some_and(|m| {
+                    m.contains("'customer_id' was removed") && m.contains("breaks")
+                })
+            })
     });
     let items = breaking_items(&published["params"]);
     assert_eq!(items.len(), 1, "{items:?}");
@@ -72,11 +80,48 @@ fn a_saved_rename_is_a_breaking_change() {
         message.contains("possibly renamed to 'customer_key'"),
         "{message}"
     );
-    assert!(message.contains("tested: unique, not_null"), "{message}");
+    assert!(message.contains("breaks 1 model,"), "{message}");
     assert_eq!(
         items[0]["severity"], 1,
         "a tested column removed is an error"
     );
+    // anchored at the item that took the column's place
+    let line = edited
+        .lines()
+        .position(|l| l.contains("id as customer_key"))
+        .unwrap();
+    assert_eq!(items[0]["range"]["start"]["line"], line, "{:?}", items[0]);
+    // what relies on it, each at its place
+    let related = items[0]["relatedInformation"].as_array().expect("related");
+    assert!(
+        related
+            .iter()
+            .any(|r| r["message"] == "test unique on stg_customers.customer_id"),
+        "{related:?}"
+    );
+    assert!(
+        related.iter().any(|r| r["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("read by customers.customer_id")),
+        "{related:?}"
+    );
+    // the quick fix re-adds the old name beside its replacement
+    let actions = lsp.request(
+        "textDocument/codeAction",
+        json!({"textDocument": {"uri": uri}, "range": items[0]["range"],
+               "context": {"diagnostics": [items[0]]}}),
+    );
+    let keep = actions["result"]
+        .as_array()
+        .and_then(|a| {
+            a.iter()
+                .find(|a| a["title"] == "Keep 'customer_id' as an alias")
+                .cloned()
+        })
+        .expect("the keep-alias quick fix");
+    let edits = &keep["edit"]["documentChanges"][0]["edits"];
+    assert_eq!(edits[0]["newText"], ", id as customer_id", "{keep}");
 
     // the pull path serves the same cached finding
     let pulled = lsp.request(
@@ -100,12 +145,18 @@ fn a_saved_rename_is_a_breaking_change() {
         .expect("breaking lens");
     assert_eq!(lens["command"]["title"], "1 breaking change");
 
-    // the command: the diff and what reads the column downstream
-    let report = lsp.request(
-        "workspace/executeCommand",
-        json!({"command": "dbt.breakingChanges", "arguments": [{"uri": uri}]}),
-    );
-    let report = &report["result"];
+    // the command: the diff and what reads the column downstream (the
+    // downstream lineage expands stars against the project schemas, which
+    // a save's refresh may be rebuilding: ask until they are back)
+    let report = lsp.wait_until("the command sees the downstream read", |lsp| {
+        let answer = lsp.request(
+            "workspace/executeCommand",
+            json!({"command": "dbt.breakingChanges", "arguments": [{"uri": uri}]}),
+        );
+        let found = answer["result"]["impacts"][0]["downstream"][0].is_object();
+        found.then(|| answer["result"].clone())
+    });
+    let report = &report;
     assert_eq!(report["status"], "compared", "{report}");
     assert_eq!(report["baseline"]["source"], "catalog");
     assert_eq!(report["diff"]["removed"][0]["name"], "customer_id");
@@ -198,4 +249,96 @@ fn an_inferred_type_change_is_reported() {
         report["diff"]["removed"].as_array().unwrap().is_empty(),
         "{report}"
     );
+}
+
+/// Editing without saving: the buffer against the saved file shows what
+/// this change breaks, after the refresh debounce — no target/ needed.
+#[test]
+fn an_unsaved_edit_shows_what_it_breaks() {
+    let project = jaffle();
+    let root = project.root.clone();
+    let model = root.join("models/staging/stg_customers.sql");
+    let original = std::fs::read_to_string(&model).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&model);
+    let (mut lsp, _) = project.booted();
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": original}}),
+    );
+    // first_name dropped in the buffer only; Windows checks the fixture out
+    // with CRLF endings, so the line goes whatever it ends with
+    let edited = original
+        .replace("        first_name,\r\n", "")
+        .replace("        first_name,\n", "");
+    assert_ne!(edited, original, "the fixture still selects first_name");
+    lsp.notify(
+        "textDocument/didChange",
+        json!({"textDocument": {"uri": uri, "version": 2},
+               "contentChanges": [{"text": edited}]}),
+    );
+    let published = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
+        n["params"]["uri"] == uri && !breaking_items(&n["params"]).is_empty()
+    });
+    let items = breaking_items(&published["params"]);
+    assert_eq!(items.len(), 1, "{items:?}");
+    let message = items[0]["message"].as_str().unwrap();
+    assert!(
+        message.contains("'first_name' was removed in this edit (against the saved file)"),
+        "{message}"
+    );
+    // no replacement looks like it: anchored at the select list it left
+    let select = edited
+        .lines()
+        .position(|l| l.trim() == "select")
+        .expect("a select line");
+    let start = &items[0]["range"]["start"];
+    assert!(start["line"].as_u64().unwrap() >= select as u64, "{start}");
+}
+
+/// The file on disk changed under an open buffer (another tool wrote it, or
+/// the test below writes it before its didChange arrives): the report the
+/// open runs is the buffer's, so what it says is placed in the buffer's own
+/// text. It used to compare the file's columns but anchor in the buffer,
+/// where the renamed item is not: the diagnostic fell back to the root's
+/// `select` (a_saved_rename_is_a_breaking_change failed on CI that way).
+#[test]
+fn a_buffer_that_differs_from_the_file_is_reported_as_the_buffer() {
+    let project = jaffle();
+    let root = project.root.clone();
+    std::fs::create_dir_all(root.join("target")).unwrap();
+    std::fs::write(root.join("target/catalog.json"), CATALOG).unwrap();
+    let model = root.join("models/staging/stg_customers.sql");
+    let original = std::fs::read_to_string(&model).unwrap();
+    let edited = original.replace("id as customer_id", "id as customer_key");
+    assert_ne!(edited, original, "the fixture still renames id");
+    std::fs::write(&model, &edited).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&model);
+    let (mut lsp, _) = project.booted();
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": original}}),
+    );
+    // against the build, the buffer breaks nothing
+    let report = lsp.request(
+        "workspace/executeCommand",
+        json!({"command": "dbt.breakingChanges", "arguments": [{"uri": uri}]}),
+    );
+    assert!(
+        report["result"]["diff"]["removed"]
+            .as_array()
+            .is_some_and(|r| r.is_empty()),
+        "{report}"
+    );
+    // against the saved file it undoes the rename: said at the buffer's item
+    let published = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
+        n["params"]["uri"] == uri && !breaking_items(&n["params"]).is_empty()
+    });
+    let item_line = original
+        .lines()
+        .position(|l| l.contains("id as customer_id"))
+        .unwrap();
+    for item in breaking_items(&published["params"]) {
+        assert_eq!(item["range"]["start"]["line"], item_line, "{item}");
+    }
+    lsp.shutdown();
 }

@@ -460,3 +460,23 @@ pub fn edit_for_change(
         new_end_point,
     })
 }
+
+/// A Windows verbatim path (`\\?\C:\p`, what `canonicalize` returns there)
+/// in its plain spelling (`C:\p`; `\\?\UNC\srv\sh` → `\\srv\sh`), which a
+/// file's URI and so every request's path has; any other path as it is.
+pub fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
+/// `canonicalize`, in the spelling every path of a context has: on Windows
+/// without the verbatim prefix it adds, so that it compares with them.
+pub fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    path.canonicalize().map(without_verbatim_prefix)
+}

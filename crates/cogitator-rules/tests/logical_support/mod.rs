@@ -24,6 +24,8 @@ pub struct Col {
     pub ty: Type,
     pub null: Nullability,
     pub unique: bool,
+    /// The type rests on proven evidence (`SchemaCol::proven_type`).
+    pub proven: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -31,6 +33,8 @@ pub enum Type {
     Int,
     Decimal,
     Text,
+    Date,
+    Timestamp,
     Unknown,
 }
 
@@ -43,6 +47,10 @@ impl Type {
                 s: Some(2),
             },
             Type::Text => SqlType::Text,
+            Type::Date => SqlType::Date,
+            Type::Timestamp => SqlType::Timestamp {
+                tz: cogitator_ir::types::Tz::Without,
+            },
             Type::Unknown => SqlType::Unknown,
         }
     }
@@ -55,6 +63,7 @@ pub const fn col(name: &'static str) -> Col {
         ty: Type::Int,
         null: Nullability::Unknown,
         unique: false,
+        proven: true,
     }
 }
 
@@ -74,6 +83,12 @@ impl Col {
         self
     }
 
+    /// The type is only declared (an unenforced YAML `data_type`).
+    pub const fn declared(mut self) -> Self {
+        self.proven = false;
+        self
+    }
+
     pub const fn typed(mut self, ty: Type) -> Self {
         self.ty = ty;
         self
@@ -87,12 +102,14 @@ pub fn model(columns: &[Col]) -> Arc<ModelSchema> {
             name: Arc::from(c.name),
             ty: ColType::new(c.ty.sql(), c.null),
             unique: c.unique,
+            proven_type: c.proven,
         })
         .collect();
     Arc::new(ModelSchema {
         columns: columns.into(),
         completeness: Completeness::Closed,
         fingerprint: 0,
+        unique_sets: Vec::new(),
     })
 }
 

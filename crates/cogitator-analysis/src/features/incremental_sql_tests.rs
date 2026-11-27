@@ -239,6 +239,7 @@ fn context() -> DbtContext {
         description: String::new(),
         name_pos: Default::default(),
         data_type: None,
+        constraints: Vec::new(),
     };
     let mut ctx = DbtContext::default();
     ctx.model_detail_map.insert(

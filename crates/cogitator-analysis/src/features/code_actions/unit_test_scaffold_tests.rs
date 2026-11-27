@@ -11,6 +11,7 @@ fn column(name: &str) -> ColumnEntry {
         name_pos: Default::default(),
         data_type: None,
         tests: Vec::new(),
+        constraints: Vec::new(),
     }
 }
 
@@ -102,6 +103,7 @@ fn lineage_narrows_inputs_and_names_outputs() {
                 column: "order_id".into(),
             }],
             direct: true,
+            ..Default::default()
         }],
         origin: None,
     };

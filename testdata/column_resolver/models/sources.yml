@@ -1,0 +1,11 @@
+version: 2
+sources:
+  - name: shop
+    tables:
+      - name: customers
+        columns:
+          - name: id
+            data_type: integer
+          - name: name
+            description: The customer's display name.
+          - name: signed_up

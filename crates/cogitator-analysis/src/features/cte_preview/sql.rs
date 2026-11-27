@@ -29,6 +29,8 @@ pub fn cte_sql(model: &str, cte: Option<&str>, source: PreviewSource, query: &st
     let options = FormatOptions {
         tab_size: 4,
         insert_spaces: true,
+        rules: None,
+        adapter: String::new(),
     };
     let sql = match format_document(query, &options) {
         Some(edits) if !edits.is_empty() => edits[0].new_text.clone(),

@@ -123,6 +123,41 @@ code actions are the standard LSP ones. On top:
 `:Dbt <subcommand>` reaches every command with completion; `:Dbt` alone lists
 them. `keymaps = false` in `setup()` turns the `<leader>d` maps off.
 
+
+### Column completion
+
+In a select list, `where`, `group by`, `order by`, `having`, `qualify` and
+`join … on`, completion offers every column of the relations the query
+reads, twice: `alias.col` and the bare `col`. A name two relations share
+ranks its qualified forms first (`c.customer_id`, `o.customer_id`), and
+the bare one says `ambiguous: o, c`. After `alias.` only that relation's
+columns are offered; after `from` / `join`, CTE names come first, then
+`ref()` and `source()` snippets. A model's or source's columns are
+resolved through the whole project, from what the server's background
+schema job published: a model that is `select *` of another, however
+deep, offers the columns at the bottom of the chain, each with its type
+(proven from the SQL, else the catalog's or the YAML's) and its YAML
+description. A CTE's or subquery's columns come from its select list (`*`
+expanded through what it reads). Until the first job has run, a model's
+come from its properties YAML, else its own column lineage.
+
+The server ranks with `sortText` and marks the best item `preselect`; a
+qualified column filters as its bare name (`filterText`), so typing
+`cus` keeps `o.customer_id` in the list. Neovim's built-in completion
+keeps that order as it is. nvim-cmp and blink.cmp (LazyVim's default)
+sort by their fuzzy score before `sortText`, and blink adds frecency and
+nearby-word bonuses on top, so a global that matches the typed word as
+well can come out above a column. `require("cogitator.completion")` has
+a comparator for nvim-cmp and, for blink.cmp:
+
+```lua
+sources = { providers = { lsp = {
+  transform_items = require("cogitator.completion").blink_transform(),
+} } }
+```
+
+which lifts the score of the server's in-scope items only.
+
 ## The model explorer
 
 `:DbtBrowse` (`<leader>db`) shows one model at a time — the one in your
@@ -280,7 +315,7 @@ defaults:
   lens = { enabled = true, events = { "BufEnter", "CursorHold", "InsertLeave" } },
   keymaps = true,
   semantic_tokens = true,
-  inlay_hints = false, -- true: relations after ref(), var() values, macro params
+  inlay_hints = true,  -- column lineage, relations after ref(), var() values, macro params
   lineage = { depth = 3, max_requests = 60 },
   dag = { focus_depth = 2, follow = false, refresh_on_save = true },
   grammar = { highlight = true, auto_install = false },

@@ -194,6 +194,25 @@ return function(ctx)
     vim.inspect(diff_result):sub(1, 200)
   )
 
+  local cost_result =
+    H.exec_cmd(client, bufnr, "dbt.costReport", vim.empty_dict(), "integration: dbt.costReport")
+  H.check(
+    type(cost_result) == "table"
+      and type(cost_result.text) == "string"
+      and type(cost_result.models) == "table",
+    "integration: dbt.costReport answers a report",
+    vim.inspect(cost_result):sub(1, 200)
+  )
+  -- the copy is no git repository: last-run reads the manifest, or says why
+  local at_result = H.exec_cmd(client, bufnr, "dbt.diffAt", {
+    uri = vim.uri_from_bufnr(bufnr),
+    rev = "last-run",
+  }, "integration: dbt.diffAt")
+  H.check(
+    at_result == false or (type(at_result) == "table" and type(at_result.diff) == "string"),
+    "integration: dbt.diffAt answers a diff or guidance",
+    vim.inspect(at_result):sub(1, 200)
+  )
   -- the SQL of orders' tests, as dbt runs them, and where each header leads
   local orders_uri = vim.uri_from_fname(vim.fs.joinpath(ctx.fixture, "models", "orders.sql"))
   local tests_result =

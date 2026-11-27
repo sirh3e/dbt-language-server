@@ -105,6 +105,7 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let profiling = self.analytics_settings().profile;
         let dialogs = self.dialogs_enabled;
         let entry_models = if crate::server::diagnostics::is_yaml(&uri) {
             self.yaml_entry_models(&uri)
@@ -127,6 +128,11 @@ impl Dispatcher {
             let mut extra = Vec::new();
             if let Some(doc) = snap.doc.as_deref() {
                 let read = |path: &std::path::Path| std::fs::read_to_string(path).ok();
+                // a model column's lineage graph, opened as a file
+                extra.extend(
+                    features::lineage_graph::show_lineage_action(&snap.ctx, doc, &uri, range.start)
+                        .map(CodeAction::at_cursor),
+                );
                 if uri.ends_with(".yml") || uri.ends_with(".yaml") {
                     // doc('x') lives mostly in descriptions
                     extra.extend(
@@ -160,11 +166,10 @@ impl Dispatcher {
                                 (*lineage).as_ref(),
                             )
                         }));
-                        if let Some(lineage) = (*lineage).as_ref() {
-                            extra.extend(features::inherit_description_actions(
-                                &snap.ctx, &doc.text, &uri, details, lineage,
-                            ));
-                        }
+                        extra.extend(
+                            super::authoring::Authoring::new(&snap, &derived, artifact_cap)
+                                .inherit_in_yaml(&doc.text, &uri, model, details, &read),
+                        );
                         extra.extend(entry_column_action(
                             &snap,
                             &derived,
@@ -184,6 +189,11 @@ impl Dispatcher {
                             model,
                         ));
                     }
+                    // a source table's entry: scaffold its staging model
+                    extra.extend(
+                        super::authoring::Authoring::new(&snap, &derived, artifact_cap)
+                            .scaffold(doc, &uri, range, &read),
+                    );
                     extra[entry_start..]
                         .iter_mut()
                         .for_each(CodeAction::mark_at_cursor);
@@ -198,6 +208,12 @@ impl Dispatcher {
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(column_actions(&snap, &derived, &uri, artifact_cap));
+                    // join.fanout's YAML fix: the relation's key a unique test
+                    extra.extend(features::unique_test_actions(
+                        &snap.ctx,
+                        &diagnostics,
+                        &read,
+                    ));
                     extra.extend(
                         features::declare_missing_actions(&snap.ctx, doc, &uri, range, &read)
                             .into_iter()
@@ -213,7 +229,13 @@ impl Dispatcher {
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(
-                        features::extract_cte_action(&snap.ctx, doc, &uri, range)
+                        features::extract_cte_action(&snap.ctx, doc, &uri, range, &read)
+                            .map(CodeAction::at_cursor),
+                    );
+                    extra.extend(
+                        super::authoring::Authoring::new(&snap, &derived, artifact_cap)
+                            .sql_actions(doc, &uri, range, &read)
+                            .into_iter()
                             .map(CodeAction::at_cursor),
                     );
                     extra.extend(extract_yaml_action(&snap, &derived, &uri));
@@ -229,6 +251,14 @@ impl Dispatcher {
                         ));
                     }
                     extra.extend(unit_test_action(&snap, &derived, doc, &uri, &read));
+                    if profiling {
+                        extra.extend(crate::server::profile::action(
+                            &snap,
+                            &derived,
+                            &uri,
+                            range.start,
+                        ));
+                    }
                     extra.extend(features::test_sql_action(&snap.ctx, &uri));
                     extra.extend(features::cte_sql_action(&snap.ctx, doc, &uri, range.start));
                     extra.extend(features::incremental_sql_action(&snap.ctx, doc, &uri));
@@ -354,7 +384,12 @@ impl Dispatcher {
             items.extend(crate::server::diagnostics::breaking_diagnostics(
                 &derived, &uri,
             ));
-            if perf.active() {
+            if let Some(doc) = snap.doc.as_deref() {
+                items.extend(crate::server::diagnostics::check_diagnostics(
+                    &snap.ctx, &derived, doc, &uri, &perf,
+                ));
+            }
+            if perf.plan_needed() {
                 if let (Some(doc), Some(plan)) = (
                     snap.doc.as_deref(),
                     crate::server::handlers::plan::document_plan(

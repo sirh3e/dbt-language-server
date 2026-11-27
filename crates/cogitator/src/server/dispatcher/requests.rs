@@ -65,7 +65,9 @@ impl Dispatcher {
                                 .unwrap_or_default()
                         } else {
                             // dispatcher path: a cache probe, never a compute
-                            let lineage = derived.lineage_cached(uri, d.generation);
+                            let revision =
+                                crate::server::handlers::plan::schema_revision(ctx, &derived);
+                            let lineage = derived.lineage_cached(uri, d.generation, revision);
                             let text = features::hover_with_lineage(
                                 ctx,
                                 d,
@@ -73,9 +75,23 @@ impl Dispatcher {
                                 lineage.as_deref().and_then(Option::as_ref),
                             );
                             // the column's inferred type, from the published snapshot
-                            with_type_line(
+                            let text = with_type_line(
                                 text,
                                 super::yaml_types::hover(ctx, &derived, d, uri, pos),
+                            );
+                            // who reads it, from the open/save cache only
+                            let text = with_type_line(text, reach_line(ctx, &derived, d, uri, pos));
+                            // a dbt.profileColumn answer, from the cache only
+                            with_type_line(
+                                text,
+                                crate::server::profile::hover(
+                                    ctx,
+                                    &derived,
+                                    d,
+                                    uri,
+                                    pos,
+                                    lineage.as_deref().and_then(Option::as_ref),
+                                ),
                             )
                         }
                     })
@@ -131,7 +147,12 @@ impl Dispatcher {
         let Some(generation) = snap.doc.as_deref().map(|doc| doc.generation) else {
             return;
         };
-        if self.derived.lineage_cached(&uri, generation).is_some() {
+        let revision = crate::server::handlers::plan::schema_revision(&snap.ctx, &self.derived);
+        if self
+            .derived
+            .lineage_cached(&uri, generation, revision)
+            .is_some()
+        {
             return;
         }
         let derived = self.derived.clone();
@@ -204,8 +225,10 @@ impl Dispatcher {
                 return;
             }
         }
+        let support = self.completion_support;
+        let derived = self.derived.clone();
         self.respond_position(content, "textDocument/completion", |ctx, doc, uri, pos| {
-            match doc {
+            let items = match doc {
                 // the server's own config file: schema-table completion
                 Some(d) if cogitator_analysis::yaml_cogitator::is_cogitator_config(uri) => {
                     cogitator_analysis::yaml_cogitator::cogitator_completion(&d.text, pos)
@@ -214,9 +237,26 @@ impl Dispatcher {
                 Some(d) if crate::server::diagnostics::is_yaml(uri) => {
                     yaml_features::yaml_completion(uri, &d.text, pos)
                 }
-                Some(d) => features::completion(ctx, d, pos),
+                // columns resolved through the project's published schemas
+                // (never runs the job); without them a model whose YAML
+                // documents no columns is asked its lineage
+                Some(d) => {
+                    // the hints hold the published snapshot (the resolver's)
+                    let hints = super::completion_hints::hints(ctx, &derived, uri);
+                    features::completion_with(
+                        ctx,
+                        d,
+                        pos,
+                        &|p| std::fs::read_to_string(p).ok(),
+                        &hints,
+                    )
+                }
                 None => Vec::new(),
-            }
+            };
+            items
+                .into_iter()
+                .map(|item| cogitator_lsp::adapt(item, support))
+                .collect::<Vec<_>>()
         });
     }
 
@@ -232,12 +272,18 @@ impl Dispatcher {
         };
         let mut item = item.get("params").cloned().unwrap_or(item);
         let ctx = self.snapshot();
-        if let Some(docs) = item
+        let hints = super::completion_hints::hints(&ctx, &self.derived, "");
+        if let Some((docs, markdown)) = item
             .get("data")
-            .and_then(|data| features::resolve_completion_documentation(&ctx, data))
+            .and_then(|data| features::resolve_completion_documentation_with(&ctx, data, &hints))
         {
+            let value = if markdown && self.completion_support.markdown {
+                serde_json::json!({"kind": "markdown", "value": docs})
+            } else {
+                serde_json::Value::String(docs)
+            };
             if let Some(map) = item.as_object_mut() {
-                map.insert("documentation".into(), serde_json::Value::String(docs));
+                map.insert("documentation".into(), value);
             }
         }
         self.send(&ResultResponse::new(id, item));
@@ -374,8 +420,15 @@ impl Dispatcher {
             .inlay_jinja
             .load(std::sync::atomic::Ordering::Relaxed)
             && uri.ends_with(".sql");
+        let types = self
+            .toggles
+            .inlay_types
+            .load(std::sync::atomic::Ordering::Relaxed)
+            && uri.ends_with(".sql");
         let perf = self.perf_settings();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let lineage = self.lineage_for_hints(&uri, &snap, cap);
+        let lineage_options = crate::server::handlers::lineage_hints::options(&self.toggles);
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
@@ -395,6 +448,11 @@ impl Dispatcher {
                         let renderer = features::InlineRenderer::new(&inputs);
                         hints.extend(features::jinja_inlay_hints(doc, range, &renderer));
                     }
+                    if types {
+                        hints.extend(super::yaml_types::inlay_hints(
+                            &snap.ctx, &derived, doc, &uri, range,
+                        ));
+                    }
                     hints
                 }
                 None => Vec::new(),
@@ -406,8 +464,43 @@ impl Dispatcher {
             hints.extend(crate::server::handlers::plan_hints::plan_hints(
                 &snap, &derived, &uri, range, &perf, cap,
             ));
+            hints.extend(crate::server::handlers::lineage_hints::hints(
+                &snap,
+                lineage.as_deref().and_then(Option::as_ref),
+                range,
+                lineage_options,
+            ));
             crate::server::reply::Reply::result(&hints)
         });
+    }
+
+    /// The inline lineage hints' lineage: a cache probe on the dispatcher,
+    /// never a compute; a miss starts the offloaded computation that ends
+    /// in `workspace/inlayHint/refresh`.
+    fn lineage_for_hints(
+        &self,
+        uri: &str,
+        snap: &crate::server::snapshot::Snapshot,
+        cap: u64,
+    ) -> Option<std::sync::Arc<Option<cogitator_analysis::lineage::ModelLineage>>> {
+        use crate::server::handlers::lineage_hints;
+        if !lineage_hints::wanted(uri, lineage_hints::options(&self.toggles)) {
+            return None;
+        }
+        let generation = snap.doc.as_deref()?.generation;
+        let revision = crate::server::handlers::plan::schema_revision(&snap.ctx, &self.derived);
+        let cached = self.derived.lineage_cached(uri, generation, revision);
+        if cached.is_none() {
+            lineage_hints::warm(
+                self.snapshot_for(uri),
+                self.derived.clone(),
+                uri.to_string(),
+                cap,
+                self.link.clone(),
+                self.toggles.inlay_refresh.load(Ordering::Relaxed),
+            );
+        }
+        cached
     }
 
     pub(super) fn document_link(&mut self, content: &[u8]) {
@@ -437,12 +530,33 @@ impl Dispatcher {
             return;
         };
         let uri = params.text_document.uri.into_owned();
-        let options = features::formatting::FormatOptions {
+        let configured = self
+            .toggles
+            .format
+            .read()
+            .expect("format rules lock")
+            .clone();
+        let snap = self.snapshot_for(&uri);
+        let mut options = features::formatting::FormatOptions {
             tab_size: params.options.tab_size,
             insert_spaces: params.options.insert_spaces,
+            rules: configured,
+            adapter: snap.ctx.dialect.as_str().to_string(),
         };
-        let snap = self.snapshot_for(&uri);
         self.offload_blocking(req.id, "textDocument/formatting", move || {
+            // cogitator.yml's `format:` first, else the nearest
+            // cogitator-format.toml; a broken one formats nothing
+            if options.rules.is_none() {
+                let path = cogitator_lsp::uri_to_fs_path(&uri).unwrap_or_else(|| uri.clone());
+                match features::formatting::rules_near(std::path::Path::new(&path)) {
+                    Ok(rules) => options.rules = rules,
+                    Err(err) => {
+                        tracing::warn!(%err, "formatting: the formatter's config cannot be read");
+                        let none: Vec<cogitator_lsp::TextEdit> = Vec::new();
+                        return crate::server::reply::Reply::result(&none);
+                    }
+                }
+            }
             // decline-on-doubt answers an empty edit list, never an error
             let edits = snap
                 .doc
@@ -511,6 +625,22 @@ fn quality_lenses(
 }
 
 /// Appends a column-type hover line after whatever the hover says.
+/// "`orders.amount` is read by 3 models, …" from the reach cache; `None`
+/// off a column or before the model's reach was computed.
+fn reach_line(
+    ctx: &cogitator_analysis::DbtContext,
+    derived: &crate::server::derived_cache::DerivedCache,
+    doc: &cogitator_analysis::Document,
+    uri: &str,
+    pos: cogitator_lsp::Position,
+) -> Option<String> {
+    use cogitator_analysis::features::column_reach;
+    let (model, column) = column_reach::column_at(ctx, doc, uri, pos)?;
+    let reach = derived.reach_cached(&model)?;
+    let found = reach.column(&column)?;
+    Some(column_reach::hover_line(&model, &column, found))
+}
+
 fn with_type_line(text: String, line: Option<String>) -> String {
     match line {
         None => text,

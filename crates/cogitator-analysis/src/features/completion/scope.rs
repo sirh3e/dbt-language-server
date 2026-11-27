@@ -1,11 +1,14 @@
 //! Document FROM/JOIN scope: token-based alias → relation resolution.
 //! Deliberately not the lineage SQL parse — this must work on mid-edit
-//! buffers where full parsing declines.
+//! buffers where full parsing declines. Completion reads the cursor's
+//! own scope from [`sql`] first, this one when that does not parse.
 
 use std::path::PathBuf;
 
 use cogitator_lsp::Position;
 use cogitator_parser::{Keyword, TokenKind};
+
+pub(crate) mod sql;
 
 use crate::context::DbtContext;
 
@@ -227,8 +230,8 @@ pub fn cte_columns(doc: &Document, name: &str) -> Vec<String> {
 /// A column resolved against the document's relations (hover/definition).
 #[derive(Debug, Clone)]
 pub(crate) struct ColumnHit {
+    pub(crate) of: super::column_info::ColumnOf,
     pub(crate) relation: String,
-    pub(crate) description: String,
     pub(crate) yaml: Option<(PathBuf, Position)>,
 }
 
@@ -272,8 +275,8 @@ pub(crate) fn resolve_column(
                 if let Some(details) = ctx.model_detail_map.get(model) {
                     if let Some(column) = details.columns.iter().find(|c| c.name == name) {
                         return Some(ColumnHit {
+                            of: super::column_info::ColumnOf::Model(model.clone()),
                             relation: model.clone(),
-                            description: column.description.clone(),
                             yaml: details
                                 .schema_uri
                                 .clone()
@@ -290,8 +293,11 @@ pub(crate) fn resolve_column(
                 {
                     if let Some(column) = t.columns.iter().find(|c| c.name == name) {
                         return Some(ColumnHit {
+                            of: super::column_info::ColumnOf::Source {
+                                source: source.clone(),
+                                table: table.clone(),
+                            },
                             relation: format!("{source}.{table}"),
-                            description: column.description.clone(),
                             yaml: Some((t.uri.clone(), column.name_pos)),
                         });
                     }

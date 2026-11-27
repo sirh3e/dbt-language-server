@@ -86,6 +86,7 @@ fn examine(mir: &Mir, id: RelId, cx: &Cx<'_>) -> Option<Finding> {
         ),
         evidence: Evidence::Exact,
         fixes: fixes(mir, cx, from, *kind, conjunct),
+        subject: None,
     })
 }
 

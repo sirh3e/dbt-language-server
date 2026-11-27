@@ -5,3 +5,4 @@ pub mod missing_guard;
 pub mod no_unique_key;
 mod rewrite;
 pub mod subquery_watermark;
+pub mod watermark;

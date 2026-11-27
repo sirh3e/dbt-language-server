@@ -55,6 +55,11 @@ vim.api.nvim_create_user_command("DbtCtes", function()
 end, { desc = "every CTE of this model in the picker" })
 cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
 cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, as a diff in a split")
+vim.api.nvim_create_user_command("DbtDiffAt", function(opts)
+  require("cogitator.commands").diff_at(opts)
+end, { nargs = "*", desc = "this model against a git revision or the last run [rev] [sql|compiled|lineage]" })
+cmd("DbtCostReport", "cost_report", "the last run's models by cost, critical path, suggestions")
+cmd("DbtProfileColumn", "profile_column", "profile the output column under the cursor (warehouse.profile)")
 cmd("DbtTestSql", "test_sql", "the SQL every test of this model runs, in a split")
 vim.api.nvim_create_user_command("DbtIncrementalSql", function(opts)
   require("cogitator.commands").incremental_sql(opts)
@@ -176,8 +181,24 @@ vim.api.nvim_create_user_command("DbtDag", function()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
 
 vim.api.nvim_create_user_command("DbtColumnLineage", function(opts)
-  require("cogitator.dag").open({ columns = true, column = opts.args ~= "" and opts.args or nil })
-end, { nargs = "?", desc = "column-lineage graph of this model (optionally of one column)" })
+  local args = vim.split(vim.trim(opts.args), "%s+", { trimempty = true })
+  if args[1] == "graph" then
+    -- the lineage drawn as the DAG, as before the dialog
+    require("cogitator.dag").open({ columns = true, column = args[2] })
+  else
+    require("cogitator.column_dialog").open({ column = args[1] })
+  end
+end, {
+  nargs = "*",
+  complete = function(lead, line)
+    local first = line:match("ColumnLineage%s+%S*$") ~= nil
+    local words = vim.list_extend(first and { "graph" } or {}, require("cogitator.dispatch").column_names())
+    return vim.tbl_filter(function(w)
+      return w:find(lead, 1, true) == 1
+    end, words)
+  end,
+  desc = "column-lineage dialog of this model (optionally one column); `graph [column]` draws the DAG",
+})
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()
@@ -249,6 +270,13 @@ vim.api.nvim_create_user_command("DbtAstGrep", function(opts)
 end, {
   nargs = "*",
   desc = "ast-grep: [sql:]pattern [=> rewrite] — matches to quickfix, a rewrite after asking",
+})
+
+vim.api.nvim_create_user_command("DbtSearch", function(opts)
+  require("cogitator.search").command(opts)
+end, {
+  nargs = "+",
+  desc = "structural search over the models' SQL (dbt.search): joins x on col, select-star from source, …",
 })
 
 vim.api.nvim_create_user_command("DbtSyntaxTree", function()

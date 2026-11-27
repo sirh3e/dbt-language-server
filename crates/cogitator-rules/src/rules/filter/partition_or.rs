@@ -75,6 +75,7 @@ impl Detect<Lir> for PartitionOr {
                     ),
                     evidence: plan_evidence(cx.hir),
                     fixes: Vec::new(),
+                    subject: None,
                 });
             }
         }

@@ -22,10 +22,11 @@ pub struct SectionSchema {
 }
 
 impl SectionSchema {
-    /// A section whose keys are the user's own (`vars:` names vars),
-    /// so no key of it is unknown.
+    /// A section whose keys are the user's own (`vars:` names vars), or
+    /// nest (`format:`, which the formatter's own parser holds to its keys),
+    /// so no key of it is unknown here.
     pub fn is_free_form(&self) -> bool {
-        self.name == "vars"
+        matches!(self.name, "vars" | "format")
     }
 }
 
@@ -100,11 +101,23 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
     SectionSchema {
         name: "warehouse",
         doc: "Warehouse introspection (duckdb builds only).",
-        keys: &[key(
-            "columns",
-            "Complete source columns from the warehouse when the YAML has none.",
-            "bool",
-        )],
+        keys: &[
+            key(
+                "columns",
+                "Complete source columns from the warehouse when the YAML has none.",
+                "bool",
+            ),
+            key(
+                "profile",
+                "Offer dbt.profileColumn (a sampled profile query against the warehouse; default off).",
+                "bool",
+            ),
+            key(
+                "profile_sample_rows",
+                "Rows a column profile samples (default 10000).",
+                "rows",
+            ),
+        ],
     },
     SectionSchema {
         name: "perf",
@@ -147,6 +160,55 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
                 "Show what short single-line {{ … }} expressions render to (default false).",
                 "bool",
             ),
+            key(
+                "types",
+                "Show each output column's inferred type after its select item (default false).",
+                "bool",
+            ),
+            key(
+                "lineage",
+                "Show after each output column of a model's final select which upstream column it comes from (default true).",
+                "bool",
+            ),
+            key(
+                "lineage_max_len",
+                "The longest column lineage hint before it is cut with … (default 60).",
+                "chars",
+            ),
+        ],
+    },
+    SectionSchema {
+        name: "types",
+        doc: "Type checks: text compared with dates, sums over text, mismatched join keys (type-* diagnostics).",
+        keys: &[key(
+            "checks",
+            "Report the type.* checks and join.key_type_mismatch under every perf profile (default true); a Warning only when both types are proven.",
+            "bool",
+        )],
+    },
+    SectionSchema {
+        name: "format",
+        doc: "textDocument/formatting's rules, the keys of cogitator-format.toml (sqlfluff's names); absent: that file's, else the defaults with the editor's indent.",
+        keys: &[
+            key("dialect", "sqlfluff's dialect; default the dbt adapter's (spark: sparksql).", "name"),
+            key("max_line_length", "The longest line the layout aims for (LT05, default 80).", "columns"),
+            key("indent_unit", "space or tab (LT02, default space).", "space|tab"),
+            key("tab_space_size", "Spaces per indent (default 4).", "count"),
+            key("max_blank_lines", "Blank lines kept where the source had more (default 1).", "count"),
+            key("trailing_newline", "End the file with one newline (LT12, default true).", "bool"),
+            key("case.keywords", "CP01 (default lower).", "upper|lower|capitalise|preserve"),
+            key("case.identifiers", "CP02, unquoted only (default preserve).", "upper|lower|capitalise|preserve"),
+            key("case.functions", "CP03 (default lower).", "upper|lower|capitalise|preserve"),
+            key("case.literals", "CP04: null, true, false (default lower).", "upper|lower|capitalise|preserve"),
+            key("case.types", "CP05 (default lower).", "upper|lower|capitalise|preserve"),
+            key("layout.commas", "LT04 (default trailing).", "trailing|leading"),
+            key("layout.select_targets", "LT09: one_per_line (default) or fit.", "one_per_line|fit"),
+            key("layout.indented_joins", "join indented under from (default false).", "bool"),
+            key("layout.blank_line_after_cte", "LT08 (default true).", "bool"),
+            key("jinja.delimiter_spacing", "{{ x }}, one space inside (default true).", "bool"),
+            key("jinja.normalize_tags", "A tag's inside laid out from minijinja's tokens (default true).", "bool"),
+            key("jinja.filter_spacing", "Spaces around a filter's | (default true).", "bool"),
+            key("jinja.indent_blocks", "Lines inside {% if %} … {% endif %} one level deeper (default true).", "bool"),
         ],
     },
     SectionSchema {
@@ -182,6 +244,9 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("limit.no_scan_reduction", "LIMIT does not reduce bytes read.", RULE_SEVERITIES),
             key("incr.no_unique_key", "Merge strategy without a unique_key.", RULE_SEVERITIES),
             key("incr.could_be_incremental", "A table that could be built incrementally.", RULE_SEVERITIES),
+            key("join.fanout", "This join may duplicate rows: the key is not known to be unique (on by default).", RULE_SEVERITIES),
+            key("type.text_temporal_compare", "Text compared with a date or time (types.checks).", RULE_SEVERITIES),
+            key("type.aggregate_text", "A numeric aggregate over text (types.checks).", RULE_SEVERITIES),
         ],
     },
     SectionSchema {
@@ -191,6 +256,22 @@ pub const COGITATOR_SCHEMA: &[SectionSchema] = &[
             key("rows", "Rows a preview shows when the call names no limit (default 20).", "rows"),
             key("max_rows", "The most rows a preview may ask for; larger limits are capped (default 1000).", "rows"),
         ],
+    },
+    SectionSchema {
+        name: "bi",
+        doc: "BI tools as the end of the lineage: dbt.impact's column reach and the column hover name the dashboards that read a column.",
+        keys: &[
+            key("manifest", "A JSON file, relative to the project root, listing dashboards and the models/columns they read ({\"dashboards\": [{\"name\", \"url\", \"reads\": [{\"model\", \"column\"}]}]}; docs/column-reach.md).", "path"),
+        ],
+    },
+    SectionSchema {
+        name: "cost",
+        doc: "dbt.costReport and the cost lens: optional figures beyond target/run_results.json.",
+        keys: &[key(
+            "query_history",
+            "A JSON (array or JSON lines) export of the warehouse's query history; fills bytes and slots dbt did not record.",
+            "path",
+        )],
     },
 ];
 
@@ -279,7 +360,7 @@ pub mod json {
     fn key_json(doc: &KeyDoc) -> Key {
         let (ty, minimum, variants, items) = match doc.value_hint {
             "bool" => ("boolean", None, None, None),
-            "MiB" | "ms" => ("integer", Some(0), None, None),
+            "MiB" | "ms" | "chars" => ("integer", Some(0), None, None),
             "[names]" => ("array", None, None, Some(Items { ty: "string" })),
             hint if hint.contains('|') => ("string", None, Some(hint.split('|').collect()), None),
             _ => ("string", None, None, None),

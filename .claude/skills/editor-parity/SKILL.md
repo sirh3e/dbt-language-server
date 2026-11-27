@@ -25,6 +25,11 @@ LSP client runs them — so the rule is about commands.
    command is a choice of that menu** (`crates/cogitator/src/server/dialogs/menu.rs`),
    asking on the way what the command needs, or a `[gaps.zed]` line saying
    why a button cannot drive it (free text).
+   A user command Zed also reaches without the menu — a lens or action that
+   sends it and shows its result as a file or a message, or a setting that
+   makes a standard request do it — gets a line in `[zed]` (`via`, and
+   `sent_in` for the file that sends it) and is named in
+   `editors/zed/README.md`; the test checks both.
 3. `[gaps.<editor>]` holds what was missing when the rule was adopted
    (2026-11-22). **It only shrinks.** Never add a line for a new command; when
    you wrap a listed one, delete its line (the test tells you to).
@@ -90,7 +95,8 @@ editor "exposes" a command when one of its files holds the quoted name.
   true`). What it needs is asked first: a sub-prompt of choices the menu
   knows (`Here`: CTEs, tags, selectors, jobs), or `Present::Choose` with a
   `Chooser` that builds the next prompt from another command's answer.
-- A case in the module's tests, and the editors/zed README's list.
+- A case in the module's tests, and the editors/zed README's list; a `[zed]`
+  line when it also reaches Zed as a code action, a lens or a setting.
 - `crates/cogitator/tests/e2e_dialogs.rs` presses the buttons end to end
   (`Lsp::answer_prompts`).
 

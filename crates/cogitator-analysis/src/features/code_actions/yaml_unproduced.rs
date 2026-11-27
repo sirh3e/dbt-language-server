@@ -85,6 +85,7 @@ pub fn unproduced_column_diagnostics(
             fix: FixKind::MultiEdit { fixes },
             token_range: range,
             suggestions,
+            subject: None,
         });
         out.push(diagnostic);
     }
@@ -150,6 +151,7 @@ mod tests {
             } else {
                 Vec::new()
             },
+            constraints: Vec::new(),
         }
     }
 
@@ -173,6 +175,7 @@ mod tests {
                     name: n.to_string(),
                     sources: Vec::new(),
                     direct: false,
+                    ..Default::default()
                 })
                 .collect(),
             origin: None,

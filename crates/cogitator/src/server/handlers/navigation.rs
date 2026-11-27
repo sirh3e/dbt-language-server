@@ -86,19 +86,7 @@ pub fn show_lineage(lineage: Option<&ModelLineage>) -> Reply {
                 .iter()
                 .take(20)
                 .map(|c| {
-                    let sources: Vec<String> = c
-                        .sources
-                        .iter()
-                        .map(|s| match s {
-                            SourceRef::Model { name, column } => format!("{name}.{column}"),
-                            SourceRef::Source {
-                                source,
-                                table,
-                                column,
-                            } => format!("{source}.{table}.{column}"),
-                            SourceRef::Unknown { name, column } => format!("{name}.{column}"),
-                        })
-                        .collect();
+                    let sources: Vec<String> = c.sources.iter().map(SourceRef::label).collect();
                     format!("{} ← {}", c.name, sources.join(", "))
                 })
                 .collect();

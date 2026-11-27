@@ -167,8 +167,7 @@ fn parted(
     let mut label: Vec<InlayHintLabelPart> = Vec::new();
     let plain = |value: String| InlayHintLabelPart {
         value,
-        tooltip: None,
-        command: None,
+        ..Default::default()
     };
     if let Some(rows) = rows {
         label.push(plain(rows));
@@ -190,6 +189,7 @@ fn parted(
                 command: "dbt.queryPlan".to_string(),
                 arguments: vec![serde_json::json!({ "uri": uri })],
             }),
+            location: None,
         });
     }
     PartedInlayHint {

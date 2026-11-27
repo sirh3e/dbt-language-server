@@ -242,6 +242,66 @@ pub mod catalog {
         Ok(rows.flatten().collect())
     }
 
+    /// The answer of [`query`]: column names, and each cell as text
+    /// (`None` for NULL).
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub struct QueryResult {
+        pub columns: Vec<String>,
+        pub rows: Vec<Vec<Option<String>>>,
+    }
+
+    /// Runs one read-only statement (dbt.profileColumn's profile query)
+    /// on a read-only connection that can never mutate the warehouse.
+    pub fn query(db_path: &Path, sql: &str) -> Result<QueryResult, Guidance> {
+        let fail = |err: duckdb::Error| open_error(db_path, &err.to_string());
+        let config = duckdb::Config::default()
+            .access_mode(duckdb::AccessMode::ReadOnly)
+            .map_err(fail)?;
+        let conn = duckdb::Connection::open_with_flags(db_path, config).map_err(fail)?;
+        let mut statement = conn.prepare(sql).map_err(fail)?;
+        let mut rows = statement.query([]).map_err(fail)?;
+        let columns: Vec<String> = rows.as_ref().map(|s| s.column_names()).unwrap_or_default();
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().map_err(fail)? {
+            let mut cells = Vec::with_capacity(columns.len());
+            for i in 0..columns.len() {
+                // duckdb-rs panics on a few logical types (an untyped
+                // NULL column); a profile must not take the server down
+                let value = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    row.get::<_, duckdb::types::Value>(i)
+                }))
+                .map_err(|_| {
+                    open_error(db_path, "a result column has a type duckdb-rs cannot read")
+                })?
+                .map_err(fail)?;
+                cells.push(cell_text(value));
+            }
+            out.push(cells);
+        }
+        Ok(QueryResult { columns, rows: out })
+    }
+
+    fn cell_text(value: duckdb::types::Value) -> Option<String> {
+        use duckdb::types::Value as V;
+        Some(match value {
+            V::Null => return None,
+            V::Text(text) => text,
+            V::Boolean(b) => b.to_string(),
+            V::TinyInt(n) => n.to_string(),
+            V::SmallInt(n) => n.to_string(),
+            V::Int(n) => n.to_string(),
+            V::BigInt(n) => n.to_string(),
+            V::HugeInt(n) => n.to_string(),
+            V::UTinyInt(n) => n.to_string(),
+            V::USmallInt(n) => n.to_string(),
+            V::UInt(n) => n.to_string(),
+            V::UBigInt(n) => n.to_string(),
+            V::Float(n) => n.to_string(),
+            V::Double(n) => n.to_string(),
+            other => format!("{other:?}"),
+        })
+    }
+
     fn open_error(path: &Path, detail: &str) -> Guidance {
         let mut guidance = Guidance::new("warehouse introspection failed.")
             .at(path.display().to_string())
@@ -285,6 +345,63 @@ pub mod catalog {
             assert_eq!(names, vec!["id", "amount"]);
             assert!(columns[1].data_type.to_lowercase().contains("decimal"));
             assert!(table_columns(&db, "raw", "nope").unwrap().is_empty());
+            let answer = query(
+                &db,
+                "select 'a' as kind, 2::bigint as n, null::varchar as v",
+            )
+            .unwrap();
+            assert_eq!(answer.columns, ["kind", "n", "v"]);
+            assert_eq!(
+                answer.rows,
+                vec![vec![Some("a".to_string()), Some("2".to_string()), None]]
+            );
+            assert!(
+                query(&db, "create table raw.x (a int)").is_err(),
+                "read-only"
+            );
+            // the shape of cogitator-analysis's profile_sql (duckdb)
+            {
+                let conn = duckdb::Connection::open(&db).unwrap();
+                conn.execute_batch(
+                    "create table raw.orders as select * from (values ('open'), ('open'), ('paid'), (null)) t(status);",
+                )
+                .unwrap();
+            }
+            let profile = query(
+                &db,
+                "with sampled as (select \"status\" as v from raw.orders using sample 100 rows),\n\
+                 stats as (select count(*) as n, count(distinct v) as distinct_count, \
+                 count(*) - count(v) as null_count, cast(min(v) as varchar) as lo, \
+                 cast(max(v) as varchar) as hi from sampled),\n\
+                 top_values as (select cast(v as varchar) as value, count(*) as n from sampled \
+                 where v is not null group by cast(v as varchar) order by n desc limit 10)\n\
+                 select 'stats' as kind, lo as value, hi as value2, n, distinct_count, null_count from stats\n\
+                 union all\n\
+                 select 'top' as kind, value, cast(null as varchar) as value2, n, \
+                 cast(null as bigint) as distinct_count, cast(null as bigint) as null_count \
+                 from top_values",
+            )
+            .unwrap();
+            assert_eq!(
+                profile.columns,
+                [
+                    "kind",
+                    "value",
+                    "value2",
+                    "n",
+                    "distinct_count",
+                    "null_count"
+                ]
+            );
+            let stats = profile
+                .rows
+                .iter()
+                .find(|r| r[0].as_deref() == Some("stats"))
+                .unwrap();
+            assert_eq!(stats[3].as_deref(), Some("4"));
+            assert_eq!(stats[4].as_deref(), Some("2"));
+            assert_eq!(stats[5].as_deref(), Some("1"));
+            assert_eq!(profile.rows.len(), 3, "stats and two top values");
             std::fs::remove_dir_all(&dir).ok();
         }
     }

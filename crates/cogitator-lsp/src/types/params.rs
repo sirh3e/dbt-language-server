@@ -88,6 +88,16 @@ impl InitializeParams<'_> {
             .unwrap_or(false)
     }
 
+    /// workspace.inlayHint.refreshSupport: the server may ask the client
+    /// to re-request inlay hints (workspace/inlayHint/refresh).
+    pub fn inlay_hint_refresh(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .and_then(|c| c.pointer("/workspace/inlayHint/refreshSupport"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
     /// Whether the server should offer its dialogs: the dbt menu as a code
     /// action, walked through `window/showMessageRequest` prompts, for a
     /// client that has no command surface of its own (Zed). Asked for with
@@ -140,6 +150,13 @@ impl InitializeParams<'_> {
     /// `initializationOptions.target`: the active target override.
     pub fn target(&self) -> Option<&str> {
         self.init_option_str(&["target"])
+    }
+
+    /// `initializationOptions.renameColumnDirection` (or
+    /// `rename_column_direction`): which way textDocument/rename takes a
+    /// model column, `"down"` (the default) or `"both"`.
+    pub fn rename_column_direction(&self) -> Option<&str> {
+        self.init_option_str(&["renameColumnDirection", "rename_column_direction"])
     }
 
     /// `initializationOptions.vars`: `--vars` equivalents, name → value.
@@ -397,6 +414,17 @@ mod tests {
         let params: super::InitializeParams =
             serde_json::from_str(r#"{"initializationOptions":"nonsense"}"#).unwrap();
         assert_eq!(params.profiles_dir(), None);
+    }
+
+    #[test]
+    fn initialization_options_rename_column_direction() {
+        let params: super::InitializeParams =
+            serde_json::from_str(r#"{"initializationOptions":{"renameColumnDirection":"both"}}"#)
+                .unwrap();
+        assert_eq!(params.rename_column_direction(), Some("both"));
+        let params: super::InitializeParams =
+            serde_json::from_str(r#"{"initializationOptions":{}}"#).unwrap();
+        assert_eq!(params.rename_column_direction(), None);
     }
 
     #[test]

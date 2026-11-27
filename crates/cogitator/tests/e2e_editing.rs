@@ -217,8 +217,8 @@ fn inlay_links_and_linked_editing() {
 }
 
 /// Formatting (05 §9): one whole-document edit, Jinja expressions
-/// byte-identical after the reflow; a doc with inline {% %} declines
-/// with an empty edit list.
+/// byte-identical after the reflow, an inline {% %} stays inline, and SQL
+/// the dialect cannot parse declines with an empty edit list.
 #[test]
 fn formatting_reflows_sql_and_keeps_jinja() {
     let project = jaffle();
@@ -244,15 +244,32 @@ fn formatting_reflows_sql_and_keeps_jinja() {
     );
     assert!(new_text.contains('\n'), "reflowed: {new_text}");
 
+    // an inline statement stays where it was written, once
     let inline_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fmt_inline.sql"));
     lsp.notify(
         "textDocument/didOpen",
         serde_json::json!({"textDocument": {"uri": inline_uri, "languageId": "sql", "version": 1,
             "text": "select 1 {% if x %} ,2 {% endif %} from t\n"}}),
     );
-    let declined = lsp.request(
+    let inline = lsp.request(
         "textDocument/formatting",
         serde_json::json!({"textDocument": {"uri": inline_uri},
+                           "options": {"tabSize": 4, "insertSpaces": true}}),
+    );
+    let text = inline["result"][0]["newText"].as_str().expect("an edit");
+    assert_eq!(text.matches("{% if x %}").count(), 1, "{text}");
+    assert_eq!(text.matches("{% endif %}").count(), 1, "{text}");
+
+    // SQL the dialect cannot parse declines with an empty edit list
+    let broken_uri = cogitator_lsp::fs_path_to_uri(&root.join("models/fmt_broken.sql"));
+    lsp.notify(
+        "textDocument/didOpen",
+        serde_json::json!({"textDocument": {"uri": broken_uri, "languageId": "sql", "version": 1,
+            "text": "select a from t where\n"}}),
+    );
+    let declined = lsp.request(
+        "textDocument/formatting",
+        serde_json::json!({"textDocument": {"uri": broken_uri},
                            "options": {"tabSize": 4, "insertSpaces": true}}),
     );
     assert_eq!(

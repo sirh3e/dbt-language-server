@@ -33,6 +33,8 @@ pub struct Dispatcher {
     profiles: Arc<std::sync::Mutex<super::ProfilesConfig>>,
     /// Client advertised window.workDoneProgress (set at initialize).
     progress_supported: Arc<AtomicBool>,
+    /// The client's completion-item capabilities (set at initialize).
+    completion_support: cogitator_lsp::CompletionSupport,
     /// What the server has been doing, for dbt.status.
     status: Arc<std::sync::Mutex<super::StatusInfo>>,
     /// Shared derived-data caches (profiles inventory, lineage, results).
@@ -64,9 +66,12 @@ pub struct Dispatcher {
     dialogs_enabled: bool,
 }
 
+mod analytics;
+mod authoring;
 mod breaking;
 mod commands_exec;
 mod compiled_nav;
+mod completion_hints;
 mod dbt_ops;
 mod diagnostics_req;
 mod dialogs;
@@ -75,6 +80,7 @@ mod file_ops;
 mod navigation;
 mod plan;
 mod preview_cte;
+mod reach;
 mod requests;
 mod selectors;
 mod semantic;
@@ -118,6 +124,7 @@ impl Dispatcher {
             fusion_jobs: HashMap::new(),
             profiles,
             progress_supported,
+            completion_support: cogitator_lsp::CompletionSupport::default(),
             status,
             derived,
             in_flight: super::offload::InFlight::default(),
@@ -378,6 +385,25 @@ impl Dispatcher {
         *self.primary_root.lock().expect("primary root lock") = self.root_path.clone();
         self.progress_supported
             .store(params.work_done_progress(), Ordering::Relaxed);
+        self.completion_support =
+            cogitator_lsp::CompletionSupport::from_capabilities(params.capabilities.as_ref());
+        self.toggles
+            .inlay_refresh
+            .store(params.inlay_hint_refresh(), Ordering::Relaxed);
+        match params.rename_column_direction() {
+            None => {}
+            Some(word) => match cogitator_analysis::features::ColumnRenameDirection::parse(word) {
+                Some(direction) => {
+                    let both = direction == cogitator_analysis::features::ColumnRenameDirection::Both;
+                    tracing::info!(direction = word, "column rename direction from initializationOptions");
+                    self.toggles.rename_column_both.store(both, Ordering::Relaxed);
+                }
+                None => tracing::warn!(
+                    direction = word,
+                    "initializationOptions.renameColumnDirection is neither \"down\" nor \"both\"; renaming down"
+                ),
+            },
+        }
         self.dialogs_enabled = params.dialogs();
         if self.dialogs_enabled {
             tracing::info!("dialogs on: the dbt menu is a code action");

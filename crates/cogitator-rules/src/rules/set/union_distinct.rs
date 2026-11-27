@@ -89,6 +89,7 @@ fn examine(mir: &Mir, id: RelId, cx: &Cx<'_>) -> Option<Finding> {
             Evidence::Heuristic
         },
         fixes: fix(mir, rel.prov, cx, disjoint).into_iter().collect(),
+        subject: None,
     })
 }
 

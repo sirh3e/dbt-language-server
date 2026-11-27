@@ -329,6 +329,45 @@ refined to its own token kind (02 §3.3):
   dangling-ref pass). Column descriptions still skip doc() EXPANSION
   (unchanged from the Go port); the dangling check covers them anyway.
 
+#### Addendum: user-defined functions (dbt 1.11+, beyond the Go original)
+
+`function_detail_map` (`context/functions.rs`): function name → its body
+file (`.sql`, `.py`, `.js` under the project's `function-paths`, default
+`functions` when that directory exists; the stem is the name, the
+extension the language) and its `functions:` entry from a `.yml`/`.yaml`
+under the same paths (name position, description, arguments, returns,
+`config.type`, `config.volatility`, `overloads[].defined_in`). Either half
+alone is a function; a body an `overloads[].defined_in` names is not.
+Own project first, packages after, the first definition wins. The
+entries are read from the marked YAML tree, leniently, cached per file in
+memory only (the persisted scan format is unchanged). `function_bodies`
+holds every body file seen, overloads' and shadowed packages' included,
+for `DbtContext::is_function_body`. On the `function('…')` argument
+(02 §3.3):
+
+- hover: the signature (`name(arg type = default, …) -> returns`) in a
+  code fence of the body's language, the description, the documented
+  arguments, what it returns, and type · volatility · language ·
+  overloads · project;
+- definition and the document link: the body, else the entry's `name:`;
+- `function('` completes the names (detail: the signature;
+  `CompletionItem.data` `{"kind": "dbt_function", "name": …}`, resolved
+  lazily), with the closing-suffix mirroring of §9.4.1;
+- a `function()` naming no function warns as `dangling-function` with
+  did-you-mean suggestions, in the SQL pass, once a project was read (an
+  empty map is no sign of a missing read here: a project may have none);
+  `dbt.unresolved` reports it as the kind `function`;
+- references, from a call or from the entry's `name:`, search the files of
+  every graph node and the open document; the declarations are the body
+  and the entry;
+- semantic tokens type the name `function`;
+- a body file gets the dangling checks and the Jinja syntax check only:
+  its SQL is an expression (a `SELECT` on some warehouses), so the SQL
+  syntax check, lint, contracts and DuckDB's parser are not run on it.
+
+A function is no graph node yet (no `NodeKind`), so DAG views, impact and
+`resource_type:function` selection do not show it.
+
 ## 7. Util functions
 
 ### 7.1 Project root (`get_project_root(file_name, wd)`)
@@ -445,8 +484,11 @@ returned whenever lookup fails at any point.
   range in the request uri. A cursor on a `vars:` key of a dbt_project.yml
   goes to the entry deciding that var's value.
 - `MACRO` → package as in hover; if macro exists: `"file://" + macro.uri`, macro.range.
-- default → CTE jump: uri stays the request uri; if `def_tokens[lit]` exists,
-  range = zero-width at the definition token's (line, column).
+- default → a SQL local bound by the binder (`features::local_definition`:
+  a table alias, a CTE, a select-list column alias or a CTE column name, in
+  its scope; docs/local-names.md) → its declaration's range; else CTE jump:
+  uri stays the request uri; if `def_tokens[lit]` exists, range =
+  zero-width at the definition token's (line, column).
 
 ### 9.3 Go to schema (`dbt.goToSchema`)
 
@@ -510,6 +552,54 @@ as themselves, which is what makes this work.)
 First match of `['"]` in the line, or `""` if none. (Go comment claims "last";
 `FindString` returns the first — **[Q3]**, keep or fix consciously; used only for the
 source item's middle quotes.)
+
+#### 9.4.3 Column completion (binding)
+
+Plain SQL positions are classified from the cursor's statement as
+sqlparser parses it (`features/completion/scope/sql/`): the template is
+masked in place (`cogitator_duckdb::mask_jinja`, after flattening
+`if`/`for` with the local-rename masking), an identifier placeholder is
+written at the cursor, and the innermost parenthesized query holding it
+is parsed — whole, else up to the placeholder followed by the clauses
+after it cut back one at a time, else up to the placeholder alone. The
+clause holding the placeholder decides: a select-list item, WHERE, GROUP
+BY, HAVING, QUALIFY, ORDER BY, JOIN ON/USING take columns; a FROM/JOIN
+relation name takes relations; an alias being typed takes neither. When
+nothing parses, the token classification (`context.rs`) and the token
+scope (`ScopeIndex`) decide as before.
+
+Relations in scope are the FROM items of the cursor's SELECT, by alias,
+else by their own name (a ref's model, a source's table). Their columns
+come from the **column name resolver** (`scope/sql/resolve.rs`): a model's
+or a source table's are the ones the published project schema snapshot
+holds (`features::plan::schemas`, the background job: each model's SQL
+through its upstream models, `select *` chains included, then catalog
+and YAML fill-in), in its order, typed with the type it resolved, else
+the YAML's, and described by the YAML. The request reads the snapshot and
+never runs the job. Without one (before the first job, or a relation it
+does not know): a model's from its properties YAML, else from its column
+lineage (the model file read through the shell's `read`; names with `*`
+left out); a source table's from its YAML. A CTE's or derived table's from its select
+list, `*` and `t.*` expanded through the relations it reads (CTEs up to
+8 deep), descriptions and types passing through bare references.
+
+Items: kind Field, detail = the relation (`customers`, `shop.orders`,
+`recent (CTE)`) and ` · {data_type}` when one is known (the resolver's,
+or the YAML's), documentation
+= the column description. sortText tiers below every global:
+
+| sortText | item |
+|---|---|
+| `0` + index | after `alias.`: that relation's columns, in its order |
+| `00` + label | `alias.col` of a name two relations in scope share |
+| `01` + label | bare `col` of one relation |
+| `02` + label | `alias.col` of such a column |
+| `03` + label | bare `col` that is ambiguous (detail `ambiguous: o, c`) |
+| `0` / `1` / `2` + label | after FROM/JOIN: CTEs, `ref()` snippets, `source()` snippets |
+
+A qualified item carries `filterText` = the bare column; the lowest
+sortText is `preselect`. Columns of the document's other refs (`a`),
+buffer words (`b`), functions (`m`) and keywords (`z`) follow.
 
 ## 10. Feature-batch additions (binding)
 

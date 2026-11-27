@@ -72,6 +72,23 @@ impl ClientLink {
         });
     }
 
+    /// A server→client request without params (`workspace/*/refresh`):
+    /// JSON-RPC allows no `params: null`, so the member is left out.
+    pub fn send_bare_request(&self, method: &'static str) {
+        #[derive(Serialize)]
+        struct Bare {
+            jsonrpc: &'static str,
+            id: i64,
+            method: &'static str,
+        }
+        let id = self.ids.fetch_add(1, Ordering::Relaxed);
+        self.send(&Bare {
+            jsonrpc: "2.0",
+            id,
+            method,
+        });
+    }
+
     /// Show a dialog's prompt (`window/showMessageRequest`); its answer
     /// comes back to the dispatcher as a response to this id.
     pub fn ask(&self, shown: super::dialogs::menu::Shown) {

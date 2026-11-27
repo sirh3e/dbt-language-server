@@ -148,10 +148,10 @@ fn a_commands_error_is_said() {
 }
 
 #[test]
-fn an_answer_opens_as_a_document_after_a_page() {
+fn an_answer_opens_as_a_document_after_two_pages() {
     let project = jaffle();
     let (mut lsp, uri) = booted_with_dialogs(&project, true);
-    open_menu(&mut lsp, &uri, &["Model ›", "More…", "Its card"]);
+    open_menu(&mut lsp, &uri, &["Model ›", "More…", "More…", "Its card"]);
     let path = opened(&mut lsp, "dialogs/modelInfo.customers.md");
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(text.starts_with("# Its card\n"), "{text}");

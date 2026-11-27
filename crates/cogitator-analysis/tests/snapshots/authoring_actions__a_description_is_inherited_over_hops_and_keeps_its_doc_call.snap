@@ -1,0 +1,45 @@
+---
+source: crates/cogitator-analysis/tests/authoring_actions.rs
+expression: "actions[0]"
+---
+title: Inherit description of 'crust_id' from stg_bakery__crusts.crust_id (via crust_hops)
+kind: Some("quickfix")
+
+=== models/marts/_marts__models.yml (edited)
+version: 2
+
+models:
+  - name: crust_hops_more
+    description: The crusts again, a hop further.
+
+  - name: crust_report
+    description: A report on crusts.
+    columns:
+      - name: crust_id
+        description: The crust, as reported.
+      - name: loaf_id
+        description: The loaf, as reported.
+      - name: crunch
+        description: Twice the crunch.
+
+  - name: tested_model
+    columns:
+      - name: id
+        data_tests:
+          - unique
+
+  - name: crust_relay
+    columns:
+      - name: crust_id
+        description: "{{ doc('crust_id') }}"
+      - name: loaf_id
+        description: Written here, kept.
+
+  - name: crust_double
+    columns:
+      - name: crust_id
+      - name: crunch
+
+  - name: loaf_ids
+    columns:
+      - name: id

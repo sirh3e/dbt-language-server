@@ -47,6 +47,7 @@ fn run_rule(
             mat,
             dag: facts,
             no_text: false,
+            dialect: None,
         },
     )
     .findings

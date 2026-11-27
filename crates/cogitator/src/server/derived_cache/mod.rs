@@ -23,6 +23,8 @@ mod artifacts;
 mod breaking;
 mod lineage;
 mod plan;
+mod profile;
+mod reach;
 mod schemas;
 
 pub use plan::CachedPlan;
@@ -77,6 +79,8 @@ pub struct CacheReport {
     pub artifacts: CacheSurface,
     pub plans: CacheSurface,
     pub highlights: CacheSurface,
+    /// The project-wide column-lineage graph (`dbt.columnLineageGraph`).
+    pub lineage_graph: super::lineage_graph::GraphCacheReport,
 }
 
 /// (path, scope fingerprint) → (stamp, parsed inventory).
@@ -87,8 +91,8 @@ type LineageMap = HashMap<String, (u64, Arc<Option<ModelLineage>>)>;
 type ResultsSlot = (usize, HashMap<String, (String, Arc<str>)>);
 /// root → ([run_results, manifest, sources] stamps, the parsed set).
 type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 4], ArtifactSet)>;
-/// uri → ((document generation, plan key), typed lineage).
-type TypedLineageMap = HashMap<String, ((u64, u64), Arc<Option<ModelLineage>>)>;
+/// uri → ((document generation, plan key, schema revision), typed lineage).
+type TypedLineageMap = HashMap<String, ((u64, u64, u64), Arc<Option<ModelLineage>>)>;
 /// uri → ((document generation, schema revision), typed plan).
 type PlansMap = HashMap<String, ((u64, u64), Arc<CachedPlan>)>;
 
@@ -122,9 +126,15 @@ pub struct DerivedCache {
     highlights_stats: Counters,
     /// The last breaking-change report per model uri (on open/save).
     breaking: breaking::BreakingSlot,
+    /// The last column reach per model name (on open/save).
+    reach: reach::ReachSlot,
     /// The syntax check's renderer of ONE context snapshot (the pointer
     /// identity of the Arc): the project's macros, vars and relations.
     syntax_renderer: Mutex<Option<(usize, Arc<SyntaxRenderer>)>>,
+    /// dbt.profileColumn's answers, which the hover reads.
+    column_profiles: profile::ProfileSlot,
+    /// Every model's typed lineage per project root, on disk too.
+    pub lineage_graph: super::lineage_graph::Stores,
 }
 
 /// What a cached `dbt.highlight` answer is of: an open document at a
@@ -337,6 +347,7 @@ impl DerivedCache {
             .lock()
             .expect("highlights cache lock")
             .clear();
+        self.lineage_graph.clear();
     }
 
     pub fn report(&self) -> CacheReport {
@@ -371,6 +382,7 @@ impl DerivedCache {
                 self.highlights.lock().expect("highlights cache lock").len(),
                 &self.highlights_stats,
             ),
+            lineage_graph: self.lineage_graph.report(),
         }
     }
 }

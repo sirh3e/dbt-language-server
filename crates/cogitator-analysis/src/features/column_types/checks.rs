@@ -95,6 +95,7 @@ fn mismatch(
             },
             token_range: *range,
             suggestions: vec![spelled.clone()],
+            subject: None,
         });
     }
     Some(diagnostic)

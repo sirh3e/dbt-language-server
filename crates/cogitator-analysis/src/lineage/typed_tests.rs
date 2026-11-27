@@ -24,12 +24,14 @@ fn schema(names: &[&str], completeness: Completeness) -> Arc<ModelSchema> {
             name: Arc::from(*n),
             ty: ColType::new(SqlType::Unknown, Nullability::Unknown),
             unique: false,
+            proven_type: false,
         })
         .collect();
     Arc::new(ModelSchema {
         columns: Arc::from(columns),
         completeness,
         fingerprint: 1,
+        unique_sets: Vec::new(),
     })
 }
 

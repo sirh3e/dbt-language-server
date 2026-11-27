@@ -36,6 +36,23 @@ pub fn static_diagnostics(
         items.extend(features::unused_var_diagnostics(ctx, uri, &doc.text));
         items.extend(features::env_var_diagnostics(ctx, doc));
         items
+    } else if ctx.is_function_body(uri) {
+        // a user-defined function's body is an expression (or, on some
+        // warehouses, a SELECT): its refs and Jinja are checked, its SQL
+        // is not, nor the model checks (lint, contracts, DuckDB's parser)
+        let mut items = features::dangling_ref_diagnostics(ctx, doc);
+        if lints.syntax {
+            items.extend(features::syntax::syntax_diagnostics(
+                &doc.text,
+                uri,
+                &ctx.dialect,
+                features::syntax::SyntaxOptions {
+                    sql: false,
+                    renderer: None,
+                },
+            ));
+        }
+        return items;
     } else {
         let mut items = features::dangling_ref_diagnostics(ctx, doc);
         items.extend(features::env_var_diagnostics(ctx, doc));
@@ -96,7 +113,10 @@ pub fn push_diagnostics(
     if let Some(root) = ctx.project_root.as_deref() {
         let set = derived.artifacts_cached(root);
         items.extend(features::artifact_diagnostics(ctx, uri, &set));
-        if let (true, Some(doc)) = (perf.active(), doc) {
+        if let Some(doc) = doc {
+            items.extend(check_diagnostics(ctx, derived, doc, uri, perf));
+        }
+        if let (true, Some(doc)) = (perf.plan_needed(), doc) {
             let key = crate::server::handlers::plan::plan_key(
                 ctx,
                 derived,
@@ -126,6 +146,34 @@ pub fn breaking_diagnostics(
         .breaking_report(uri)
         .map(|report| features::breaking::diagnostics(&report))
         .unwrap_or_default()
+}
+
+/// The schema job's correctness checks of an open model (`join.fanout`,
+/// `type.*`), read off the published snapshot: never plans, so both the
+/// push and the pull path call it inline.
+pub fn check_diagnostics(
+    ctx: &DbtContext,
+    derived: &crate::server::derived_cache::DerivedCache,
+    doc: &Document,
+    uri: &str,
+    perf: &features::plan::diagnostics_config::PerfSettings,
+) -> Vec<Diagnostic> {
+    let (Some(root), Some(model)) = (
+        ctx.project_root.as_deref(),
+        features::model_name_from_uri(uri),
+    ) else {
+        return Vec::new();
+    };
+    let Some(snapshot) = derived.project_schemas(root) else {
+        return Vec::new();
+    };
+    features::plan::diagnostics::snapshot_diagnostics(
+        &doc.text,
+        &model,
+        &snapshot,
+        perf,
+        &ctx.dialect,
+    )
 }
 
 /// One open model's plan findings as diagnostics, under the live perf

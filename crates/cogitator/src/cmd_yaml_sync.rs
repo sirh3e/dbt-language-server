@@ -53,8 +53,8 @@ pub fn run(args: &Args, profiles_dir: Option<&str>, target: Option<&str>) -> i32
             NewEntries::PerModel
         },
     };
-    let root =
-        std::fs::canonicalize(&args.project_dir).unwrap_or_else(|_| args.project_dir.clone());
+    let root = cogitator_analysis::util::canonical(&args.project_dir)
+        .unwrap_or_else(|_| args.project_dir.clone());
     let offline = Offline {
         profiles_dir: profiles_dir.map(str::to_string),
         target: target.map(str::to_string),
@@ -141,13 +141,8 @@ fn model_lines(model: &ModelSummary) -> Vec<String> {
     }
     for inherited in &model.inherited {
         let from = match &inherited.from {
-            SourceRef::Model { name, column } => format!("{name}.{column}"),
-            SourceRef::Source {
-                source,
-                table,
-                column,
-            } => format!("source {source}.{table}.{column}"),
-            SourceRef::Unknown { name, column } => format!("{name}.{column}"),
+            source @ SourceRef::Source { .. } => format!("source {}", source.label()),
+            other => other.label(),
         };
         lines.push(format!("~ {} description from {from}", inherited.column));
     }

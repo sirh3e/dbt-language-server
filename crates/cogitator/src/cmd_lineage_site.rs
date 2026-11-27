@@ -31,7 +31,8 @@ pub struct LineageSiteArgs {
 /// Exit status: 0 written, 1 not.
 pub fn run(args: &LineageSiteArgs) -> i32 {
     let started = Instant::now();
-    let root = std::fs::canonicalize(&args.project_dir).unwrap_or(args.project_dir.clone());
+    let root =
+        cogitator_analysis::util::canonical(&args.project_dir).unwrap_or(args.project_dir.clone());
     let site = match headless(&root, ARTIFACT_CAP, COMPILED_CAP) {
         Ok(site) => site,
         Err(guidance) => {

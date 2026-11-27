@@ -158,6 +158,19 @@ impl<'a> Planner<'a> {
 /// incrementality verdict, the slowest rebuilds first.
 #[tracing::instrument(skip_all)]
 pub fn incrementality(snap: &Snapshot, derived: &DerivedCache, artifact_cap: u64) -> Reply {
+    Reply::result(&incrementality_of(snap, derived, artifact_cap).1)
+}
+
+/// The artifacts read for the report, and the report (shared with
+/// dbt.costReport's "make it incremental" suggestions).
+pub fn incrementality_of(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+    artifact_cap: u64,
+) -> (
+    ArtifactSet,
+    cogitator_analysis::features::plan::IncrementalityReport,
+) {
     let ctx = &snap.ctx;
     let artifacts = match ctx.project_root.as_deref() {
         Some(root) => derived.artifacts(root, artifact_cap),
@@ -172,7 +185,7 @@ pub fn incrementality(snap: &Snapshot, derived: &DerivedCache, artifact_cap: u64
         revision,
         &|path| std::fs::read_to_string(path).ok(),
     );
-    Reply::result(&report)
+    (artifacts, report)
 }
 
 /// The split of `uri`'s model at its incrementality frontier
@@ -211,6 +224,12 @@ pub fn split_plan(snap: &Snapshot, derived: &DerivedCache, uri: &str, artifact_c
         Some(plan) => Reply::result(&plan),
         None => Reply::null(),
     }
+}
+
+/// The revision of the project's published schemas, 0 before the first:
+/// a lookup, never a computation, so the dispatcher may ask.
+pub fn schema_revision(ctx: &DbtContext, derived: &DerivedCache) -> u64 {
+    project_of(ctx, derived).map_or(0, |p| p.revision)
 }
 
 fn project_of(ctx: &DbtContext, derived: &DerivedCache) -> Option<Arc<SchemaSnapshot>> {

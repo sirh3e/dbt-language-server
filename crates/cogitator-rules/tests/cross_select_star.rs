@@ -56,6 +56,7 @@ fn run_with(
             mat: Some(mat),
             dag: Some(facts),
             no_text: !text,
+            dialect: None,
         },
     )
     .findings

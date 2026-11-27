@@ -9,21 +9,27 @@
 //! the keyword arguments `m(b=2)` of every call of the macro, project-wide
 //! (installed packages' files are never edited). Positional arguments do
 //! not name the parameter and are left alone.
+//!
+//! Definition, references and highlights also reach a SQL column alias
+//! (`… as col`, read again in ORDER BY or through a CTE; [`navigate`]),
+//! which this feature never renames.
 
 pub(crate) mod jinja;
 mod names;
+mod navigate;
 mod occurrences;
-mod sql;
+pub(crate) mod sql;
+
+pub use navigate::{local_definition, local_highlights, local_references};
 
 #[cfg(test)]
 mod tests;
 
 use cogitator_ir::Span;
-use cogitator_lsp::{DocumentHighlight, Location, Position, PrepareRenameResult, WorkspaceEdit};
+use cogitator_lsp::{Position, PrepareRenameResult, WorkspaceEdit};
 
 use super::references::files::{path_of, Reader};
 use super::{byte_position, DbtContext, Document};
-use occurrences::{Occurrences, Role};
 
 /// What the cursor names.
 pub(crate) enum Target {
@@ -128,59 +134,4 @@ pub fn rename_local_at(
     Some(occurrences::rename(
         ctx, &reader, doc, uri, &target, new_name,
     ))
-}
-
-/// textDocument/references on a local name.
-pub fn local_references(
-    ctx: &DbtContext,
-    doc: Option<&Document>,
-    uri: &str,
-    pos: Position,
-    include_declaration: bool,
-) -> Option<Vec<Location>> {
-    let doc = doc?;
-    let target = target_at(ctx, doc, uri, pos)?.ok()?;
-    let reader = Reader::disk(Some((uri, &doc.text)));
-    let Occurrences { here, elsewhere } =
-        occurrences::collect(ctx, &reader, doc, uri, &target, None).ok()?;
-    let mut out: Vec<Location> = here
-        .into_iter()
-        .filter(|(_, role)| include_declaration || *role == Role::Use)
-        .map(|(span, _)| Location {
-            uri: uri.to_string(),
-            range: range_of(&doc.text, span),
-        })
-        .collect();
-    for (path, ranges) in elsewhere {
-        let uri = super::file_uri(&path);
-        out.extend(ranges.into_iter().map(|range| Location {
-            uri: uri.clone(),
-            range,
-        }));
-    }
-    Some(out)
-}
-
-/// textDocument/documentHighlight on a local name: bindings are writes,
-/// uses reads.
-pub fn local_highlights(
-    ctx: &DbtContext,
-    doc: Option<&Document>,
-    uri: &str,
-    pos: Position,
-) -> Option<Vec<DocumentHighlight>> {
-    let doc = doc?;
-    let target = target_at(ctx, doc, uri, pos)?.ok()?;
-    Some(
-        occurrences::here(&target)
-            .into_iter()
-            .map(|(span, role)| DocumentHighlight {
-                range: range_of(&doc.text, span),
-                kind: match role {
-                    Role::Definition => 3,
-                    Role::Use => 2,
-                },
-            })
-            .collect(),
-    )
 }

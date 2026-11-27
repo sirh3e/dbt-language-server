@@ -111,6 +111,7 @@ fn findings(cx: &Cx<'_>, hir: &Hir, dag: &DagFacts) -> Option<Vec<Finding>> {
                     ),
                     evidence: evidence(dag),
                     fixes: Vec::new(),
+                    subject: None,
                 }
             })
             .collect(),

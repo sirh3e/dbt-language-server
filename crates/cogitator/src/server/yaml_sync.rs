@@ -19,7 +19,6 @@ use cogitator_lsp::message_type;
 use serde::Serialize;
 
 use super::derived_cache::DerivedCache;
-use super::handlers::lineage::TypedLineage;
 use super::reply::{Effect, Reply};
 use super::snapshot::Snapshot;
 
@@ -34,26 +33,18 @@ pub fn open_texts(texts: Vec<(String, Arc<str>)>) -> OpenTexts {
         .collect()
 }
 
-/// The plan over `snap`'s project. `doc_uri` names `snap.doc`, whose
-/// live text is used for that model's lineage.
+/// The plan over `snap`'s project; `snap.doc`'s live text answers for
+/// that model's lineage.
 pub fn plan(
     snap: &Snapshot,
     derived: &DerivedCache,
     artifact_cap: u64,
     open: &OpenTexts,
-    doc_uri: &str,
     options: &SyncOptions,
 ) -> SyncPlan {
     let ctx = &snap.ctx;
-    let typed = TypedLineage::new(snap, derived, artifact_cap);
-    let lineage = |model: &str| -> Option<ModelLineage> {
-        let details = ctx.model_detail_map.get(model)?;
-        let uri = cogitator_lsp::fs_path_to_uri(&details.uri);
-        match snap.doc.as_deref() {
-            Some(doc) if uri == doc_uri => (*typed.for_open_document(doc, &uri)).clone(),
-            _ => typed.for_saved_file(&uri),
-        }
-    };
+    let source = super::lineage_source::LineageSource::new(snap, derived, artifact_cap);
+    let lineage = |model: &str| -> Option<ModelLineage> { (*source.lineage(model)).clone() };
     let schemas = ctx
         .project_root
         .as_deref()
@@ -215,7 +206,7 @@ pub fn code_action(
         models: vec![model.to_string()],
         ..SyncOptions::default()
     };
-    let plan = plan(snap, derived, artifact_cap, &open, doc_uri, &options);
+    let plan = plan(snap, derived, artifact_cap, &open, &options);
     (plan.changes > 0).then(|| cogitator_lsp::CodeAction {
         title: format!("Sync schema YAML of '{model}' ({} changes)", plan.changes),
         kind: Some("refactor.rewrite"),
@@ -286,7 +277,6 @@ pub fn offline_plan(
         &derived,
         ARTIFACT_CAP,
         &OpenTexts::new(),
-        "",
         options,
     ))
 }
