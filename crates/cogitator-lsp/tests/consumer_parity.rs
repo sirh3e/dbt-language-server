@@ -259,9 +259,10 @@ fn lua_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The editors that can wrap commands. Zed cannot (an extension has no
-/// command surface), so it has no entry: it gets code actions and lenses
-/// alone.
+/// The editors that expose commands. Zed's extension has no command
+/// surface, so the server walks it through its own dialogs instead (the
+/// "dbt…" code action, `window/showMessageRequest` prompts): a command
+/// counts as exposed in Zed when the dialogs' menu names it.
 fn consumers(root: &Path) -> Vec<Consumer> {
     let mut nvim = Vec::new();
     lua_files(&root.join("editors/nvim/lua"), &mut nvim);
@@ -284,6 +285,11 @@ fn consumers(root: &Path) -> Vec<Consumer> {
             name: "vscode",
             files: vec![root.join("editors/vscode/src/extension.ts")],
             add_to: "editors/vscode (src/extension.ts palette, package.json contributes, README)",
+        },
+        Consumer {
+            name: "zed",
+            files: vec![root.join("crates/cogitator/src/server/dialogs/menu.rs")],
+            add_to: "the server's dialogs (crates/cogitator/src/server/dialogs/menu.rs: a choice in a group, asking what the command needs)",
         },
     ]
 }
@@ -322,8 +328,13 @@ fn every_editor_exposes_every_command_a_person_runs() {
 fn zed_says_where_commands_are() {
     let readme = read(&root().join("editors/zed/README.md"));
     assert!(
-        readme.contains("executeCommand"),
-        "editors/zed/README.md must say that dbt.* commands need an executeCommand client"
+        readme.contains("dbt…"),
+        "editors/zed/README.md must say that the dbt commands are in the \"dbt…\" code action"
+    );
+    let extension = read(&root().join("editors/zed/src/lib.rs"));
+    assert!(
+        extension.contains("\"dialogs\""),
+        "editors/zed/src/lib.rs must ask the server for its dialogs (initializationOptions.dialogs)"
     );
 }
 

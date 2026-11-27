@@ -13,6 +13,7 @@ pub(crate) mod config_file;
 mod config_watcher;
 mod derived_cache;
 pub(crate) mod diagnostics;
+mod dialogs;
 mod dispatcher;
 mod function_docs;
 mod fusion;

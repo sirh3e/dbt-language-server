@@ -162,6 +162,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.testSql` | `{model, relation, tests, text}`, each test `{label, kind, sql, query, error, …}`, or InvalidParams Guidance | none, or with `show: true` (the "Show the SQL of N tests" action) the text written to `target/.cogitator/tests/<model>.sql` and opened via showDocument |
 | `dbt.incrementalSql` | `{model, strategy, strategySource, steps, fullRefresh, notes, text}` or InvalidParams Guidance | none, or with `show: true` the text written to `target/.cogitator/incremental/<model>.<strategy>.sql` and opened via showDocument |
 | `dbt.cteSql` | `{model, cte, source, sql, text}` or InvalidParams Guidance | none, or with `show: true` (the "SQL" lens and the "Show the SQL of CTE `x`" action) the text written to `target/.cogitator/preview/<model>.<cte or final>.sql` and opened via showDocument |
+| `dbt.menu` | `null` (at once) | `{uri, position?}`: the dbt menu as `window/showMessageRequest` dialogs, for a client with `initializationOptions.dialogs` (Zed): its groups, then what the chosen command needs; the command runs server-side and its answer opens via showDocument (`target/.cogitator/dialogs/`) or is said |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |

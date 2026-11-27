@@ -1,14 +1,15 @@
 # Consumer parity (crates/cogitator-lsp/tests/consumer_parity.rs, the editor-parity skill).
 #
 # Every dbt.* command the server registers (cogitator_lsp::COMMANDS) is classified here:
-#   kind = "user"      a person runs it, so every editor that can wrap a command wraps it:
-#                      nvim, emacs and vscode (Zed has no command surface; it gets code
-#                      actions and lenses alone).
+#   kind = "user"      a person runs it, so every editor exposes it: nvim, emacs and vscode
+#                      wrap it; Zed, which has no command surface, reaches it through the
+#                      server's dialogs (crates/cogitator/src/server/dialogs/menu.rs, the
+#                      "dbt…" code action).
 #   kind = "internal"  the server sends it inside a code lens or code action, which every
 #                      LSP client runs by itself; `via` says where.
 #
 # [gaps.<editor>] lists the user commands an editor did not wrap when the rule was adopted
-# (2026-11-22). It only shrinks: a new command never gets a line here, and the test fails
+# (2026-11-22; Zed's dialogs 2026-11-27). It only shrinks: a new command never gets a line here, and the test fails
 # once an editor wraps a listed command until its line is removed.
 
 [commands]
@@ -62,6 +63,7 @@
 "dbt.lineageSite" = { kind = "user" }
 "dbt.syncYaml" = { kind = "user" }
 "dbt.modelDependencies" = { kind = "user" }
+"dbt.menu" = { kind = "internal", via = "code action 'dbt… (every dbt command)' when initializationOptions.dialogs (the Zed extension; server/dialogs)" }
 
 [gaps.emacs]
 "dbt.columnLineage" = "predates the parity rule"
@@ -100,3 +102,8 @@
 "dbt.expandJinja" = "predates the parity rule"
 "dbt.doctor" = "predates the parity rule"
 "dbt.queryPlan" = "predates the parity rule"
+
+[gaps.zed]
+"dbt.astGrep" = "a pattern is free text, which a showMessageRequest button cannot carry"
+"dbt.setProfilesDir" = "a directory is free text; set initialization_options.profilesDir instead"
+"dbt.highlight" = "colours a client's buffers; Zed colours them itself (semantic tokens)"

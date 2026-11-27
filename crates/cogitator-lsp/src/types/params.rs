@@ -88,6 +88,36 @@ impl InitializeParams<'_> {
             .unwrap_or(false)
     }
 
+    /// Whether the server should offer its dialogs: the dbt menu as a code
+    /// action, walked through `window/showMessageRequest` prompts, for a
+    /// client that has no command surface of its own (Zed). Asked for with
+    /// `initializationOptions.dialogs = true`, and only honoured when the
+    /// client says it answers showMessageRequest (`window.showMessage`).
+    pub fn dialogs(&self) -> bool {
+        let asked = self
+            .initialization_options
+            .as_ref()
+            .and_then(|opts| opts.get("dialogs"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let answers = self
+            .capabilities
+            .as_ref()
+            .and_then(|c| c.pointer("/window/showMessage"))
+            .is_some_and(|v| v.is_object());
+        asked && answers
+    }
+
+    /// `window.showDocument.support`: the client opens what the server
+    /// asks it to.
+    pub fn shows_documents(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .and_then(|c| c.pointer("/window/showDocument/support"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    }
+
     fn init_option_str(&self, keys: &[&str]) -> Option<&str> {
         let opts = self.initialization_options.as_ref()?;
         keys.iter()

@@ -297,30 +297,34 @@ BigQuery), dbt Fusion static analysis, document symbols, and the
 - **Emacs** package ([`editors/emacs`](editors/emacs)): eglot + lsp-mode,
   the same commands and graph browser
 - **Zed** extension ([`editors/zed`](editors/zed)): server registration
-  with settings passthrough
+  with settings passthrough, and the dbt menu as the server's dialogs
 
 [dbt-jsonschema]: https://github.com/dbt-labs/dbt-jsonschema
 
 ## What reaches which editor
 
-| Capability | Neovim | Emacs | Zed / any stock LSP editor |
-|---|---|---|---|
-| Diagnostics, completion, hover, definitions/references, symbols, folding, selection ranges, semantic tokens, signature help, rename | ✓ | ✓ | ✓ |
-| Code actions: the dbt command set at the cursor, YAML-entry jumps, profiles.yml target switching | ✓ | ✓ | ✓ |
-| Code lenses | ✓ | ✓ | editor-dependent |
-| dbt run / test / compile / parse, schema & tests navigation, extract-to-YAML | ✓ commands + keymaps | ✓ commands | via code actions |
-| Pickers: targets, tags, selectors, projects | ✓ | ✓ | — |
-| Query workflow (bounded SELECT on the relation) | ✓ `:DbtQuery` (dadbod/scratch) | ✓ `cogitator-query` (sql buffer) | — |
-| Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — |
-| Project explorer / text-mode DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — |
-| Lineage site (DAG + column lineage, HTML) | ✓ `:DbtLineageSite` (opens in the browser) | ✓ `cogitator-lineage-site` (opens in the browser) | `cogitator lineage-site` from a shell; VS Code: a live panel |
-| Fuzzy pickers | ✓ `:DbtFind` (fzf-lua / snacks / telescope / built-in) | — | — |
-| Profiles-dir live switch | ✓ persisted per project | ✓ command (dir-locals for persistence) | — |
-| Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | — |
+| Capability | Neovim | Emacs | Zed | any stock LSP editor |
+|---|---|---|---|---|
+| Diagnostics, completion, hover, definitions/references, symbols, folding, selection ranges, semantic tokens, signature help, rename | ✓ | ✓ | ✓ | ✓ |
+| Code actions: the dbt command set at the cursor, YAML-entry jumps, profiles.yml target switching | ✓ | ✓ | ✓ | ✓ |
+| Code lenses | ✓ | ✓ | ✓ | editor-dependent |
+| The dbt menu: every dbt command by group | ✓ `:Dbt` | ✓ commands | ✓ the "dbt…" code action (server dialogs) | — |
+| dbt run / test / compile / parse, schema & tests navigation, extract-to-YAML | ✓ commands + keymaps | ✓ commands | ✓ the dbt menu | via code actions |
+| Pickers: targets, tags, selectors, CTEs, strategies, columns, jobs | ✓ | ✓ | ✓ prompts of the dbt menu | — |
+| Query workflow (bounded SELECT on the relation) | ✓ `:DbtQuery` (dadbod/scratch) | ✓ `cogitator-query` (sql buffer) | rows of a model or CTE as a document | — |
+| Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | the model graph as a document | — |
+| Project explorer / text-mode DAG | ✓ `:DbtBrowse` / `:DbtDag` (deliberately Neovim-only) | — | — | — |
+| Lineage site (DAG + column lineage, HTML) | ✓ `:DbtLineageSite` (opens in the browser) | ✓ `cogitator-lineage-site` (opens in the browser) | ✓ the dbt menu (opens in the browser) | `cogitator lineage-site` from a shell; VS Code: a live panel |
+| Fuzzy pickers | ✓ `:DbtFind` (fzf-lua / snacks / telescope / built-in) | — | — | — |
+| Profiles-dir live switch | ✓ persisted per project | ✓ command (dir-locals for persistence) | `initialization_options.profilesDir` | — |
+| Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | ✓ the dbt menu | — |
 
-Zed's extension API cannot add commands, pickers or panels: its ceiling
-is exactly what stock LSP carries. That is why the dbt workflows are
-served as code actions and lenses rather than client-side features.
+Zed's extension API cannot add commands, pickers or panels, so the server
+draws the dialogs itself: the extension asks for them
+(`initializationOptions.dialogs`), the code action "dbt…" opens the dbt
+menu as `window/showMessageRequest` prompts, and each command's answer
+opens as a document (`dbt.menu`, [docs/commands.md](docs/commands.md)).
+Any client that answers showMessageRequest can ask for the same.
 
 ## Dialects
 

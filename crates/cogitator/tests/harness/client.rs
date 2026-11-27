@@ -109,6 +109,7 @@ impl ServerBuilder {
             stderr: captured,
             buffered: VecDeque::new(),
             server_requests: Vec::new(),
+            prompt_answers: VecDeque::new(),
             next_id: 0,
             deadline: self.deadline,
         }
@@ -130,6 +131,9 @@ pub struct Lsp {
     buffered: VecDeque<serde_json::Value>,
     /// Server→client requests seen so far (already auto-answered).
     pub server_requests: Vec<serde_json::Value>,
+    /// The buttons the next `window/showMessageRequest`s are answered
+    /// with, in order; with none left a prompt is closed (`null`).
+    prompt_answers: VecDeque<String>,
     next_id: i64,
     deadline: Duration,
 }
@@ -366,6 +370,10 @@ impl Lsp {
         let result = match frame["method"].as_str().unwrap_or_default() {
             "window/showDocument" => serde_json::json!({"success": true}),
             "workspace/applyEdit" => serde_json::json!({"applied": true}),
+            "window/showMessageRequest" => match self.prompt_answers.pop_front() {
+                Some(title) => serde_json::json!({ "title": title }),
+                None => serde_json::Value::Null,
+            },
             // window/workDoneProgress/create, client/registerCapability, …
             _ => serde_json::Value::Null,
         };
@@ -403,6 +411,12 @@ impl Drop for Lsp {
 }
 
 impl Lsp {
+    /// Answer the next `window/showMessageRequest`s with these buttons.
+    pub fn answer_prompts(&mut self, titles: &[&str]) {
+        self.prompt_answers
+            .extend(titles.iter().map(|t| t.to_string()));
+    }
+
     /// Raw channel receive for tests that need frame-at-a-time control.
     pub fn try_next_frame(&mut self) -> Option<serde_json::Value> {
         match self.rx.try_recv() {

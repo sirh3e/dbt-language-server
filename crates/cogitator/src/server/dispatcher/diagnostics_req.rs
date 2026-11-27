@@ -105,6 +105,7 @@ impl Dispatcher {
         let snap = self.snapshot_for(&uri);
         let derived = self.derived.clone();
         let artifact_cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let dialogs = self.dialogs_enabled;
         let entry_models = if crate::server::diagnostics::is_yaml(&uri) {
             self.yaml_entry_models(&uri)
         } else {
@@ -249,6 +250,11 @@ impl Dispatcher {
                 extra.extend(crate::server::astgrep::actions(
                     &rules, &uri, &doc.text, range,
                 ));
+            }
+            if dialogs {
+                // a client without a command surface (Zed) reaches every
+                // dbt.* command through this one entry
+                extra.push(crate::server::dialogs::menu_action(&uri, range.start));
             }
             extra.retain(|action| action.allowed_by(only.as_deref()));
             actions.extend(extra);

@@ -96,7 +96,8 @@ editor integrations live under `editors/`.
 ## Server surface beyond stock LSP
 - **Consumer parity is a rule.** A new `dbt.*` command is classified in
   `editors/parity.toml` and wrapped by Neovim, Emacs and VS Code in the same
-  change (Zed gets code actions and lenses only); the checklist is the
+  change (Zed reaches it through the server's dialogs: a choice of the dbt
+  menu in `crates/cogitator/src/server/dialogs/menu.rs`); the checklist is the
   `editor-parity` skill (`.claude/skills/editor-parity/SKILL.md`), and
   `crates/cogitator-lsp/tests/consumer_parity.rs` fails until it holds. The
   `[gaps.*]` baseline only shrinks.

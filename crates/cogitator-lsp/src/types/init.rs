@@ -209,6 +209,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.lineageSite",
     "dbt.syncYaml",
     "dbt.modelDependencies",
+    "dbt.menu",
     "dbt.testSql",
     "dbt.incrementalSql",
     "dbt.cteSql",

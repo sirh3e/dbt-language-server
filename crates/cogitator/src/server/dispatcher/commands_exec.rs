@@ -565,6 +565,10 @@ impl Dispatcher {
                 self.send(&ResultResponse::new(req.id, serde_json::Value::Null));
                 return;
             }
+            "dbt.menu" => {
+                self.dialog_menu(req.id, &uri, arg_position(arg));
+                return;
+            }
             "dbt.goToSchema" => {}
             other => {
                 let guidance = cogitator_error::guidance::Guidance::new(format!(

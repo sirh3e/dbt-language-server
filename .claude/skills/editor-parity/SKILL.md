@@ -19,10 +19,12 @@ LSP client runs them — so the rule is about commands.
      it, in the same change.**
    - `kind = "internal"`: the server only sends it inside a code lens or code
      action (`dbt.openSchema`, `dbt.goToTests`, …). Say where with `via`.
-2. Zed cannot add commands (an extension has no command surface). It gets code
-   actions and lenses for free; its README says that the rest needs an
-   executeCommand client. Name a headline feature there when it arrives as a
-   code action.
+2. Zed cannot add commands (an extension has no command surface), so the
+   server draws its dialogs: the code action "dbt…" (`dbt.menu`, internal)
+   walks the dbt menu as `window/showMessageRequest` prompts. **Every user
+   command is a choice of that menu** (`crates/cogitator/src/server/dialogs/menu.rs`),
+   asking on the way what the command needs, or a `[gaps.zed]` line saying
+   why a button cannot drive it (free text).
 3. `[gaps.<editor>]` holds what was missing when the rule was adopted
    (2026-11-22). **It only shrinks.** Never add a line for a new command; when
    you wrap a listed one, delete its line (the test tells you to).
@@ -80,7 +82,17 @@ editor "exposes" a command when one of its files holds the quoted name.
 - The README's "Palette commands".
 - Checks in `src/test/suite/index.ts`.
 
-**Zed** — nothing to wrap; a README note when the feature is a code action.
+**Zed** (the server's dialogs, `crates/cogitator/src/server/dialogs/menu.rs`)
+- A choice in the fitting group (`model_group`, `project_group`,
+  `session_group`) through `Here::run`, with how its answer is shown
+  (`Present`: a document, a field as its own file, a location, a job that
+  started, or `Itself` when the command opens what it made with `show:
+  true`). What it needs is asked first: a sub-prompt of choices the menu
+  knows (`Here`: CTEs, tags, selectors, jobs), or `Present::Choose` with a
+  `Chooser` that builds the next prompt from another command's answer.
+- A case in the module's tests, and the editors/zed README's list.
+- `crates/cogitator/tests/e2e_dialogs.rs` presses the buttons end to end
+  (`Lsp::answer_prompts`).
 
 **Every client**: handle a `null` result (say why there is nothing), go to a
 file from a `uri`, never assume a position the server did not send.

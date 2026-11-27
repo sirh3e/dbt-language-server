@@ -59,6 +59,9 @@ pub struct Dispatcher {
     /// Shared with the refresh task so it can tell primary refreshes
     /// (watch publish) from secondary ones (extra map).
     primary_root: Arc<std::sync::Mutex<String>>,
+    /// The client asked for the server's dialogs (Zed:
+    /// `initializationOptions.dialogs`) and answers showMessageRequest.
+    dialogs_enabled: bool,
 }
 
 mod breaking;
@@ -66,6 +69,7 @@ mod commands_exec;
 mod compiled_nav;
 mod dbt_ops;
 mod diagnostics_req;
+mod dialogs;
 mod dispatch_impl;
 mod file_ops;
 mod navigation;
@@ -126,6 +130,7 @@ impl Dispatcher {
             context_revision,
             extra,
             primary_root,
+            dialogs_enabled: false,
         }
     }
 
@@ -224,8 +229,9 @@ impl Dispatcher {
         };
         if method.is_empty() {
             // a response to one of our server→client requests (id, no
-            // method) — fire-and-forget: ignore instead of MethodNotFound
-            tracing::trace!("client response ignored");
+            // method): a dialog's answer, else fire-and-forget — never
+            // MethodNotFound
+            self.client_response(content);
             return;
         }
         // INFO so OTLP sees it under default filters (05 §6.3: span
@@ -372,6 +378,10 @@ impl Dispatcher {
         *self.primary_root.lock().expect("primary root lock") = self.root_path.clone();
         self.progress_supported
             .store(params.work_done_progress(), Ordering::Relaxed);
+        self.dialogs_enabled = params.dialogs();
+        if self.dialogs_enabled {
+            tracing::info!("dialogs on: the dbt menu is a code action");
+        }
         {
             let mut cfg = self.profiles.lock().expect("profiles config lock");
             if let Some(dir) = params.profiles_dir() {
