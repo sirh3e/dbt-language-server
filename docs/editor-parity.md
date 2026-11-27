@@ -31,9 +31,13 @@ Zed included. The rule is about **commands**.
    - `user` — a person runs it, so **Neovim, Emacs and VS Code all wrap it**.
    - `internal` — the server only sends it inside a code lens or code
      action; `via` says where.
-2. **Zed** cannot add commands (an extension has no command surface): it
-   gets code actions and lenses, and its README says the rest needs an
-   executeCommand client.
+2. **Zed** cannot add commands (an extension has no command surface), so the
+   server draws its dialogs: the code action "dbt…" (`dbt.menu`) walks the
+   dbt menu as `window/showMessageRequest` prompts. **Every user command is a
+   choice of that menu** (`crates/cogitator/src/server/dialogs/menu.rs`), or
+   a `[gaps.zed]` line saying why a button cannot drive it (free text).
+   `[zed]` also lists the commands Zed reaches without the menu, through a
+   lens, an action or a setting.
 3. `[gaps.<editor>]` lists what each editor was missing when the rule was
    adopted. **It only shrinks**: a new command never gets a line there, and
    wrapping a listed command means deleting its line.
@@ -80,8 +84,10 @@ In short:
 4. **VS Code** — a palette entry in `src/extension.ts` with exported pure
    helpers, the `package.json` contribution, the README, checks in the
    suite.
-5. **Zed** — nothing to wrap; mention it in its README when the feature is
-   a code action.
+5. **Zed** — a choice in the dialogs' menu (`server/dialogs/menu.rs`: the
+   group, what to ask first, how the answer is shown), its line in the Zed
+   README's list, and a case of the module's tests; `tests/e2e_dialogs.rs`
+   presses the buttons.
 
 Then: the parity test, `just nvim-test`, `just emacs-test`, `just
 elisp-lint`, `just lua-lint`, `just vscode-build`.

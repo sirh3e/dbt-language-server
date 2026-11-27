@@ -17,6 +17,8 @@ pub struct ClientLink {
     ids: Arc<AtomicI64>,
     /// Client advertised window.workDoneProgress (set at initialize).
     progress_supported: Arc<std::sync::atomic::AtomicBool>,
+    /// The dialogs' prompts and the commands they wait on (Zed).
+    dialogs: Arc<super::dialogs::Dialogs>,
 }
 
 impl ClientLink {
@@ -24,6 +26,23 @@ impl ClientLink {
     /// are built once per message, the owner boundary this allocation
     /// feeds (08 §1.5); a shared scratch would force &mut everywhere.
     pub fn send<T: Serialize>(&self, msg: &T) {
+        // a response to a command the dialogs ran: presented here, never
+        // sent (the client did not ask for it)
+        if self.dialogs.awaiting() {
+            if let Ok(value) = serde_json::to_value(msg) {
+                let response = value.get("method").is_none();
+                if let Some(id) = value
+                    .get("id")
+                    .and_then(|id| id.as_i64())
+                    .filter(|_| response)
+                {
+                    if let Some(pending) = self.dialogs.take(id) {
+                        super::dialogs::finish(self.clone(), pending, value);
+                        return;
+                    }
+                }
+            }
+        }
         if let Ok(frame) = rpc::encode_frame_vec(msg) {
             let _ = self.write_tx.send(frame);
         }
@@ -68,6 +87,25 @@ impl ClientLink {
             id,
             method,
         });
+    }
+
+    /// Show a dialog's prompt (`window/showMessageRequest`); its answer
+    /// comes back to the dispatcher as a response to this id.
+    pub fn ask(&self, shown: super::dialogs::menu::Shown) {
+        let params = super::dialogs::ShowMessageRequestParams::of(&shown);
+        let id = self.ids.fetch_add(1, Ordering::Relaxed);
+        self.dialogs.remember(id, shown);
+        self.send(&ServerRequest {
+            jsonrpc: "2.0",
+            id,
+            method: "window/showMessageRequest",
+            params,
+        });
+    }
+
+    /// The dialogs' state, which every clone of this link shares.
+    pub fn dialogs(&self) -> &super::dialogs::Dialogs {
+        &self.dialogs
     }
 
     #[allow(dead_code)]
@@ -116,6 +154,7 @@ impl ClientLink {
             write_tx,
             ids,
             progress_supported,
+            dialogs: Arc::default(),
         }
     }
 

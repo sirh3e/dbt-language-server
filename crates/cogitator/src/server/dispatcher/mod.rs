@@ -61,6 +61,9 @@ pub struct Dispatcher {
     /// Shared with the refresh task so it can tell primary refreshes
     /// (watch publish) from secondary ones (extra map).
     primary_root: Arc<std::sync::Mutex<String>>,
+    /// The client asked for the server's dialogs (Zed:
+    /// `initializationOptions.dialogs`) and answers showMessageRequest.
+    dialogs_enabled: bool,
 }
 
 mod analytics;
@@ -71,6 +74,7 @@ mod compiled_nav;
 mod completion_hints;
 mod dbt_ops;
 mod diagnostics_req;
+mod dialogs;
 mod dispatch_impl;
 mod file_ops;
 mod navigation;
@@ -133,6 +137,7 @@ impl Dispatcher {
             context_revision,
             extra,
             primary_root,
+            dialogs_enabled: false,
         }
     }
 
@@ -231,8 +236,9 @@ impl Dispatcher {
         };
         if method.is_empty() {
             // a response to one of our server→client requests (id, no
-            // method) — fire-and-forget: ignore instead of MethodNotFound
-            tracing::trace!("client response ignored");
+            // method): a dialog's answer, else fire-and-forget — never
+            // MethodNotFound
+            self.client_response(content);
             return;
         }
         // INFO so OTLP sees it under default filters (05 §6.3: span
@@ -397,6 +403,10 @@ impl Dispatcher {
                     "initializationOptions.renameColumnDirection is neither \"down\" nor \"both\"; renaming down"
                 ),
             },
+        }
+        self.dialogs_enabled = params.dialogs();
+        if self.dialogs_enabled {
+            tracing::info!("dialogs on: the dbt menu is a code action");
         }
         {
             let mut cfg = self.profiles.lock().expect("profiles config lock");

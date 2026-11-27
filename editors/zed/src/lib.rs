@@ -2,7 +2,12 @@
 //!
 //! Finds the `cogitator` binary (settings override first, then PATH) and
 //! passes `lsp.cogitator.initialization_options` through, so Zed users get
-//! the same profiles support as the other editors:
+//! the same profiles support as the other editors. It also asks the server
+//! for its dialogs (`"dialogs": true`, unless the settings say `false`):
+//! an extension cannot add commands, pickers or panels, so the server
+//! offers the dbt menu as the code action "dbt…" and walks it with
+//! `window/showMessageRequest` prompts, opening each answer as a document —
+//! what Neovim's `:Dbt` menu and its pickers do.
 //!
 //! ```json
 //! { "lsp": { "cogitator": {
@@ -54,9 +59,42 @@ impl zed::Extension for CogitatorExtension {
         _language_server_id: &LanguageServerId,
         worktree: &zed::Worktree,
     ) -> Result<Option<zed::serde_json::Value>> {
-        Ok(LspSettings::for_worktree("cogitator", worktree)
+        let options = LspSettings::for_worktree("cogitator", worktree)
             .ok()
-            .and_then(|settings| settings.initialization_options))
+            .and_then(|settings| settings.initialization_options);
+        Ok(Some(with_dialogs(options)))
+    }
+}
+
+/// The settings' initialization options with `"dialogs": true` added,
+/// unless they set `dialogs` themselves (`false` turns the menu off).
+fn with_dialogs(options: Option<zed::serde_json::Value>) -> zed::serde_json::Value {
+    let mut options = match options {
+        Some(zed::serde_json::Value::Object(map)) => map,
+        _ => zed::serde_json::Map::new(),
+    };
+    options
+        .entry("dialogs")
+        .or_insert(zed::serde_json::Value::Bool(true));
+    zed::serde_json::Value::Object(options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::with_dialogs;
+    use zed_extension_api::serde_json::json;
+
+    #[test]
+    fn the_dialogs_are_asked_for_unless_turned_off() {
+        assert_eq!(with_dialogs(None), json!({ "dialogs": true }));
+        assert_eq!(
+            with_dialogs(Some(json!({ "profilesDir": "/p" }))),
+            json!({ "profilesDir": "/p", "dialogs": true })
+        );
+        assert_eq!(
+            with_dialogs(Some(json!({ "dialogs": false }))),
+            json!({ "dialogs": false })
+        );
     }
 }
 

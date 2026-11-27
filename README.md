@@ -154,22 +154,26 @@ Every `dbt.*` command the server answers is in
 
 ## Editors
 
-| Capability | Neovim | Emacs | VS Code | Zed and any LSP editor |
-|---|---|---|---|---|
-| Diagnostics, completion, hover, definition, references, rename, symbols, folding, semantic tokens, signature help | ✓ | ✓ | ✓ | ✓ |
-| Code actions: the dbt commands at the cursor, quick fixes, target switching | ✓ | ✓ | ✓ | ✓ |
-| Code lenses | ✓ | ✓ | ✓ | editor-dependent |
-| dbt run, test, compile and parse; schema and tests navigation | ✓ commands, keymaps | ✓ commands | ✓ palette | via code actions |
-| Pickers: targets, tags, selectors, projects | ✓ | ✓ | — | — |
-| Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — | — |
-| Project explorer and DAG | ✓ `:DbtBrowse`, `:DbtDag` | — | — | — |
-| Live column lineage | — | — | ✓ | — |
-| Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | ✓ server status | — |
+| Capability | Neovim | Emacs | VS Code | Zed | any LSP editor |
+|---|---|---|---|---|---|
+| Diagnostics, completion, hover, definition, references, rename, symbols, folding, semantic tokens, signature help | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Code actions: the dbt commands at the cursor, quick fixes, target switching | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Code lenses | ✓ | ✓ | ✓ | ✓ | editor-dependent |
+| The dbt menu: every dbt command by group | ✓ `:Dbt` | ✓ commands | ✓ palette | ✓ the "dbt…" code action | — |
+| dbt run, test, compile and parse; schema and tests navigation | ✓ commands, keymaps | ✓ commands | ✓ palette | ✓ the dbt menu | via code actions |
+| Pickers: targets, tags, selectors, projects | ✓ | ✓ | — | ✓ prompts of the dbt menu (no projects) | — |
+| Model-graph browser | ✓ `:DbtGraph` | ✓ `cogitator-graph` | — | the model graph as a document | — |
+| Project explorer and DAG | ✓ `:DbtBrowse`, `:DbtDag` | — | — | — | — |
+| Live column lineage | — | — | ✓ | — | — |
+| Health report | ✓ `:checkhealth cogitator` | ✓ `cogitator-doctor` | ✓ server status | ✓ the dbt menu | — |
 
-Zed's extension API cannot add commands, pickers or panels, so what stock
-LSP carries is its ceiling. That is why the dbt workflows are served as code
-actions and lenses rather than as client-side features. Which command reaches
-which editor is held by a test ([docs/editor-parity.md](docs/editor-parity.md)).
+Zed's extension API cannot add commands, pickers or panels, so the server
+draws the dialogs itself: the Zed extension asks for them
+(`initializationOptions.dialogs`), the code action "dbt…" opens the dbt menu
+as `window/showMessageRequest` prompts, and each command's answer opens as a
+document (`dbt.menu`, [docs/commands.md](docs/commands.md)). Any client that
+answers showMessageRequest can ask for the same. Which command reaches which
+editor is held by a test ([docs/editor-parity.md](docs/editor-parity.md)).
 
 ## Installation
 
@@ -237,7 +241,8 @@ for eglot (built in since Emacs 29) and lsp-mode:
 [`editors/zed`](editors/zed) ([install guide](editors/zed/README.md)): run
 `zed: install dev extension`, then configure it through the standard
 `lsp.cogitator` settings (binary path, arguments,
-`initialization_options`). The third-party
+`initialization_options`). Every dbt command is in the code action "dbt…",
+which walks the dbt menu as prompts. The third-party
 [zed-dbt](https://github.com/kylejbrk/zed-dbt) extension works too.
 
 ### Helix

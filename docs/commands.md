@@ -296,6 +296,13 @@ incrementality commands are explained in [incrementality.md](incrementality.md).
 - **Side effects**: none; with `show: true` writes `target/.cogitator/preview/<model>.<cte|final>.sql` and opens it via showDocument. Every CTE and the final select carry the code lens "SQL" beside "Preview rows", and the cursor's CTE the code action "Show the SQL of CTE `x`". The hover on a CTE's name (its definition or a reference) shows its columns and the lineage of each — :DbtCteSql, :DbtCtes
 - **Editors**: Neovim ✓ · Emacs ✓ · VS Code ✓
 
+### `dbt.menu`
+
+- **Argument**: `{uri, position?}` — where the menu was opened (the code action sends the cursor)
+- **Result**: `null`, at once
+- **Side effects**: opens the dbt menu as dialogs: a `window/showMessageRequest` per question, its buttons the choices — the groups Model (on a model's `.sql` file), Project and Session, as in Neovim's `:Dbt` menu, then what the chosen command needs (a CTE, a strategy, a selection, a job, a profile target, a column), nine choices a page with "More…", and "Cancel". The chosen command runs through the server's own `workspace/executeCommand` path; its answer opens as a document (markdown, or the SQL it holds) written to `target/.cogitator/dialogs/<command>[.<model>].<md|sql>`, a dbt job says it started, a location opens, the lineage site opens in the browser, and an error is a message. Offered only to a client that asked for it with `initializationOptions.dialogs = true` and says it answers showMessageRequest: the code action "dbt… (every dbt command)" everywhere in a SQL or YAML file. `dbt.astGrep`, `dbt.search`, `dbt.setProfilesDir`, `dbt.renameColumn` (free text) and `dbt.highlight` are not in it
+- **Editors**: Zed ✓ (the extension asks for it) · the other editors have their own menus (`:Dbt`, `cogitator-…`, the palette)
+
 ### `dbt.testSql`
 
 - **Argument**: `{uri, show?}` — the model; `show: true` also opens the text as a document (what the code action sends)

@@ -60,6 +60,56 @@ just zed-build
 
 compiles the extension to WebAssembly (`wasm32-wasip1`) the way Zed does.
 
+## The dbt menu (dialogs)
+
+A Zed extension cannot add commands, pickers or panels, so the server
+draws the dialogs itself. The extension asks for them
+(`initializationOptions.dialogs`, on by default), and every SQL and YAML
+file of the project gets one more entry in the code-actions menu
+(`ctrl-.` / `cmd-.`):
+
+> **dbt… (every dbt command)**
+
+It opens the same menu as Neovim's `:Dbt`, one prompt at a time, each
+choice a button:
+
+- **Model** (on a model's `.sql` file): run, test, compile, preview rows,
+  the rendered Jinja, the compiled SQL, the SQL each test runs, a CTE's
+  SQL or rows (you pick the CTE), what an incremental run executes (you
+  pick the strategy), incremental against full refresh, the query plan,
+  column lineage, a column's downstream impact, lineage graph or warehouse
+  profile (you pick the column), its changes since the last commit or the
+  last dbt run (SQL, compiled SQL or lineage), breaking changes, dependencies, the model graph, its card and tests,
+  its relation, its schema YAML entry, extract and sync the YAML, the
+  split plan, the syntax tree.
+- **Project**: dbt parse, source freshness, run/test/build/compile a
+  selection (you pick this model, upstream/downstream, a `selectors.yml`
+  entry or a tag), list a selection's nodes, cancel a running dbt job,
+  dead models, unresolved names, models that could be incremental, the
+  project graph, what the last run cost, the lineage site (opens in the
+  browser).
+- **Session**: status, the health report, switch profile/target (you
+  pick from the profiles), the profiles, cache counters and clearing,
+  reload `cogitator.yml`.
+
+A long prompt pages with **More…**; **Cancel** (or closing the prompt)
+ends it. A command's answer opens as a document: markdown, or the SQL
+itself, under `target/.cogitator/dialogs/` (SQL the server already writes,
+such as a CTE's or a test's, opens from where it is). A dbt job says it
+started, and its outcome follows as a message.
+
+Five commands are not in the menu, because a button cannot carry free
+text or because Zed does the job itself: `dbt.astGrep` and `dbt.search`
+(a pattern or a query), `dbt.setProfilesDir` (set
+`initialization_options.profilesDir` instead), `dbt.renameColumn` (a new
+name: rename with `F2`, below) and `dbt.highlight` (Zed colours buffers
+with semantic tokens). Turn the
+menu off with:
+
+```json
+{ "lsp": { "cogitator": { "initialization_options": { "dialogs": false } } } }
+```
+
 ## Test it in a real Zed
 
 The dev shell (`devenv shell`, or `nix-shell`) brings Zed (`zeditor`, from its
@@ -88,6 +138,11 @@ and extensions are never touched. Outside the dev shell, unset an
 - Hover, completion, definition, references, rename, signature help,
   semantic tokens, diagnostics and code lenses come straight from the
   server; dbt run/test/compile surface as editor notifications.
+- Formatting, inlay hints, document links, linked CTE editing, quickfix
+  and refactor code actions, pull + workspace diagnostics all work in
+  Zed out of the box, and so do the "Preview rows" and "SQL" lenses on
+  each CTE, the CTE hover card, and the test-SQL and incremental-strategy
+  code actions.
 - The third-party [zed-dbt](https://github.com/kylejbrk/zed-dbt)
   extension predates this one and also works; this extension is the
   first-party, settings-passthrough variant.
@@ -164,15 +219,9 @@ arrives through standard LSP requests:
 
 Formatting, inlay hints, document links, linked CTE editing, quickfix
 and refactor code actions, pull + workspace diagnostics all work in
-Zed out of the box. The rest of the `dbt.*` executeCommand surface
-(doctor, impact, deadModels, expandJinja, runSelection/cancel, the
-column-lineage dialog of Neovim, …) has no generic Zed UI — use the
-Neovim, Emacs or VS Code integrations, or any client that can send
-workspace/executeCommand.
-
-Splitting a table model at its incrementality frontier is a code
-action, so it works here: "Split 'cte' into the incremental model … and
-a table over it" in the code-actions menu creates the new incremental
-model and rewrites this one to read it. Its plan as an S-expression
-(`dbt.splitPlan`) and the project-wide `dbt.incrementality` list need
-an executeCommand client.
+Zed out of the box, and the rest of the `dbt.*` surface is in the dbt
+menu (above). Splitting a table model at its incrementality frontier is
+a code action too: "Split 'cte' into the incremental model … and a table
+over it" creates the new incremental model and rewrites this one to read
+it; its plan as an S-expression is "Split it at its incrementality
+frontier: the plan" in the menu's Model group.

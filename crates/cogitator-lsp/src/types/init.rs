@@ -215,6 +215,7 @@ pub const COMMANDS: &[&str] = &[
     "dbt.diffAt",
     "dbt.profileColumn",
     "dbt.renameColumn",
+    "dbt.menu",
     "dbt.testSql",
     "dbt.incrementalSql",
     "dbt.cteSql",
