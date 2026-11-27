@@ -118,8 +118,9 @@ pub fn unmatched(ctx: &DbtContext, open: Open, text: &str) -> Vec<Diagnostic> {
 /// `workspace/symbol` over the full universe.
 pub fn workspace_symbols(ctx: &DbtContext, open: Open, query: &str) -> Reply {
     let (universe, _) = engine(ctx, &open);
-    Reply::result(&cogitator_analysis::features::workspace_symbols_in(
-        ctx, &universe, query,
+    let read = |path: &Path| open.read(path);
+    Reply::result(&cogitator_analysis::features::workspace_symbols_with(
+        ctx, &universe, query, &read,
     ))
 }
 

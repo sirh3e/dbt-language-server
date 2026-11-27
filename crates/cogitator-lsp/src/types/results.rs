@@ -249,7 +249,15 @@ pub mod symbol_kind {
     pub const MODULE: i32 = 2;
     /// Used for selectors.yml entries (selector search).
     pub const NAMESPACE: i32 = 3;
+    /// Used for a file's `ref()`/`source()` calls (documentSymbol): what
+    /// the file imports, which pickers that filter kinds keep.
+    pub const PACKAGE: i32 = 4;
     pub const CLASS: i32 = 5;
+    /// Used for data and unit tests: a check that belongs to its model,
+    /// kept by pickers that filter kinds (they drop Event and Constant).
+    pub const METHOD: i32 = 6;
+    /// Used for documented columns of models and source tables.
+    pub const FIELD: i32 = 8;
     pub const INTERFACE: i32 = 11;
     pub const FUNCTION: i32 = 12;
     pub const VARIABLE: i32 = 13;
@@ -265,6 +273,10 @@ pub struct SymbolInformation {
     pub name: String,
     pub kind: i32,
     pub location: Location,
+    /// What the symbol belongs to (a column's model, a test's model, a
+    /// source table's source); serialized only when set.
+    #[serde(rename = "containerName", skip_serializing_if = "Option::is_none")]
+    pub container_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

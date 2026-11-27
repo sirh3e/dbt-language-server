@@ -236,8 +236,19 @@ filesystem path math; `uri`/`content` are `null` when dbt has not written
 message) past the 2 MiB cap — open the `uri` directly then.
 
 `workspace/symbol` additionally understands `tag:x` (models carrying tag
-x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`) and
-`selector:x` (selectors.yml entries) queries.
+x — from YAML `tags:`/`config.tags` and `{{ config(tags=…) }}`),
+`selector:x` (selectors.yml entries), `exposure:x` (exposures, metrics,
+semantic models), `column:x` (documented columns, Field) and `test:x`
+(data and unit tests, Method) queries. A plain query lists selectors
+(Namespace), models (Class), sources and their tables (`source.table`,
+Interface), macros (Function), exposures, metrics and semantic models
+(Module), and when not empty also the documented columns
+(`model.column`, `source.table.column`, Field) and tests (`not_null on
+model.column`, unit tests by name, Method) — at most 2,000 of those;
+`containerName` names a column's, test's or table's owner.
+`textDocument/documentSymbol` lists the file's CTEs (Struct), macros
+(Function) and `ref()`/`source()` calls (`ref(m)`, `source(s, t)`,
+Package), by position.
 
 Deliberate non-goals of this surface: no `manifest.json` /
 `run_results.json` fallback (the server's own analysis is always live;
