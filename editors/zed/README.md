@@ -81,15 +81,21 @@ choice a button:
   profile (you pick the column), its changes since the last commit or the
   last dbt run (SQL, compiled SQL or lineage), breaking changes, dependencies, the model graph, its card and tests,
   its relation, its schema YAML entry, extract and sync the YAML, the
-  split plan, the syntax tree.
+  split plan, the syntax tree; **Find in the project**: who reads it,
+  joins it or selects `*` from it, who reads it without `select *`, which
+  models use one of its columns (you pick it), its own `select *`, its
+  joins with sources (`dbt.search`); and a Jinja pattern in this file.
 - **Project**: dbt parse, source freshness, run/test/build/compile a
   selection (you pick this model, upstream/downstream, a `selectors.yml`
   entry or a tag), list a selection's nodes, cancel a running dbt job,
-  dead models, unresolved names, models that could be incremental, the
+  find a Jinja pattern (`ref()`, `source()`, `{{ this }}`, `config()`,
+  `is_incremental()` blocks, `ref(var(…))`, or `select *` in the compiled
+  SQL: `dbt.astGrep`), dead models, unresolved names, models that could be incremental, the
   project graph, what the last run cost, the lineage site (opens in the
   browser).
 - **Session**: status, the health report, switch profile/target (you
-  pick from the profiles), the profiles, cache counters and clearing,
+  pick from the profiles), the profiles, switch the profiles directory
+  (you pick among those whose `profiles.yml` exists), cache counters and clearing,
   reload `cogitator.yml`.
 
 A long prompt pages with **More…**; **Cancel** (or closing the prompt)
@@ -98,11 +104,12 @@ itself, under `target/.cogitator/dialogs/` (SQL the server already writes,
 such as a CTE's or a test's, opens from where it is). A dbt job says it
 started, and its outcome follows as a message.
 
-Five commands are not in the menu, because a button cannot carry free
-text or because Zed does the job itself: `dbt.astGrep` and `dbt.search`
-(a pattern or a query), `dbt.setProfilesDir` (set
-`initialization_options.profilesDir` instead), `dbt.renameColumn` (a new
-name: rename with `F2`, below) and `dbt.highlight` (Zed colours buffers
+A search or a pattern answers as a document of matches, one link per
+line. A button cannot carry free text, so the searches and patterns are
+fixed ones; any other query or pattern, or a directory not found, goes
+through `initialization_options.profilesDir` or another editor. Two
+commands are not in the menu: `dbt.renameColumn` (a new name is free
+text: rename with `F2`, below) and `dbt.highlight` (Zed colours buffers
 with semantic tokens). Turn the
 menu off with:
 

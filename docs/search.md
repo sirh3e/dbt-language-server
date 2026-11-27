@@ -70,6 +70,10 @@ render, or SQL that does not parse into a full query — is listed under
 - Neovim: `:DbtSearch joins stg_orders on customer_id`
 - Emacs: `M-x cogitator-search`
 - VS Code: "dbt: Structural search over the models' SQL"
+- Zed: "dbt…" → Model › Find in the project: fixed queries about the open
+  model (who reads, joins or selects `*` from it, which models use one of
+  its columns, …), answered as a document of matches — a button carries no
+  free query
 
 ## What it does not do
 

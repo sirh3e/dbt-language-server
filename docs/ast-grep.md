@@ -42,9 +42,10 @@ place (the *expando character*); `_M` in a pattern is the same as `$M`.
 | Neovim | `:DbtAstGrep {{ ref($M) }}` → quickfix; `:DbtFind astgrep` / `<leader>da` → the picker | `:DbtAstGrep {{ ref($M) }} => {{ ref('core', $M) }}` lists the matches and asks |
 | Emacs | `M-x cogitator-ast-grep` → a grep buffer | the same `pattern => rewrite`, after `y-or-n-p` |
 | VS Code | "dbt: Structural search (ast-grep)" → a quick pick | the same, after a confirmation |
+| Zed | "dbt…" → Project › Find a Jinja pattern (or Model › … in this file): the patterns above as buttons → a document of matches | – (a button carries no rewrite) |
 
 Prefix the pattern with `sql:` to search the compiled SQL:
-`sql: select * from $T`. Behind all three is the `dbt.astGrep` command
+`sql: select * from $T`. Behind all of them is the `dbt.astGrep` command
 ([commands.md](commands.md#dbtastgrep)): at most 500 matches, each with its
 range, its text, the metavariables it bound and, with a rewrite, what it
 becomes; with `apply: true` the server sends the edits through
