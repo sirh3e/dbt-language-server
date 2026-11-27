@@ -91,8 +91,8 @@ type LineageMap = HashMap<String, (u64, Arc<Option<ModelLineage>>)>;
 type ResultsSlot = (usize, HashMap<String, (String, Arc<str>)>);
 /// root → ([run_results, manifest, sources] stamps, the parsed set).
 type ArtifactsMap = HashMap<PathBuf, ([Option<FileStamp>; 4], ArtifactSet)>;
-/// uri → ((document generation, plan key), typed lineage).
-type TypedLineageMap = HashMap<String, ((u64, u64), Arc<Option<ModelLineage>>)>;
+/// uri → ((document generation, plan key, schema revision), typed lineage).
+type TypedLineageMap = HashMap<String, ((u64, u64, u64), Arc<Option<ModelLineage>>)>;
 /// uri → ((document generation, schema revision), typed plan).
 type PlansMap = HashMap<String, ((u64, u64), Arc<CachedPlan>)>;
 

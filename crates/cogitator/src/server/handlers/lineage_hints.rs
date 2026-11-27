@@ -4,7 +4,7 @@
 //! the client to re-request its inlay hints once it lands, so typing
 //! never waits for lineage.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -55,12 +55,24 @@ pub fn hints(
         .collect()
 }
 
-/// Uris with a lineage computation in flight: one at a time per uri, so
-/// a burst of edits queues one, not one per keystroke. The refresh it
-/// ends with brings a request for the newest text, which starts the next.
-fn warming() -> &'static Mutex<HashSet<String>> {
-    static WARMING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+/// Uris with a lineage computation in flight, and whether another request
+/// came meanwhile: one at a time per uri, so a burst of edits queues one,
+/// not one per keystroke. A request during a computation runs it once more
+/// when it ends (the schemas may have been published since: what it read
+/// is stale), and the refresh it ends with brings a request for the newest
+/// text.
+fn warming() -> &'static Mutex<HashMap<String, bool>> {
+    static WARMING: OnceLock<Mutex<HashMap<String, bool>>> = OnceLock::new();
     WARMING.get_or_init(Default::default)
+}
+
+/// Whether another request came for `uri` during its computation; clears it.
+fn asked_again(uri: &str) -> bool {
+    warming()
+        .lock()
+        .expect("lineage warming lock")
+        .get_mut(uri)
+        .is_some_and(std::mem::take)
 }
 
 /// Computes the lineage of `uri` off the dispatcher and, when it gives
@@ -74,21 +86,27 @@ pub fn warm(
     link: ClientLink,
     refresh: bool,
 ) {
-    if !warming()
-        .lock()
-        .expect("lineage warming lock")
-        .insert(uri.clone())
     {
-        return;
+        let mut warming = warming().lock().expect("lineage warming lock");
+        if let Some(again) = warming.get_mut(&uri) {
+            *again = true;
+            return;
+        }
+        warming.insert(uri.clone(), false);
     }
     tokio::task::spawn_blocking(move || {
         let _span = tracing::debug_span!("lineage_hints.warm", uri = %uri).entered();
         let _done = Warming(&uri); // released even if the computation panics
-        let lineage = super::lineage::typed_lineage_for(&snap, &derived, &uri, artifact_cap);
-        let placed = lineage
-            .as_ref()
-            .as_ref()
-            .is_some_and(|l| l.columns.iter().any(|c| c.end.is_some()));
+        let placed = loop {
+            let lineage = super::lineage::typed_lineage_for(&snap, &derived, &uri, artifact_cap);
+            let placed = lineage
+                .as_ref()
+                .as_ref()
+                .is_some_and(|l| l.columns.iter().any(|c| c.end.is_some()));
+            if !asked_again(&uri) {
+                break placed;
+            }
+        };
         if placed && refresh {
             link.send_bare_request("workspace/inlayHint/refresh");
         }
