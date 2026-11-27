@@ -464,6 +464,62 @@ and the SQL when `is_incremental()' changes nothing."
                            (or (plist-get result :hover) "") #'special-mode))))
 
 ;; ---------------------------------------------------------------------------
+;; the SQL of the tests (dbt.testSql) and of an incremental run
+;; (dbt.incrementalSql)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--show-sql (name result)
+  "Show RESULT's :text in the read-only SQL buffer NAME."
+  (let ((text (plist-get result :text)))
+    (if (not (stringp text))
+        (message "cogitator: nothing to show")
+      (let ((buf (get-buffer-create name)))
+        (with-current-buffer buf
+          (let ((inhibit-read-only t))
+            (erase-buffer)
+            (insert text)
+            (goto-char (point-min)))
+          (if (fboundp 'sql-mode) (sql-mode) (fundamental-mode))
+          (setq buffer-read-only t)
+          (local-set-key (kbd "q") #'quit-window))
+        (pop-to-buffer buf)))))
+
+;;;###autoload
+(defun cogitator-test-sql ()
+  "The SQL every test of this model runs, as dbt runs it."
+  (interactive)
+  (cogitator--execute
+   "dbt.testSql" (cogitator--command-argument)
+   (lambda (result) (cogitator--show-sql "*cogitator-test-sql*" result))))
+
+;;;###autoload
+(defun cogitator-cte-sql ()
+  "The query that selects the CTE at point (or the final select), Jinja
+resolved and without the warehouse."
+  (interactive)
+  (cogitator--execute
+   "dbt.cteSql" (cogitator--command-argument t)
+   (lambda (result) (cogitator--show-sql "*cogitator-cte-sql*" result))))
+
+(defconst cogitator-incremental-strategies
+  '("append" "merge" "delete+insert" "insert_overwrite" "microbatch")
+  "The strategies `cogitator-incremental-sql' takes.")
+
+;;;###autoload
+(defun cogitator-incremental-sql (&optional strategy)
+  "What an incremental run of this model executes, for its own strategy
+or STRATEGY (asked with a prefix argument)."
+  (interactive
+   (list (when current-prefix-arg
+           (completing-read "Strategy: " cogitator-incremental-strategies nil t))))
+  (let ((argument (cogitator--command-argument)))
+    (when (and strategy (not (string-empty-p strategy)))
+      (setq argument (append argument (list :strategy strategy))))
+    (cogitator--execute
+     "dbt.incrementalSql" argument
+     (lambda (result) (cogitator--show-sql "*cogitator-incremental-sql*" result)))))
+
+;; ---------------------------------------------------------------------------
 ;; the rows of a CTE (dbt.previewCte)
 ;; ---------------------------------------------------------------------------
 
@@ -1200,6 +1256,67 @@ buffer (or the models of this properties file).  See
                 (lambda (_) (message "cogitator: schema YAML synced")))))))))))
 
 ;; ---------------------------------------------------------------------------
+;; a column renamed up- and downstream (dbt.renameColumn)
+;; ---------------------------------------------------------------------------
+
+(defun cogitator--rename-column-lines (result)
+  "The preview lines of a dbt.renameColumn RESULT: what is renamed from
+where and why there, then the edits of each file."
+  (let* ((origin (plist-get result :origin))
+         (lines (list (format "# dbt.renameColumn: %s.%s → %s (%s)"
+                              (plist-get result :model) (plist-get result :column)
+                              (plist-get result :newName) (plist-get result :direction))
+                      (format "# from %s.%s: %s" (plist-get origin :model)
+                              (plist-get origin :column) (plist-get origin :stop))
+                      (concat "# models: " (mapconcat #'identity
+                                                      (append (plist-get result :models) nil)
+                                                      ", ")))))
+    (dolist (change (append (plist-get (plist-get result :edit) :documentChanges) nil))
+      (let ((uri (plist-get (plist-get change :textDocument) :uri))
+            (edits (append (plist-get change :edits) nil)))
+        (setq lines (append lines (list (format "%s: %d edit(s)" uri (length edits)))))
+        (dolist (edit edits)
+          (let ((start (plist-get (plist-get edit :range) :start)))
+            (setq lines (append lines (list (format "  %d:%d %s"
+                                                    (1+ (plist-get start :line))
+                                                    (1+ (plist-get start :character))
+                                                    (plist-get edit :newText)))))))))
+    lines))
+
+;;;###autoload
+(defun cogitator-rename-column (new-name &optional downstream-only)
+  "Rename the model column at point to NEW-NAME up- and downstream
+\(dbt.renameColumn with direction \"both\"): from the model its lineage
+says defines it, through every model that passes it on.  With a prefix
+argument DOWNSTREAM-ONLY, only this model and its consumers, as
+`eglot-rename' does.  The edits are previewed and applied on confirm."
+  (interactive
+   (list (read-string (format "Rename column %s to: " (or (thing-at-point 'symbol t) "")))
+         current-prefix-arg))
+  (let ((argument (append (cogitator--command-argument t)
+                          (list :newName new-name
+                                :direction (if downstream-only "down" "both")))))
+    (cogitator--execute
+     "dbt.renameColumn" argument
+     (lambda (result)
+       (if (not (plist-get result :edit))
+           (message "cogitator: no model column at point")
+         (let ((buf (get-buffer-create "*cogitator-rename-column*")))
+           (with-current-buffer buf
+             (let ((inhibit-read-only t))
+               (erase-buffer)
+               (insert (mapconcat #'identity (cogitator--rename-column-lines result) "\n") "\n")
+               (goto-char (point-min)))
+             (setq buffer-read-only t)
+             (local-set-key (kbd "q") #'quit-window))
+           (display-buffer buf)
+           (when (yes-or-no-p (format "Rename %s.%s to %s? " (plist-get result :model)
+                                      (plist-get result :column) new-name))
+             (cogitator--execute
+              "dbt.renameColumn" (append argument (list :apply t))
+              (lambda (_) (message "cogitator: column renamed — save the buffers"))))))))))
+
+;; ---------------------------------------------------------------------------
 
 ;;;###autoload
 (defun cogitator-unresolved (&optional kinds)
@@ -1629,6 +1746,57 @@ Add `eglot-ensure' to your sql/yaml mode hooks afterwards."
       :priority 1
       :server-id 'cogitator)))
   (add-hook 'lsp-after-open-hook #'cogitator--highlight-on-open))
+
+;; ---------------------------------------------------------------------------
+;; the column-lineage graph (dbt.columnLineageGraph)
+
+(defun cogitator--lineage-graph-lines (result)
+  "The lines a dbt.columnLineageGraph RESULT reads as, an edge a line."
+  (let ((names (make-hash-table :test #'equal)))
+    (seq-doseq (node (plist-get result :nodes))
+      (puthash (plist-get node :id) (plist-get node :name) names))
+    (let* ((name (lambda (id) (gethash id names id)))
+           (edges (append (plist-get result :edges) nil))
+           (stale (append (plist-get result :stale) nil))
+           (lines (list (format "%d columns, %d edges%s"
+                                (length (plist-get result :nodes)) (length edges)
+                                (if (eq (plist-get result :cached) t)
+                                    " (from the cache)" "")))))
+      (when stale
+        (push (format "still being computed: %s" (string-join stale ", ")) lines))
+      (push "" lines)
+      (dolist (edge edges)
+        (push (format "%s -> %s%s"
+                      (funcall name (plist-get edge :from))
+                      (funcall name (plist-get edge :to))
+                      (if (plist-get edge :kind)
+                          (format " (%s)" (plist-get edge :kind)) ""))
+              lines))
+      (nreverse lines))))
+
+;;;###autoload
+(defun cogitator-column-lineage-graph (column direction)
+  "The column lineage around COLUMN of this model, walked DIRECTION.
+One request (dbt.columnLineageGraph) answers the whole walk from the
+server's project-wide lineage cache.  An empty COLUMN is every column."
+  (interactive
+   (list (read-string "Column (empty: every column): ")
+         (completing-read "Direction: " '("both" "up" "down") nil t nil nil "both")))
+  (cogitator--execute
+   "dbt.columnLineageGraph"
+   (append (cogitator--command-argument)
+           (unless (string-empty-p column) (list :column column))
+           (list :direction direction))
+   (lambda (result)
+     (if (not (listp result))
+         (message "cogitator: no column lineage for this file")
+       (let ((buf (get-buffer-create "*cogitator-lineage-graph*")))
+         (with-current-buffer buf
+           (let ((inhibit-read-only t))
+             (erase-buffer)
+             (insert (mapconcat #'identity (cogitator--lineage-graph-lines result) "\n") "\n"))
+           (special-mode))
+         (display-buffer buf))))))
 
 ;; ---------------------------------------------------------------------------
 ;; the lineage page (dbt.lineageSite)

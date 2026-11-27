@@ -32,11 +32,23 @@ pub struct Prepared {
     pub project_root: PathBuf,
 }
 
-#[tracing::instrument(skip_all, fields(cte = ask.cte.as_deref().unwrap_or("")))]
+/// The preview's query: `ask.limit` rows and one more, to know of a cut.
 pub fn prepare(
     snap: &Snapshot,
     derived: &DerivedCache,
     ask: &PreviewAsk,
+) -> Result<Prepared, Guidance> {
+    prepare_with(snap, derived, ask, Some(ask.limit + 1))
+}
+
+/// The query of the CTE (or the final select), with `limit` rows at
+/// most, or every row with none (dbt.cteSql: the SQL as a reader runs it).
+#[tracing::instrument(skip_all, fields(cte = ask.cte.as_deref().unwrap_or("")))]
+pub fn prepare_with(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+    ask: &PreviewAsk,
+    limit: Option<usize>,
 ) -> Result<Prepared, Guidance> {
     let ctx = &snap.ctx;
     let model = features::model_name_from_uri(&ask.uri)
@@ -75,7 +87,7 @@ pub fn prepare(
         (PreviewSource::Compiled, Some(path)) => read_compiled(path, snap.compiled_cap_bytes)?,
         _ => render(snap, derived, &model, disk)?,
     };
-    let sql = features::preview_query(&text, &ctx.dialect, cte.as_deref(), ask.limit + 1)?;
+    let sql = features::preview_query(&text, &ctx.dialect, cte.as_deref(), limit)?;
     Ok(Prepared {
         model,
         cte,
@@ -121,4 +133,54 @@ fn render(
     let mut inputs = super::commands::preview_inputs(snap, derived);
     inputs.this = inputs.model_relations.get(model).cloned();
     Ok(features::expand_jinja(&text, &inputs)?.sql)
+}
+
+/// `dbt.cteSql {uri, cte?, position?, show?}`: the query that selects the
+/// CTE (or the final select), without a limit and without running it.
+/// With `show: true` (the code action and lens) the text is written beside
+/// the previews and opened.
+#[tracing::instrument(skip_all, fields(cte = ask.cte.as_deref().unwrap_or(""), show))]
+pub fn cte_sql(
+    snap: &Snapshot,
+    derived: &DerivedCache,
+    ask: &PreviewAsk,
+    show: bool,
+) -> super::super::reply::Reply {
+    use super::super::reply::{Effect, Reply};
+    let prepared = match prepare_with(snap, derived, ask, None) {
+        Ok(prepared) => prepared,
+        Err(guidance) => {
+            return Reply::error(
+                cogitator_lsp::error_codes::INVALID_PARAMS,
+                guidance.to_message(),
+            )
+        }
+    };
+    let answer = features::cte_sql(
+        &prepared.model,
+        prepared.cte.as_deref(),
+        prepared.source,
+        &prepared.sql,
+    );
+    if !show {
+        return Reply::result(&answer);
+    }
+    let dir = prepared.project_root.join("target/.cogitator/preview");
+    let path = dir.join(features::cte_sql_file_name(
+        &prepared.model,
+        prepared.cte.as_deref(),
+    ));
+    match std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &answer.text)) {
+        Ok(()) => {
+            Reply::result(&answer).with(Effect::ShowDocument(cogitator_lsp::ShowDocumentParams {
+                uri: cogitator_lsp::fs_path_to_uri(&path),
+                take_focus: true,
+                selection: None,
+            }))
+        }
+        Err(err) => {
+            tracing::warn!(%err, "could not write the CTE SQL; returning it only");
+            Reply::result(&answer)
+        }
+    }
 }

@@ -75,6 +75,15 @@ static QUOTED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"'([^']*)'|"([
 /// The `config(...)` expressions of a model's SQL, each as the text
 /// inside its `{{ }}`, in file order; commented-out ones are left out.
 pub fn config_calls(text: &str) -> Vec<String> {
+    config_call_spans(text)
+        .into_iter()
+        .map(|(start, end)| text[start..end].to_string())
+        .collect()
+}
+
+/// The byte spans of [`config_calls`]: each from the `c` of `config` to
+/// just past its closing `)`.
+pub fn config_call_spans(text: &str) -> Vec<(usize, usize)> {
     let live = blanked(text, NOT_CODE);
     let bytes = live.as_bytes();
     let mut out = Vec::new();
@@ -113,7 +122,7 @@ pub fn config_calls(text: &str) -> Vec<String> {
             i += 1;
         }
         if let Some(close) = close {
-            out.push(text[start..=close].to_string());
+            out.push((start, close + 1));
             from = close + 1;
         }
     }
@@ -450,4 +459,24 @@ pub fn edit_for_change(
         old_end_point: (range.end.line, range.end.character),
         new_end_point,
     })
+}
+
+/// A Windows verbatim path (`\\?\C:\p`, what `canonicalize` returns there)
+/// in its plain spelling (`C:\p`; `\\?\UNC\srv\sh` → `\\srv\sh`), which a
+/// file's URI and so every request's path has; any other path as it is.
+pub fn without_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
+/// `canonicalize`, in the spelling every path of a context has: on Windows
+/// without the verbatim prefix it adds, so that it compares with them.
+pub fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    path.canonicalize().map(without_verbatim_prefix)
 }

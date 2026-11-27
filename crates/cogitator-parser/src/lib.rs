@@ -45,6 +45,9 @@ pub enum TokenKind {
     Config,
     /// The name argument of a `doc('…')` call.
     Doc,
+    /// The name argument of a `function('…')` call: a dbt user-defined
+    /// function (dbt 1.11+).
+    Function,
     StringLit,
     Number,
     Symbol(char),

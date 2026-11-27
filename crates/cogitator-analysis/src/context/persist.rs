@@ -28,6 +28,9 @@ pub struct PersistedScan {
     pub docs: Entries<Vec<RawDocsBlock>>,
     pub edges: Entries<Vec<EdgeSeed>>,
     pub sql_tags: Entries<Vec<String>>,
+    /// Added after format 1 shipped: absent in older cache files.
+    #[serde(default)]
+    pub materializations: Entries<Vec<String>>,
 }
 
 impl ContextBuilder {
@@ -46,6 +49,7 @@ impl ContextBuilder {
             docs: self.docs.export(),
             edges: self.edges.export(),
             sql_tags: self.sql_tags.export(),
+            materializations: self.materializations.export(),
         }
     }
 
@@ -59,6 +63,7 @@ impl ContextBuilder {
         self.docs.seed(scan.docs);
         self.edges.seed(scan.edges);
         self.sql_tags.seed(scan.sql_tags);
+        self.materializations.seed(scan.materializations);
     }
 }
 

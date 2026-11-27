@@ -1,0 +1,23 @@
+[package]
+name = "sqlfluffrs_types"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+
+[dependencies]
+hashbrown.workspace = true
+regex.workspace = true
+env_logger.workspace = true
+log.workspace = true
+serde.workspace = true
+uuid.workspace = true
+fancy-regex.workspace = true
+
+[features]
+unicode = []
+
+[lints.rust]
+# the PyO3 bridge (feature "python") is not vendored, and what only it
+# used is dead here; upstream's code is not ours to change
+unexpected_cfgs = "allow"
+dead_code = "allow"

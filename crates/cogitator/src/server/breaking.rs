@@ -74,6 +74,13 @@ pub fn report(
             None,
         ));
     }
+    // An open buffer that differs from the saved file (the file changed
+    // under it, or edits are unsaved) shows the buffer: its columns are what
+    // the diagnostics are placed in, so the report is the buffer's.
+    let source = match (source, snap.doc.as_deref()) {
+        (Source::Disk, Some(doc)) if !matches_saved_file(&doc.text, uri) => Source::Buffer,
+        _ => source,
+    };
     let typed = TypedLineage::new(snap, derived, artifact_cap);
     let saved = typed.for_saved_file(uri);
     let lineage = match (source, snap.doc.as_deref()) {
@@ -110,12 +117,9 @@ pub fn report(
     let mut lineages = HashMap::new();
     let mut corpus = None;
     if breaks(&changed) || edit_diff.as_ref().is_some_and(breaks) {
-        for (name, path) in features::impact_targets(&snap.ctx, &model) {
-            let uri = cogitator_lsp::fs_path_to_uri(&path);
-            if let Some(lineage) = typed.for_saved_file(&uri) {
-                lineages.insert(name, lineage);
-            }
-        }
+        let source = super::lineage_source::LineageSource::new(snap, derived, artifact_cap);
+        let downstream = super::handlers::impact::downstream(snap, &model);
+        lineages = source.lineages(downstream.iter().map(String::as_str));
         corpus = Some(column_reach::Corpus::read(&snap.ctx, &|p| {
             std::fs::read_to_string(p).ok()
         }));
@@ -145,4 +149,12 @@ pub fn report(
             breaking::BreakingReport::without(&model, breaking::Status::NoBaseline, None)
         }),
     })
+}
+
+/// Whether `text` is what the file at `uri` holds on disk; an unreadable
+/// file counts as the same, so the report stays on disk as before.
+fn matches_saved_file(text: &str, uri: &str) -> bool {
+    cogitator_lsp::uri_to_fs_path(uri)
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .is_none_or(|saved| saved == text)
 }

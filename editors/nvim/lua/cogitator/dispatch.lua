@@ -137,6 +137,33 @@ M.SUBCOMMANDS = {
   preview = { run = with_args("preview"), desc = "dbt show this model [limit]" },
   cancel = { run = plain("cancel"), desc = "cancel a dbt job" },
   actions = { run = module_call("cogitator.code_actions", "open"), desc = "code actions at the cursor" },
+  fix = { run = module_call("cogitator.diagnostics", "fix"), desc = "fix the problem under the cursor" },
+  testsql = { run = plain("test_sql"), desc = "the SQL every test of this model runs" },
+  ctes = {
+    run = module_call("cogitator.preview_cte", "pick"),
+    desc = "every CTE of this model in the picker",
+  },
+  ctesql = {
+    run = function(args)
+      require("cogitator.preview_cte").cte_sql({ args = args })
+    end,
+    desc = "the SQL of the CTE under the cursor [cte], no warehouse",
+  },
+  incrementalsql = {
+    run = with_args("incremental_sql"),
+    desc = "what an incremental run executes [strategy]",
+    complete = function()
+      return require("cogitator.commands.views").STRATEGIES
+    end,
+  },
+  incremental = {
+    run = plain("incremental_templates"),
+    desc = "make this model incremental, or switch its strategy (templates)",
+  },
+  problems = {
+    run = module_call("cogitator.diagnostics", "problems"),
+    desc = "this file's problems in the location list",
+  },
   expand = { run = plain("expand_jinja"), desc = "render this model's Jinja" },
   plan = { run = plain("plan"), desc = "this model's query plan" },
   doctor = { run = plain("doctor"), desc = "the server's health report" },
@@ -282,6 +309,13 @@ M.GROUPS = {
       "query",
       "references",
       "rename",
+      "fix",
+      "problems",
+      "testsql",
+      "ctes",
+      "ctesql",
+      "incrementalsql",
+      "incremental",
     },
   },
   {

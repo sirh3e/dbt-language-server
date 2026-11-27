@@ -30,14 +30,18 @@ pub mod hir_search;
 mod hover;
 mod impact;
 mod incremental_diff;
+mod incremental_sql;
 mod inlay_hints;
 mod jinja_inline;
 mod jinja_preview;
 mod lenses;
+pub mod lineage_graph;
+pub mod lineage_inlay;
 pub mod lineage_site;
 mod linked_editing;
 pub mod lint;
 pub mod macro_calls;
+pub mod model_checks;
 mod model_info;
 mod navigation;
 pub mod plan;
@@ -55,6 +59,7 @@ mod semantic_captures;
 mod signature;
 mod structure;
 pub mod syntax;
+mod test_sql;
 mod tests_nav;
 mod unresolved;
 mod unresolved_builtins;
@@ -97,14 +102,16 @@ pub use completion::{
     resolve_completion_documentation_with, ModelHints,
 };
 pub use cte_preview::{
-    choose_source, cte_at, cte_preview_lenses, parse_show, preview_file_name, preview_query,
-    render_markdown, CtePreview, PreviewSource, ShowTable,
+    card_markdown, choose_source, cte_at, cte_card, cte_preview_lenses, cte_sql, cte_sql_action,
+    cte_sql_file_name, parse_show, preview_file_name, preview_query, render_markdown, CteCard,
+    CteColumn, CtePreview, CteSql, PreviewSource, ShowTable,
 };
 pub use dead_models::{dead_models, is_dead, DeadModel};
 pub use declaration::{declaration, production_range, yaml_column_definition, yaml_column_target};
 pub use definition::{definition, function_doc_target, go_to_schema, FunctionDoc};
 pub use diagnostics::{
-    citizen_diagnostics, dangling_doc_diagnostics, dangling_ref_diagnostics, packages_diagnostics,
+    citizen_diagnostics, dangling_doc_diagnostics, dangling_function_diagnostics,
+    dangling_ref_diagnostics, packages_diagnostics,
 };
 pub use dispatch::implementation::implementation;
 pub use document_links::{document_links, document_links_at};
@@ -118,10 +125,16 @@ pub use graph_nav::{
     model_graph, project_graph_json, GraphEntry, GraphNodeKind, ModelGraph, ProjectGraph,
 };
 pub use hover::{hover, hover_with_lineage};
-pub use impact::{impact, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP};
+pub use impact::{
+    impact, impact_graph, impact_over, impact_targets, ImpactReport, IMPACT_LINEAGE_CAP,
+};
 pub use incremental_diff::{
     config_materialized, incremental_diff, incremental_lens, is_incremental_model, IncrementalDiff,
     INCREMENTAL_LENS_TITLE,
+};
+pub use incremental_sql::{
+    incremental_sql, incremental_sql_action, incremental_template_actions, IncrementalSql,
+    Step as IncrementalStep, STRATEGIES as INCREMENTAL_STRATEGIES,
 };
 pub use inlay_hints::{inlay_hints, inlay_hints_with, InlayOptions};
 pub use jinja_inline::{
@@ -141,13 +154,22 @@ pub use relation::{
     TargetRelation,
 };
 pub use rename::{prepare_rename, rename_model};
-pub use rename_column::{prepare_rename_column, rename_column_at};
-pub use rename_local::{local_highlights, local_references, prepare_rename_local, rename_local_at};
+pub use rename_column::{
+    prepare_rename_column, rename_column_at, rename_column_directed, ColumnRename,
+    Direction as ColumnRenameDirection, Origin as ColumnRenameOrigin,
+};
+pub use rename_local::{
+    local_definition, local_highlights, local_references, prepare_rename_local, rename_local_at,
+};
 pub use rename_macro::{prepare_rename_at, rename_at};
 pub use rename_var::{prepare_rename_var, rename_var, rename_var_at};
 pub use semantic_captures::{capture_token, encode_captures, tokens_in_lines, CaptureSpan};
 pub use signature::signature_help;
 pub use structure::{folding_ranges, selection_ranges, semantic_tokens};
+pub use test_sql::{
+    shown_text as test_sql_text, test_sql, test_sql_action, RenderedTest, SingularFile, TestKind,
+    TestSql,
+};
 pub use tests_nav::{model_tests, model_tests_json, ModelTest, ModelTests};
 pub use unresolved::{
     document_unresolved, project_files, project_unresolved, Unresolved, UnresolvedKind,

@@ -29,7 +29,7 @@ pub fn load_project(
     profiles_dir: Option<&str>,
     target: Option<&str>,
 ) -> Result<Project, Guidance> {
-    let start = dir.canonicalize().map_err(|err| {
+    let start = cogitator_analysis::util::canonical(dir).map_err(|err| {
         Guidance::new("the project directory does not exist.")
             .at(dir.display().to_string())
             .because(err.to_string())
@@ -94,7 +94,7 @@ pub fn select(
     }
     let mut wanted = Vec::new();
     for path in paths {
-        let full = path.canonicalize().map_err(|err| {
+        let full = cogitator_analysis::util::canonical(path).map_err(|err| {
             Guidance::new("a path does not exist.")
                 .at(path.display().to_string())
                 .because(err.to_string())
@@ -120,7 +120,7 @@ pub fn select(
 pub fn shown(path: &Path) -> String {
     let cwd = std::env::current_dir()
         .ok()
-        .and_then(|d| d.canonicalize().ok());
+        .and_then(|d| cogitator_analysis::util::canonical(&d).ok());
     match cwd.and_then(|cwd| path.strip_prefix(cwd).ok().map(Path::to_path_buf)) {
         // `/`-separated on every OS: what GitHub annotations and the
         // other output formats name a file by

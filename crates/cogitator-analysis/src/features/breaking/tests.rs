@@ -195,6 +195,7 @@ fn stars_hide_the_current_columns() {
                 name: n.to_string(),
                 sources: vec![],
                 direct: false,
+                ..Default::default()
             })
             .collect(),
         origin: None,

@@ -89,6 +89,15 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 range: d.range,
             })
             .unwrap_or(fallback),
+        TokenKind::Function => ctx
+            .function_detail_map
+            .get(literal)
+            .and_then(|f| f.definition())
+            .map(|(path, range)| Location {
+                uri: file_uri(&path),
+                range,
+            })
+            .unwrap_or(fallback),
         TokenKind::Macro => {
             let package = parsed
                 .lookback_find(idx, TokenKind::Package, 2)
@@ -104,7 +113,11 @@ pub fn definition(ctx: &DbtContext, doc: &Document, uri: &str, pos: Position) ->
                 .unwrap_or(fallback)
         }
         _ => {
-            // CTE jump within the file (03 §9.2 default arm) …
+            // a CTE, table alias or column alias, bound in its scope …
+            if let Some(local) = super::local_definition(ctx, doc, uri, pos) {
+                return local;
+            }
+            // … else a CTE by its written name (03 §9.2 default arm) …
             if let Some(def) = parsed.def_tokens.get(literal) {
                 return Location {
                     uri: uri.to_string(),
@@ -136,12 +149,13 @@ fn is_named(kind: TokenKind) -> bool {
             | TokenKind::Var
             | TokenKind::EnvVar
             | TokenKind::Doc
+            | TokenKind::Function
             | TokenKind::Macro
     )
 }
 
 /// The functions whose first string arguments name something.
-const NAMING_CALLS: &[&str] = &["ref", "source", "var", "doc", "env_var"];
+const NAMING_CALLS: &[&str] = &["ref", "source", "var", "doc", "env_var", "function"];
 
 /// The token at `idx`, widened to the call it belongs to: on the word
 /// `ref` (`source`, `var`, `doc`, `env_var`), on a package or a project
@@ -250,6 +264,10 @@ pub fn function_doc_target(ctx: &DbtContext, doc: &Document, pos: Position) -> O
     }
     let literal = parsed.literal(token);
     if parsed.def_tokens.contains_key(literal) {
+        return None;
+    }
+    // a column alias named `count`: its declaration, not the built-in
+    if super::local_definition(ctx, doc, &doc.uri, pos).is_some() {
         return None;
     }
     if super::completion::scope::resolve_column(ctx, doc, literal)

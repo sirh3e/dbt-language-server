@@ -127,6 +127,11 @@ impl Dispatcher {
             let mut extra = Vec::new();
             if let Some(doc) = snap.doc.as_deref() {
                 let read = |path: &std::path::Path| std::fs::read_to_string(path).ok();
+                // a model column's lineage graph, opened as a file
+                extra.extend(
+                    features::lineage_graph::show_lineage_action(&snap.ctx, doc, &uri, range.start)
+                        .map(CodeAction::at_cursor),
+                );
                 if uri.ends_with(".yml") || uri.ends_with(".yaml") {
                     // doc('x') lives mostly in descriptions
                     extra.extend(
@@ -253,6 +258,10 @@ impl Dispatcher {
                             range.start,
                         ));
                     }
+                    extra.extend(features::test_sql_action(&snap.ctx, &uri));
+                    extra.extend(features::cte_sql_action(&snap.ctx, doc, &uri, range.start));
+                    extra.extend(features::incremental_sql_action(&snap.ctx, doc, &uri));
+                    extra.extend(features::incremental_template_actions(&snap.ctx, doc, &uri));
                     extra.extend(
                         crate::server::handlers::plan::split_plan_of(
                             &snap,

@@ -80,6 +80,24 @@ pub fn doc_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
         .collect()
 }
 
+/// `function('` → the user-defined functions, their signature as the
+/// detail; the documentation resolves lazily.
+pub fn function_items(ctx: &DbtContext, suffix: &str) -> Vec<CompletionItem> {
+    ctx.function_detail_map
+        .iter()
+        .map(|(name, f)| CompletionItem {
+            label: name.clone(),
+            detail: f.signature(),
+            documentation: String::new(),
+            kind: completion_kind::FUNCTION,
+            insert_text: format!("{name}{suffix}"),
+            sort_text: name.clone(),
+            data: Some(CompletionData::DbtFunction { name: name.clone() }.into_value()),
+            ..Default::default()
+        })
+        .collect()
+}
+
 pub fn macro_items(ctx: &DbtContext) -> Vec<CompletionItem> {
     ctx.macro_detail_map
         .values()

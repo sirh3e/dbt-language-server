@@ -32,6 +32,8 @@ static VAR_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"\bvar\(('|")[a-zA-Z0-9_]*$"#).unwrap());
 static DOC_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"\bdoc\(('|")[a-zA-Z0-9_]*$"#).unwrap());
+static FUNCTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"\bfunction\(('|")[a-zA-Z0-9_]*$"#).unwrap());
 
 pub fn completion(ctx: &DbtContext, doc: &Document, pos: Position) -> Vec<CompletionItem> {
     completion_with(ctx, doc, pos, &|_| None, &ModelHints::default())
@@ -151,6 +153,9 @@ fn engine(
     }
     if DOC_RE.is_match(before) {
         return providers::doc_items(ctx, &providers::suffix_for(line, after, "doc"));
+    }
+    if FUNCTION_RE.is_match(before) {
+        return providers::function_items(ctx, &providers::suffix_for(line, after, "function"));
     }
     // macro suggestions only while actually inside an unclosed `{{ …`
     // (Go matched any `{{` earlier in the line — engine supersedes that)
@@ -282,6 +287,9 @@ fn resolve_plain(ctx: &DbtContext, data: cogitator_lsp::CompletionData) -> Optio
             }),
         cogitator_lsp::CompletionData::Doc { name } => {
             ctx.doc_detail_map.get(&name).map(|d| d.content.clone())
+        }
+        cogitator_lsp::CompletionData::DbtFunction { name } => {
+            ctx.function_detail_map.get(&name).map(|f| f.markdown())
         }
         cogitator_lsp::CompletionData::Macro { name, package } => {
             let package = package.as_deref().unwrap_or(&ctx.project.name);

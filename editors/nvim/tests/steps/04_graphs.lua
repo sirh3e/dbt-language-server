@@ -91,9 +91,9 @@ return function(ctx)
   dag.close()
   H.check(dag._state == nil, "graphs: q/close clears the view")
 
-  -- :DbtColumnLineage straight from the model buffer, one column
+  -- :DbtColumnLineage graph straight from the model buffer, one column
   vim.api.nvim_set_current_buf(bufnr)
-  vim.cmd("DbtColumnLineage customer_id")
+  vim.cmd("DbtColumnLineage graph customer_id")
   H.wait("graphs: :DbtColumnLineage opens the column graph", 20000, function()
     return dag._state
       and dag._state.mode == "columns"

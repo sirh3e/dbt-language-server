@@ -213,6 +213,109 @@ return function(ctx)
     "integration: dbt.diffAt answers a diff or guidance",
     vim.inspect(at_result):sub(1, 200)
   )
+  -- the SQL of orders' tests, as dbt runs them, and where each header leads
+  local orders_uri = vim.uri_from_fname(vim.fs.joinpath(ctx.fixture, "models", "orders.sql"))
+  local tests_result =
+    H.exec_cmd(client, bufnr, "dbt.testSql", { uri = orders_uri }, "integration: dbt.testSql")
+  local views = require("cogitator.commands.views")
+  local test_lines, test_headers = {}, {}
+  if type(tests_result) == "table" then
+    test_lines, test_headers = views.test_sql_lines(tests_result)
+  end
+  local header_labels = {}
+  for _, test in pairs(test_headers) do
+    header_labels[test.label] = true
+  end
+  H.check(
+    header_labels["accepted_values on status"]
+      and header_labels["relationships on customer_id"]
+      and header_labels["singular test assert_positive_order_amount"],
+    "integration: dbt.testSql renders orders' YAML and singular tests, each under its header",
+    vim.inspect(vim.tbl_keys(header_labels))
+  )
+  H.check(
+    table.concat(test_lines, "\n"):find("count(*) as failures", 1, true) ~= nil,
+    "integration: dbt.testSql shows the query dbt executes",
+    table.concat(test_lines, "\n"):sub(1, 300)
+  )
+  local merge_result = H.exec_cmd(client, bufnr, "dbt.incrementalSql", {
+    uri = orders_uri,
+    strategy = "append",
+  }, "integration: dbt.incrementalSql")
+  H.check(
+    type(merge_result) == "table"
+      and merge_result.strategy == "append"
+      and type(merge_result.text) == "string"
+      and merge_result.text:find("insert into", 1, true) ~= nil,
+    "integration: dbt.incrementalSql renders the strategy's statements",
+    vim.inspect(merge_result):sub(1, 300)
+  )
+  vim.cmd.edit(vim.uri_to_fname(orders_uri))
+  local orders_buf = vim.api.nvim_get_current_buf()
+  H.wait("integration: client attaches to orders.sql", 15000, function()
+    return #vim.lsp.get_clients({ bufnr = orders_buf, name = "cogitator" }) > 0
+  end)
+  local templates = H.request(client, orders_buf, "textDocument/codeAction", {
+    textDocument = { uri = orders_uri },
+    range = { start = { line = 0, character = 0 }, ["end"] = { line = 0, character = 0 } },
+    context = { diagnostics = {}, only = { "refactor.rewrite" } },
+  }, "integration: the strategy templates answer") or {}
+  local template_titles = vim.tbl_map(function(a)
+    return a.title
+  end, templates)
+  H.check(
+    vim.tbl_contains(template_titles, "Make incremental with the merge strategy (unique_key='order_id')"),
+    "integration: a table model is offered the strategy templates",
+    vim.inspect(template_titles)
+  )
+  vim.api.nvim_set_current_buf(bufnr)
+
+  -- a CTE without the warehouse: its SQL, the picker's list, the card
+  local stg_path = vim.fs.joinpath(ctx.fixture, "models", "staging", "stg_orders.sql")
+  local cte_result = H.exec_cmd(client, bufnr, "dbt.cteSql", {
+    uri = vim.uri_from_fname(stg_path),
+    cte = "renamed",
+  }, "integration: dbt.cteSql")
+  H.check(
+    type(cte_result) == "table"
+      and cte_result.cte == "renamed"
+      and type(cte_result.text) == "string"
+      and cte_result.text:find("raw_orders", 1, true) ~= nil
+      and not cte_result.sql:lower():find("limit", 1, true),
+    "integration: dbt.cteSql gives the CTE's query, no limit",
+    vim.inspect(cte_result):sub(1, 300)
+  )
+  vim.cmd.edit(stg_path)
+  local stg_buf = vim.api.nvim_get_current_buf()
+  H.wait("integration: client attaches to stg_orders.sql", 15000, function()
+    return #vim.lsp.get_clients({ bufnr = stg_buf, name = "cogitator" }) > 0
+  end)
+  local symbols = H.request(client, stg_buf, "textDocument/documentSymbol", {
+    textDocument = { uri = vim.uri_from_bufnr(stg_buf) },
+  }, "integration: the CTE symbols") or {}
+  local listed = vim.tbl_map(function(c)
+    return c.name
+  end, require("cogitator.preview_cte").ctes_of(symbols, vim.uri_from_bufnr(stg_buf)))
+  H.check(
+    vim.deep_equal(listed, { "source", "renamed", false }),
+    ":DbtCtes: stg_orders' CTEs and its final select",
+    vim.inspect(listed)
+  )
+  local renamed = require("cogitator.preview_cte").ctes_of(symbols, vim.uri_from_bufnr(stg_buf))[2]
+  local cte_hover = H.request(client, stg_buf, "textDocument/hover", {
+    textDocument = { uri = vim.uri_from_bufnr(stg_buf) },
+    position = { line = renamed.line, character = renamed.character },
+  }, "integration: the CTE card")
+  local card = cte_hover and cte_hover.contents
+  card = type(card) == "table" and card.value or card
+  H.check(
+    type(card) == "string"
+      and card:find("**CTE** `renamed`", 1, true) ~= nil
+      and card:find("order_id", 1, true) ~= nil,
+    "integration: hovering a CTE shows its columns",
+    vim.inspect(card)
+  )
+  vim.api.nvim_set_current_buf(bufnr)
 
   local unresolved_result = H.exec_cmd(client, bufnr, "dbt.unresolved", {
     uri = vim.uri_from_bufnr(bufnr),
@@ -355,6 +458,73 @@ return function(ctx)
   )
   vim.api.nvim_set_current_buf(bufnr)
   vim.api.nvim_buf_delete(fix_buf, { force = true })
+
+  -- an invalid model as it is written: the problem, its suggestion
+  -- inline, and :Dbt fix applying it (fixture COPY — never saved)
+  vim.cmd.edit(vim.fs.joinpath(ctx.fixture, "models", "invalid_probe.sql"))
+  local bad_buf = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(bad_buf, 0, -1, false, {
+    "{{ config(materialized='incrementl') }}",
+    "select * from {{ ref('stg_customers') }}",
+  })
+  H.wait("invalid model: client attaches to the probe buffer", 15000, function()
+    return #vim.lsp.get_clients({ bufnr = bad_buf, name = "cogitator" }) > 0
+  end)
+  local bad
+  H.wait("invalid model: invalid-materialization published", 15000, function()
+    for _, d in ipairs(vim.diagnostic.get(bad_buf)) do
+      local lsp_d = d.user_data and d.user_data.lsp
+      if lsp_d and lsp_d.code == "invalid-materialization" then
+        bad = d
+        return true
+      end
+    end
+    return false
+  end)
+  local diagnostics = require("cogitator.diagnostics")
+  H.check(
+    bad ~= nil and bad.severity == vim.diagnostic.severity.ERROR,
+    "invalid model: a misspelt materialization is an error",
+    vim.inspect(bad)
+  )
+  H.check(
+    bad ~= nil and diagnostics.inline(bad):find("did you mean 'incremental'?", 1, true) ~= nil,
+    "invalid model: the inline text carries the suggestion",
+    bad and diagnostics.inline(bad)
+  )
+  if bad then
+    vim.api.nvim_win_set_cursor(0, { bad.lnum + 1, bad.col })
+    require("cogitator.dispatch").SUBCOMMANDS.fix.run("")
+  end
+  H.wait("invalid model: :Dbt fix applies the suggestion", 15000, function()
+    return (vim.api.nvim_buf_get_lines(bad_buf, 0, 1, false)[1] or ""):find(
+      "materialized='incremental'",
+      1,
+      true
+    ) ~= nil
+  end)
+  vim.api.nvim_buf_set_lines(bad_buf, 0, -1, false, { "select * from {{ ref('invalid_probe') }}" })
+  H.wait("invalid model: a self ref is reported", 15000, function()
+    for _, d in ipairs(vim.diagnostic.get(bad_buf)) do
+      if d.user_data and d.user_data.lsp and d.user_data.lsp.code == "ref-self" then
+        return true
+      end
+    end
+    return false
+  end)
+  vim.api.nvim_win_set_cursor(0, { 1, 23 })
+  require("cogitator.dispatch").SUBCOMMANDS.problems.run("")
+  local loc = vim.fn.getloclist(0, { title = 0, items = 0 })
+  H.check(
+    loc.title == "dbt problems · invalid_probe.sql"
+      and #loc.items > 0
+      and loc.items[1].text:find("[ref-self]", 1, true) ~= nil,
+    ":Dbt problems: the file's problems in the location list",
+    vim.inspect(loc)
+  )
+  vim.cmd.lclose()
+  vim.api.nvim_set_current_buf(bufnr)
+  vim.api.nvim_buf_delete(bad_buf, { force = true })
 
   -- formatting: reflow through the server, Jinja untouched
   vim.cmd.edit(vim.fs.joinpath(ctx.fixture, "models", "fmt_probe.sql"))

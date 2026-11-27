@@ -29,6 +29,9 @@ pub struct ProjectFile {
     /// `docs-paths` was explicitly set in the YAML (03 §3.3: append rule only
     /// applies when it was not).
     pub docs_paths_explicit: bool,
+    /// `function-paths` (dbt 1.11+, user-defined functions); `functions`
+    /// by default when that directory exists.
+    pub function_paths: Vec<String>,
     /// Raw `vars` mapping (top level).
     pub vars: serde_json::Map<String, serde_json::Value>,
     /// Range of each top-level `vars` entry's KEY (definition target).
@@ -80,6 +83,9 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
     let marked = yaml::load_marked(text, path)?;
     let mut value = yaml::to_json(&marked);
     let dispatch = dispatch_of(&value);
+    // dbt-jsonschema's project type predates `function-paths`: read it
+    // from the raw JSON, as `dispatch:` is.
+    let function_paths = string_list(value.get("function-paths"));
     // The server consumes only these keys (03 §3). Resource-config subtrees
     // (`models:`, `seeds:`, …) vary widely in the wild and the generated
     // unions are strict, so everything else is pruned before deserialization
@@ -116,6 +122,7 @@ pub fn parse_dbt_project(text: &str, path: &Path) -> Result<ProjectFile> {
         docs_paths_explicit: project.docs_paths.is_some(),
         vars: project.vars.clone(),
         dispatch,
+        function_paths,
         ..Default::default()
     };
 
@@ -156,6 +163,18 @@ pub fn var_ranges(text: &str, path: &Path) -> Option<VarRanges> {
     yaml::load_marked(text, path).ok().map(|m| ranges_in(&m))
 }
 
+/// A string or a list of strings; anything else is none.
+fn string_list(value: Option<&serde_json::Value>) -> Vec<String> {
+    match value {
+        Some(serde_json::Value::String(s)) => vec![s.clone()],
+        Some(serde_json::Value::Array(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn paths_of(arr: Option<&crate::generated::dbt_project::ArrayOfStrings>) -> Vec<String> {
     arr.map(|a| a.iter().cloned().collect()).unwrap_or_default()
 }
@@ -186,6 +205,9 @@ pub fn apply_defaults(file: &mut ProjectFile, available_dirs: &[String]) {
     }
     if file.macro_paths.is_empty() && has("macros") {
         file.macro_paths = vec!["macros".into()];
+    }
+    if file.function_paths.is_empty() && has("functions") {
+        file.function_paths = vec!["functions".into()];
     }
     if file.packages_install_path.is_empty() && has("dbt_packages") {
         file.packages_install_path = "dbt_packages".into();

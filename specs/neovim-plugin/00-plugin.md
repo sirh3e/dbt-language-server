@@ -43,7 +43,10 @@ Target: **Neovim ≥ 0.11** (`vim.lsp.config` / `vim.lsp.enable`). §10 notes th
 launch flag. The server also accepts `profile`, `target` and
 `profilesAllow` (`profiles_allow`) — the same overrides as the matching
 CLI flags; the Neovim manager store injects profilesDir/profile/target
-per project root at attach. Any other shape of `initializationOptions`
+per project root at attach. `renameColumnDirection`
+(`rename_column_direction`) `"down"` (default) or `"both"` says which way
+textDocument/rename takes a model column (`dbt.renameColumn`'s
+`direction`), for clients that send no command (Zed). Any other shape of `initializationOptions`
 is ignored, never an error.
 
 A fourth, **hot** configuration layer sits underneath these:
@@ -108,7 +111,7 @@ writer wins).
   (document pull diagnostics)
 - `codeLensProvider: { resolveProvider: false }`
 - `executeCommandProvider.commands`:
-  `dbt.goToSchema`, `dbt.columnLineage`, `dbt.openSchema`, `dbt.showLineage`,
+  `dbt.goToSchema`, `dbt.columnLineage`, `dbt.columnLineageGraph`, `dbt.openSchema`, `dbt.showLineage`,
   `dbt.run`, `dbt.test`, `dbt.compile`, `dbt.modelGraph`, `dbt.profiles`,
   `dbt.setTarget`, `dbt.extractModelYaml`, `dbt.modelTests`,
   `dbt.goToTests`, `dbt.status`, `dbt.projectGraph`, `dbt.modelInfo`,
@@ -121,7 +124,8 @@ writer wins).
   `dbt.astGrep`, `dbt.nodeInfo`, `dbt.unresolved`, `dbt.breakingChanges`,
   `dbt.previewCte`, `dbt.select`, `dbt.lineageSite`, `dbt.syncYaml`,
   `dbt.modelDependencies`, `dbt.search`, `dbt.costReport`, `dbt.diffAt`,
-  `dbt.profileColumn`
+  `dbt.profileColumn`, `dbt.renameColumn`, `dbt.testSql`,
+  `dbt.incrementalSql`, `dbt.cteSql`
   (append-only: clients may assume index 0 is `dbt.goToSchema`)
 - `serverInfo.name == "cogitator"`
 
@@ -152,6 +156,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.goToSchema` | `Location` or `null` | none (client jumps) |
 | `dbt.openSchema` | `null` | `window/showDocument` or warning |
 | `dbt.columnLineage` | lineage JSON or `null` | none |
+| `dbt.columnLineageGraph` | `{nodes, edges, start, cached, stale?, missing, truncated}` or `null` | none, or with `show: true` (the code action "Show column lineage of m.col") the walk written to `target/.cogitator/lineage/` and opened via showDocument; `{uri, column?, direction?, depth?, show?}`, the column walk of §5.3b in one answer from the server's project-wide lineage cache (persisted to `target/.cogitator-lineage-cache`) |
 | `dbt.showLineage` | `null` | formatted `window/showMessage` |
 | `dbt.run` / `dbt.test` / `dbt.compile` | `{token}` (immediately) | async showMessage; compile success opens the compiled SQL via showDocument; the token feeds `dbt.cancel` |
 | `dbt.parse` | `{token}` (immediately) | async showMessage/$\/progress; project-wide (no `--select`), success refreshes the server context |
@@ -162,6 +167,9 @@ Every command takes **one argument object**, not positional values:
 | `dbt.diffAt` | `{model, rev, what, before, after, diff, identical, columns?, note?}` or InvalidParams Guidance (not a git repository, git missing, unknown revision, file absent at the revision, no last run) | none, or with `show: true` the diff written to `target/.cogitator/diff/<model>@<rev>.<what>.diff` and opened via showDocument |
 | `dbt.costReport` | `{generatedAt, totalSeconds, models: [{model, uri, status, seconds, slowestPercent, bytesProcessed, bytesBilled, slotMs, rowsAffected, queryId, materialized, onCriticalPath, suggestion}], criticalPath: {models, seconds}, historyRows, text}` | none; reads target/run_results.json (and `cost.query_history`) |
 | `dbt.profileColumn` | `{profile: {model, column, relation, rows, distinct, nulls, nullRate, min, max, top: [{value, count}], engine, stamp, sql}, hover}` or RequestFailed Guidance (profiling off, no output column under the cursor, the query failed) | a background job (a `dbt.cancel` token, $/progress) that queries the warehouse — only with `warehouse.profile: true`; fills the cache the hover reads |
+| `dbt.testSql` | `{model, relation, tests, text}`, each test `{label, kind, sql, query, error, …}`, or InvalidParams Guidance | none, or with `show: true` (the "Show the SQL of N tests" action) the text written to `target/.cogitator/tests/<model>.sql` and opened via showDocument |
+| `dbt.incrementalSql` | `{model, strategy, strategySource, steps, fullRefresh, notes, text}` or InvalidParams Guidance | none, or with `show: true` the text written to `target/.cogitator/incremental/<model>.<strategy>.sql` and opened via showDocument |
+| `dbt.cteSql` | `{model, cte, source, sql, text}` or InvalidParams Guidance | none, or with `show: true` (the "SQL" lens and the "Show the SQL of CTE `x`" action) the text written to `target/.cogitator/preview/<model>.<cte or final>.sql` and opened via showDocument |
 | `dbt.modelGraph` | graph payload or `null` | none |
 | `dbt.profiles` | redacted profiles inventory | warning when no profiles.yml |
 | `dbt.setTarget` | `{profile, target}` or `null` | context refresh + confirmation message |
@@ -197,6 +205,7 @@ Every command takes **one argument object**, not positional values:
 | `dbt.lineageSite` | `{site, counts}` (`site`: format 1 — the `dbt.projectGraph` nodes/edges with each node's details and columns, each traced column's `inputs` one hop up and its `transform`); with `assets: true` also `assets: {script, style}`; with `write: true` `{written: {path, uri}, counts}` instead of `site`; `null` with no project | `{uri?, assets?, write?}`; `write` writes `<root>/target/cogitator-lineage/index.html` + `lineage.json` — :DbtLineageSite, `cogitator lineage-site` (docs/lineage-site.md) |
 | `dbt.syncYaml` | `{changes, applied, files: [{uri, created, edits, diff}], models: [{model, uri?, createdEntry, added, inherited: [{column, from, via?}], typed: [{column, dataType}], stale, pruned, reordered, undocumented, skipped: [{column?, reason}], changes}]}` | `{uri?, models?, prune?, inheritTypes?, reorder?, newEntries?: "model"\|"folder", apply?}`: the schema-YAML sync plan (docs/yaml-sync.md); with `apply: true` the server sends it as workspace/applyEdit (label "Sync schema YAML") — :DbtSyncYaml |
 | `dbt.search` | `{query, searched, models, matches: [{uri, range, text, env: {clause, model}, replacement: null}], notSearched: [{model, why}], truncated}` or InvalidParams Guidance | none (read-only): `{query, uri?}` — clauses over each model's bound HIR combined with `and`/`or`/`not`/parentheses (`joins <rel> [on <col>]`, `select-star [from <rel>]`, `reads <rel>`, `uses column <rel>.<col>`; docs/search.md); a model's `uri` narrows to it, `""` is the project; models whose HIR cannot be built (Jinja control blocks, parse holes) are `notSearched`, never dropped; at most 500 matches — :DbtSearch |
+| `dbt.renameColumn` | `{model, column, newName, direction, origin: {model, column, chain, stop}, models, edit}` | `{uri, position, newName, direction?: "down"\|"both", apply?}`: the column under the cursor renamed downstream (the default, what textDocument/rename does: a pass-through gets `old as new`) or, with `"both"`, from the model its lineage says defines it (`origin`; `chain` the models climbed) and then downstream from there; `edit` is the WorkspaceEdit, `models` the models whose output column it renames; with `apply: true` the server sends it as workspace/applyEdit (label "Rename column …"); textDocument/rename gives the `"both"` edit when `initializationOptions.renameColumnDirection` is `"both"`; `null` off a column; a refusal is an error with the reason — :DbtRename (its confirmation offers "apply up- and downstream") |
 
 On duckdb-feature builds with cogitator.yml `warehouse: {columns:
 true}`, source tables whose YAML declares no columns get them from the
@@ -513,8 +522,11 @@ vim.lsp.enable("cogitator")
 | `:DbtFind [source]` | `dbt.projectGraph`, `workspace/symbol`, `dbt.modelTests`, `textDocument/documentSymbol` | fuzzy pickers (§5.3e); no argument: pick the source |
 | `:DbtReferences[!]` | `textDocument/references` | every use of what the cursor names (`!`: the file's own model), in the yazi-style dialog, a group per file and a line per use with its preview; the first entry renames it — **Neovim only** |
 | `:DbtMacros` | `workspace/symbol`, `textDocument/references` | every macro in the yazi-style dialog; choosing one shows where it is called (asked at its header, which the server reads from disk when the file is not open) — **Neovim only** |
-| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply" — **Neovim only** |
+| `:DbtRename[!] [name]` | `textDocument/prepareRename`, `textDocument/rename`, `dbt.renameColumn` | rename what the cursor names, else (or with `!`) the file's model, asked past its last line; the WorkspaceEdit is shown (apply / cancel / a diff per file) and applied only on "apply"; on a column its lineage traces to an upstream model, a second item "apply up- and downstream" (from `dbt.renameColumn` with `direction: "both"`) previews and applies the rename from that model instead — **Neovim only** |
 | `:DbtPlan` | `dbt.queryPlan` | each IR level, findings, the incrementality analysis and frontier as S-expressions, and the rule trace (including skip reasons) in a scratch split |
+| `:DbtPreviewCte! [limit]`, `:DbtCtes`, `:DbtCteSql [cte]` | `dbt.previewCte`, `textDocument/documentSymbol` + `textDocument/hover`, `dbt.cteSql` | the rows of the CTE under the cursor in a float (`!`, `<leader>dC`, or `preview.cte = "float"`; `q`/`<Esc>` close); every CTE of the model in the picker with its hover card (columns and lineage) as preview, choosing one offers the rows (float or split), its SQL or a jump to it (`<leader>dK`); the query that selects a CTE, no warehouse, in a SQL split (names completed) |
+| `:DbtTestSql` | `dbt.testSql` | every test of this model (YAML data tests, singular tests, unit tests listed) as the query dbt executes, in a SQL split; `<CR>` on a test's header opens its declaration, `]t`/`[t` walk the tests, `q` closes, `<leader>dQ` |
+| `:DbtIncrementalSql [strategy]` | `dbt.incrementalSql` | what an incremental run executes for the model's strategy (or the one named, completed), and the full refresh, in a SQL split, `<leader>dM`; `:Dbt incremental` opens the strategy templates in the code-action menu |
 | `:DbtIncrementalDiff` | `dbt.incrementalDiff` | the model rendered with `is_incremental()` false and true, as a unified diff in a scratch split (`diff` filetype); `q` closes |
 | `:DbtDiffAt [rev] [sql\|compiled\|lineage]` | `dbt.diffAt` | the model against itself at a git revision (default `HEAD`) or `last-run`, as a unified diff in a scratch split (`diff` filetype); the lineage view lists added, removed and changed columns first; `q` closes |
 | `:DbtCostReport` | `dbt.costReport` | the last run's models, slowest first, with bytes scanned, the critical path and "make it incremental" suggestions, in a scratch split; `q` closes |

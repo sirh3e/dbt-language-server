@@ -59,6 +59,11 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
             .get(literal)
             .map(|d| d.content.clone())
             .unwrap_or_default(),
+        TokenKind::Function => ctx
+            .function_detail_map
+            .get(literal)
+            .map(|f| f.markdown())
+            .unwrap_or_default(),
         TokenKind::SourceName => ctx
             .source_detail_map
             .get(literal)
@@ -122,6 +127,13 @@ fn hover_inner(ctx: &DbtContext, doc: &Document, pos: Position, source: Lineage<
                         m.range.start.line,
                     )
                 })
+                .unwrap_or_default()
+        }
+        _ if doc.parsed.def_tokens.contains_key(literal) => {
+            // a CTE of this model, at its definition or a reference:
+            // its columns and where each comes from
+            super::cte_card(doc, literal, &ctx.dialect)
+                .map(|card| super::card_markdown(&card))
                 .unwrap_or_default()
         }
         _ => {

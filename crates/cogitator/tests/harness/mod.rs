@@ -11,4 +11,6 @@ pub mod wire;
 #[allow(unused_imports)]
 pub use client::{default_deadline, Lsp, ServerBuilder};
 #[allow(unused_imports)]
-pub use fixture::{boot, copy_project, fixture_root, jaffle, write_config, TestProject};
+pub use fixture::{
+    boot, boot_with_options, copy_project, fixture_root, jaffle, write_config, TestProject,
+};

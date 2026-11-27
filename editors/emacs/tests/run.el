@@ -69,6 +69,15 @@
 (check (null (cogitator--lineage-site-message nil))
        "lineage-site: no page, no message")
 
+;; unit: the column-lineage graph's lines
+(check (equal (cogitator--lineage-graph-lines
+               '(:nodes [(:id "model:a::id" :name "a.id") (:id "model:b::id" :name "b.id")]
+                 :edges [(:from "model:a::id" :to "model:b::id" :kind "direct")]
+                 :cached t :stale ["c"]))
+              '("2 columns, 1 edges (from the cache)" "still being computed: c" ""
+                "a.id -> b.id (direct)"))
+       "lineage-graph: an edge a line, with what is still being computed")
+
 ;; ---------------------------------------------------------------------------
 ;; integration: eglot against the live server and a fixture COPY
 ;; ---------------------------------------------------------------------------
@@ -147,6 +156,14 @@
   (check (and (plist-get caches :profiles)
               (numberp (plist-get (plist-get caches :profiles) :entries)))
          "integration: dbt.cache reports the derived-cache surfaces" caches))
+
+;; integration: dbt.columnLineageGraph walks the lineage in one request
+(let ((graph (run--exec "dbt.columnLineageGraph"
+                        (append (cogitator--command-argument)
+                                '(:column "customer_id" :direction "up")))))
+  (check (and (> (length (plist-get graph :nodes)) 0)
+              (equal (plist-get graph :start) "model:customers::customer_id"))
+         "integration: dbt.columnLineageGraph answers the walk" graph))
 
 ;; integration: dbt.lineageSite writes the page under target/
 (let ((site (run--exec "dbt.lineageSite"
@@ -442,6 +459,31 @@
   (check (and (numberp (plist-get found :count))
               (equal (plist-get (aref (plist-get found :nodes) 0) :name) "customers"))
          "integration: dbt.select picks the nightly model" found))
+
+;; unit + integration: dbt.renameColumn
+(check (equal (cogitator--rename-column-lines
+               '(:model "b" :column "x" :newName "y" :direction "both"
+                 :origin (:model "a" :column "x" :chain ["b" "a"] :stop "`a` defines `x`")
+                 :models ["a" "b"]
+                 :edit (:documentChanges
+                        [(:textDocument (:uri "file:///p/models/a.sql")
+                          :edits [(:range (:start (:line 0 :character 7)) :newText "y")])])))
+              '("# dbt.renameColumn: b.x → y (both)"
+                "# from a.x: `a` defines `x`"
+                "# models: a, b"
+                "file:///p/models/a.sql: 1 edit(s)"
+                "  1:8 y"))
+       "rename-column: the preview says where it starts, then each edit")
+(with-current-buffer (find-file-noselect (expand-file-name "models/customers.sql" run--fixture))
+  (goto-char (point-min))
+  (search-forward "customers.customer_id,")
+  (backward-char (length "customer_id,"))
+  (let ((found (run--exec "dbt.renameColumn"
+                          (append (cogitator--command-argument t)
+                                  (list :newName "cust_id" :direction "both")))))
+    (check (and (equal (plist-get (plist-get found :origin) :model) "stg_customers")
+                (equal (aref (plist-get found :models) 0) "stg_customers"))
+           "integration: dbt.renameColumn climbs to stg_customers" found)))
 
 ;; unit + integration: dbt.syncYaml
 (check (equal (cogitator--sync-yaml-lines

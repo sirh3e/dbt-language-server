@@ -10,7 +10,8 @@ use cogitator_parser::{Keyword, TokenKind};
 use super::{DbtContext, Document};
 
 pub(super) use super::dbt_calls::{
-    doc_items, macro_items, quote_type, ref_items, source_items, suffix_for, var_items,
+    doc_items, function_items, macro_items, quote_type, ref_items, source_items, suffix_for,
+    var_items,
 };
 
 pub(super) fn item(

@@ -112,3 +112,39 @@ fn a_column_reaches_semantic_models_metrics_and_dashboards() {
     );
     assert!(hover.contains("1 dashboard"), "{hover}");
 }
+
+/// dbt.impact reads every downstream model's lineage through the one
+/// lineage store: the first ask computes them, the second computes none.
+#[test]
+fn impact_asked_twice_computes_the_lineages_once() {
+    let project = jaffle();
+    let (mut lsp, _) = project.booted();
+    let cache = |lsp: &mut harness::client::Lsp| {
+        lsp.request(
+            "workspace/executeCommand",
+            json!({"command": "dbt.cache", "arguments": [{}]}),
+        )["result"]["lineage_graph"]
+            .clone()
+    };
+    let impact = |lsp: &mut harness::client::Lsp| {
+        lsp.request(
+            "workspace/executeCommand",
+            json!({"command": "dbt.impact",
+                   "arguments": [{"model": "stg_customers", "column": "customer_id"}]}),
+        )["result"]
+            .clone()
+    };
+    let first = impact(&mut lsp);
+    let computed = cache(&mut lsp)["misses"].as_u64().unwrap_or(0);
+    assert!(computed > 0, "the first ask computes: {}", cache(&mut lsp));
+    let second = impact(&mut lsp);
+    assert_eq!(first, second, "the same answer from the cache");
+    let after = cache(&mut lsp);
+    assert_eq!(
+        after["misses"].as_u64(),
+        Some(computed),
+        "nothing computed again: {after}"
+    );
+    assert!(after["hits"].as_u64().unwrap_or(0) > 0, "{after}");
+    lsp.shutdown();
+}

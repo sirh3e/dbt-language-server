@@ -381,6 +381,23 @@ impl Dispatcher {
             .store(params.work_done_progress(), Ordering::Relaxed);
         self.completion_support =
             cogitator_lsp::CompletionSupport::from_capabilities(params.capabilities.as_ref());
+        self.toggles
+            .inlay_refresh
+            .store(params.inlay_hint_refresh(), Ordering::Relaxed);
+        match params.rename_column_direction() {
+            None => {}
+            Some(word) => match cogitator_analysis::features::ColumnRenameDirection::parse(word) {
+                Some(direction) => {
+                    let both = direction == cogitator_analysis::features::ColumnRenameDirection::Both;
+                    tracing::info!(direction = word, "column rename direction from initializationOptions");
+                    self.toggles.rename_column_both.store(both, Ordering::Relaxed);
+                }
+                None => tracing::warn!(
+                    direction = word,
+                    "initializationOptions.renameColumnDirection is neither \"down\" nor \"both\"; renaming down"
+                ),
+            },
+        }
         {
             let mut cfg = self.profiles.lock().expect("profiles config lock");
             if let Some(dir) = params.profiles_dir() {

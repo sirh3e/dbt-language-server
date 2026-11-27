@@ -1,0 +1,5 @@
+# Which sqlfluff commit vendor/sqlfluffrs holds; update.sh reads and writes it.
+repository = "https://github.com/sqlfluff/sqlfluff"
+commit = "63fd396b5c0af320810724bbc4a5d3327d033093"
+date = "2026-11-26"
+crates = ["sqlfluffrs_types", "sqlfluffrs_dialects", "sqlfluffrs_lexer", "sqlfluffrs_parser"]

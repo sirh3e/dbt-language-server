@@ -28,6 +28,7 @@ pub enum UnresolvedKind {
     Source,
     SourceTable,
     Doc,
+    Function,
     Macro,
     Var,
 }
@@ -40,6 +41,7 @@ impl UnresolvedKind {
             "dangling-source" => Self::Source,
             "dangling-source-table" => Self::SourceTable,
             "dangling-doc" => Self::Doc,
+            "dangling-function" => Self::Function,
             "unknown-var" => Self::Var,
             "dangling-exposure-ref" => Self::Ref,
             _ => return None,

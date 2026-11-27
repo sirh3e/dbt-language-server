@@ -21,6 +21,12 @@ cmd(
   "source_freshness",
   "dbt source freshness for the project (feeds the freshness lenses)"
 )
+vim.api.nvim_create_user_command("DbtFix", function()
+  require("cogitator.diagnostics").fix()
+end, { desc = "apply the fix of the problem under the cursor" })
+vim.api.nvim_create_user_command("DbtProblems", function()
+  require("cogitator.diagnostics").problems()
+end, { desc = "this file's problems in the location list" })
 vim.api.nvim_create_user_command("DbtRunSelection", function(opts)
   require("cogitator.commands").run_selection(opts)
 end, { nargs = "?", desc = "dbt run with an arbitrary selector (tag:…, state:modified+)" })
@@ -29,7 +35,24 @@ vim.api.nvim_create_user_command("DbtPreview", function(opts)
 end, { nargs = "?", desc = "dbt show for the current model (optional row limit, default 50)" })
 vim.api.nvim_create_user_command("DbtPreviewCte", function(opts)
   require("cogitator.preview_cte").preview_cte(opts)
-end, { nargs = "?", desc = "rows of the CTE under the cursor (optional row limit, default preview.rows)" })
+end, {
+  nargs = "?",
+  bang = true,
+  desc = "rows of the CTE under the cursor (optional row limit, default preview.rows); ! in a float",
+})
+--- the CTE names of the current buffer, for completion (read from its text)
+local function cte_names(lead)
+  local names = require("cogitator.preview_cte").names_in(vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  return vim.tbl_filter(function(name)
+    return vim.startswith(name, lead or "")
+  end, names)
+end
+vim.api.nvim_create_user_command("DbtCteSql", function(opts)
+  require("cogitator.preview_cte").cte_sql(opts)
+end, { nargs = "?", complete = cte_names, desc = "the SQL of the CTE under the cursor (or the one named)" })
+vim.api.nvim_create_user_command("DbtCtes", function()
+  require("cogitator.preview_cte").pick()
+end, { desc = "every CTE of this model in the picker" })
 cmd("DbtExpandJinja", "expand_jinja", "render this model's Jinja (stubbed subset) in a split")
 cmd("DbtIncrementalDiff", "incremental_diff", "is_incremental() false vs true, as a diff in a split")
 vim.api.nvim_create_user_command("DbtDiffAt", function(opts)
@@ -37,6 +60,16 @@ vim.api.nvim_create_user_command("DbtDiffAt", function(opts)
 end, { nargs = "*", desc = "this model against a git revision or the last run [rev] [sql|compiled|lineage]" })
 cmd("DbtCostReport", "cost_report", "the last run's models by cost, critical path, suggestions")
 cmd("DbtProfileColumn", "profile_column", "profile the output column under the cursor (warehouse.profile)")
+cmd("DbtTestSql", "test_sql", "the SQL every test of this model runs, in a split")
+vim.api.nvim_create_user_command("DbtIncrementalSql", function(opts)
+  require("cogitator.commands").incremental_sql(opts)
+end, {
+  nargs = "?",
+  complete = function()
+    return require("cogitator.commands.views").STRATEGIES
+  end,
+  desc = "what an incremental run of this model executes [strategy]",
+})
 cmd("DbtPlan", "plan", "this model's IR levels and rule trace (dbt.queryPlan)")
 cmd("DbtDoctor", "doctor", "the server's health report (dbt.doctor)")
 cmd("DbtDeadModels", "dead_models", "list models nothing downstream uses (quickfix)")
@@ -148,8 +181,24 @@ vim.api.nvim_create_user_command("DbtDag", function()
 end, { desc = "project DAG with columns, dbt-docs style (Neovim only)" })
 
 vim.api.nvim_create_user_command("DbtColumnLineage", function(opts)
-  require("cogitator.dag").open({ columns = true, column = opts.args ~= "" and opts.args or nil })
-end, { nargs = "?", desc = "column-lineage graph of this model (optionally of one column)" })
+  local args = vim.split(vim.trim(opts.args), "%s+", { trimempty = true })
+  if args[1] == "graph" then
+    -- the lineage drawn as the DAG, as before the dialog
+    require("cogitator.dag").open({ columns = true, column = args[2] })
+  else
+    require("cogitator.column_dialog").open({ column = args[1] })
+  end
+end, {
+  nargs = "*",
+  complete = function(lead, line)
+    local first = line:match("ColumnLineage%s+%S*$") ~= nil
+    local words = vim.list_extend(first and { "graph" } or {}, require("cogitator.dispatch").column_names())
+    return vim.tbl_filter(function(w)
+      return w:find(lead, 1, true) == 1
+    end, words)
+  end,
+  desc = "column-lineage dialog of this model (optionally one column); `graph [column]` draws the DAG",
+})
 
 vim.api.nvim_create_user_command("DbtGraph", function()
   require("cogitator.graph").open()

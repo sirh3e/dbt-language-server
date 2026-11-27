@@ -28,12 +28,16 @@ pub enum Change {
     InlayEnvVars(bool),
     InlayJinja(bool),
     InlayTypes(bool),
+    InlayLineage(bool),
+    InlayLineageMaxLen(u64),
     PreviewRows(u64),
     PreviewMaxRows(u64),
     /// `bi.manifest` (empty: none; no launch value to revert to).
     BiManifest(String),
     /// cost.query_history / warehouse.profile*.
     Analytics(super::AnalyticsSettings),
+    /// cogitator.yml `format:` (None: removed, the toml file's or defaults).
+    Format(Option<cogitator_format::Config>),
 }
 
 /// The changed-keys-only diff: a key participates only when its file
@@ -122,6 +126,15 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     if old.inlay.types != new.inlay.types {
         out.push(Change::InlayTypes(new.inlay.types.unwrap_or(false)));
     }
+    if old.inlay.lineage != new.inlay.lineage {
+        out.push(Change::InlayLineage(new.inlay.lineage.unwrap_or(true)));
+    }
+    if old.inlay.lineage_max_len != new.inlay.lineage_max_len {
+        // 0 is the built-in cap
+        out.push(Change::InlayLineageMaxLen(
+            new.inlay.lineage_max_len.unwrap_or(0),
+        ));
+    }
     if old.preview.rows != new.preview.rows {
         out.push(Change::PreviewRows(
             new.preview.rows.unwrap_or(baseline.preview_rows),
@@ -139,6 +152,9 @@ pub fn diff(old: &FileConfig, new: &FileConfig, baseline: &Baseline) -> Vec<Chan
     }
     if old.analytics() != new.analytics() {
         out.push(Change::Analytics(new.analytics()));
+    }
+    if old.format != new.format {
+        out.push(Change::Format(new.format.clone()));
     }
     if old.log != new.log {
         // an unrecognized level name keeps the launch value — the
@@ -178,10 +194,13 @@ pub fn launch_filter(changes: Vec<Change>, baseline: &Baseline) -> Vec<Change> {
             | Change::InlayEnvVars(_)
             | Change::InlayJinja(_)
             | Change::InlayTypes(_)
+            | Change::InlayLineage(_)
+            | Change::InlayLineageMaxLen(_)
             | Change::PreviewRows(_)
             | Change::PreviewMaxRows(_)
             | Change::BiManifest(_)
-            | Change::Analytics(_) => true,
+            | Change::Analytics(_)
+            | Change::Format(_) => true,
         })
         .collect()
 }
@@ -278,6 +297,14 @@ pub fn apply(
                 toggles.inlay_types.store(*on, Ordering::Relaxed);
                 applied.push("inlay.types");
             }
+            Change::InlayLineage(on) => {
+                toggles.inlay_lineage_off.store(!*on, Ordering::Relaxed);
+                applied.push("inlay.lineage");
+            }
+            Change::InlayLineageMaxLen(len) => {
+                toggles.inlay_lineage_max_len.store(*len, Ordering::Relaxed);
+                applied.push("inlay.lineage_max_len");
+            }
             Change::PreviewRows(rows) => {
                 limits.preview_rows.store(*rows, Ordering::Relaxed);
                 applied.push("preview.rows");
@@ -294,6 +321,10 @@ pub fn apply(
                 *toggles.analytics.write().expect("analytics settings lock") =
                     std::sync::Arc::new(settings.clone());
                 applied.push("cost/warehouse.profile");
+            }
+            Change::Format(rules) => {
+                *toggles.format.write().expect("format rules lock") = rules.clone();
+                applied.push("format");
             }
             Change::Perf(settings) => {
                 // a Mutex-free swap, kept tight: readers clone the Arc
@@ -416,6 +447,35 @@ mod tests {
             kept,
             vec![Change::ProfilesDir("/x".into()), Change::CompiledCapMib(4)]
         );
+    }
+
+    #[test]
+    fn a_format_section_is_the_formatters_rules_and_applies_hot() {
+        let path = std::path::Path::new("cogitator.yml");
+        let old = super::super::parse("", path).unwrap();
+        let new = super::super::parse(
+            "format:\n  dialect: duckdb\n  max_line_length: 100\n  case:\n    keywords: upper\n",
+            path,
+        )
+        .unwrap();
+        let rules = new.format.clone().expect("the section");
+        assert_eq!(rules.dialect.as_deref(), Some("duckdb"));
+        assert_eq!(rules.max_line_length, 100);
+        assert_eq!(rules.case.keywords, cogitator_format::Case::Upper);
+        let changes = diff(&old, &new, &baseline());
+        assert_eq!(changes, vec![Change::Format(Some(rules.clone()))]);
+        let toggles = SharedToggles::default();
+        let applied = apply(
+            &changes,
+            &std::sync::Mutex::new(ProfilesConfig::default()),
+            &SharedLimits::default(),
+            &toggles,
+        );
+        assert_eq!(applied, vec!["format"]);
+        assert_eq!(*toggles.format.read().unwrap(), Some(rules));
+        // a key the formatter does not know refuses the file, by its name
+        let err = super::super::parse("format:\n  max_lenght: 1\n", path).unwrap_err();
+        assert!(format!("{err:?}").contains("max_lenght"), "{err:?}");
     }
 
     #[test]

@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 minijinja = { workspace = true, features = ["fuel"] }
-sqlformat = { workspace = true }
+cogitator-format = { workspace = true }
 cogitator-error = { workspace = true }
 cogitator-lsp = { workspace = true }
 cogitator-dialects = { workspace = true }

@@ -97,3 +97,110 @@ fn a_column_rename_reaches_every_consumer_or_refuses() {
         "{refused}"
     );
 }
+
+/// The `newText`s of a WorkspaceEdit's changes to the file ending `file`.
+fn new_texts(edit: &serde_json::Value, file: &str) -> Vec<String> {
+    edit["documentChanges"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{edit}"))
+        .iter()
+        .filter(|c| {
+            c["textDocument"]["uri"]
+                .as_str()
+                .is_some_and(|u| u.ends_with(file))
+        })
+        .flat_map(|c| c["edits"].as_array().cloned().unwrap_or_default())
+        .map(|e| e["newText"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn dbt_rename_column_reaches_upstream_when_asked() {
+    let project = jaffle();
+    let (mut lsp, _) = project.booted();
+    let (uri, text) = open(&mut lsp, &project.root.join("models/customers.sql"));
+    // `customers.customer_id` of the final select: stg_customers' column,
+    // passed through `select *`
+    let at = position_of(&text, "customers.customer_id,", 10);
+    let exec = |lsp: &mut harness::Lsp, extra: serde_json::Value| {
+        let mut arg = serde_json::json!({"uri": uri, "position": at, "newName": "cust_id"});
+        arg.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        lsp.request(
+            "workspace/executeCommand",
+            serde_json::json!({"command": "dbt.renameColumn", "arguments": [arg]}),
+        )
+    };
+
+    // downstream (the default): customers aliases it, stg_customers stays
+    let down = exec(&mut lsp, serde_json::json!({}));
+    let result = &down["result"];
+    assert_eq!(result["direction"], "down", "{down}");
+    assert_eq!(result["origin"]["model"], "customers", "{down}");
+    assert!(
+        new_texts(&result["edit"], "stg_customers.sql").is_empty(),
+        "{down}"
+    );
+    assert_eq!(
+        new_texts(&result["edit"], "/customers.sql"),
+        [" as cust_id"],
+        "{down}"
+    );
+
+    // up- and downstream: from stg_customers, as textDocument/rename there
+    let both = exec(&mut lsp, serde_json::json!({"direction": "both"}));
+    let result = &both["result"];
+    assert_eq!(result["origin"]["model"], "stg_customers", "{both}");
+    assert_eq!(
+        result["origin"]["chain"],
+        serde_json::json!(["customers", "stg_customers"]),
+        "{both}"
+    );
+    assert_eq!(result["models"][0], "stg_customers", "{both}");
+    assert_eq!(
+        new_texts(&result["edit"], "stg_customers.sql"),
+        ["cust_id"],
+        "{both}"
+    );
+    assert_eq!(
+        new_texts(&result["edit"], "/customers.sql"),
+        ["cust_id"; 3],
+        "{both}"
+    );
+    assert_eq!(
+        new_texts(&result["edit"], "staging/schema.yml"),
+        ["cust_id"],
+        "{both}"
+    );
+
+    // applied: the same edit reaches the client as workspace/applyEdit
+    let applied = exec(
+        &mut lsp,
+        serde_json::json!({"direction": "both", "apply": true}),
+    );
+    assert_eq!(
+        applied["result"]["origin"]["model"], "stg_customers",
+        "{applied}"
+    );
+    let edit = lsp.wait_server_request("workspace/applyEdit", |m| {
+        m["params"]["label"]
+            .as_str()
+            .is_some_and(|l| l.contains("up- and downstream"))
+    });
+    assert_eq!(
+        new_texts(&edit["params"]["edit"], "stg_customers.sql"),
+        ["cust_id"],
+        "{edit}"
+    );
+
+    // a direction it does not know, and no newName, are refused
+    let bad = exec(&mut lsp, serde_json::json!({"direction": "sideways"}));
+    assert_eq!(bad["error"]["code"], -32602, "{bad}");
+    let none = lsp.request(
+        "workspace/executeCommand",
+        serde_json::json!({"command": "dbt.renameColumn",
+            "arguments": [{"uri": uri, "position": at}]}),
+    );
+    assert_eq!(none["error"]["code"], -32602, "{none}");
+}

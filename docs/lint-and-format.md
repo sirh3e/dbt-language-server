@@ -1,12 +1,14 @@
-# Syntax errors, `cogitator lint` and `cogitator format`
+# Syntax errors, invalid models, `cogitator lint` and `cogitator format`
 
-Three things that need no `dbt compile`, no dbt Fusion and no warehouse:
+Four things that need no `dbt compile`, no dbt Fusion and no warehouse:
 
 1. **Syntax errors as you type** in every `.sql` file of the project
    (models, macros, tests, analyses, snapshots).
-2. **`cogitator lint`**: every diagnostic the editor would show, for every
+2. **Invalid models as you type**: what makes dbt refuse a model, or
+   build something other than what it says, with the fix as a quickfix.
+3. **`cogitator lint`**: every diagnostic the editor would show, for every
    file of the project, from the command line — for CI.
-3. **`cogitator format`**: the editor's formatter over every model, in
+4. **`cogitator format`**: the editor's formatter over every model, in
    place or as a check.
 
 ## Syntax errors as you type
@@ -85,6 +87,41 @@ lint:
   DuckDB's own parser reports SQL errors (source `duckdb 2.0`); cogitator
   then checks only the Jinja layer, so nothing is reported twice.
 
+## Invalid models as you type
+
+A model can parse and still be one dbt refuses, or one that builds
+something else than it says. cogitator checks every model of the project
+(a new one too, before it is saved) as it is written:
+
+| Code | Severity | What it finds | The fix it offers |
+|---|---|---|---|
+| `invalid-materialization` | Error | `materialized='incrementl'`: a near miss of dbt's materializations (`view`, `table`, `incremental`, `ephemeral`, `materialized_view`) or of a `{% materialization %}` of the project or its packages | the closest names |
+| `invalid-materialization` | Warning | a materialization that is no near miss of any of those (an adapter may still provide it; `dynamic_table`, `external` and `clone` are known) | — |
+| `unknown-config-key` | Warning | a config key that is a near miss of one dbt or a common adapter reads (`materialised`, `unique_keys`) | the closest keys |
+| `invalid-config-value` | Error / Warning | `access` outside `private`, `protected`, `public` (dbt refuses the project); `on_schema_change` outside `ignore`, `fail`, `append_new_columns`, `sync_all_columns` (dbt falls back to `ignore`); an `incremental_strategy` that is a near miss of dbt's and that no `get_incremental_<name>_sql` macro defines; `enabled='false'` and `full_refresh='false'`, strings that read as true | the closest values; the boolean |
+| `ref-self` | Error | a model that refs itself | rewrite `ref('me')` to `this` |
+| `ref-cycle` | Error | a ref whose model leads back to this one; the message names the cycle (`orders → payments → customers → orders`) | — |
+| `is-incremental-never` | Warning | `is_incremental()` in a model whose own config materializes it as a `view`, `table`, `ephemeral` or `materialized_view`: the block never runs | — |
+| `empty-model` | Warning | a model with nothing but comments and its `config(...)` | — |
+
+The confidence rule of the syntax checks holds here too: what the text
+cannot tell is never reported. A key outside the lists is reported only
+when it is a near miss of one in them (adapters add keys of their own); a
+value computed by a macro or a `var()` is not checked; a materialization
+set in `dbt_project.yml` or the properties YAML is not used for
+`is-incremental-never`. A cycle is found in the project graph as it was
+last scanned, through the refs of the buffer as it is now.
+
+Every fix rides on the diagnostic as typed data, so any LSP client offers
+it as a quickfix (Neovim: `<leader>di` / `:DbtFix`, see the plugin's
+help).
+
+```yaml
+# cogitator.yml
+lint:
+  model: false   # default true
+```
+
 ## `cogitator lint`
 
 ```sh
@@ -100,7 +137,7 @@ and `--target` before the subcommand, and `cogitator.yml`'s `profiles:`)
 and runs, over every model, macro, test, analysis and snapshot and the
 YAML that describes them (plus `selectors.yml` and `cogitator.yml`):
 
-- the syntax checks above;
+- the syntax checks and the invalid-model checks above;
 - the `lint:` checks cogitator.yml enables (`select_star`, …, and the
   default-on `macro_calls` and `dispatch`);
 - dangling `ref()` / `source()` / `doc()`, unknown vars and env vars,
@@ -135,10 +172,143 @@ cogitator format                 # rewrite every model in place
 cogitator format --check         # list the files that would change; exit 1 if any
 cogitator format --check --diff  # and show the unified diff
 cogitator format models/marts --indent 2
+cogitator format --config ci/cogitator-format.toml
 ```
 
-It runs `textDocument/formatting` (sqlformat over Jinja-segmented SQL)
-on each model of the root project, or on the given files and
-directories. A file the formatter declines — inline Jinja statements, a
-sentinel miscount, any doubt — is reported on stderr as `skipped` and
-never changed. Exit 0, or 1 with `--check` when a file would change.
+It runs `textDocument/formatting` on each model of the root project, or
+on the given files and directories. A file the formatter declines is
+reported on stderr as `skipped`, with why, and never changed. Exit 0, or
+1 with `--check` when a file would change.
+
+### How it formats
+
+The formatter is the crate `cogitator-format`
+([crates/cogitator-format](../crates/cogitator-format)), which the server
+embeds and which is also a program of its own (below).
+
+- **SQL** is laid out on the parse tree of
+  [sqlfluff](https://github.com/sqlfluff/sqlfluff)'s Rust parser
+  (sqlfluffrs, vendored in [vendor/sqlfluffrs](../vendor/sqlfluffrs)), in
+  any of sqlfluff's 28 dialects. Lines break where sqlfluff's own reflow
+  breaks them: every clause (`from`, `where`, `group by`, a `join`, a
+  `union`) starts a line; a bracket, a `select`'s targets, a `case`, an
+  expression's operators and a join's condition break only when they do
+  not fit `max_line_length`; a bracket closes at the indent of the line
+  that opened it.
+- **Jinja** is read with minijinja's own tokenizer. Each tag is laid out
+  again from its tokens (`{{ref( 'x' )}}` → `{{ ref('x') }}`, `{%set
+  x=-1%}` → `{% set x = -1 %}`, `a|b` → `a | b`); a tag written over
+  several lines is kept as it is. The lines inside `{% if %}`, `{% for %}`,
+  `{% macro %}`, `{% set x %}` … go one level deeper, `{% else %}` back.
+  A tag written inside a line stays inside it; one on a line of its own
+  keeps its line.
+- **Nothing changes what a model means.** Only whitespace moves, and the
+  case of keywords and names where a rule says so: the output is lexed
+  again and must hold the same tokens in the same order, every tag must
+  come back exactly once, or the model is left as it is.
+
+### The rules
+
+Every rule has a default; the names follow sqlfluff's `.sqlfluff`.
+
+| Key | Default | sqlfluff | What |
+|---|---|---|---|
+| `dialect` | the dbt adapter's | `dialect` | `duckdb`, `snowflake`, `bigquery`, `postgres`, `sparksql`, `tsql`, … |
+| `max_line_length` | `80` | LT05 | the longest line the layout aims for |
+| `indent_unit` | `space` | LT02 | `space` or `tab` |
+| `tab_space_size` | `4` | LT02 | spaces per indent |
+| `max_blank_lines` | `1` | | blank lines kept where the source had more |
+| `trailing_newline` | `true` | LT12 | end the file with exactly one newline |
+| `case.keywords` | `lower` | CP01 | `upper`, `lower`, `capitalise` or `preserve` |
+| `case.identifiers` | `preserve` | CP02 | unquoted names; quoted ones never change |
+| `case.functions` | `lower` | CP03 | |
+| `case.literals` | `lower` | CP04 | `null`, `true`, `false` |
+| `case.types` | `lower` | CP05 | |
+| `layout.commas` | `trailing` | LT04 | `trailing` or `leading` |
+| `layout.select_targets` | `one_per_line` | LT09 | more than one target: a line each; `fit`: while they fit |
+| `layout.indented_joins` | `false` | `indented_joins` | `join` one level under `from` |
+| `layout.blank_line_after_cte` | `true` | LT08 | a blank line after each CTE |
+| `jinja.delimiter_spacing` | `true` | | one space inside `{{ }}` and `{% %}` |
+| `jinja.normalize_tags` | `true` | | a tag's inside laid out from its tokens |
+| `jinja.filter_spacing` | `true` | | spaces around a filter's `\|` |
+| `jinja.indent_blocks` | `true` | `template_blocks_indent` | the lines inside a block one level deeper |
+
+They are read from, the first that has them:
+
+1. `format:` in `cogitator.yml` (the server, hot: an edit applies to the
+   next format):
+
+   ```yaml
+   format:
+     dialect: duckdb
+     max_line_length: 100
+     case:
+       keywords: upper
+     layout:
+       commas: leading
+   ```
+
+2. the nearest `cogitator-format.toml` (or `.cogitator-format.toml`) at or
+   above the file — what the standalone program reads too:
+
+   ```toml
+   dialect = "duckdb"
+   max_line_length = 100
+
+   [case]
+   keywords = "upper"
+
+   [layout]
+   commas = "leading"
+   ```
+
+3. the defaults, with the editor's indent (`tabSize`, `insertSpaces`).
+
+Where the rules name no dialect, the dbt adapter of the active target
+names it (`spark` and `glue` → `sparksql`, `sqlserver` → `tsql`, an
+adapter sqlfluff has no dialect for → `ansi`). A key the formatter does
+not know is refused by name, in either file.
+
+### When it leaves a model as it is
+
+- **Jinja minijinja cannot read** (an unclosed `{{`).
+- **SQL the dialect's grammar cannot parse.** Jinja is masked for the
+  parser, and the masks are tried in turn, each looser than the last, so a
+  model is masked the same way every run:
+  1. a `{{ … }}` as a name, and one alone on its line before any SQL
+     (`config()`, `set` calls) as a comment, as any other tag is;
+  2. every `{{ … }}` as a name;
+  3. every `{{ … }}` alone on its line as a comment;
+  4. a `{{ … }}` alone where a statement may stand (a CTE's body, a
+     subquery, a `union`'s branch) as one, `select <name>`: a call that
+     expands to a whole query;
+  5. the SQL between tags on their own lines parsed piece by piece, which
+     `{% if %} select 1 {% else %} select 2 {% endif %}` needs. Inside a
+     block (`{% macro %}`, `{% if %}` …) a piece that is still no SQL — a
+     macro's fragment, a regular expression — is kept byte for byte, as
+     sqlfluff leaves unparsable sections; the model's own SQL must parse.
+
+  A call in a place no stand-in fills (the tail of a CTE list, `with {{
+  ctes() }}, final as (…)`) declines the model.
+- **A layout that would change a token** — a formatter bug; please report
+  it.
+
+`cogitator-format --explain <file>` says, for each way of masking the
+Jinja, what it came to.
+
+### The formatter on its own
+
+`cogitator-format` is the same formatter without the server, for a
+pre-commit hook or a project without cogitator:
+
+```sh
+cogitator-format models/                       # in place
+cogitator-format --check --diff models/        # exit 1 if a file would change
+cogitator-format --check --strict models/      # a declined file fails too
+cogitator-format - --stdin-filename models/m.sql < m.sql   # stdin to stdout
+cogitator-format --print-config models/m.sql   # the rules a file is formatted by
+cogitator-format --explain models/m.sql        # why a file was declined
+```
+
+It reads the nearest `cogitator-format.toml` (or `--config`), and
+`--dialect` sets the dialect over it; with neither it formats as `ansi`.

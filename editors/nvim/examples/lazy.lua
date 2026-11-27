@@ -24,7 +24,7 @@ return {
     -- profiles_dir = "~/.dbt",   -- where profiles.yml lives (else dbt's own rules)
     -- fusion = false,            -- true, or "/path/to/dbt", for dbt Fusion
     -- keymaps = true,            -- the <leader>d… maps (:h cogitator-nvim-commands)
-    -- inlay_hints = false,       -- column types as inlay hints
+    -- inlay_hints = true,        -- column lineage, ref relations, var values
     -- lens = { enabled = true }, -- run/test/compile code lenses
   },
 }

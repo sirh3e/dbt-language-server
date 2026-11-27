@@ -217,6 +217,52 @@ async function profileColumn(): Promise<void> {
   }
 }
 
+/** Open a SQL text beside the editor, as a preview. */
+async function showSql(content: string): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument({ language: "sql", content });
+  await vscode.window.showTextDocument(doc, {
+    preview: true,
+    viewColumn: vscode.ViewColumn.Beside,
+  });
+}
+
+/** dbt.testSql: the SQL every test of the model runs. */
+async function testSql(): Promise<void> {
+  const result = (await execDbt("dbt.testSql")) as { text?: string } | null | undefined;
+  if (result?.text) {
+    await showSql(result.text);
+  }
+}
+
+/** The strategies dbt.incrementalSql takes. */
+export const INCREMENTAL_STRATEGIES = [
+  "append",
+  "merge",
+  "delete+insert",
+  "insert_overwrite",
+  "microbatch",
+];
+
+/** dbt.incrementalSql: what an incremental run executes, for the
+ * model's strategy or one picked. */
+async function incrementalSql(): Promise<void> {
+  const pick = await vscode.window.showQuickPick(
+    ["the model's own strategy", ...INCREMENTAL_STRATEGIES],
+    { placeHolder: "Which incremental strategy?" }
+  );
+  if (pick === undefined) {
+    return;
+  }
+  const extra = INCREMENTAL_STRATEGIES.includes(pick) ? { strategy: pick } : undefined;
+  const result = (await execDbt("dbt.incrementalSql", extra)) as
+    | { text?: string }
+    | null
+    | undefined;
+  if (result?.text) {
+    await showSql(result.text);
+  }
+}
+
 /** A dbt.previewCte answer: the rows of one CTE (or the final select). */
 export interface CtePreview {
   model: string;
@@ -255,6 +301,19 @@ async function previewCte(): Promise<void> {
     preview: true,
     viewColumn: vscode.ViewColumn.Beside,
   });
+}
+
+/** dbt.cteSql: the query that selects the CTE under the cursor (or the
+ * final select), Jinja resolved, without running it. */
+async function cteSql(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const position = editor
+    ? { line: editor.selection.active.line, character: editor.selection.active.character }
+    : undefined;
+  const result = (await execDbt("dbt.cteSql", { position })) as { text?: string } | null | undefined;
+  if (result?.text) {
+    await showSql(result.text);
+  }
 }
 
 /** One row of a dbt.incrementality report. */
@@ -1144,6 +1203,66 @@ async function breakingChanges(): Promise<void> {
   await vscode.window.showTextDocument(doc, { preview: true });
 }
 
+/** A dbt.columnLineageGraph answer. */
+export interface LineageGraph {
+  nodes: Array<{ id: string; name: string; kind: string }>;
+  edges: Array<{ from: string; to: string; kind?: string }>;
+  start?: string | null;
+  cached: boolean;
+  stale?: string[];
+  missing?: string[];
+}
+
+/** The lines dbt.columnLineageGraph's answer reads as, an edge a line. */
+export function lineageGraphLines(graph: LineageGraph): string[] {
+  const names = new Map(graph.nodes.map((n) => [n.id, n.name] as const));
+  const name = (id: string) => names.get(id) ?? id;
+  const lines = [
+    `${graph.nodes.length} columns, ${graph.edges.length} edges` +
+      (graph.cached ? " (from the cache)" : ""),
+  ];
+  if (graph.stale && graph.stale.length > 0) {
+    lines.push(`still being computed: ${graph.stale.join(", ")}`);
+  }
+  if (graph.missing && graph.missing.length > 0) {
+    lines.push(`no lineage: ${graph.missing.join(", ")}`);
+  }
+  lines.push("");
+  for (const edge of graph.edges) {
+    lines.push(`${name(edge.from)} → ${name(edge.to)}${edge.kind ? ` (${edge.kind})` : ""}`);
+  }
+  return lines;
+}
+
+/** dbt.columnLineageGraph: the column lineage around a column, as text. */
+async function columnLineageGraph(): Promise<void> {
+  const column = await vscode.window.showInputBox({
+    prompt: "Column (empty: every column of the model)",
+  });
+  if (column === undefined) {
+    return;
+  }
+  const direction = await vscode.window.showQuickPick(["both", "up", "down"], {
+    placeHolder: "Which way to walk",
+  });
+  if (!direction) {
+    return;
+  }
+  const graph = (await execDbt("dbt.columnLineageGraph", {
+    column: column || undefined,
+    direction,
+  })) as LineageGraph | null | undefined;
+  if (!graph) {
+    void vscode.window.showInformationMessage("dbt: no column lineage for this file");
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument({
+    language: "plaintext",
+    content: lineageGraphLines(graph).join("\n"),
+  });
+  await vscode.window.showTextDocument(doc, { preview: true });
+}
+
 /** dbt.lineageSite: the lineage view, fed by the server (lineageView.ts). */
 function lineageView(context: vscode.ExtensionContext): Promise<void> {
   return showLineageView(context, async (uri, assets) => {
@@ -1277,6 +1396,101 @@ async function syncYaml(): Promise<void> {
   }
 }
 
+/** A dbt.renameColumn answer, as far as the palette reads it. */
+export interface ColumnRenameResult {
+  model: string;
+  column: string;
+  newName: string;
+  direction: string;
+  origin: { model: string; column: string; chain: string[]; stop: string };
+  models: string[];
+  edit: {
+    documentChanges: Array<{
+      textDocument: { uri: string };
+      edits: Array<{ range: { start: { line: number; character: number } }; newText: string }>;
+    }>;
+  };
+}
+
+/** One line on a dbt.renameColumn answer, for the confirmation. */
+export function renameColumnSummary(result: ColumnRenameResult): string {
+  const changes = result.edit.documentChanges ?? [];
+  const edits = changes.reduce((n, c) => n + (c.edits?.length ?? 0), 0);
+  return `dbt: rename ${result.origin.model}.${result.origin.column} → ${result.newName}: ${edits} edit(s) in ${changes.length} file(s), models ${result.models.join(", ")}`;
+}
+
+/** The preview of a dbt.renameColumn answer: where it starts, then each edit. */
+export function renameColumnLines(result: ColumnRenameResult): string[] {
+  const lines = [
+    `# dbt.renameColumn: ${result.model}.${result.column} → ${result.newName} (${result.direction})`,
+    `# from ${result.origin.model}.${result.origin.column}: ${result.origin.stop}`,
+  ];
+  for (const change of result.edit.documentChanges ?? []) {
+    lines.push(`${change.textDocument.uri}: ${change.edits.length} edit(s)`);
+    for (const edit of change.edits) {
+      const at = edit.range.start;
+      lines.push(`  ${at.line + 1}:${at.character + 1} ${edit.newText}`);
+    }
+  }
+  return lines;
+}
+
+/** Rename the model column at the cursor up- and downstream (dbt.renameColumn). */
+async function renameColumn(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    void vscode.window.showWarningMessage("cogitator: open a dbt model first.");
+    return;
+  }
+  const at = editor.selection.active;
+  const word = editor.document.getText(editor.document.getWordRangeAtPosition(at));
+  const newName = await vscode.window.showInputBox({
+    prompt: `Rename column ${word} to`,
+    value: word,
+  });
+  if (!newName || newName === word) {
+    return;
+  }
+  const direction = await vscode.window.showQuickPick(
+    [
+      { label: "Up- and downstream", description: "from the model that defines it", key: "both" },
+      { label: "Downstream only", description: "this model and its consumers", key: "down" },
+    ],
+    { placeHolder: `Rename ${word} → ${newName}…` }
+  );
+  if (!direction) {
+    return;
+  }
+  const argument = {
+    position: { line: at.line, character: at.character },
+    newName,
+    direction: direction.key,
+  };
+  let result: ColumnRenameResult | undefined | null;
+  try {
+    result = (await execDbt("dbt.renameColumn", argument)) as ColumnRenameResult | undefined | null;
+  } catch (err) {
+    void vscode.window.showErrorMessage(`dbt: ${(err as Error).message}`);
+    return;
+  }
+  if (!result) {
+    void vscode.window.showWarningMessage("dbt: no model column at the cursor");
+    return;
+  }
+  let choice = await vscode.window.showInformationMessage(renameColumnSummary(result), "Apply", "Show edits");
+  if (choice === "Show edits") {
+    const doc = await vscode.workspace.openTextDocument({
+      language: "markdown",
+      content: renameColumnLines(result).join("\n"),
+    });
+    await vscode.window.showTextDocument(doc, { preview: true });
+    choice = await vscode.window.showInformationMessage(renameColumnSummary(result), "Apply");
+  }
+  if (choice === "Apply") {
+    await execDbt("dbt.renameColumn", { ...argument, apply: true });
+  }
+}
+
 export async function activate(
   context: vscode.ExtensionContext
 ): Promise<CogitatorApi> {
@@ -1286,6 +1500,7 @@ export async function activate(
     ["cogitator.compile", () => execDbt("dbt.compile")],
     ["cogitator.preview", () => execDbt("dbt.preview")],
     ["cogitator.previewCte", previewCte],
+    ["cogitator.cteSql", cteSql],
     ["cogitator.parse", () => execDbt("dbt.parse")],
     ["cogitator.lineage", () => execDbt("dbt.showLineage")],
     ["cogitator.splitPlan", splitPlan],
@@ -1293,12 +1508,15 @@ export async function activate(
     ["cogitator.diffAt", diffAt],
     ["cogitator.costReport", costReport],
     ["cogitator.profileColumn", profileColumn],
+    ["cogitator.testSql", testSql],
+    ["cogitator.incrementalSql", incrementalSql],
     ["cogitator.incrementality", incrementality],
     ["cogitator.syntaxTree", syntaxTree],
     ["cogitator.highlight", highlight],
     ["cogitator.astGrep", astGrep],
     ["cogitator.nodeInfo", nodeInfo],
     ["cogitator.lineageView", () => lineageView(context)],
+    ["cogitator.columnLineageGraph", columnLineageGraph],
     ["cogitator.syncYaml", syncYaml],
     ["cogitator.unresolved", unresolved],
     ["cogitator.select", select],
@@ -1306,6 +1524,7 @@ export async function activate(
     ["cogitator.impact", impact],
     ["cogitator.search", structuralSearch],
     ["cogitator.modelDependencies", modelDependencies],
+    ["cogitator.renameColumn", renameColumn],
     [
       "cogitator.status",
       async () => {

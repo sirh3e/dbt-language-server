@@ -12,6 +12,46 @@ use petgraph::Direction::{Incoming, Outgoing};
 use super::{EdgeKind, NodeData, NodeKind, ProjectGraph};
 
 impl ProjectGraph {
+    /// The model `model` and the models within `depth` hops of it,
+    /// upstream (`up`: what it refs, models only) and downstream (`down`:
+    /// what refs it), each once, in the order first found: the start, then
+    /// the upstream walk's, then the downstream walk's, breadth first, each
+    /// step's neighbours by name.
+    pub fn models_within(&self, model: &str, up: bool, down: bool, depth: usize) -> Vec<String> {
+        let mut found = vec![model.to_string()];
+        let mut seen: HashSet<String> = found.iter().cloned().collect();
+        for (go, upward) in [(up, true), (down, false)] {
+            if !go {
+                continue;
+            }
+            let mut queue = std::collections::VecDeque::from([(model.to_string(), 0usize)]);
+            let mut level: HashMap<String, usize> = HashMap::new();
+            while let Some((name, hops)) = queue.pop_front() {
+                if hops >= depth {
+                    continue;
+                }
+                let mut next: Vec<String> = if upward {
+                    self.upstream_of(&name)
+                        .filter(|n| n.kind == NodeKind::Model)
+                        .map(|n| n.name.clone())
+                        .collect()
+                } else {
+                    self.downstream_of(&name).map(|n| n.name.clone()).collect()
+                };
+                next.sort();
+                for n in next {
+                    if level.insert(n.clone(), hops + 1).is_none() {
+                        if seen.insert(n.clone()) {
+                            found.push(n.clone());
+                        }
+                        queue.push_back((n, hops + 1));
+                    }
+                }
+            }
+        }
+        found
+    }
+
     /// Everything that (transitively) depends on `name`: models,
     /// exposures, metrics — incoming non-macro edges, breadth-first.
     pub fn transitive_downstream<'a>(&'a self, name: &str) -> Vec<&'a NodeData> {
@@ -166,6 +206,20 @@ mod tests {
             graph.graph.update_edge(f, t, EdgeKind::Ref);
         }
         graph
+    }
+
+    #[test]
+    fn models_within_a_depth_each_way() {
+        let graph = diamond();
+        // d refs b and c, which ref a: upstream of d first, then nothing down
+        assert_eq!(graph.models_within("d", true, false, 1), ["d", "b", "c"]);
+        assert_eq!(
+            graph.models_within("d", true, false, 2),
+            ["d", "b", "c", "a"]
+        );
+        // both ways from b: a upstream, d downstream, each once
+        assert_eq!(graph.models_within("b", true, true, 3), ["b", "a", "d"]);
+        assert_eq!(graph.models_within("a", false, false, 3), ["a"]);
     }
 
     #[test]

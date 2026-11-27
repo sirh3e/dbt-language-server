@@ -128,6 +128,7 @@ pub fn semantic_tokens(doc: &Document) -> SemanticTokens {
     };
     let keyword = type_index("keyword");
     let macro_t = type_index("macro");
+    let function_t = type_index("function");
     let variable = type_index("variable");
     let string_t = type_index("string");
     let number = type_index("number");
@@ -140,6 +141,7 @@ pub fn semantic_tokens(doc: &Document) -> SemanticTokens {
             TokenKind::Word(kw) if kw != Keyword::NoKeyword => keyword,
             TokenKind::Config => keyword,
             TokenKind::Macro => macro_t,
+            TokenKind::Function => function_t,
             TokenKind::Package => namespace,
             TokenKind::Ref
             | TokenKind::SourceName

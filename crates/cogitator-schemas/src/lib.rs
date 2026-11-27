@@ -11,10 +11,12 @@
 
 pub use dbt_schemas::{artifacts, generated, processed, schema_keys, schema_walk};
 
+pub mod functions;
 pub mod project;
 pub mod properties;
 pub mod yaml;
 
+pub use functions::{parse_functions, FunctionArgument, FunctionEntry, FunctionReturns};
 pub use project::{parse_dbt_project, DispatchConfig, ProjectFile};
 pub use properties::{
     parse_properties, ColumnEntry, ModelEntry, PropertiesFile, SourceEntry, TableEntry,

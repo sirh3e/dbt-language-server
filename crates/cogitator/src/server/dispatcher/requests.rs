@@ -65,7 +65,9 @@ impl Dispatcher {
                                 .unwrap_or_default()
                         } else {
                             // dispatcher path: a cache probe, never a compute
-                            let lineage = derived.lineage_cached(uri, d.generation);
+                            let revision =
+                                crate::server::handlers::plan::schema_revision(ctx, &derived);
+                            let lineage = derived.lineage_cached(uri, d.generation, revision);
                             let text = features::hover_with_lineage(
                                 ctx,
                                 d,
@@ -145,7 +147,12 @@ impl Dispatcher {
         let Some(generation) = snap.doc.as_deref().map(|doc| doc.generation) else {
             return;
         };
-        if self.derived.lineage_cached(&uri, generation).is_some() {
+        let revision = crate::server::handlers::plan::schema_revision(&snap.ctx, &self.derived);
+        if self
+            .derived
+            .lineage_cached(&uri, generation, revision)
+            .is_some()
+        {
             return;
         }
         let derived = self.derived.clone();
@@ -420,6 +427,8 @@ impl Dispatcher {
             && uri.ends_with(".sql");
         let perf = self.perf_settings();
         let cap = self.limits.artifact_cap_bytes.load(Ordering::Relaxed);
+        let lineage = self.lineage_for_hints(&uri, &snap, cap);
+        let lineage_options = crate::server::handlers::lineage_hints::options(&self.toggles);
         // offloaded: the relation labels read the profiles inventory
         self.offload_blocking(req.id, "textDocument/inlayHint", move || {
             let target = crate::server::handlers::profiles::active_target_relation(&snap, &derived);
@@ -455,8 +464,43 @@ impl Dispatcher {
             hints.extend(crate::server::handlers::plan_hints::plan_hints(
                 &snap, &derived, &uri, range, &perf, cap,
             ));
+            hints.extend(crate::server::handlers::lineage_hints::hints(
+                &snap,
+                lineage.as_deref().and_then(Option::as_ref),
+                range,
+                lineage_options,
+            ));
             crate::server::reply::Reply::result(&hints)
         });
+    }
+
+    /// The inline lineage hints' lineage: a cache probe on the dispatcher,
+    /// never a compute; a miss starts the offloaded computation that ends
+    /// in `workspace/inlayHint/refresh`.
+    fn lineage_for_hints(
+        &self,
+        uri: &str,
+        snap: &crate::server::snapshot::Snapshot,
+        cap: u64,
+    ) -> Option<std::sync::Arc<Option<cogitator_analysis::lineage::ModelLineage>>> {
+        use crate::server::handlers::lineage_hints;
+        if !lineage_hints::wanted(uri, lineage_hints::options(&self.toggles)) {
+            return None;
+        }
+        let generation = snap.doc.as_deref()?.generation;
+        let revision = crate::server::handlers::plan::schema_revision(&snap.ctx, &self.derived);
+        let cached = self.derived.lineage_cached(uri, generation, revision);
+        if cached.is_none() {
+            lineage_hints::warm(
+                self.snapshot_for(uri),
+                self.derived.clone(),
+                uri.to_string(),
+                cap,
+                self.link.clone(),
+                self.toggles.inlay_refresh.load(Ordering::Relaxed),
+            );
+        }
+        cached
     }
 
     pub(super) fn document_link(&mut self, content: &[u8]) {
@@ -486,12 +530,33 @@ impl Dispatcher {
             return;
         };
         let uri = params.text_document.uri.into_owned();
-        let options = features::formatting::FormatOptions {
+        let configured = self
+            .toggles
+            .format
+            .read()
+            .expect("format rules lock")
+            .clone();
+        let snap = self.snapshot_for(&uri);
+        let mut options = features::formatting::FormatOptions {
             tab_size: params.options.tab_size,
             insert_spaces: params.options.insert_spaces,
+            rules: configured,
+            adapter: snap.ctx.dialect.as_str().to_string(),
         };
-        let snap = self.snapshot_for(&uri);
         self.offload_blocking(req.id, "textDocument/formatting", move || {
+            // cogitator.yml's `format:` first, else the nearest
+            // cogitator-format.toml; a broken one formats nothing
+            if options.rules.is_none() {
+                let path = cogitator_lsp::uri_to_fs_path(&uri).unwrap_or_else(|| uri.clone());
+                match features::formatting::rules_near(std::path::Path::new(&path)) {
+                    Ok(rules) => options.rules = rules,
+                    Err(err) => {
+                        tracing::warn!(%err, "formatting: the formatter's config cannot be read");
+                        let none: Vec<cogitator_lsp::TextEdit> = Vec::new();
+                        return crate::server::reply::Reply::result(&none);
+                    }
+                }
+            }
             // decline-on-doubt answers an empty edit list, never an error
             let edits = snap
                 .doc

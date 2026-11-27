@@ -61,8 +61,16 @@ fn a_saved_rename_is_a_breaking_change() {
         "textDocument/didSave",
         json!({"textDocument": {"uri": uri}}),
     );
+    // the file is written before didChange, so a job may first report the
+    // buffer (the original) against the saved file (the edit): the other
+    // way round, and rightly. Wait for the report of the edit itself.
     let published = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
-        n["params"]["uri"] == uri && !breaking_items(&n["params"]).is_empty()
+        n["params"]["uri"] == uri
+            && breaking_items(&n["params"]).iter().any(|d| {
+                d["message"].as_str().is_some_and(|m| {
+                    m.contains("'customer_id' was removed") && m.contains("breaks")
+                })
+            })
     });
     let items = breaking_items(&published["params"]);
     assert_eq!(items.len(), 1, "{items:?}");
@@ -285,4 +293,52 @@ fn an_unsaved_edit_shows_what_it_breaks() {
         .expect("a select line");
     let start = &items[0]["range"]["start"];
     assert!(start["line"].as_u64().unwrap() >= select as u64, "{start}");
+}
+
+/// The file on disk changed under an open buffer (another tool wrote it, or
+/// the test below writes it before its didChange arrives): the report the
+/// open runs is the buffer's, so what it says is placed in the buffer's own
+/// text. It used to compare the file's columns but anchor in the buffer,
+/// where the renamed item is not: the diagnostic fell back to the root's
+/// `select` (a_saved_rename_is_a_breaking_change failed on CI that way).
+#[test]
+fn a_buffer_that_differs_from_the_file_is_reported_as_the_buffer() {
+    let project = jaffle();
+    let root = project.root.clone();
+    std::fs::create_dir_all(root.join("target")).unwrap();
+    std::fs::write(root.join("target/catalog.json"), CATALOG).unwrap();
+    let model = root.join("models/staging/stg_customers.sql");
+    let original = std::fs::read_to_string(&model).unwrap();
+    let edited = original.replace("id as customer_id", "id as customer_key");
+    assert_ne!(edited, original, "the fixture still renames id");
+    std::fs::write(&model, &edited).unwrap();
+    let uri = cogitator_lsp::fs_path_to_uri(&model);
+    let (mut lsp, _) = project.booted();
+    lsp.notify(
+        "textDocument/didOpen",
+        json!({"textDocument": {"uri": uri, "languageId": "sql", "version": 1, "text": original}}),
+    );
+    // against the build, the buffer breaks nothing
+    let report = lsp.request(
+        "workspace/executeCommand",
+        json!({"command": "dbt.breakingChanges", "arguments": [{"uri": uri}]}),
+    );
+    assert!(
+        report["result"]["diff"]["removed"]
+            .as_array()
+            .is_some_and(|r| r.is_empty()),
+        "{report}"
+    );
+    // against the saved file it undoes the rename: said at the buffer's item
+    let published = lsp.wait_notification("textDocument/publishDiagnostics", |n| {
+        n["params"]["uri"] == uri && !breaking_items(&n["params"]).is_empty()
+    });
+    let item_line = original
+        .lines()
+        .position(|l| l.contains("id as customer_id"))
+        .unwrap();
+    for item in breaking_items(&published["params"]) {
+        assert_eq!(item["range"]["start"]["line"], item_line, "{item}");
+    }
+    lsp.shutdown();
 }

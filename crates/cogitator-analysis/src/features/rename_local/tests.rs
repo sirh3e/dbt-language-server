@@ -186,3 +186,42 @@ fn prepare_highlights_and_references() {
     let sql = at(text, "{{", 0);
     assert!(local_highlights(&ctx, docs.get(URI), URI, sql).is_none());
 }
+
+#[test]
+fn definition_jumps_to_the_declaration_in_scope() {
+    let text = "with c as (select id, amount as total from {{ ref('orders') }})\n\
+                select o.total from c o\n\
+                where exists (select 1 from c o where o.id = 1)\n\
+                order by total";
+    let (ctx, docs) = (ctx(), doc(text));
+    let doc = docs.get(URI).unwrap();
+    let def = |needle: &str, into: usize| {
+        let l = crate::features::definition(&ctx, doc, URI, at(text, needle, into));
+        (l.range.start, l.range.end)
+    };
+    let span = |needle: &str, len: usize| (at(text, needle, 0), at(text, needle, len));
+    for (needle, into, want) in [
+        // a table alias, the outer one
+        ("o.total", 0, span("o\nwhere", 1)),
+        // the subquery's own alias of the same name
+        ("o.id", 0, span("o where o.id", 1)),
+        // a CTE from its use
+        ("c o\nwhere", 0, span("c as", 1)),
+        // a column through the CTE, and in ORDER BY
+        ("total from c", 0, span("total from {{", 5)),
+        ("by total", 3, span("total from {{", 5)),
+        // on the alias itself: the column features answer (here, nothing)
+        ("total from {{", 0, span("total from {{", 0)),
+    ] {
+        assert_eq!(def(needle, into), want, "{needle}");
+    }
+    // ref() keeps its own definition: the model's file
+    let on_ref = crate::features::definition(&ctx, doc, URI, at(text, "orders", 0));
+    assert_ne!(on_ref.uri, URI);
+    // the alias, `o.total` and ORDER BY's `total` (an input column of `c`)
+    let refs =
+        local_references(&ctx, docs.get(URI), URI, at(text, "total from {{", 0), true).unwrap();
+    assert_eq!(refs.len(), 3, "{refs:?}");
+    // a column alias is never renamed here: rename_column owns it
+    assert!(rename(text, "total from {{", "t").is_none());
+}

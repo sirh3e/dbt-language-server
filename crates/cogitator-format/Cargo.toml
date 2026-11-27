@@ -1,0 +1,34 @@
+[package]
+name = "cogitator-format"
+description = "A formatter for dbt models: SQL laid out on sqlfluff's parse tree, Jinja on minijinja's tokens"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Standalone: no dependency on the language server's crates. The server
+# embeds the library; `cogitator-format` is the same formatter as a CLI.
+
+[lib]
+name = "cogitator_format"
+
+[[bin]]
+name = "cogitator-format"
+path = "src/main.rs"
+
+[dependencies]
+minijinja = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
+similar = { workspace = true }
+sqlfluffrs_types = { workspace = true }
+sqlfluffrs_dialects = { workspace = true }
+sqlfluffrs_lexer = { workspace = true }
+sqlfluffrs_parser = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
+pretty_assertions = { workspace = true }
+rstest = { workspace = true }
+tempfile = { workspace = true }

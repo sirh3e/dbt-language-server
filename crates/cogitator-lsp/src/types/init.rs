@@ -164,6 +164,7 @@ pub struct ServerInfo {
 pub const COMMANDS: &[&str] = &[
     "dbt.goToSchema",
     "dbt.columnLineage",
+    "dbt.columnLineageGraph",
     "dbt.openSchema",
     "dbt.showLineage",
     "dbt.run",
@@ -213,6 +214,10 @@ pub const COMMANDS: &[&str] = &[
     "dbt.costReport",
     "dbt.diffAt",
     "dbt.profileColumn",
+    "dbt.renameColumn",
+    "dbt.testSql",
+    "dbt.incrementalSql",
+    "dbt.cteSql",
 ];
 
 pub fn initialize_response(id: i64, version: &str) -> ResultResponse<InitializeResult> {
